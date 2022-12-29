@@ -70,6 +70,7 @@ def main(page: ft.Page):
                         page.add(ft.Text(f"{v}"))
                     if k == 'description':
                         page.add(ft.Text(f"{v}"))
+                        page.add(ft.Text('next pod ---------'))
                     
                     # print("new item: {} = {}".format(k, v))
                     # page.add(ft.Text(f'{k}:'))
@@ -81,7 +82,7 @@ def main(page: ft.Page):
 
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=search_podcast)
-    refresh_btn = ft.ElevatedButton(text="Refresh")
+    refresh_btn = ft.ElevatedButton(text="Refresh Podcast List")
     search_box = ft.Container(
         content=search_pods,
         alignment=ft.alignment.top_right
@@ -101,15 +102,17 @@ def main(page: ft.Page):
     seek_button = ft.ElevatedButton("Seek 2s", on_click=lambda _: audio1.seek(2000))
 
 
-    search_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.END, controls=[refresh_ctn, search_pods, search_btn])
+    search_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.END, controls=[search_pods, search_btn])
+    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[refresh_ctn, search_row])
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
+    audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
 
     page.add(
         #Search Functionality
-        search_row,
+        top_row,
 
         # Audio Controls button
-        audio_row
+        audio_controls_column
     )
 
 
