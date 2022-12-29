@@ -63,14 +63,27 @@ def main(page: ft.Page):
             return_results = search_results['feeds']
             page.clean()
 
+            #cycle through podcasts and add results to page
+            pod_number = 1
+
             for d in return_results:
                 print(d['title'])
                 for k, v in d.items():
                     if k == 'title':
-                        page.add(ft.Text(f"{v}"))
-                    if k == 'description':
-                        page.add(ft.Text(f"{v}"))
-                        page.add(ft.Text('next pod ---------'))
+                        # page.add(ft.Text(f"{v}"))
+                        pod_image = ft.Image(src=d['image'], width=100, height=100)
+                        pod_title = ft.Text(d['title'])
+                        pod_desc = ft.Text(d['description'])
+                        pod_ep_count = ft.Text(d['episodeCount'])
+                        
+                        search_row = ft.Row(
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN, 
+                            controls=[pod_image, pod_title, pod_desc, pod_ep_count])
+                        page.add(search_row)
+                        pod_number += 1
+                    # if k == 'description':
+                    #     page.add(ft.Text(f"{v}"))
+                    #     page.add(ft.Text('next pod ---------'))
                     
                     # print("new item: {} = {}".format(k, v))
                     # page.add(ft.Text(f'{k}:'))
