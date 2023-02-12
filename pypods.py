@@ -1,6 +1,17 @@
 import flet as ft
 import time
-import InternalFunctions.searchpod
+import InternalFunctions.functions
+import database_functions.functions
+import app_functions.functions
+import mysql.connector
+
+cnx = mysql.connector.connect(
+    host="127.0.0.1",
+    port="3306",
+    user="root",
+    password="password",
+    database="pypods_database"
+)
 
 url = "https://github.com/mdn/webaudio-examples/blob/main/audio-analyser/viper.mp3?raw=true"
 
@@ -167,8 +178,10 @@ def main(page: ft.Page):
         audio_controls_column
     )
 
-
-ft.app(target=main, port=8034)
+# Browser Version
+ft.app(target=main, view=ft.WEB_BROWSER, port=38356)
+# App version
+# ft.app(target=main, port=8034)
 
                     # Row(
                     #     controls=[
