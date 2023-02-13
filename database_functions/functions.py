@@ -1,6 +1,8 @@
 import mysql.connector
 
 def add_podcast(cnx, podcast_values):
+    print(cnx)
+    print(podcast_values)
     cursor = cnx.cursor()
     
     add_podcast = ("INSERT INTO Podcasts "
