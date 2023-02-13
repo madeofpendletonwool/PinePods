@@ -11,6 +11,7 @@ import app_functions.functions
 import time
 import mysql.connector
 import json
+import re
 
 # Create database connector
 cnx = mysql.connector.connect(
@@ -25,6 +26,75 @@ url = "https://github.com/mdn/webaudio-examples/blob/main/audio-analyser/viper.m
 
 def main(page: ft.Page):
     # page.scroll = "auto"
+
+#---Flet Various Functions---------------------------------------------------------------
+    def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
+
+        categories = json.dumps(pod_categories)
+        podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, 1)
+        database_functions.functions.add_podcast(cnx, podcast_values)
+
+    def verify_user(username, email, password):
+        # Verify username is 6 characters or longer
+        print(username)
+        if len(username) >= 6:
+            return True
+        else:
+            invalid_username()
+        # Verify Password is 8 characters, contains a capital, and contains a number
+        if len(password) >= 8 and any(c.isupper() for c in password) and any(c.isdigit() for c in password):
+            return True
+        else:
+            return False
+        # Verifies valid email
+        regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+        if re.match(regex, email):
+            return True
+        else:
+            return False
+            
+    def invalid_username():
+        page.dialog = username_invalid_dlg
+        username_invalid_dlg.open = True
+        page.update() 
+
+    def create_user(user_username, user_email, user_password):
+
+        user_values = (user_username, user_email, user_password)
+        database_functions.functions.add_user(cnx, user_values)
+
+    def user_created_prompt(e):
+        page.dialog = user_dlg
+        user_dlg.open = True
+        page.update() 
+
+    def close_dlg(e):
+        user_dlg.open = False
+        page.update() 
+        go_home 
+
+#---Flet Various Elements----------------------------------------------------------------
+    # Define User Creation Dialog
+    user_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("New User Created!"),
+        content=ft.Text("You can now log in as this user"),
+        actions=[
+            ft.TextButton("Okay", on_click=close_dlg),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+        on_dismiss=lambda e: go_home
+    )   
+    username_invalid_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Username Invalid!"),
+        content=ft.Text("Usernames require at least 6 characters!"),
+        actions=[
+            ft.TextButton("Okay", on_click=close_dlg),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+        on_dismiss=lambda e: go_home
+    )   
 
 #---Code for Theme Change----------------------------------------------------------------
 
@@ -54,6 +124,9 @@ def main(page: ft.Page):
     def open_search(e):
         page.go("/searchpod")
 
+    def open_user_create(e):
+        page.go("/createuser")
+
     def go_home(e):
         page.go("/")
 
@@ -64,10 +137,14 @@ def main(page: ft.Page):
             View(
                 "/",
                 [
-                    AppBar(title=Text("Pypods - Alerting and Monitoring", color="white"), center_title=True, bgcolor="blue",
+                    AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
 
-                    top_row, audio_controls_column
+                    #Search Functionality
+                    top_row_container,
+
+                    # Audio Controls button
+                    audio_controls_column
                 ],
             )
         )
@@ -119,7 +196,7 @@ def main(page: ft.Page):
                 View(
                     "/searchpod",
                     [
-                        AppBar(title=Text("PyPods - Alerting and Monitoring", color="white"), center_title=True, bgcolor="blue",
+                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
                     ],
@@ -128,14 +205,37 @@ def main(page: ft.Page):
                 
             )
 
+        if page.route == "/createuser" or page.route == "/createuser":
+
+            # New User Creation Elements
+            user_text = Text('Enter New User Information:')
+            user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
+            user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
+            user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
+            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (verify_user(user_username.value, user_email.value, user_password.value), create_user(user_username.value, user_email.value, user_password.value), user_created_prompt(e)))
+            user_column = ft.Column(
+                            controls=[user_text, user_email, user_username, user_password, user_submit]
+                        )
+            user_row = ft.Row(
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            controls=[user_column])
+
+            page.views.append(
+                View(
+                    "/searchpod",
+                    [
+                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+                        actions=[theme_icon_button], ),
+                        user_row
+                        
+                    ],
+                    
+                )
+                
+            )
+
     page.on_route_change = route_change
     page.on_view_pop = view_pop
-
-    def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
-
-        categories = json.dumps(pod_categories)
-        podcast_values = (None, pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, 1)
-        database_functions.functions.add_podcast(cnx, podcast_values)
 
 #-Create Help Banner-----------------------------------------------------------------------
     def close_banner(e):
@@ -171,7 +271,7 @@ def main(page: ft.Page):
     page.appbar = AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], )
 
-    page.title = "pyPods - A python based podcast app!"
+    page.title = "PyPods - A python based podcast app!"
     
     
     # page.controls.append(testtx)
@@ -198,7 +298,7 @@ def main(page: ft.Page):
 
      
 
-    # Podcast Search Function
+    # Podcast Search Function Setup
 
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
@@ -221,15 +321,19 @@ def main(page: ft.Page):
     pause_button = ft.ElevatedButton("Stop playing", on_click=lambda _: audio1.pause())
     seek_button = ft.ElevatedButton("Seek 2s", on_click=lambda _: audio1.seek(2000))
 
+    # User Creation Button
+    create_user_btn = ft.ElevatedButton("Create New User", on_click=open_user_create)
 
+    # Various rows and columns
     search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
-    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[refresh_ctn, search_row])
+    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[refresh_ctn, create_user_btn, search_row])
     top_row_container = ft.Container(content=top_row, expand=True)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
     test_text = Text('This is a test')
     test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
 
+    # Create Initial Home Page
     page.add(
         #Search Functionality
         top_row_container,
