@@ -92,6 +92,6 @@ def parse_feed(feed_url):
             print("No audio file found for this entry")
             print("Published Date: ", entry.published)
 
-# Example usage
-feed_url = "https://changelog.com/practicalai/feed"
-parse_feed(feed_url)
+# # Example usage
+# feed_url = "https://changelog.com/practicalai/feed"
+# parse_feed(feed_url)

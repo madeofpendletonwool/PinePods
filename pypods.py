@@ -124,8 +124,11 @@ def main(page: ft.Page):
     def open_search(e):
         page.go("/searchpod")
 
-    def open_user_create(e):
-        page.go("/createuser")
+    def open_poddisplay(e):
+        page.go("/poddisplay")
+
+    def open_settings(e):
+        page.go("/settings")
 
     def go_home(e):
         page.go("/")
@@ -205,7 +208,7 @@ def main(page: ft.Page):
                 
             )
 
-        if page.route == "/createuser" or page.route == "/createuser":
+        if page.route == "/settings" or page.route == "/settings":
 
             # New User Creation Elements
             user_text = Text('Enter New User Information:')
@@ -222,7 +225,36 @@ def main(page: ft.Page):
 
             page.views.append(
                 View(
-                    "/searchpod",
+                    "/settings",
+                    [
+                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+                        actions=[theme_icon_button], ),
+                        user_row
+                        
+                    ],
+                    
+                )
+                
+            )
+
+        if page.route == "/poddisplay" or page.route == "/poddisplay":
+
+            # New User Creation Elements
+            pod_image = Text('Enter New User Information:')
+            pod_desc = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
+            pod_name = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
+            pod_ep_count = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
+            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (verify_user(user_username.value, user_email.value, user_password.value), create_user(user_username.value, user_email.value, user_password.value), user_created_prompt(e)))
+            user_column = ft.Column(
+                            controls=[user_text, user_email, user_username, user_password, user_submit]
+                        )
+            user_row = ft.Row(
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            controls=[user_column])
+
+            page.views.append(
+                View(
+                    "/poddisplay",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
@@ -297,9 +329,10 @@ def main(page: ft.Page):
         page.add(ft.Text("evaluating feed"))
 
      
+    # Settings Button
+    settings_btn = ft.ElevatedButton("PyPods Settings", on_click=open_settings)
 
     # Podcast Search Function Setup
-
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
     refresh_btn = ft.ElevatedButton(text="Refresh Podcast List")
@@ -317,16 +350,14 @@ def main(page: ft.Page):
     )
 
     #Audio Button Setup
-    play_button = ft.ElevatedButton("Start playing", on_click=lambda _: audio1.play())
-    pause_button = ft.ElevatedButton("Stop playing", on_click=lambda _: audio1.pause())
-    seek_button = ft.ElevatedButton("Seek 2s", on_click=lambda _: audio1.seek(2000))
+    play_button = ft.IconButton(icon=ft.icons.PLAY_ARROW, tooltip="Play Podcast", on_click=lambda _: audio1.play())
+    pause_button = ft.IconButton(icon=ft.icons.PAUSE, tooltip="Pause Playback", on_click=lambda _: audio1.pause())
+    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", on_click=lambda _: audio1.seek(10000))
 
-    # User Creation Button
-    create_user_btn = ft.ElevatedButton("Create New User", on_click=open_user_create)
-
-    # Various rows and columns
+    # Various rows and columns for layout
+    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, settings_btn])
     search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
-    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[refresh_ctn, create_user_btn, search_row])
+    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
     top_row_container = ft.Container(content=top_row, expand=True)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
