@@ -18,8 +18,8 @@ def add_user(cnx, user_values):
     cursor = cnx.cursor()
     
     add_user = ("INSERT INTO Users "
-                "(Username, Email, Password) "
-                "VALUES (%s, %s, %s)")
+                "(Username, Email, Hashed_PW, Salt) "
+                "VALUES (%s, %s, %s, %s)")
     
     cursor.execute(add_user, user_values)
     

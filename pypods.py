@@ -7,6 +7,7 @@ from flet.auth.providers.github_oauth_provider import GitHubOAuthProvider
 import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
+import Auth.Passfunctions
 # Others
 import time
 import mysql.connector
@@ -59,9 +60,12 @@ def main(page: ft.Page):
         page.update() 
 
     def create_user(user_username, user_email, user_password):
-
-        user_values = (user_username, user_email, user_password)
+        salt, hash_pw = Auth.Passfunctions.hash_password(user_password)
+        user_values = (user_username, user_email, hash_pw, salt)
         database_functions.functions.add_user(cnx, user_values)
+
+    def validate_user(input_username, input_pass):
+        return Auth.Passfunctions.verify_password(cnx, input_username, input_pass)
 
     def user_created_prompt(e):
         page.dialog = user_dlg
@@ -291,6 +295,44 @@ def main(page: ft.Page):
         page.update()
 
     banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
+
+# Login Changes------------------------------------------------------
+
+    # def login_click(e):
+    #     page.login(provider)
+
+    # def logout_button_click(e):
+    #     page.logout()
+
+    # def on_logout(e):
+    #     toggle_login_session()
+
+    # # def on_login(e: ft.LoginEvent):
+    # def on_login(e):
+    #     print("Access token:", page.auth.token.access_token)
+    #     print("User ID:", page.auth.user.id)
+    #     if not e.error:
+    #         toggle_login_session()
+    #     # Allow Route Changes only after login
+
+    # page.on_login = on_login
+    # logout_button = ft.ElevatedButton("Logout", on_click=logout_button_click)
+    # login_button = ft.ElevatedButton("Login with GitHub", on_click=login_click)
+    # login_row = Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[login_button, banner_button])
+    # logout_row = Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[logout_button, banner_button])
+    # page.add(login_row, logout_row)
+
+    # def toggle_login_session():
+    #     cecil_row.visible = page.auth is None
+    #     login_row.visible = page.auth is None
+    #     logout_row.visible = page.auth is not None
+    #     basic_row.visible = page.auth is not None
+    #     basic_modules_row.visible = page.auth is not None
+    #     alert_row.visible = page.auth is not None
+    #     alert_modules_row.visible = page.auth is not None
+    #     monitor_row.visible = page.auth is not None
+    #     report_modules_row.visible = page.auth is not None
+    #     page.update()
 
 # Create Page--------------------------------------------------------
 
