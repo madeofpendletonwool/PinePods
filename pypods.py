@@ -34,35 +34,11 @@ def main(page: ft.Page):
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, 1)
         database_functions.functions.add_podcast(cnx, podcast_values)
-
-    def verify_user(username, email, password):
-        # Verify username is 6 characters or longer
-        print(username)
-        if len(username) >= 6:
-            return True
-        else:
-            invalid_username()
-        # Verify Password is 8 characters, contains a capital, and contains a number
-        if len(password) >= 8 and any(c.isupper() for c in password) and any(c.isdigit() for c in password):
-            return True
-        else:
-            return False
-        # Verifies valid email
-        regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-        if re.match(regex, email):
-            return True
-        else:
-            return False
             
     def invalid_username():
         page.dialog = username_invalid_dlg
         username_invalid_dlg.open = True
         page.update() 
-
-    def create_user(user_username, user_email, user_password):
-        salt, hash_pw = Auth.Passfunctions.hash_password(user_password)
-        user_values = (user_username, user_email, hash_pw, salt)
-        database_functions.functions.add_user(cnx, user_values)
 
     def validate_user(input_username, input_pass):
         return Auth.Passfunctions.verify_password(cnx, input_username, input_pass)
@@ -76,6 +52,20 @@ def main(page: ft.Page):
         user_dlg.open = False
         page.update() 
         go_home 
+
+    def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
+        global clicked_podcast
+        clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website)
+        print(clicked_podcast.name)
+        return clicked_podcast
+    class Podcast:
+        def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None):
+            self.name = name
+            self.artwork = artwork
+            self.author = author
+            self.description = description
+            self.feedurl = feedurl
+            self.website = website
 
 #---Flet Various Elements----------------------------------------------------------------
     # Define User Creation Dialog
@@ -174,7 +164,7 @@ def main(page: ft.Page):
                         pod_image = ft.Image(src=d['image'], width=150, height=150)
                         pod_title = ft.TextButton(
                             text=d['title'], 
-                            on_click=evaluate_podcast
+                            on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
                         )
                         pod_desc = ft.Text(d['description'], width=700)
                         # Episode Count and subtitle
@@ -215,11 +205,19 @@ def main(page: ft.Page):
         if page.route == "/settings" or page.route == "/settings":
 
             # New User Creation Elements
+            new_user = User()
             user_text = Text('Enter New User Information:')
             user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
             user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (verify_user(user_username.value, user_email.value, user_password.value), create_user(user_username.value, user_email.value, user_password.value), user_created_prompt(e)))
+            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (
+                new_user.set_username(user_username.value), 
+                new_user.set_password(user_password.value), 
+                new_user.set_email(user_email.value),
+                new_user.verify_user_values(),
+                new_user.popup_user_values(e),
+                new_user.create_user(), 
+                user_created_prompt(e)))
             user_column = ft.Column(
                             controls=[user_text, user_email, user_username, user_password, user_submit]
                         )
@@ -242,19 +240,7 @@ def main(page: ft.Page):
             )
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
-
-            # New User Creation Elements
-            pod_image = Text('Enter New User Information:')
-            pod_desc = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
-            pod_name = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
-            pod_ep_count = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (verify_user(user_username.value, user_email.value, user_password.value), create_user(user_username.value, user_email.value, user_password.value), user_created_prompt(e)))
-            user_column = ft.Column(
-                            controls=[user_text, user_email, user_username, user_password, user_submit]
-                        )
-            user_row = ft.Row(
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            controls=[user_column])
+            testname = ft.Text(clicked_podcast.name)
 
             page.views.append(
                 View(
@@ -262,7 +248,7 @@ def main(page: ft.Page):
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
-                        user_row
+                        testname
                         
                     ],
                     
@@ -296,7 +282,40 @@ def main(page: ft.Page):
 
     banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
 
-# Login Changes------------------------------------------------------
+# Login/User Changes------------------------------------------------------
+    class User:
+        def __init__(self):
+            self.username = None
+            self.password = None
+            self.email = None
+
+        def set_username(self, new_username):
+            self.username = new_username
+
+        def set_password(self, new_password):
+            self.password = new_password
+
+        def set_email(self, new_email):
+            self.email = new_email
+    
+        def verify_user_values(self):
+            self.valid_username = len(self.username) >= 6
+            self.valid_password = len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
+            regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+            self.valid_email = re.match(regex, self.email) is not None
+            print(f'email is valid {self.valid_email}')
+
+        def popup_user_values(self, e):
+            pass
+
+        def create_user(self):
+            salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
+            user_values = (self.username, self.email, hash_pw, salt)
+            database_functions.functions.add_user(cnx, user_values)
+
+    active_user = User()
+
+    print(active_user.username)
 
     # def login_click(e):
     #     page.login(provider)
@@ -333,6 +352,7 @@ def main(page: ft.Page):
     #     monitor_row.visible = page.auth is not None
     #     report_modules_row.visible = page.auth is not None
     #     page.update()
+    
 
 # Create Page--------------------------------------------------------
 
@@ -364,11 +384,6 @@ def main(page: ft.Page):
         on_seek_complete=lambda _: print("Seek complete"),
     )
     page.overlay.append(audio1)
- 
-
-    def evaluate_podcast(e):
-        page.clean()
-        page.add(ft.Text("evaluating feed"))
 
      
     # Settings Button
