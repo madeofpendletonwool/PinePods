@@ -13,6 +13,8 @@ import time
 import mysql.connector
 import json
 import re
+import feedparser
+import urllib.request
 
 # Create database connector
 cnx = mysql.connector.connect(
@@ -53,10 +55,12 @@ def main(page: ft.Page):
         page.update() 
         go_home 
 
+    def launch_pod_site(e):
+        page.launch_url(clicked_podcast.website)
+
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         global clicked_podcast
         clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website)
-        print(clicked_podcast.name)
         return clicked_podcast
     class Podcast:
         def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None):
@@ -110,7 +114,6 @@ def main(page: ft.Page):
 #--Defining Routes---------------------------------------------------
 
     def view_pop(e):
-        print("View pop:", e.view)
         page.views.pop()
         top_view = page.views[-1]
         page.go(top_view.route)
@@ -128,7 +131,6 @@ def main(page: ft.Page):
         page.go("/")
 
     def route_change(e):
-        print("Route change:", e.route)
         page.views.clear()
         page.views.append(
             View(
@@ -161,9 +163,9 @@ def main(page: ft.Page):
                 for k, v in d.items():
                     if k == 'title':
                         # Defining the attributes of each podcast that will be displayed on screen
-                        pod_image = ft.Image(src=d['image'], width=150, height=150)
+                        pod_image = ft.Image(src=d['artwork'], width=150, height=150)
                         pod_title = ft.TextButton(
-                            text=d['title'], 
+                            text=d['title'], width=600,
                             on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
                         )
                         pod_desc = ft.Text(d['description'], width=700)
@@ -188,17 +190,19 @@ def main(page: ft.Page):
                         search_rows.append(search_row)
                         search_row_dict[f'search_row{pod_number}'] = search_row
                         pod_number += 1
-            page.scroll = "always"
-            page.views.append(
-                View(
-                    "/searchpod",
+            # Create search view object
+            search_view = ft.View("/searchpod",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
-                    ],
+                    ]
                     
                 )
+            search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                search_view
                 
             )
 
@@ -225,36 +229,109 @@ def main(page: ft.Page):
                             alignment=ft.MainAxisAlignment.CENTER,
                             controls=[user_column])
 
-            page.views.append(
-                View(
-                    "/settings",
+            # Create search view object
+            settings_view = ft.View("/searchpod",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
                         user_row
-                        
-                    ],
+                    ]
                     
                 )
-                
-            )
+            settings_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                settings_view
+                    
+                )
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
-            testname = ft.Text(clicked_podcast.name)
+            # Creating attributes for page layout
+            # First Podcast Info
+            pod_image = ft.Image(src=clicked_podcast.artwork, width=300, height=300)
+            pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+            pod_feed_desc = ft.Text(clicked_podcast.description, width=700)
+            pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
+            # pod_feed_site1 = ft.Text(clicked_podcast.website, style=ft.TextThemeStyle.TITLE_SMALL)
+            
+            feed_column = ft.Column(
+                controls=[pod_feed_title, pod_feed_desc, pod_feed_site]
+            )
+            feed_row = ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[pod_image, feed_column])
 
-            page.views.append(
-                View(
+            # Episode Info
+            # Run Function to get episode data
+            ep_number = 1
+            ep_rows = []
+            ep_row_dict = {}
+
+            episode_results = app_functions.functions.parse_feed(clicked_podcast.feedurl)
+
+            for entry in episode_results.entries:
+                if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
+                    # get the episode title
+                    parsed_title = entry.title
+
+                    # get the episode description
+                    parsed_description = entry.summary
+
+                    # get the URL of the audio file for the episode
+                    parsed_audio_url = entry.enclosures[0].href
+
+                    # get the release date of the episode
+                    parsed_release_date = entry.published
+
+                    # get the URL of the episode artwork, or use the podcast image URL if not available
+                    parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+
+
+                    # ...
+                else:
+                    print("Skipping entry without required attributes")
+
+                entry_title = ft.Text(parsed_title, width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                entry_description = ft.Text(parsed_description, width=800)
+                entry_audio_url = ft.Text(parsed_audio_url)
+                entry_released = ft.Text(parsed_release_date)
+                entry_artwork_url = ft.Image(src=parsed_artwork_url, width=150, height=150)
+                ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_CIRCLE,
+                    icon_color="blue400",
+                    icon_size=40,
+                    tooltip="Play Episode"
+                    # on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'])
+                )
+                
+                # Creating column and row for search layout
+                ep_column = ft.Column(
+                    controls=[entry_title, entry_description, entry_released]
+                )
+                ep_row = ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[entry_artwork_url, ep_column, ep_play_button])
+                ep_rows.append(ep_row)
+                ep_row_dict[f'search_row{ep_number}'] = ep_row
+                ep_number += 1
+
+            # Create search view object
+            pod_view = ft.View(
                     "/poddisplay",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
-                        testname
+                        feed_row,
+                        *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
-                    ],
+                    ]
                     
                 )
-                
-            )
+            pod_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                    pod_view
+        )
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
@@ -316,42 +393,6 @@ def main(page: ft.Page):
     active_user = User()
 
     print(active_user.username)
-
-    # def login_click(e):
-    #     page.login(provider)
-
-    # def logout_button_click(e):
-    #     page.logout()
-
-    # def on_logout(e):
-    #     toggle_login_session()
-
-    # # def on_login(e: ft.LoginEvent):
-    # def on_login(e):
-    #     print("Access token:", page.auth.token.access_token)
-    #     print("User ID:", page.auth.user.id)
-    #     if not e.error:
-    #         toggle_login_session()
-    #     # Allow Route Changes only after login
-
-    # page.on_login = on_login
-    # logout_button = ft.ElevatedButton("Logout", on_click=logout_button_click)
-    # login_button = ft.ElevatedButton("Login with GitHub", on_click=login_click)
-    # login_row = Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[login_button, banner_button])
-    # logout_row = Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[logout_button, banner_button])
-    # page.add(login_row, logout_row)
-
-    # def toggle_login_session():
-    #     cecil_row.visible = page.auth is None
-    #     login_row.visible = page.auth is None
-    #     logout_row.visible = page.auth is not None
-    #     basic_row.visible = page.auth is not None
-    #     basic_modules_row.visible = page.auth is not None
-    #     alert_row.visible = page.auth is not None
-    #     alert_modules_row.visible = page.auth is not None
-    #     monitor_row.visible = page.auth is not None
-    #     report_modules_row.visible = page.auth is not None
-    #     page.update()
     
 
 # Create Page--------------------------------------------------------

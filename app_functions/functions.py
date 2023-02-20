@@ -66,32 +66,35 @@ def search_podcast(e):
 
 def parse_feed(feed_url):
     d = feedparser.parse(feed_url)
-    print("Feed Title: ", d.feed.title)
-    print("Feed Link: ", d.feed.link)
-    print("Feed Description: ", d.feed.description)
-    print("Feed Published Date: ", d.feed.published)
+    # print("Feed Title: ", d.feed.title)
+    # print("Feed Link: ", d.feed.link)
+    # print("Feed Description: ", d.feed.description)
+    # print("Feed Published Date: ", d.feed.published)
+    return d
+    # print(d)
 
-    for entry in d.entries:
-        audio_file = None
-        for link in entry.links:
-            if link.get("type", "").startswith("audio/"):
-                audio_file = link.href
-                break
-        if audio_file:
-            print("\n")
-            print("Title: ", entry.title)
-            print("Link: ", entry.link)
-            print("Description: ", entry.description)
-            print("Audio File: ", audio_file)
-            print("Published Date: ", entry.published)
-        else:
-            print("\n")
-            print("Title: ", entry.title)
-            print("Link: ", entry.link)
-            print("Description: ", entry.description)
-            print("No audio file found for this entry")
-            print("Published Date: ", entry.published)
+    # for entry in d.entries:
+    #     audio_file = None
+    #     for link in entry.links:
+    #         if link.get("type", "").startswith("audio/"):
+    #             audio_file = link.href
+    #             break
+        # if audio_file:
+        #     print("\n")
+        #     print("Title: ", entry.title)
+        #     print("Link: ", entry.link)
+        #     print("Description: ", entry.description)
+        #     print("Audio File: ", audio_file)
+        #     # print("Published Date: ", entry.published)
+        # else:
+        #     print("\n")
+        #     print("Title: ", entry.title)
+        #     print("Link: ", entry.link)
+        #     print("Description: ", entry.description)
+        #     print("No audio file found for this entry")
+        #     print("Published Date: ", entry.published)
 
-# # Example usage
-# feed_url = "https://changelog.com/practicalai/feed"
-# parse_feed(feed_url)
+if __name__ == "__main__":
+    # Example usage
+    feed_url = "https://changelog.com/practicalai/feed"
+    parse_feed(feed_url)
