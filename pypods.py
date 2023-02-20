@@ -15,6 +15,9 @@ import json
 import re
 import feedparser
 import urllib.request
+from PIL import Image
+from bs4 import BeautifulSoup
+import requests
 
 # Create database connector
 cnx = mysql.connector.connect(
@@ -162,8 +165,10 @@ def main(page: ft.Page):
             for d in return_results:
                 for k, v in d.items():
                     if k == 'title':
-                        # Defining the attributes of each podcast that will be displayed on screen
+                        # Parse webpages needed to extract podcast artwork
                         pod_image = ft.Image(src=d['artwork'], width=150, height=150)
+                        
+                        # Defining the attributes of each podcast that will be displayed on screen
                         pod_title = ft.TextButton(
                             text=d['title'], width=600,
                             on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
@@ -285,6 +290,8 @@ def main(page: ft.Page):
 
                     # get the URL of the episode artwork, or use the podcast image URL if not available
                     parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+                    if parsed_artwork_url == None:
+                        parsed_artwork_url = clicked_podcast.artwork
 
 
                     # ...
@@ -407,10 +414,6 @@ def main(page: ft.Page):
                         actions=[theme_icon_button], )
 
     page.title = "PyPods - A python based podcast app!"
-    
-    
-    # page.controls.append(testtx)
-    # page.update()
 
     # Audio Setup
     audio1 = ft.Audio(
@@ -474,6 +477,6 @@ def main(page: ft.Page):
     page.scroll = "always"
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER)
+# ft.app(target=main, view=ft.WEB_BROWSER)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)

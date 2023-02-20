@@ -18,7 +18,7 @@ def searchpod(podcast_value):
         return search_results
 
 if __name__ == '__main__':
-    podcast_value = 'playdate podcast'
+    podcast_value = 'ask noah show'
     results = searchpod(podcast_value)
     print(results)
     return_results = results['feeds']
