@@ -55,5 +55,3 @@ def get_feed(url):
 
     return df
 
-df = get_feed('https://feeds.feedburner.com/ThisFilipinoAmericanLifePodcast')
-print(df.head())

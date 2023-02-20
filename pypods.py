@@ -7,11 +7,17 @@ from flet.auth.providers.github_oauth_provider import GitHubOAuthProvider
 import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
+import Auth.Passfunctions
 # Others
 import time
 import mysql.connector
 import json
 import re
+import feedparser
+import urllib.request
+from PIL import Image
+from bs4 import BeautifulSoup
+import requests
 
 # Create database connector
 cnx = mysql.connector.connect(
@@ -33,35 +39,14 @@ def main(page: ft.Page):
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, 1)
         database_functions.functions.add_podcast(cnx, podcast_values)
-
-    def verify_user(username, email, password):
-        # Verify username is 6 characters or longer
-        print(username)
-        if len(username) >= 6:
-            return True
-        else:
-            invalid_username()
-        # Verify Password is 8 characters, contains a capital, and contains a number
-        if len(password) >= 8 and any(c.isupper() for c in password) and any(c.isdigit() for c in password):
-            return True
-        else:
-            return False
-        # Verifies valid email
-        regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-        if re.match(regex, email):
-            return True
-        else:
-            return False
             
     def invalid_username():
         page.dialog = username_invalid_dlg
         username_invalid_dlg.open = True
         page.update() 
 
-    def create_user(user_username, user_email, user_password):
-
-        user_values = (user_username, user_email, user_password)
-        database_functions.functions.add_user(cnx, user_values)
+    def validate_user(input_username, input_pass):
+        return Auth.Passfunctions.verify_password(cnx, input_username, input_pass)
 
     def user_created_prompt(e):
         page.dialog = user_dlg
@@ -72,6 +57,22 @@ def main(page: ft.Page):
         user_dlg.open = False
         page.update() 
         go_home 
+
+    def launch_pod_site(e):
+        page.launch_url(clicked_podcast.website)
+
+    def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
+        global clicked_podcast
+        clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website)
+        return clicked_podcast
+    class Podcast:
+        def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None):
+            self.name = name
+            self.artwork = artwork
+            self.author = author
+            self.description = description
+            self.feedurl = feedurl
+            self.website = website
 
 #---Flet Various Elements----------------------------------------------------------------
     # Define User Creation Dialog
@@ -116,7 +117,6 @@ def main(page: ft.Page):
 #--Defining Routes---------------------------------------------------
 
     def view_pop(e):
-        print("View pop:", e.view)
         page.views.pop()
         top_view = page.views[-1]
         page.go(top_view.route)
@@ -134,7 +134,6 @@ def main(page: ft.Page):
         page.go("/")
 
     def route_change(e):
-        print("Route change:", e.route)
         page.views.clear()
         page.views.append(
             View(
@@ -166,11 +165,13 @@ def main(page: ft.Page):
             for d in return_results:
                 for k, v in d.items():
                     if k == 'title':
+                        # Parse webpages needed to extract podcast artwork
+                        pod_image = ft.Image(src=d['artwork'], width=150, height=150)
+                        
                         # Defining the attributes of each podcast that will be displayed on screen
-                        pod_image = ft.Image(src=d['image'], width=150, height=150)
                         pod_title = ft.TextButton(
-                            text=d['title'], 
-                            on_click=evaluate_podcast
+                            text=d['title'], width=600,
+                            on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
                         )
                         pod_desc = ft.Text(d['description'], width=700)
                         # Episode Count and subtitle
@@ -194,28 +195,38 @@ def main(page: ft.Page):
                         search_rows.append(search_row)
                         search_row_dict[f'search_row{pod_number}'] = search_row
                         pod_number += 1
-            page.scroll = "always"
-            page.views.append(
-                View(
-                    "/searchpod",
+            # Create search view object
+            search_view = ft.View("/searchpod",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
-                    ],
+                    ]
                     
                 )
+            search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                search_view
                 
             )
 
         if page.route == "/settings" or page.route == "/settings":
 
             # New User Creation Elements
+            new_user = User()
             user_text = Text('Enter New User Information:')
             user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
             user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (verify_user(user_username.value, user_email.value, user_password.value), create_user(user_username.value, user_email.value, user_password.value), user_created_prompt(e)))
+            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (
+                new_user.set_username(user_username.value), 
+                new_user.set_password(user_password.value), 
+                new_user.set_email(user_email.value),
+                new_user.verify_user_values(),
+                new_user.popup_user_values(e),
+                new_user.create_user(), 
+                user_created_prompt(e)))
             user_column = ft.Column(
                             controls=[user_text, user_email, user_username, user_password, user_submit]
                         )
@@ -223,48 +234,111 @@ def main(page: ft.Page):
                             alignment=ft.MainAxisAlignment.CENTER,
                             controls=[user_column])
 
-            page.views.append(
-                View(
-                    "/settings",
+            # Create search view object
+            settings_view = ft.View("/searchpod",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
                         user_row
-                        
-                    ],
+                    ]
                     
                 )
-                
-            )
+            settings_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                settings_view
+                    
+                )
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
+            # Creating attributes for page layout
+            # First Podcast Info
+            pod_image = ft.Image(src=clicked_podcast.artwork, width=300, height=300)
+            pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+            pod_feed_desc = ft.Text(clicked_podcast.description, width=700)
+            pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
+            # pod_feed_site1 = ft.Text(clicked_podcast.website, style=ft.TextThemeStyle.TITLE_SMALL)
+            
+            feed_column = ft.Column(
+                controls=[pod_feed_title, pod_feed_desc, pod_feed_site]
+            )
+            feed_row = ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[pod_image, feed_column])
 
-            # New User Creation Elements
-            pod_image = Text('Enter New User Information:')
-            pod_desc = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
-            pod_name = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
-            pod_ep_count = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (verify_user(user_username.value, user_email.value, user_password.value), create_user(user_username.value, user_email.value, user_password.value), user_created_prompt(e)))
-            user_column = ft.Column(
-                            controls=[user_text, user_email, user_username, user_password, user_submit]
-                        )
-            user_row = ft.Row(
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            controls=[user_column])
+            # Episode Info
+            # Run Function to get episode data
+            ep_number = 1
+            ep_rows = []
+            ep_row_dict = {}
 
-            page.views.append(
-                View(
+            episode_results = app_functions.functions.parse_feed(clicked_podcast.feedurl)
+
+            for entry in episode_results.entries:
+                if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
+                    # get the episode title
+                    parsed_title = entry.title
+
+                    # get the episode description
+                    parsed_description = entry.summary
+
+                    # get the URL of the audio file for the episode
+                    parsed_audio_url = entry.enclosures[0].href
+
+                    # get the release date of the episode
+                    parsed_release_date = entry.published
+
+                    # get the URL of the episode artwork, or use the podcast image URL if not available
+                    parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+                    if parsed_artwork_url == None:
+                        parsed_artwork_url = clicked_podcast.artwork
+
+
+                    # ...
+                else:
+                    print("Skipping entry without required attributes")
+
+                entry_title = ft.Text(parsed_title, width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                entry_description = ft.Text(parsed_description, width=800)
+                entry_audio_url = ft.Text(parsed_audio_url)
+                entry_released = ft.Text(parsed_release_date)
+                entry_artwork_url = ft.Image(src=parsed_artwork_url, width=150, height=150)
+                ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_CIRCLE,
+                    icon_color="blue400",
+                    icon_size=40,
+                    tooltip="Play Episode"
+                    # on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'])
+                )
+                
+                # Creating column and row for search layout
+                ep_column = ft.Column(
+                    controls=[entry_title, entry_description, entry_released]
+                )
+                ep_row = ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[entry_artwork_url, ep_column, ep_play_button])
+                ep_rows.append(ep_row)
+                ep_row_dict[f'search_row{ep_number}'] = ep_row
+                ep_number += 1
+
+            # Create search view object
+            pod_view = ft.View(
                     "/poddisplay",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
-                        user_row
+                        feed_row,
+                        *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
-                    ],
+                    ]
                     
                 )
-                
-            )
+            pod_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                    pod_view
+        )
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
@@ -292,6 +366,42 @@ def main(page: ft.Page):
 
     banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
 
+# Login/User Changes------------------------------------------------------
+    class User:
+        def __init__(self):
+            self.username = None
+            self.password = None
+            self.email = None
+
+        def set_username(self, new_username):
+            self.username = new_username
+
+        def set_password(self, new_password):
+            self.password = new_password
+
+        def set_email(self, new_email):
+            self.email = new_email
+    
+        def verify_user_values(self):
+            self.valid_username = len(self.username) >= 6
+            self.valid_password = len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
+            regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+            self.valid_email = re.match(regex, self.email) is not None
+            print(f'email is valid {self.valid_email}')
+
+        def popup_user_values(self, e):
+            pass
+
+        def create_user(self):
+            salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
+            user_values = (self.username, self.email, hash_pw, salt)
+            database_functions.functions.add_user(cnx, user_values)
+
+    active_user = User()
+
+    print(active_user.username)
+    
+
 # Create Page--------------------------------------------------------
 
     page.title = "PyPods"
@@ -304,10 +414,6 @@ def main(page: ft.Page):
                         actions=[theme_icon_button], )
 
     page.title = "PyPods - A python based podcast app!"
-    
-    
-    # page.controls.append(testtx)
-    # page.update()
 
     # Audio Setup
     audio1 = ft.Audio(
@@ -322,11 +428,6 @@ def main(page: ft.Page):
         on_seek_complete=lambda _: print("Seek complete"),
     )
     page.overlay.append(audio1)
- 
-
-    def evaluate_podcast(e):
-        page.clean()
-        page.add(ft.Text("evaluating feed"))
 
      
     # Settings Button
@@ -376,6 +477,6 @@ def main(page: ft.Page):
     page.scroll = "always"
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER)
+# ft.app(target=main, view=ft.WEB_BROWSER)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)

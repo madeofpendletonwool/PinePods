@@ -2,7 +2,8 @@ CREATE TABLE Users (
   UserID INT AUTO_INCREMENT PRIMARY KEY,
   Username TEXT,
   Email VARCHAR(255),
-  Password CHAR(60)
+  Hashed_PW CHAR(60),
+  Salt CHAR(60)
 );
 
 CREATE TABLE Podcasts (

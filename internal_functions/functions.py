@@ -16,3 +16,13 @@ def searchpod(podcast_value):
     except:
         search_results = response.status_code
         return search_results
+
+if __name__ == '__main__':
+    podcast_value = 'ask noah show'
+    results = searchpod(podcast_value)
+    print(results)
+    return_results = results['feeds']
+    for d in return_results:
+        for k, v in d.items():
+            if k == 'title':
+                print(d['artwork'])
