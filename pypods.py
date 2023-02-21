@@ -8,6 +8,7 @@ import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
 import Auth.Passfunctions
+import Audio.functions
 # Others
 import time
 import mysql.connector
@@ -18,6 +19,9 @@ import urllib.request
 from PIL import Image
 from bs4 import BeautifulSoup
 import requests
+from pydub import AudioSegment
+from pydub.playback import play
+
 
 # Create database connector
 cnx = mysql.connector.connect(
@@ -27,8 +31,6 @@ cnx = mysql.connector.connect(
     password="password",
     database="pypods_database"
 )
-
-url = "https://github.com/mdn/webaudio-examples/blob/main/audio-analyser/viper.mp3?raw=true"
 
 def main(page: ft.Page):
     # page.scroll = "auto"
@@ -60,6 +62,17 @@ def main(page: ft.Page):
 
     def launch_pod_site(e):
         page.launch_url(clicked_podcast.website)
+
+    def play_episode(url):
+        print(url)
+        episode = Audio.functions.Audio(url)
+        episode.play_podcast()
+
+    def pause_episode():
+        pass
+
+    def seek_episode():
+        pass
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         global clicked_podcast
@@ -303,12 +316,13 @@ def main(page: ft.Page):
                 entry_audio_url = ft.Text(parsed_audio_url)
                 entry_released = ft.Text(parsed_release_date)
                 entry_artwork_url = ft.Image(src=parsed_artwork_url, width=150, height=150)
+                # print(parsed_audio_url)
                 ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_CIRCLE,
                     icon_color="blue400",
                     icon_size=40,
-                    tooltip="Play Episode"
-                    # on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'])
+                    tooltip="Play Episode",
+                    on_click=lambda x: play_episode(parsed_audio_url)
                 )
                 
                 # Creating column and row for search layout
@@ -399,7 +413,7 @@ def main(page: ft.Page):
 
     active_user = User()
 
-    print(active_user.username)
+    print(f'Current User: {active_user.username}')
     
 
 # Create Page--------------------------------------------------------
@@ -414,20 +428,6 @@ def main(page: ft.Page):
                         actions=[theme_icon_button], )
 
     page.title = "PyPods - A python based podcast app!"
-
-    # Audio Setup
-    audio1 = ft.Audio(
-        src=url,
-        autoplay=False,
-        volume=1,
-        balance=0,
-        on_loaded=lambda _: print("Loaded"),
-        on_duration_changed=lambda e: print("Duration changed:", e.data),
-        on_position_changed=lambda e: print("Position changed:", e.data),
-        on_state_changed=lambda e: print("State changed:", e.data),
-        on_seek_complete=lambda _: print("Seek complete"),
-    )
-    page.overlay.append(audio1)
 
      
     # Settings Button
@@ -453,7 +453,7 @@ def main(page: ft.Page):
     #Audio Button Setup
     play_button = ft.IconButton(icon=ft.icons.PLAY_ARROW, tooltip="Play Podcast", on_click=lambda _: audio1.play())
     pause_button = ft.IconButton(icon=ft.icons.PAUSE, tooltip="Pause Playback", on_click=lambda _: audio1.pause())
-    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", on_click=lambda _: audio1.seek(10000))
+    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", on_click=lambda _: audio1.seek(2000))
 
     # Various rows and columns for layout
     settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, settings_btn])
