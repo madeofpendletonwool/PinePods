@@ -296,7 +296,11 @@ def main(page: ft.Page):
                     parsed_description = entry.summary
 
                     # get the URL of the audio file for the episode
-                    parsed_audio_url = entry.enclosures[0].href
+                    if entry.enclosures:
+                        parsed_audio_url = entry.enclosures[0].href
+                    else:
+                        parsed_audio_url = ""
+
 
                     # get the release date of the episode
                     parsed_release_date = entry.published
@@ -306,10 +310,8 @@ def main(page: ft.Page):
                     if parsed_artwork_url == None:
                         parsed_artwork_url = clicked_podcast.artwork
 
-
-                    # ...
                 else:
-                    print("Skipping entry without required attributes")
+                    print("Skipping entry without required attributes or enclosures")
 
                 entry_title = ft.Text(parsed_title, width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                 entry_description = ft.Text(parsed_description, width=800)
@@ -322,7 +324,7 @@ def main(page: ft.Page):
                     icon_color="blue400",
                     icon_size=40,
                     tooltip="Play Episode",
-                    on_click=lambda x: play_episode(parsed_audio_url)
+                    on_click=lambda x, url=parsed_audio_url: play_episode(url)
                 )
                 
                 # Creating column and row for search layout
@@ -331,10 +333,12 @@ def main(page: ft.Page):
                 )
                 ep_row = ft.Row(
                     alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[entry_artwork_url, ep_column, ep_play_button])
+                    controls=[entry_artwork_url, ep_column, ep_play_button]
+                )
                 ep_rows.append(ep_row)
                 ep_row_dict[f'search_row{ep_number}'] = ep_row
                 ep_number += 1
+
 
             # Create search view object
             pod_view = ft.View(

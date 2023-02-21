@@ -5,15 +5,33 @@ import os
 # Supress pygame welcome message
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
+import time
 
 class Audio:
     def __init__(self, episode_url):
         self.episode_file = episode_url
 
     def play_podcast(self):
-        response = requests.get(self.episode_file)
+        max_retries = 3
+        retry_delay_seconds = 5
+        retry = 0
+        
+        while retry < max_retries:
+            try:
+                response = requests.get(self.episode_file)
+                break
+            except requests.exceptions.RequestException as e:
+                print(f"Request failed, retrying in {retry_delay_seconds} seconds ({e})")
+                retry += 1
+                time.sleep(retry_delay_seconds)
+        
+        if retry == max_retries:
+            print(f"Max retries exceeded, could not retrieve podcast file from {self.episode_file}")
+            return
+        
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file.write(response.content)
+        
         pygame.mixer.init()
         pygame.mixer.music.load(temp_file.name)
         pygame.mixer.music.play()
