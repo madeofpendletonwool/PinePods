@@ -8,6 +8,7 @@ import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
 import Auth.Passfunctions
+import Audio.functions
 # Others
 import time
 import mysql.connector
@@ -18,6 +19,14 @@ import urllib.request
 from PIL import Image
 from bs4 import BeautifulSoup
 import requests
+from pydub import AudioSegment
+from pydub.playback import play
+
+#Establish that audio is not playing
+audio_playing = False
+active_pod = 'Set at start'
+
+
 
 # Create database connector
 cnx = mysql.connector.connect(
@@ -27,8 +36,6 @@ cnx = mysql.connector.connect(
     password="password",
     database="pypods_database"
 )
-
-url = "https://github.com/mdn/webaudio-examples/blob/main/audio-analyser/viper.mp3?raw=true"
 
 def main(page: ft.Page):
     # page.scroll = "auto"
@@ -60,6 +67,70 @@ def main(page: ft.Page):
 
     def launch_pod_site(e):
         page.launch_url(clicked_podcast.website)
+
+    class Toggle_Pod:
+        initialized = False
+
+        def __init__(self, page, go_home, url=None, name=None):
+            if not Toggle_Pod.initialized:
+                self.page = page
+                self.go_home = go_home
+                self.url = url
+                self.name = name or ""
+                self.audio_playing = False
+                # self.episode_name = self.name
+                if url is None or name is None:
+                    self.active_pod = 'Initial Value'
+                else:
+                    self.active_pod = self.name
+                print(f'inside class: {self.name}')
+                Toggle_Pod.initialized = True
+            else:
+                self.page = page
+                self.go_home = go_home
+                self.url = url
+                self.name = name or ""
+                self.audio_playing = False
+                self.active_pod = self.name
+                # self.episode_name = self.name
+                print(f'inside class: {self.name}')
+
+        def play_episode(self, e=None):
+            global episode_name
+            global episode
+            episode = Audio.functions.Audio(self.url, self.name)
+            episode_name = self.name
+            self.audio_playing, self.name = episode.play_podcast()
+            self.toggle_current_status()
+
+        def pause_episode(self, e=None):
+            episode.pause_podcast()
+            self.audio_playing = False
+            self.toggle_current_status()
+            self.page.update()
+
+        def resume_podcast(self, e=None):
+            episode.resume_podcast()
+            self.audio_playing = True
+            self.name = self.name
+            print(f"Resume podcast: {episode_name}")
+            self.toggle_current_status()
+            self.page.update()
+
+        def toggle_current_status(self):
+            if self.audio_playing:
+                play_button.visible = False
+                pause_button.visible = True
+                currently_playing.content = ft.Text(episode_name)
+                self.page.update()
+            else:
+                pause_button.visible = False
+                play_button.visible = True
+                currently_playing.content = ft.Text(episode_name)
+                self.page.update()
+
+    def seek_episode():
+        episode.seek_podcast(start_time_ms, end_time_ms)
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         global clicked_podcast
@@ -131,6 +202,9 @@ def main(page: ft.Page):
         page.go("/settings")
 
     def go_home(e):
+        print(f'audio playing on return to home: {current_episode.audio_playing}')
+        print(current_episode.active_pod)
+        page.update()
         page.go("/")
 
     def route_change(e):
@@ -143,10 +217,7 @@ def main(page: ft.Page):
                         actions=[theme_icon_button], ),
 
                     #Search Functionality
-                    top_row_container,
-
-                    # Audio Controls button
-                    audio_controls_column
+                    top_row_container
                 ],
             )
         )
@@ -283,7 +354,11 @@ def main(page: ft.Page):
                     parsed_description = entry.summary
 
                     # get the URL of the audio file for the episode
-                    parsed_audio_url = entry.enclosures[0].href
+                    if entry.enclosures:
+                        parsed_audio_url = entry.enclosures[0].href
+                    else:
+                        parsed_audio_url = ""
+
 
                     # get the release date of the episode
                     parsed_release_date = entry.published
@@ -293,22 +368,23 @@ def main(page: ft.Page):
                     if parsed_artwork_url == None:
                         parsed_artwork_url = clicked_podcast.artwork
 
-
-                    # ...
                 else:
-                    print("Skipping entry without required attributes")
+                    print("Skipping entry without required attributes or enclosures")
 
                 entry_title = ft.Text(parsed_title, width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                 entry_description = ft.Text(parsed_description, width=800)
                 entry_audio_url = ft.Text(parsed_audio_url)
                 entry_released = ft.Text(parsed_release_date)
                 entry_artwork_url = ft.Image(src=parsed_artwork_url, width=150, height=150)
+                # print(parsed_audio_url)
+                print(f'Verify that parsed_title is the podcast name:{parsed_title}')
+                current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
                 ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_CIRCLE,
                     icon_color="blue400",
                     icon_size=40,
-                    tooltip="Play Episode"
-                    # on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'])
+                    tooltip="Play Episode",
+                    on_click = lambda x, instance=current_episode: instance.play_episode()
                 )
                 
                 # Creating column and row for search layout
@@ -317,10 +393,12 @@ def main(page: ft.Page):
                 )
                 ep_row = ft.Row(
                     alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[entry_artwork_url, ep_column, ep_play_button])
+                    controls=[entry_artwork_url, ep_column, ep_play_button]
+                )
                 ep_rows.append(ep_row)
                 ep_row_dict[f'search_row{ep_number}'] = ep_row
                 ep_number += 1
+
 
             # Create search view object
             pod_view = ft.View(
@@ -399,7 +477,7 @@ def main(page: ft.Page):
 
     active_user = User()
 
-    print(active_user.username)
+    print(f'Current User: {active_user.username}')
     
 
 # Create Page--------------------------------------------------------
@@ -414,20 +492,6 @@ def main(page: ft.Page):
                         actions=[theme_icon_button], )
 
     page.title = "PyPods - A python based podcast app!"
-
-    # Audio Setup
-    audio1 = ft.Audio(
-        src=url,
-        autoplay=False,
-        volume=1,
-        balance=0,
-        on_loaded=lambda _: print("Loaded"),
-        on_duration_changed=lambda e: print("Duration changed:", e.data),
-        on_position_changed=lambda e: print("Position changed:", e.data),
-        on_state_changed=lambda e: print("State changed:", e.data),
-        on_seek_complete=lambda _: print("Seek complete"),
-    )
-    page.overlay.append(audio1)
 
      
     # Settings Button
@@ -450,10 +514,46 @@ def main(page: ft.Page):
         alignment=ft.alignment.top_left
     )
 
+    def load_podcast():
+        pass
+
     #Audio Button Setup
-    play_button = ft.IconButton(icon=ft.icons.PLAY_ARROW, tooltip="Play Podcast", on_click=lambda _: audio1.play())
-    pause_button = ft.IconButton(icon=ft.icons.PAUSE, tooltip="Pause Playback", on_click=lambda _: audio1.pause())
-    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", on_click=lambda _: audio1.seek(10000))
+    episode = Audio.functions.Audio(None, 'Name')
+    initialize = 1
+    if initialize == 1:
+        current_episode = Toggle_Pod(page, go_home)
+        print('only run once')
+        initialize += 1
+
+
+    play_button = ft.IconButton(icon=ft.icons.PLAY_ARROW, tooltip="Play Podcast", on_click=current_episode.resume_podcast)
+    pause_button = ft.IconButton(icon=ft.icons.PAUSE, tooltip="Pause Playback", on_click=current_episode.pause_episode)
+    pause_button.visible = False
+    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", on_click=lambda _: audio1.seek(2000))
+    audio_controls = ft.Row(controls=[play_button, pause_button, seek_button]) 
+    currently_playing = ft.Container(content=ft.Text(current_episode.name))
+    currently_playing.padding=ft.padding.only(left=20)
+    currently_playing.padding=ft.padding.only(top=10)
+
+    height = 50
+    width = 4000
+
+    audio_container = ft.Container(
+            height=height,
+            width=width,
+            bgcolor='black',
+            border_radius=45,
+            padding=6,
+            content=ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.END,  
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
+                controls=[currently_playing, audio_controls]
+            )
+            
+    )
+        
+    # page.overlay.append(audio_container)
+    page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=20, expand=True))
 
     # Various rows and columns for layout
     settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, settings_btn])
@@ -471,8 +571,9 @@ def main(page: ft.Page):
         top_row_container,
 
         # Audio Controls button
-        audio_controls_column
+        # audio_container
     )
+    
 
     page.scroll = "always"
 
