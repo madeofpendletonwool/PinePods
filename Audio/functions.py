@@ -8,8 +8,9 @@ import pygame
 import time
 
 class Audio:
-    def __init__(self, episode_url):
+    def __init__(self, episode_url, episode_name):
         self.episode_file = episode_url
+        self.episode_name = episode_name
 
     def play_podcast(self):
         max_retries = 3
@@ -36,12 +37,17 @@ class Audio:
         pygame.mixer.music.load(temp_file.name)
         pygame.mixer.music.play()
         os.unlink(temp_file.name)
+        audio_playing = True
+
+        return audio_playing, self.episode_name
 
     def pause_podcast(self):
         pygame.mixer.music.pause()
+        audio_playing = False
 
     def resume_podcast(self):
         pygame.mixer.music.unpause()
+        audio_playing = True
 
     def seek_podcast(self, start_time_ms, end_time_ms):
         pass
