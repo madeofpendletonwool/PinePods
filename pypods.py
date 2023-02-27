@@ -1,9 +1,11 @@
 # Various flet imports
 import flet as ft
+from flet import *
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row
 # from flet.control_event import ControlEvent
 from flet.auth.providers.github_oauth_provider import GitHubOAuthProvider
 # Internal Functions
+from internal_functions.navbar import ModernNavBar
 import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
@@ -21,6 +23,7 @@ from bs4 import BeautifulSoup
 import requests
 from pydub import AudioSegment
 from pydub.playback import play
+from functools import partial
 
 #Establish that audio is not playing
 audio_playing = False
@@ -36,6 +39,8 @@ cnx = mysql.connector.connect(
     password="password",
     database="pypods_database"
 )
+
+
 
 def main(page: ft.Page):
     # page.scroll = "auto"
@@ -201,6 +206,18 @@ def main(page: ft.Page):
     def open_settings(e):
         page.go("/settings")
 
+    def open_queue(e):
+        page.go("/queue")
+
+    def open_downloads(e):
+        page.go("/downloads")
+
+    def open_history(e):
+        page.go("/history")
+
+    def open_pod_list(e):
+        page.go("/pod_list")
+
     def go_home(e):
         print(f'audio playing on return to home: {current_episode.audio_playing}')
         print(current_episode.active_pod)
@@ -216,8 +233,7 @@ def main(page: ft.Page):
                     AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
 
-                    #Search Functionality
-                    top_row_container
+                    main_row
                 ],
             )
         )
@@ -287,6 +303,7 @@ def main(page: ft.Page):
             # New User Creation Elements
             new_user = User()
             user_text = Text('Enter New User Information:')
+            user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods')
             user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
             user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
@@ -294,23 +311,43 @@ def main(page: ft.Page):
                 new_user.set_username(user_username.value), 
                 new_user.set_password(user_password.value), 
                 new_user.set_email(user_email.value),
+                new_user.set_name(user_name.value),
                 new_user.verify_user_values(),
                 new_user.popup_user_values(e),
                 new_user.create_user(), 
                 user_created_prompt(e)))
             user_column = ft.Column(
-                            controls=[user_text, user_email, user_username, user_password, user_submit]
+                            controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
                         )
             user_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.CENTER,
                             controls=[user_column])
+
+            # Theme Select Elements
+            theme_text = ft.Text('Select Custom Theme:')
+            theme_drop = ft.Dropdown(width=150,
+             options=[
+                ft.dropdown.Option("Abyss"),
+                ft.dropdown.Option("Dracula"),
+                ft.dropdown.Option("Dracula Light"),
+                ft.dropdown.Option("Greenie Meanie"),
+                ft.dropdown.Option("HotDogStand"),
+             ]
+             )
+            theme_column = ft.Column(controls=[theme_text, theme_drop])
+            theme_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            controls=[theme_column])
 
             # Create search view object
             settings_view = ft.View("/searchpod",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
-                        user_row
+                        user_row,
+                        theme_row
                     ]
                     
                 )
@@ -426,14 +463,18 @@ def main(page: ft.Page):
         page.banner.open = False
         page.update()
 
+    def open_repo(e):
+        page.launch_url('https://github.com/madeofpendletonwool/pypods')
+
     page.banner = ft.Banner(
         bgcolor=ft.colors.BLUE,
         leading=ft.Icon(ft.icons.WAVING_HAND, color=ft.colors.DEEP_ORANGE_500, size=40),
         content=ft.Text("""
-    Welcome to Pypods
+    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
     """, color=colors.BLACK
         ),
         actions=[
+            ft.TextButton('Open PyPods Repo', on_click=open_repo),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner)
         ],
     )
@@ -450,6 +491,15 @@ def main(page: ft.Page):
             self.username = None
             self.password = None
             self.email = None
+            self.fullname = 'Collin Pendleton'
+            # split the full name into separate words
+            words = self.fullname.split()
+            
+            # extract the first letter of each word and combine them
+            initials_lower = "".join(word[0] for word in words)
+            
+            # return the initials as uppercase
+            self.initials = initials_lower.upper()
 
         def set_username(self, new_username):
             self.username = new_username
@@ -459,6 +509,9 @@ def main(page: ft.Page):
 
         def set_email(self, new_email):
             self.email = new_email
+
+        def set_name(self, new_name):
+            self.name = new_name
     
         def verify_user_values(self):
             self.valid_username = len(self.username) >= 6
@@ -475,9 +528,114 @@ def main(page: ft.Page):
             user_values = (self.username, self.email, hash_pw, salt)
             database_functions.functions.add_user(cnx, user_values)
 
+        def logout_pypods(self, e):
+            pass
+
     active_user = User()
 
     print(f'Current User: {active_user.username}')
+
+# Create Sidebar------------------------------------------------------
+
+    class NavBar:
+        def __init__(self, page):
+            self.page = page
+
+        def HighlightContainer(self, e):
+            if e.data == "true":
+                e.control.bgcolor = "white10"
+                e.control.update()
+
+                e.control.content.controls[0].icon_color = "white"
+                e.control.content.controls[1].color = "white"
+                e.control.content.update()
+            else:
+                e.control.bgcolor = None
+                e.control.update()
+
+                e.control.content.controls[0].icon_color = "white54"
+                e.control.content.controls[1].color = "white54"
+                e.control.content.update()
+
+        def ContainedIcon(self, tooltip, icon_name, text, destination):
+            return Container(
+                width=180,
+                height=45,
+                border_radius=10,
+                on_hover=lambda e: self.HighlightContainer(e),
+                ink=True,
+                content=Row(
+                    controls=[
+                        IconButton(
+                            icon=icon_name,
+                            icon_size=18,
+                            icon_color="white54",
+                            tooltip=tooltip,
+                            selected=False,
+                            on_click=destination,
+                            style=ButtonStyle(
+                                shape={
+                                    "": RoundedRectangleBorder(radius=7),
+                                },
+                                overlay_color={"": "transparent"},
+                            ),
+                        ),
+                        Text(
+                            value=text,
+                            color="white54",
+                            size=11,
+                            opacity=0,
+                            animate_opacity=200,
+                        ),
+                    ],
+                ),
+            )
+
+        def create_navbar(self):
+            return Container(
+            width=62,
+            height=580,
+            animate=animation.Animation(500, "decelerate"),
+            bgcolor="black",
+            border_radius=10,
+            padding=10,
+            content=ft.Column(
+                alignment=MainAxisAlignment.START,
+                horizontal_alignment="center",
+                controls=[
+                Text(
+                        value=(f'PyPods'),
+                        size=10,
+                        weight="bold",
+                        color="white"
+                    ),
+                Divider(color="white24", height=5),
+                Container(
+                    width=42,
+                    height=42,
+                    border_radius=8,
+                    bgcolor="bluegrey900",
+                    alignment=alignment.center,
+                    content=Text(
+                        value=active_user.initials,
+                        size=20,
+                        weight="bold",
+                    ),
+                ),
+                    Divider(height=5, color="transparent"),
+                    self.ContainedIcon('Home', icons.HOME, "Home", go_home),
+                    self.ContainedIcon('Queue', icons.QUEUE, "Queue", open_queue),
+                    self.ContainedIcon('Downloaded',icons.DOWNLOAD, "Downloaded", open_downloads),
+                    self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
+                    self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
+                    Divider(color="white24", height=5),
+                    self.ContainedIcon('Settings', icons.SETTINGS, "Settings", open_settings),
+                    self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pypods),
+                ],
+            ),
+        )
+
+    navbar = NavBar(page).create_navbar()
     
 
 # Create Page--------------------------------------------------------
@@ -488,14 +646,10 @@ def main(page: ft.Page):
                                    icon_size=35, tooltip="change theme", on_click=change_theme,
                                    style=ButtonStyle(color={"": colors.BLACK, "selected": colors.WHITE}, ), )
 
-    page.appbar = AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+    page.appbar = AppBar(leading=ft.IconButton(icon=ft.icons.MENU, tooltip='Open Side Menu', on_click=None),title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], )
 
     page.title = "PyPods - A python based podcast app!"
-
-     
-    # Settings Button
-    settings_btn = ft.ElevatedButton("PyPods Settings", on_click=open_settings)
 
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
@@ -526,10 +680,10 @@ def main(page: ft.Page):
         initialize += 1
 
 
-    play_button = ft.IconButton(icon=ft.icons.PLAY_ARROW, tooltip="Play Podcast", on_click=current_episode.resume_podcast)
-    pause_button = ft.IconButton(icon=ft.icons.PAUSE, tooltip="Pause Playback", on_click=current_episode.pause_episode)
+    play_button = ft.IconButton(icon=ft.icons.PLAY_ARROW, tooltip="Play Podcast", icon_color="white", on_click=current_episode.resume_podcast)
+    pause_button = ft.IconButton(icon=ft.icons.PAUSE, tooltip="Pause Playback", icon_color="white", on_click=current_episode.pause_episode)
     pause_button.visible = False
-    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", on_click=lambda _: audio1.seek(2000))
+    seek_button = ft.IconButton(icon=ft.icons.FAST_FORWARD, tooltip="Seek 10 seconds", icon_color="white", on_click=lambda _: audio1.seek(2000))
     audio_controls = ft.Row(controls=[play_button, pause_button, seek_button]) 
     currently_playing = ft.Container(content=ft.Text(current_episode.name))
     currently_playing.padding=ft.padding.only(left=20)
@@ -556,7 +710,7 @@ def main(page: ft.Page):
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=20, expand=True))
 
     # Various rows and columns for layout
-    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, settings_btn])
+    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
     search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
     top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
     top_row_container = ft.Container(content=top_row, expand=True)
@@ -565,10 +719,14 @@ def main(page: ft.Page):
     test_text = Text('This is a test')
     test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
 
+
+    main_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[navbar, top_row_container])
+
     # Create Initial Home Page
     page.add(
+        main_row
         #Search Functionality
-        top_row_container,
+        # top_row_container
 
         # Audio Controls button
         # audio_container
