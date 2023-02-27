@@ -5,7 +5,6 @@ from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, Progre
 # from flet.control_event import ControlEvent
 from flet.auth.providers.github_oauth_provider import GitHubOAuthProvider
 # Internal Functions
-from internal_functions.navbar import ModernNavBar
 import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
@@ -18,11 +17,7 @@ import json
 import re
 import feedparser
 import urllib.request
-from PIL import Image
-from bs4 import BeautifulSoup
 import requests
-from pydub import AudioSegment
-from pydub.playback import play
 from functools import partial
 
 #Establish that audio is not playing
@@ -525,7 +520,7 @@ def main(page: ft.Page):
 
         def create_user(self):
             salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
-            user_values = (self.username, self.email, hash_pw, salt)
+            user_values = (self.fullname, self.username, self.email, hash_pw, salt)
             database_functions.functions.add_user(cnx, user_values)
 
         def logout_pypods(self, e):
@@ -654,7 +649,7 @@ def main(page: ft.Page):
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-    refresh_btn = ft.ElevatedButton(text="Refresh Podcast List")
+    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color="blue400", tooltip="Refresh Podcast List")
     search_box = ft.Container(
         content=search_pods,
         alignment=ft.alignment.top_right

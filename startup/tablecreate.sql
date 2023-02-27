@@ -1,5 +1,6 @@
 CREATE TABLE Users (
   UserID INT AUTO_INCREMENT PRIMARY KEY,
+  Fullname TEXT,
   Username TEXT,
   Email VARCHAR(255),
   Hashed_PW CHAR(60),
