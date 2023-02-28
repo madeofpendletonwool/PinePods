@@ -32,7 +32,6 @@ def add_user(cnx, user_values):
     cnx.commit()
     
     cursor.close()
-    cnx.close()
 
 def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
@@ -67,9 +66,9 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 
             # insert the episode into the database
             add_episode = ("INSERT INTO Episodes "
-                            "(PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodePubDate, EpisodeDuration) "
-                            "VALUES (%s, %s, %s, %s, %s, %s)")
-            episode_values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_release_date, 0)
+                            "(PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s)")
+            episode_values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, 0)
             cursor.execute(add_episode, episode_values)
 
         else:
@@ -87,6 +86,27 @@ def remove_user(cnx, user_name):
 
 def remove_episodes(cnx, podcast_id):
     pass
+
+def return_episodes(cnx):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = ("SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL "
+             "FROM Episodes "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
+             "ORDER BY Episodes.EpisodePubDate DESC")
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
 
 if __name__ == '__main__':
     feed_url = "https://changelog.com/practicalai/feed"

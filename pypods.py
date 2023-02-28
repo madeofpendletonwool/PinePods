@@ -38,7 +38,6 @@ cnx = mysql.connector.connect(
 
 
 def main(page: ft.Page):
-    # page.scroll = "auto"
 
 #---Flet Various Functions---------------------------------------------------------------
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
@@ -78,12 +77,10 @@ def main(page: ft.Page):
                 self.url = url
                 self.name = name or ""
                 self.audio_playing = False
-                # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
                 else:
                     self.active_pod = self.name
-                print(f'inside class: {self.name}')
                 Toggle_Pod.initialized = True
             else:
                 self.page = page
@@ -92,8 +89,6 @@ def main(page: ft.Page):
                 self.name = name or ""
                 self.audio_playing = False
                 self.active_pod = self.name
-                # self.episode_name = self.name
-                print(f'inside class: {self.name}')
 
         def play_episode(self, e=None):
             global episode_name
@@ -228,7 +223,8 @@ def main(page: ft.Page):
                     AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
 
-                    main_row
+                    top_bar,
+                    *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
                 ],
             )
         )
@@ -237,8 +233,6 @@ def main(page: ft.Page):
             podcast_value = search_pods.value
             search_results = internal_functions.functions.searchpod(podcast_value)
             return_results = search_results['feeds']
-            # Allow scrolling otherwise the page will overflow
-
 
             # Get and format list
             pod_number = 1
@@ -671,7 +665,6 @@ def main(page: ft.Page):
     initialize = 1
     if initialize == 1:
         current_episode = Toggle_Pod(page, go_home)
-        print('only run once')
         initialize += 1
 
 
@@ -704,31 +697,93 @@ def main(page: ft.Page):
     # page.overlay.append(audio_container)
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=20, expand=True))
 
+
     # Various rows and columns for layout
     settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
     search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
     top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
     top_row_container = ft.Container(content=top_row, expand=True)
+    top_row_container.padding=padding.only(left=60)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
     test_text = Text('This is a test')
     test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
 
+    # Home Screen Podcast Layout (Episodes in Newest order)
 
-    main_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[navbar, top_row_container])
+    home_episodes = database_functions.functions.return_episodes(cnx)
+
+    home_episode_text = ft.Text("There are no Podcasts added yet!", style=ft.TextThemeStyle.DISPLAY_SMALL)
+    home_episode_text2 = ft.Text("Home will display the last 30 days of podcasts.", style=ft.TextThemeStyle.DISPLAY_SMALL, )
+    home_episode_text3 = ft.Text("Let's start listening!", style=ft.TextThemeStyle.DISPLAY_SMALL)
+    home_episode_column = ft.Column([home_episode_text, home_episode_text2, home_episode_text3], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, wrap=True)
+    home_episode_display = ft.Row([home_episode_column], vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER, )
+
+    if home_episodes is None:
+        print("There are no episodes yet.")
+        home_pods_active = False
+    else:
+        home_ep_number = 1
+        home_ep_rows = []
+        home_ep_row_dict = {}
+
+        for entry in home_episodes:
+            home_ep_title = entry['EpisodeTitle']
+            home_pod_name = entry['PodcastName']
+            home_pub_date = entry['EpisodePubDate']
+            home_ep_desc = entry['EpisodeDescription']
+            home_ep_artwork = entry['EpisodeArtwork']
+            home_ep_url = entry['EpisodeURL']
+            # do something with the episode information
+
+            home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+            home_entry_description = ft.Text(home_ep_desc, width=800)
+            home_entry_audio_url = ft.Text(home_ep_url)
+            home_entry_released = ft.Text(home_pub_date)
+            home_entry_artwork_url = ft.Image(src=home_ep_artwork, width=150, height=150)
+            home_play_episode = Toggle_Pod(page, go_home, home_ep_url, home_ep_title)
+            home_ep_play_button = ft.IconButton(
+                icon=ft.icons.PLAY_CIRCLE,
+                icon_color="blue400",
+                icon_size=40,
+                tooltip="Play Episode",
+                on_click = lambda x, instance=home_play_episode: instance.play_episode()
+            )
+            
+            # Creating column and row for search layout
+            home_ep_column = ft.Column(
+                controls=[home_entry_title, home_entry_description, home_entry_released]
+            )
+            home_ep_row = ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
+            )
+            home_ep_rows.append(home_ep_row)
+            home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+            home_pods_active = True
+            home_ep_number += 1
+
+    # Podcast Layout Container
+    home_pod_layout = ft.Container(content=[*[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]])
+
+
+
+# Main Page Layout
+
+    top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+    page.scroll = "Auto"
+
+    page.overlay.append(ft.Stack([navbar], expand=True))
+
+
 
     # Create Initial Home Page
     page.add(
-        main_row
-        #Search Functionality
-        # top_row_container
-
-        # Audio Controls button
-        # audio_container
+        top_bar,
+        *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
     )
-    
 
-    page.scroll = "always"
+    # page.scroll = "always"
 
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER)

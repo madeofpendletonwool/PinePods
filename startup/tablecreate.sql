@@ -27,6 +27,7 @@ CREATE TABLE Episodes (
   EpisodeTitle TEXT,
   EpisodeDescription TEXT,
   EpisodeURL TEXT,
+  EpisodeArtwork TEXT,
   EpisodePubDate DATE,
   EpisodeDuration INT,
   FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
