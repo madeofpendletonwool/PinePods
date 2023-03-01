@@ -125,6 +125,15 @@ def main(page: ft.Page):
     def seek_episode():
         episode.seek_podcast(start_time_ms, end_time_ms)
 
+    def refresh_podcasts(e):
+        pr = ft.ProgressRing()
+        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        page.update()
+        database_functions.functions.refresh_pods(cnx)
+        print('refresh complete')
+        page.overlay.pop(2)
+        page.update()
+
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         global clicked_podcast
         clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website)
@@ -732,7 +741,7 @@ def main(page: ft.Page):
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color="blue400", tooltip="Refresh Podcast List")
+    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color="blue400", tooltip="Refresh Podcast List", on_click=refresh_podcasts)
     search_box = ft.Container(
         content=search_pods,
         alignment=ft.alignment.top_right
@@ -878,6 +887,6 @@ def main(page: ft.Page):
     # page.scroll = "always"
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER)
+# ft.app(target=main, view=ft.WEB_BROWSER)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)
