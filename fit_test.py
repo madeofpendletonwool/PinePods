@@ -11,6 +11,11 @@ def main(page: ft.Page):
         bgcolor="red",
         content=lv)
 
+    pr = ft.ProgressRing()
+    page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+
+    print(page.overlay)
+
     page.add(lv_contain)
 
-ft.app(target=main, view=ft.WEB_BROWSER)
+ft.app(target=main, port=8035)

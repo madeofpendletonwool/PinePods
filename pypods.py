@@ -2,8 +2,6 @@
 import flet as ft
 from flet import *
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row
-# from flet.control_event import ControlEvent
-from flet.auth.providers.github_oauth_provider import GitHubOAuthProvider
 # Internal Functions
 import internal_functions.functions
 import database_functions.functions
@@ -188,6 +186,9 @@ def main(page: ft.Page):
         page.go(top_view.route)
 
     def open_search(e):
+        pr = ft.ProgressRing()
+        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        page.update()
         page.go("/searchpod")
 
     def open_poddisplay(e):
@@ -233,6 +234,7 @@ def main(page: ft.Page):
             podcast_value = search_pods.value
             search_results = internal_functions.functions.searchpod(podcast_value)
             return_results = search_results['feeds']
+            page.overlay.pop(2)
 
             # Get and format list
             pod_number = 1
@@ -640,6 +642,14 @@ def main(page: ft.Page):
 
     page.title = "PyPods - A python based podcast app!"
 
+    def progress_ring(e):
+        pr = ft.Column(
+            [ft.ProgressRing(), ft.Text("I'm going to run for ages...")],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        page.overlay.append(pr)
+        
+
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
@@ -696,6 +706,7 @@ def main(page: ft.Page):
         
     # page.overlay.append(audio_container)
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=20, expand=True))
+
 
 
     # Various rows and columns for layout
@@ -774,6 +785,8 @@ def main(page: ft.Page):
     page.scroll = "Auto"
 
     page.overlay.append(ft.Stack([navbar], expand=True))
+
+    print(page.overlay)
 
 
 
