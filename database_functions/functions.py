@@ -79,7 +79,19 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     cursor.close()
 
 def remove_podcast(cnx, podcast_name):
-    pass
+    cursor = cnx.cursor()
+
+    # Delete episodes associated with the podcast
+    delete_episodes = "DELETE FROM Episodes WHERE PodcastID = (SELECT PodcastID FROM Podcasts WHERE PodcastName = %s)"
+    cursor.execute(delete_episodes, (podcast_name,))
+
+    # Delete the podcast
+    delete_podcast = "DELETE FROM Podcasts WHERE PodcastName = %s"
+    cursor.execute(delete_podcast, (podcast_name,))
+
+    cnx.commit()
+
+    cursor.close()
 
 def remove_user(cnx, user_name):
     pass
@@ -96,6 +108,22 @@ def return_episodes(cnx):
              "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
              "WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
              "ORDER BY Episodes.EpisodePubDate DESC")
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
+def return_pods(cnx):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = ("SELECT PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
+            "FROM Podcasts;")
 
     cursor.execute(query)
     rows = cursor.fetchall()

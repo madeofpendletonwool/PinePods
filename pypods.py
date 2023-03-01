@@ -192,6 +192,9 @@ def main(page: ft.Page):
         page.go("/searchpod")
 
     def open_poddisplay(e):
+        pr = ft.ProgressRing()
+        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        page.update()
         page.go("/poddisplay")
 
     def open_settings(e):
@@ -207,6 +210,9 @@ def main(page: ft.Page):
         page.go("/history")
 
     def open_pod_list(e):
+        pr = ft.ProgressRing()
+        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        page.update()
         page.go("/pod_list")
 
     def go_home(e):
@@ -217,17 +223,17 @@ def main(page: ft.Page):
 
     def route_change(e):
         page.views.clear()
-        page.views.append(
-            View(
-                "/",
-                [
+        home_view = ft.View("/",                 [
                     AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
 
                     top_bar,
                     *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
-                ],
+                ]
             )
+        home_view.scroll = ft.ScrollMode.AUTO
+        page.views.append(
+                home_view
         )
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
@@ -404,8 +410,7 @@ def main(page: ft.Page):
                 entry_audio_url = ft.Text(parsed_audio_url)
                 entry_released = ft.Text(parsed_release_date)
                 entry_artwork_url = ft.Image(src=parsed_artwork_url, width=150, height=150)
-                # print(parsed_audio_url)
-                print(f'Verify that parsed_title is the podcast name:{parsed_title}')
+                
                 current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
                 ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_CIRCLE,
@@ -427,7 +432,7 @@ def main(page: ft.Page):
                 ep_row_dict[f'search_row{ep_number}'] = ep_row
                 ep_number += 1
 
-
+            page.overlay.pop(2)
             # Create search view object
             pod_view = ft.View(
                     "/poddisplay",
@@ -445,6 +450,80 @@ def main(page: ft.Page):
             page.views.append(
                     pod_view
         )
+        if page.route == "/pod_list" or page.route == "/pod_list":
+
+            # Get Pod info
+            pod_list_data = database_functions.functions.return_pods(cnx)
+
+            page.overlay.pop(2)
+
+            # Get and format list
+            pod_list_number = 1
+            pod_list_rows = []
+            pod_list_dict = {}
+
+            def on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website):
+                evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
+                open_poddisplay(e)
+
+            for entry in pod_list_data:
+                pod_list_title = entry['PodcastName']
+                pod_list_artwork = entry['ArtworkURL']
+                pod_list_desc = entry['Description']
+                pod_list_ep_count = entry['EpisodeCount']
+                pod_list_website = entry['WebsiteURL']
+                pod_list_feed = entry['FeedURL']
+                pod_list_author = entry['Author']
+                pod_list_categories = entry['Categories']
+
+                # Parse webpages needed to extract podcast artwork
+                pod_list_artwork_image = ft.Image(src=pod_list_artwork, width=150, height=150)
+
+                # Defining the attributes of each podcast that will be displayed on screen
+                pod_list_title_display = ft.TextButton(
+                    text=pod_list_title, width=600,
+                    on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork, author=pod_list_author, categories=pod_list_categories, desc=pod_list_desc, ep_count=pod_list_ep_count, feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website)
+                )
+                pod_list_desc_display = ft.Text(pod_list_desc, width=700)
+                # Episode Count and subtitle
+                pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD)
+                pod_list_ep_count_display = ft.Text(pod_list_ep_count)
+                pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
+                remove_pod_button = ft.IconButton(
+                    icon=ft.icons.INDETERMINATE_CHECK_BOX,
+                    icon_color="red400",
+                    icon_size=40,
+                    tooltip="Remove Podcast",
+                    on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title)
+                )
+
+                # Creating column and row for search layout
+                pod_list_column = ft.Column(
+                    controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
+                )
+                pod_list_row = ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
+                pod_list_rows.append(pod_list_row)
+                pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
+                pod_list_number += 1
+
+            # Create search view object
+            pod_list_view = ft.View("/pod_list",
+                    [
+                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+                        actions=[theme_icon_button], ),
+                        *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
+
+                    ]
+                    
+                )
+            pod_list_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                pod_list_view
+                    
+                )
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
@@ -799,6 +878,6 @@ def main(page: ft.Page):
     # page.scroll = "always"
 
 # Browser Version
-# ft.app(target=main, view=ft.WEB_BROWSER)
+ft.app(target=main, view=ft.WEB_BROWSER)
 # App version
-ft.app(target=main, port=8034)
+# ft.app(target=main, port=8034)
