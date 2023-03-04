@@ -29,10 +29,12 @@ N/A
  - [x] Start
  - [x] Create Code that can pull Podcasts
  - [x] Integrate Podcast Index
- - Play Audio Files using Python
+ - [x] Play Audio Files using Python - The python vlc package is used for this
+ - [ ] Record listen history and display user history on specific page
  - Allow Download of Podcasts in Structured Form into specific location on Computer
  - Create Users/User Functionality - Users can now be added via settings page. Currently, there's no login options. Coming soon
  - Allow for Saving when app is closed - probably from config file that gets saved into config foler that holds data
+ - [ ] Implement saving listen time when stopping playback in order to resume later
  - Dockerize
      - Docker Networking
      - Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side

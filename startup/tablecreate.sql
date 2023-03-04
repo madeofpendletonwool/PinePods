@@ -7,6 +7,10 @@ CREATE TABLE Users (
   Salt CHAR(60)
 );
 
+INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt)
+VALUES ('Guest User', 'guest', 'guest@pypods.com', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh');
+
+
 CREATE TABLE Podcasts (
   PodcastID INT AUTO_INCREMENT PRIMARY KEY,
   PodcastName TEXT,
@@ -41,11 +45,12 @@ CREATE TABLE UserSettings (
   FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
-CREATE TABLE EpisodeProgress (
-  EpisodeProgressID INT AUTO_INCREMENT PRIMARY KEY,
-  EpisodeID INT,
+CREATE TABLE UserEpisodeHistory (
+  UserEpisodeHistoryID INT AUTO_INCREMENT PRIMARY KEY,
   UserID INT,
-  EpisodeProgress INT,
-  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID),
-  FOREIGN KEY (UserID) REFERENCES Users(UserID)
+  EpisodeID INT,
+  ListenDate DATETIME,
+  ListenDuration INT,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );

@@ -238,6 +238,63 @@ def refresh_single_pod(cnx, podcast_id):
 
     cursor.close()
 
+def record_podcast_history(cnx, episode_title, user_id, episode_pos):
+    from datetime import datetime
+    cursor = cnx.cursor()
+    
+    # Check if the episode exists in the database
+    check_episode = ("SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s")
+    cursor.execute(check_episode, (episode_title,))
+    result = cursor.fetchone()
+    
+    if result is not None:
+        episode_id = result[0]
+
+        # Check if a record already exists in the UserEpisodeHistory table
+        check_history = ("SELECT * FROM UserEpisodeHistory "
+                            "WHERE EpisodeID = %s AND UserID = %s")
+        cursor.execute(check_history, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        if result is not None:
+            # Update the existing record
+            update_history = ("UPDATE UserEpisodeHistory "
+                                "SET ListenDuration = %s, ListenDate = %s "
+                                "WHERE UserEpisodeHistoryID = %s")
+            progress_id = result[0]
+            new_listen_duration = round(episode_pos)
+            now = datetime.now()
+            values = (new_listen_duration, now, progress_id)
+            cursor.execute(update_history, values)
+        else:
+            # Add a new record
+            add_history = ("INSERT INTO UserEpisodeHistory "
+                            "(EpisodeID, UserID, ListenDuration, ListenDate) "
+                            "VALUES (%s, %s, %s, %s)")
+            new_listen_duration = round(episode_pos)
+            now = datetime.now()
+            values = (episode_id, user_id, new_listen_duration, now)
+            cursor.execute(add_history, values)
+
+        cnx.commit()
+        
+    cursor.close()
+
+def get_user_id(cnx, username):
+    cursor = cnx.cursor()
+    query = "SELECT UserID FROM Users WHERE Username = %s"
+    cursor.execute(query, (username,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return result[0]
+    else:
+        return 1
+
+def user_history(cnx, user_id):
+    pass
+
 
 
 
