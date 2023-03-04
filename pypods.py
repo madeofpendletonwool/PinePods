@@ -972,6 +972,7 @@ def main(page: ft.Page):
     home_episode_display = ft.Row([home_episode_column], vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER, )
 
     if home_episodes is None:
+        home_ep_rows = []
         print("There are no episodes yet.")
         home_pods_active = False
     else:
@@ -1020,9 +1021,12 @@ def main(page: ft.Page):
         current_episode.play_episode()
 
     # Podcast Layout Container
-    home_pod_layout = ft.Container(content=[*[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]])
-
-
+    if not home_ep_rows:
+        print('ep_rows')
+        home_pod_layout = home_episode_display
+    else:
+        home_ep_row_dict = create_home_rows_dict(home_ep_rows)
+        home_pod_layout = ft.Container(content=[*[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]])
 
 # Main Page Layout
 
@@ -1039,7 +1043,8 @@ def main(page: ft.Page):
     # Create Initial Home Page
     page.add(
         top_bar,
-        *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
+        # *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
+        home_pod_layout
     )
 
     # page.scroll = "always"
