@@ -23,6 +23,7 @@ import tempfile
 import time
 import threading
 import vlc
+import random
 
 #Establish that audio is not playing
 audio_playing = False
@@ -972,9 +973,39 @@ def main(page: ft.Page):
     home_episode_display = ft.Row([home_episode_column], vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER, )
 
     if home_episodes is None:
+        home_ep_number = 1
         home_ep_rows = []
+        home_ep_row_dict = {}
         print("There are no episodes yet.")
-        home_pods_active = False
+        home_pod_name = "No Podcasts added yet"
+        home_ep_title = "Podcasts you add will display new episodes here."
+        home_pub_date = ""
+        home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
+        home_ep_url = ""
+        home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+        home_entry_description = ft.Text(home_ep_desc, width=800)
+        home_entry_audio_url = ft.Text(home_ep_url)
+        home_entry_released = ft.Text(home_pub_date)
+        artwork_no = random.randint(1, 12)
+        home_entry_artwork_url = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/logo_random/{artwork_no}.jpeg", width=150, height=150)
+        home_ep_play_button = ft.IconButton(
+            icon=ft.icons.PLAY_DISABLED,
+            icon_color="blue400",
+            icon_size=40,
+            tooltip="No Episodes Added Yet"
+        )
+        # Creating column and row for home layout
+        home_ep_column = ft.Column(
+            controls=[home_entry_title, home_entry_description, home_entry_released]
+        )
+        home_ep_row = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
+        )
+        home_ep_rows.append(home_ep_row)
+        home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+        home_pods_active = True
+        home_ep_number += 1
     else:
         home_ep_number = 1
         home_ep_rows = []
@@ -1025,8 +1056,15 @@ def main(page: ft.Page):
         print('ep_rows')
         home_pod_layout = home_episode_display
     else:
-        home_ep_row_dict = create_home_rows_dict(home_ep_rows)
-        home_pod_layout = ft.Container(content=[*[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]])
+        print('test')
+        # def create_home_rows_dict(home_ep_rows):
+        #     home_ep_row_dict = {}
+        #     for i, row in enumerate(home_ep_rows):
+        #         home_ep_row_dict[f'search_row{i+1}'] = row
+        #     return home_ep_row_dict
+
+        # home_ep_row_dict = create_home_rows_dict(home_ep_rows)
+        # home_pod_layout = *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
 
 # Main Page Layout
 
@@ -1043,9 +1081,10 @@ def main(page: ft.Page):
     # Create Initial Home Page
     page.add(
         top_bar,
-        # *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
-        home_pod_layout
+        *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
+        # home_pod_layout
     )
+    
 
     # page.scroll = "always"
 

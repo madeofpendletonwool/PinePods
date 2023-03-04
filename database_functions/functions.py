@@ -38,7 +38,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import feedparser
     import dateutil.parser
 
-    episode_dump = feedparser.parse(feed_url)    
+    episode_dump = feedparser.parse(feed_url)
 
     cursor = cnx.cursor()
 
@@ -75,16 +75,13 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                     continue
 
                 # insert the episode into the database
-                add_episode = ("INSERT INTO Episodes "
-                                "(PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) "
-                                "VALUES (%s, %s, %s, %s, %s, %s, %s)")
-                episode_values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, 0)
-                cursor.execute(add_episode, episode_values)
+                query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, 0)
+                cursor.execute(query, values)
 
-                print(f"Added episode '{parsed_title}'")
-
-                # consume any unread results
-                cursor.fetchall()
+                # check if any rows were affected by the insert operation
+                if cursor.rowcount > 0:
+                    print(f"Added episode '{parsed_title}'")
 
             else:
                 print("Skipping entry without required attributes or enclosures")
