@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="300" height="300" src="./images/Pypods-logos_blue.png">
+  <img width="300" height="300" src="./images/Pypods-logos_blue.jpeg">
 </p>
 
 # PyPods
