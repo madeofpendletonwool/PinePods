@@ -1,10 +1,15 @@
 CREATE TABLE Users (
   UserID INT AUTO_INCREMENT PRIMARY KEY,
+  Fullname TEXT,
   Username TEXT,
   Email VARCHAR(255),
   Hashed_PW CHAR(60),
   Salt CHAR(60)
 );
+
+INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt)
+VALUES ('Guest User', 'guest', 'guest@pypods.com', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh');
+
 
 CREATE TABLE Podcasts (
   PodcastID INT AUTO_INCREMENT PRIMARY KEY,
@@ -26,6 +31,7 @@ CREATE TABLE Episodes (
   EpisodeTitle TEXT,
   EpisodeDescription TEXT,
   EpisodeURL TEXT,
+  EpisodeArtwork TEXT,
   EpisodePubDate DATE,
   EpisodeDuration INT,
   FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
@@ -39,11 +45,32 @@ CREATE TABLE UserSettings (
   FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
-CREATE TABLE EpisodeProgress (
-  EpisodeProgressID INT AUTO_INCREMENT PRIMARY KEY,
-  EpisodeID INT,
+CREATE TABLE UserEpisodeHistory (
+  UserEpisodeHistoryID INT AUTO_INCREMENT PRIMARY KEY,
   UserID INT,
-  EpisodeProgress INT,
-  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID),
-  FOREIGN KEY (UserID) REFERENCES Users(UserID)
+  EpisodeID INT,
+  ListenDate DATETIME,
+  ListenDuration INT,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+);
+
+CREATE TABLE DownloadedEpisodes (
+  DownloadID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID INT,
+  EpisodeID INT,
+  DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  DownloadedSize INT,
+  DownloadedLocation VARCHAR(255),
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+);
+
+CREATE TABLE EpisodeQueue (
+  QueueID INT AUTO_INCREMENT PRIMARY KEY,
+  QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UserID INT,
+  EpisodeID INT,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );

@@ -1,3 +1,5 @@
 mysql.connector
 flet
 requests
+python-dateutil
+feedparser
