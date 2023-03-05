@@ -98,9 +98,26 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 def remove_podcast(cnx, podcast_name):
     cursor = cnx.cursor()
 
+    # Get the PodcastID for the given podcast name
+    select_podcast_id = "SELECT PodcastID FROM Podcasts WHERE PodcastName = %s"
+    cursor.execute(select_podcast_id, (podcast_name,))
+    podcast_id = cursor.fetchone()[0]
+
+    # Delete user episode history entries associated with the podcast
+    delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+    cursor.execute(delete_history, (podcast_id,))
+
+    # Delete downloaded episodes associated with the podcast
+    delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+    cursor.execute(delete_downloaded, (podcast_id,))
+
+    # Delete episode queue items associated with the podcast
+    delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+    cursor.execute(delete_queue, (podcast_id,))
+
     # Delete episodes associated with the podcast
-    delete_episodes = "DELETE FROM Episodes WHERE PodcastID = (SELECT PodcastID FROM Podcasts WHERE PodcastName = %s)"
-    cursor.execute(delete_episodes, (podcast_name,))
+    delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
+    cursor.execute(delete_episodes, (podcast_id,))
 
     # Delete the podcast
     delete_podcast = "DELETE FROM Podcasts WHERE PodcastName = %s"
@@ -109,6 +126,8 @@ def remove_podcast(cnx, podcast_name):
     cnx.commit()
 
     cursor.close()
+
+
 
 def remove_user(cnx, user_name):
     pass
