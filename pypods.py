@@ -28,6 +28,7 @@ import random
 #Establish that audio is not playing
 audio_playing = False
 active_pod = 'Set at start'
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 
@@ -284,7 +285,7 @@ def main(page: ft.Page):
                         actions=[theme_icon_button], ),
 
                     top_bar,
-                    *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
+                    *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                 ]
             )
         home_view.scroll = ft.ScrollMode.AUTO
@@ -306,7 +307,12 @@ def main(page: ft.Page):
                 for k, v in d.items():
                     if k == 'title':
                         # Parse webpages needed to extract podcast artwork
-                        pod_image = ft.Image(src=d['artwork'], width=150, height=150)
+                        search_art_no = random.randint(1, 12)
+                        search_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{search_art_no}.jpeg")
+                        search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
+                        # print(d['title'])
+                        # print(d['artwork'])
+                        pod_image = ft.Image(src=search_art_url, width=150, height=150)
                         
                         # Defining the attributes of each podcast that will be displayed on screen
                         pod_title = ft.TextButton(
@@ -414,7 +420,12 @@ def main(page: ft.Page):
         if page.route == "/poddisplay" or page.route == "/poddisplay":
             # Creating attributes for page layout
             # First Podcast Info
-            pod_image = ft.Image(src=clicked_podcast.artwork, width=300, height=300)
+            display_pod_art_no = random.randint(1, 12)
+            display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
+            display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
+            # print(d['title'])
+            # print(d['artwork'])
+            pod_image = ft.Image(src=display_pod_art_url, width=300, height=300)
             pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
             pod_feed_desc = ft.Text(clicked_podcast.description, width=700)
             pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
@@ -457,6 +468,9 @@ def main(page: ft.Page):
                     parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
                     if parsed_artwork_url == None:
                         parsed_artwork_url = clicked_podcast.artwork
+                    display_art_no = random.randint(1, 12)
+                    display_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_art_no}.jpeg")
+                    display_art_url = parsed_artwork_url if parsed_artwork_url else display_art_fallback
 
                 else:
                     print("Skipping entry without required attributes or enclosures")
@@ -465,7 +479,7 @@ def main(page: ft.Page):
                 entry_description = ft.Text(parsed_description, width=800)
                 entry_audio_url = ft.Text(parsed_audio_url)
                 entry_released = ft.Text(parsed_release_date)
-                entry_artwork_url = ft.Image(src=parsed_artwork_url, width=150, height=150)
+                entry_artwork_url = ft.Image(src=display_art_url, width=150, height=150)
                 
                 # current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
                 ep_play_button = ft.IconButton(
@@ -584,87 +598,110 @@ def main(page: ft.Page):
         if page.route == "/history" or page.route == "/history":
 
             # Get Pod info
-            hist_episodes = database_functions.functions.return_episodes(cnx)
+            user_id = get_user_id()
+            print(user_id)
+            hist_episodes = database_functions.functions.user_history(cnx, user_id)
+            hist_episodes.reverse()
 
-            hist_episode_text = ft.Text("You haven't listened to any podcasts yet!", style=ft.TextThemeStyle.DISPLAY_SMALL)
-            hist_episode_text2 = ft.Text("Podcasts already listened to will show up here", style=ft.TextThemeStyle.DISPLAY_SMALL, )
-            hist_episode_text3 = ft.Text("Let's start listening!", style=ft.TextThemeStyle.DISPLAY_SMALL)
-            hist_episode_column = ft.Column([hist_episode_text, hist_episode_text2, hist_episode_text3], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, wrap=True)
-            hist_episode_display = ft.Row([hist_episode_column], vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER, )
+            # page.overlay.pop(2)
 
+            if hist_episodes is None:
+                hist_ep_number = 1
+                hist_ep_rows = []
+                hist_ep_row_dict = {}
 
-            page.overlay.pop(2)
-
-            if home_episodes is None:
                 print("There are no episodes yet.")
-                home_pods_active = False
-            else:
-
-                # Get and format list
-                hist_list_number = 1
-                hist_list_rows = []
-                hist_list_dict = {}
-
-            def on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website):
-                evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
-                open_poddisplay(e)
-
-            for entry in pod_list_data:
-                pod_list_title = entry['PodcastName']
-                pod_list_artwork = entry['ArtworkURL']
-                pod_list_desc = entry['Description']
-                pod_list_ep_count = entry['EpisodeCount']
-                pod_list_website = entry['WebsiteURL']
-                pod_list_feed = entry['FeedURL']
-                pod_list_author = entry['Author']
-                pod_list_categories = entry['Categories']
-
-                # Parse webpages needed to extract podcast artwork
-                pod_list_artwork_image = ft.Image(src=pod_list_artwork, width=150, height=150)
-
-                # Defining the attributes of each podcast that will be displayed on screen
-                pod_list_title_display = ft.TextButton(
-                    text=pod_list_title, width=600,
-                    on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork, author=pod_list_author, categories=pod_list_categories, desc=pod_list_desc, ep_count=pod_list_ep_count, feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website)
-                )
-                pod_list_desc_display = ft.Text(pod_list_desc, width=700)
-                # Episode Count and subtitle
-                pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD)
-                pod_list_ep_count_display = ft.Text(pod_list_ep_count)
-                pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
-                remove_pod_button = ft.IconButton(
-                    icon=ft.icons.INDETERMINATE_CHECK_BOX,
-                    icon_color="red400",
+                hist_pod_name = "No Podcasts history yet"
+                hist_ep_title = "Podcasts you add will display here after you listen to them."
+                hist_pub_date = ""
+                hist_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts. Once you listen to episodes they will appear here."
+                hist_ep_url = ""
+                hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                hist_entry_description = ft.Text(hist_ep_desc, width=800)
+                hist_entry_audio_url = ft.Text(hist_ep_url)
+                hist_entry_released = ft.Text(hist_pub_date)
+                hist_artwork_no = random.randint(1, 12)
+                hist_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{hist_artwork_no}.jpeg")
+                hist_entry_artwork_url = ft.Image(src=hist_artwork_url, width=150, height=150)
+                hist_ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color="blue400",
                     icon_size=40,
-                    tooltip="Remove Podcast",
-                    on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title)
+                    tooltip="No Episodes Listened to yet"
                 )
-
-                # Creating column and row for search layout
-                pod_list_column = ft.Column(
-                    controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
+                # Creating column and row for home layout
+                hist_ep_column = ft.Column(
+                    controls=[hist_entry_title, hist_entry_description, hist_entry_released]
                 )
-                pod_list_row = ft.Row(
+                hist_ep_row = ft.Row(
                     alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
-                pod_list_rows.append(pod_list_row)
-                pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
-                pod_list_number += 1
+                    controls=[hist_entry_artwork_url, hist_ep_column, hist_ep_play_button]
+                )
+                hist_ep_rows.append(hist_ep_row)
+                hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
+                hist_pods_active = True
+                hist_ep_number += 1
+            else:
+                hist_ep_number = 1
+                hist_ep_rows = []
+                hist_ep_row_dict = {}
+
+                for entry in hist_episodes:
+                    hist_ep_title = entry['EpisodeTitle']
+                    hist_pod_name = entry['PodcastName']
+                    hist_pub_date = entry['EpisodePubDate']
+                    hist_ep_desc = entry['EpisodeDescription']
+                    hist_ep_artwork = entry['EpisodeArtwork']
+                    hist_ep_url = entry['EpisodeURL']
+                    hist_ep_listen_date = entry['ListenDate']
+                    # do something with the episode information
+                    print(hist_ep_title)
+                    print(hist_ep_artwork)
+                    hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    hist_entry_description = ft.Text(hist_ep_desc, width=800)
+                    hist_entry_audio_url = ft.Text(hist_ep_url)
+                    hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
+
+                    hist_art_no = random.randint(1, 12)
+                    hist_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{hist_art_no}.jpeg")
+                    hist_art_url = hist_ep_artwork if hist_ep_artwork else hist_art_fallback
+                    hist_entry_artwork_url = ft.Image(src=hist_art_url, width=150, height=150)
+                    hist_ep_play_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color="blue400",
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
+                    )
+                
+                    
+                    # Creating column and row for search layout
+                    hist_ep_column = ft.Column(
+                        controls=[hist_entry_title, hist_entry_description, hist_entry_listened]
+                    )
+                    hist_ep_row = ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        controls=[hist_entry_artwork_url, hist_ep_column, hist_ep_play_button]
+                    )
+                    hist_ep_rows.append(hist_ep_row)
+                    hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
+                    hist_pods_active = True
+                    hist_ep_number += 1
 
             # Create search view object
-            pod_list_view = ft.View("/history",
+            ep_hist_view = ft.View("/history",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
-                        *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
+                        *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
 
                     ]
                     
                 )
-            pod_list_view.scroll = ft.ScrollMode.AUTO
+            ep_hist_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
-                pod_list_view
+                ep_hist_view
                     
                 )
 
@@ -966,12 +1003,6 @@ def main(page: ft.Page):
 
     home_episodes = database_functions.functions.return_episodes(cnx)
 
-    home_episode_text = ft.Text("There are no Podcasts added yet!", style=ft.TextThemeStyle.DISPLAY_SMALL)
-    home_episode_text2 = ft.Text("Home will display the last 30 days of podcasts.", style=ft.TextThemeStyle.DISPLAY_SMALL, )
-    home_episode_text3 = ft.Text("Let's start listening!", style=ft.TextThemeStyle.DISPLAY_SMALL)
-    home_episode_column = ft.Column([home_episode_text, home_episode_text2, home_episode_text3], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, wrap=True)
-    home_episode_display = ft.Row([home_episode_column], vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER, )
-
     if home_episodes is None:
         home_ep_number = 1
         home_ep_rows = []
@@ -987,7 +1018,8 @@ def main(page: ft.Page):
         home_entry_audio_url = ft.Text(home_ep_url)
         home_entry_released = ft.Text(home_pub_date)
         artwork_no = random.randint(1, 12)
-        home_entry_artwork_url = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/logo_random/{artwork_no}.jpeg", width=150, height=150)
+        none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+        home_entry_artwork_url = ft.Image(src=none_artwork_url, width=150, height=150)
         home_ep_play_button = ft.IconButton(
             icon=ft.icons.PLAY_DISABLED,
             icon_color="blue400",
@@ -1024,7 +1056,11 @@ def main(page: ft.Page):
             home_entry_description = ft.Text(home_ep_desc, width=800)
             home_entry_audio_url = ft.Text(home_ep_url)
             home_entry_released = ft.Text(home_pub_date)
-            home_entry_artwork_url = ft.Image(src=home_ep_artwork, width=150, height=150)
+
+            home_art_no = random.randint(1, 12)
+            home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
+            home_art_url = home_ep_artwork if home_ep_artwork else home_art_fallback
+            home_entry_artwork_url = ft.Image(src=home_art_url, width=150, height=150)
             home_ep_play_button = ft.IconButton(
                 icon=ft.icons.PLAY_CIRCLE,
                 icon_color="blue400",
@@ -1051,21 +1087,6 @@ def main(page: ft.Page):
         current_episode.name = title
         current_episode.play_episode()
 
-    # Podcast Layout Container
-    if not home_ep_rows:
-        print('ep_rows')
-        home_pod_layout = home_episode_display
-    else:
-        print('test')
-        # def create_home_rows_dict(home_ep_rows):
-        #     home_ep_row_dict = {}
-        #     for i, row in enumerate(home_ep_rows):
-        #         home_ep_row_dict[f'search_row{i+1}'] = row
-        #     return home_ep_row_dict
-
-        # home_ep_row_dict = create_home_rows_dict(home_ep_rows)
-        # home_pod_layout = *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
-
 # Main Page Layout
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
@@ -1081,7 +1102,7 @@ def main(page: ft.Page):
     # Create Initial Home Page
     page.add(
         top_bar,
-        *[home_ep_row_dict.get(f'search_row{i+1}', home_episode_display) for i in range(len(home_ep_rows))]
+        *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
         # home_pod_layout
     )
     

@@ -54,3 +54,21 @@ CREATE TABLE UserEpisodeHistory (
   FOREIGN KEY (UserID) REFERENCES Users(UserID),
   FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );
+
+CREATE TABLE DownloadedEpisodes (
+  DownloadID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID INT,
+  EpisodeID INT,
+  DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  DownloadedSize INT,
+  DownloadedLocation VARCHAR(255),
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+);
+
+CREATE TABLE EpisodeQueue (
+  QueueID INT AUTO_INCREMENT PRIMARY KEY,
+  QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+);
