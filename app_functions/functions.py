@@ -64,7 +64,7 @@ def parse_feed(feed_url):
 
 if __name__ == "__main__":
     # Example usage
-    feed_url = "https://changelog.com/practicalai/feed"
+    feed_url = "https://feeds.fireside.fm/asknoah/rss"
     d = parse_feed(feed_url)
     for entry in d.entries:
         audio_file = None
@@ -79,6 +79,11 @@ if __name__ == "__main__":
             print("Description: ", entry.description)
             print("Audio File: ", audio_file)
             # print("Published Date: ", entry.published)
+            # print(entry.itunes_image)
+            parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+            # if parsed_artwork_url == None:
+                # parsed_artwork_url = clicked_podcast.artwork
+            print(parsed_artwork_url)
         else:
             print("\n")
             print("Title: ", entry.title)
@@ -86,3 +91,4 @@ if __name__ == "__main__":
             print("Description: ", entry.description)
             print("No audio file found for this entry")
             print("Published Date: ", entry.published)
+            print(entry.itunes_image)
