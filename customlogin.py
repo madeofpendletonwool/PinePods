@@ -137,4 +137,5 @@ def main(page: Page):
     page.add(addlogin)
 
 # we can now test this using the web browser
-flet.app(target=main, host="localhost", port=9999, view=flet.WEB_BROWSER)
+# flet.app(target=main, host="localhost", port=9999, view=flet.WEB_BROWSER)
+flet.app(target=main, port=8034)

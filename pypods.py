@@ -1,7 +1,7 @@
 # Various flet imports
 import flet as ft
 from flet import *
-from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row
+from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment
 # Internal Functions
 import internal_functions.functions
 import database_functions.functions
@@ -25,7 +25,8 @@ import threading
 import vlc
 import random
 
-#Establish that audio is not playing
+#Initial Vars needed to start and used throughout
+proxy_url = 'http://localhost:8000/proxy?url='
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -93,7 +94,6 @@ def main(page: ft.Page):
                     self.active_pod = 'Initial Value'
                 else:
                     self.active_pod = self.name
-                print(f'inside class: {self.name}')
                 Toggle_Pod.initialized = True
             else:
                 self.page = page
@@ -108,7 +108,6 @@ def main(page: ft.Page):
                 self.player = self.instance.media_player_new()
                 self.thread = None
                 # self.episode_name = self.name
-                print(f'inside class: {self.name}')
 
         def play_episode(self, e=None):
             media = self.instance.media_new(self.url)
@@ -237,6 +236,9 @@ def main(page: ft.Page):
 
 #--Defining Routes---------------------------------------------------
 
+    def start_login(page):
+        page.go("/login")
+
     def view_pop(e):
         page.views.pop()
         top_view = page.views[-1]
@@ -272,6 +274,14 @@ def main(page: ft.Page):
         page.update()
         page.go("/pod_list")
 
+    def go_homelogin(e):
+        print(f'audio playing on return to home: {current_episode.audio_playing}')
+        navbar.visible = True
+        page.appbar.visible = True
+        print(current_episode.active_pod)
+        page.update()
+        page.go("/")
+
     def go_home(e):
         print(f'audio playing on return to home: {current_episode.audio_playing}')
         print(current_episode.active_pod)
@@ -292,6 +302,89 @@ def main(page: ft.Page):
         page.views.append(
                 home_view
         )
+        if page.route == "/login" or page.route == "/login":
+            login_startpage = Column(
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    Card(
+                        elevation=15,
+                        content=Container(
+                            width=550,
+                            height=550,
+                            padding=padding.all(30),
+                            gradient=GradientGenerator(
+                                "#2f2937", "#251867"
+                            ),
+                            border_radius=border_radius.all(12),
+                            content=Column(
+                                horizontal_alignment="center",
+                                alignment="start",
+                                controls=[
+                                    Text(
+                                        "Pypods: A podcast app built in python",
+                                        size=32,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    Text(
+                                        "Please login with your user account to start listening to podcasts. If you didn't set a default user up please check the docker logs for a default account and credentials",
+                                        size=14,
+                                        weight="w700",
+                                        text_align="center",
+                                        color="#64748b",
+                                    ),
+                                    Container(
+                                        padding=padding.only(bottom=20)
+                                    ),
+                                    login_username,
+                                    Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    login_password,
+                                    Container(
+                                        padding=padding.only(bottom=20)
+                                    ),
+                                    Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            FilledButton(
+                                                content=Text(
+                                                    "Login",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                # on_click=lambda e: active_user.login(login_username, login_password)
+                                                on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    )
+                ],
+            )
+
+            # Create search view object
+            login_startpage_view = ft.View("/login",                
+                horizontal_alignment="center",
+                vertical_alignment="center",
+                    controls=[
+                        login_startpage
+                    ]
+                    
+                )
+            # search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                login_startpage_view
+                
+            ) 
+
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
             podcast_value = search_pods.value
@@ -312,7 +405,7 @@ def main(page: ft.Page):
                         search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
                         # print(d['title'])
                         # print(d['artwork'])
-                        pod_image = ft.Image(src=search_art_url, width=150, height=150)
+                        pod_image = ft.Image(src=proxy_url + search_art_url, width=150, height=150)
                         
                         # Defining the attributes of each podcast that will be displayed on screen
                         pod_title = ft.TextButton(
@@ -423,8 +516,6 @@ def main(page: ft.Page):
             display_pod_art_no = random.randint(1, 12)
             display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
             display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
-            # print(d['title'])
-            # print(d['artwork'])
             pod_image = ft.Image(src=display_pod_art_url, width=300, height=300)
             pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
             pod_feed_desc = ft.Text(clicked_podcast.description, width=700)
@@ -608,7 +699,6 @@ def main(page: ft.Page):
 
             # Get Pod info
             user_id = get_user_id()
-            print(user_id)
             hist_episodes = database_functions.functions.user_history(cnx, user_id)
             hist_episodes.reverse()
 
@@ -975,10 +1065,11 @@ def main(page: ft.Page):
 
 # Login/User Changes------------------------------------------------------
     class User:
-        def __init__(self):
+        def __init__(self, page):
             self.username = None
             self.password = None
             self.email = None
+            self.page = page
             self.fullname = 'Collin Pendleton'
             # split the full name into separate words
             words = self.fullname.split()
@@ -1000,6 +1091,11 @@ def main(page: ft.Page):
 
         def set_name(self, new_name):
             self.name = new_name
+
+        def login(self, username, password):
+            navbar.visible = True
+            page.appbar.visible = True
+            go_home(e)
     
         def verify_user_values(self):
             self.valid_username = len(self.username) >= 6
@@ -1019,7 +1115,35 @@ def main(page: ft.Page):
         def logout_pypods(self, e):
             pass
 
-    active_user = User()
+    def GradientGenerator(start, end):
+        ColorGradient = LinearGradient(
+            begin=alignment.bottom_left,
+            end=alignment.top_right,
+            colors=[
+                start,
+                end,
+            ],
+        )
+
+        return ColorGradient
+    
+    login_username = TextField(
+    label="Username",
+    border="underline",
+    width=320,
+    text_size=14,
+    )
+
+    login_password = TextField(
+        label="Password",
+        border="underline",
+        width=320,
+        text_size=14,
+        password=True,
+        can_reveal_password=True,
+    )
+
+    active_user = User(page)
 
     print(f'Current User: {active_user.username}')
 
@@ -1325,29 +1449,17 @@ def main(page: ft.Page):
         current_episode.name = title
         current_episode.play_episode()
 
-# Main Page Layout
+# Starting Page Layout
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
-    page.scroll = "Auto"
 
     page.overlay.append(ft.Stack([navbar], expand=True))
+    navbar.visible = False
+    page.appbar.visible = False
     
-
-    print(page.overlay)
-
-
-
-    # Create Initial Home Page
-    page.add(
-        top_bar,
-        *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
-        # home_pod_layout
-    )
-    
-
-    # page.scroll = "always"
+    start_login(page)
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER)
+# ft.app(target=main, view=ft.WEB_BROWSER)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)
