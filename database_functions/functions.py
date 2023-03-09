@@ -308,6 +308,25 @@ def get_user_id(cnx, username):
     else:
         return 1
 
+def get_user_details(cnx, username):
+    cursor = cnx.cursor()
+    query = "SELECT * FROM Users WHERE Username = %s"
+    cursor.execute(query, (username,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return {
+            'UserID': result[0],
+            'Fullname': result[1],
+            'Username': result[2],
+            'Email': result[3],
+            'Hashed_PW': result[4],
+            'Salt': result[5]
+        }
+    else:
+        return None
+
 def user_history(cnx, user_id):
     cursor = cnx.cursor()
     query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "

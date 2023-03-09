@@ -38,6 +38,8 @@ N/A
  - [ ] Allow local downloads, to just download the mp3 files direct
  - [ ] Create login screen
  - [ ] Theme settings
+ - [ ] Admin area for User management
+ - [ ] Remove Podcasts from search or just don't allow adding a second time
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
