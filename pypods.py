@@ -311,18 +311,109 @@ def main(page: ft.Page):
     def route_change(e):
 
         page.views.clear()
-        home_view = ft.View("/",                 [
-                    AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+        if page.route == "/" or page.route == "/":
 
-                    top_bar,
-                    *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
-                ]
+            # Home Screen Podcast Layout (Episodes in Newest order)
+
+            home_episodes = database_functions.functions.return_episodes(cnx, active_user.user_id)
+
+            if home_episodes is None:
+                home_ep_number = 1
+                home_ep_rows = []
+                home_ep_row_dict = {}
+                print("There are no episodes yet.")
+                home_pod_name = "No Podcasts added yet"
+                home_ep_title = "Podcasts you add will display new episodes here."
+                home_pub_date = ""
+                home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
+                home_ep_url = ""
+                home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                home_entry_description = ft.Text(home_ep_desc, width=800)
+                home_entry_audio_url = ft.Text(home_ep_url)
+                home_entry_released = ft.Text(home_pub_date)
+                artwork_no = random.randint(1, 12)
+                none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                none_artwork_url_parsed = check_image(none_artwork_url)
+                print(none_artwork_url_parsed)
+                home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
+                home_ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color="blue400",
+                    icon_size=40,
+                    tooltip="No Episodes Added Yet"
+                )
+                # Creating column and row for home layout
+                home_ep_column = ft.Column(
+                    controls=[home_entry_title, home_entry_description, home_entry_released]
+                )
+                home_ep_row = ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
+                )
+                home_ep_rows.append(home_ep_row)
+                home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                home_pods_active = True
+                home_ep_number += 1
+            else:
+                home_ep_number = 1
+                home_ep_rows = []
+                home_ep_row_dict = {}
+
+                for entry in home_episodes:
+                    home_ep_title = entry['EpisodeTitle']
+                    home_pod_name = entry['PodcastName']
+                    home_pub_date = entry['EpisodePubDate']
+                    home_ep_desc = entry['EpisodeDescription']
+                    home_ep_artwork = entry['EpisodeArtwork']
+                    home_ep_url = entry['EpisodeURL']
+                    # do something with the episode information
+
+                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    home_entry_description = ft.Text(home_ep_desc, width=800)
+                    home_entry_audio_url = ft.Text(home_ep_url)
+                    home_entry_released = ft.Text(home_pub_date)
+
+                    home_art_no = random.randint(1, 12)
+                    home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
+                    home_art_url = home_ep_artwork if home_ep_artwork else home_art_fallback
+                    home_art_parsed = check_image(home_art_url)
+                    print(home_art_parsed)
+                    home_entry_artwork_url = ft.Image(src=home_art_parsed, width=150, height=150)
+                    home_ep_play_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color="blue400",
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
+                    )
+                
+                    
+                    # Creating column and row for search layout
+                    home_ep_column = ft.Column(
+                        controls=[home_entry_title, home_entry_description, home_entry_released]
+                    )
+                    home_ep_row = ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
+                    )
+                    home_ep_rows.append(home_ep_row)
+                    home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                    home_pods_active = True
+                    home_ep_number += 1
+
+            home_view = ft.View("/",                 [
+                        AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+                            actions=[theme_icon_button], ),
+
+                        top_bar,
+                        *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
+                    ]
+                )
+            home_view.scroll = ft.ScrollMode.AUTO
+            page.views.append(
+                    home_view
             )
-        home_view.scroll = ft.ScrollMode.AUTO
-        page.views.append(
-                home_view
-        )
+
         if page.route == "/login" or page.route == "/login":
             login_startpage = Column(
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -638,7 +729,7 @@ def main(page: ft.Page):
         if page.route == "/pod_list" or page.route == "/pod_list":
 
             # Get Pod info
-            pod_list_data = database_functions.functions.return_pods(cnx)
+            pod_list_data = database_functions.functions.return_pods(cnx, active_user.user_id)
 
             page.overlay.pop(2)
 
@@ -1265,93 +1356,6 @@ def main(page: ft.Page):
     test_text = Text('This is a test')
     test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
 
-    # Home Screen Podcast Layout (Episodes in Newest order)
-
-    home_episodes = database_functions.functions.return_episodes(cnx)
-
-    if home_episodes is None:
-        home_ep_number = 1
-        home_ep_rows = []
-        home_ep_row_dict = {}
-        print("There are no episodes yet.")
-        home_pod_name = "No Podcasts added yet"
-        home_ep_title = "Podcasts you add will display new episodes here."
-        home_pub_date = ""
-        home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
-        home_ep_url = ""
-        home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-        home_entry_description = ft.Text(home_ep_desc, width=800)
-        home_entry_audio_url = ft.Text(home_ep_url)
-        home_entry_released = ft.Text(home_pub_date)
-        artwork_no = random.randint(1, 12)
-        none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-        none_artwork_url_parsed = check_image(none_artwork_url)
-        print(none_artwork_url_parsed)
-        home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
-        home_ep_play_button = ft.IconButton(
-            icon=ft.icons.PLAY_DISABLED,
-            icon_color="blue400",
-            icon_size=40,
-            tooltip="No Episodes Added Yet"
-        )
-        # Creating column and row for home layout
-        home_ep_column = ft.Column(
-            controls=[home_entry_title, home_entry_description, home_entry_released]
-        )
-        home_ep_row = ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
-            controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
-        )
-        home_ep_rows.append(home_ep_row)
-        home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
-        home_pods_active = True
-        home_ep_number += 1
-    else:
-        home_ep_number = 1
-        home_ep_rows = []
-        home_ep_row_dict = {}
-
-        for entry in home_episodes:
-            home_ep_title = entry['EpisodeTitle']
-            home_pod_name = entry['PodcastName']
-            home_pub_date = entry['EpisodePubDate']
-            home_ep_desc = entry['EpisodeDescription']
-            home_ep_artwork = entry['EpisodeArtwork']
-            home_ep_url = entry['EpisodeURL']
-            # do something with the episode information
-
-            home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-            home_entry_description = ft.Text(home_ep_desc, width=800)
-            home_entry_audio_url = ft.Text(home_ep_url)
-            home_entry_released = ft.Text(home_pub_date)
-
-            home_art_no = random.randint(1, 12)
-            home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
-            home_art_url = home_ep_artwork if home_ep_artwork else home_art_fallback
-            home_art_parsed = check_image(home_art_url)
-            print(home_art_parsed)
-            home_entry_artwork_url = ft.Image(src=home_art_parsed, width=150, height=150)
-            home_ep_play_button = ft.IconButton(
-                icon=ft.icons.PLAY_CIRCLE,
-                icon_color="blue400",
-                icon_size=40,
-                tooltip="Play Episode",
-                on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
-            )
-        
-            
-            # Creating column and row for search layout
-            home_ep_column = ft.Column(
-                controls=[home_entry_title, home_entry_description, home_entry_released]
-            )
-            home_ep_row = ft.Row(
-                alignment=ft.MainAxisAlignment.CENTER,
-                controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
-            )
-            home_ep_rows.append(home_ep_row)
-            home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
-            home_pods_active = True
-            home_ep_number += 1
 
     def play_selected_episode(url, title):
         current_episode.url = url
