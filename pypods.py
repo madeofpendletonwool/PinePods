@@ -84,7 +84,6 @@ def main(page: ft.Page):
         page.launch_url(clicked_podcast.website)
 
     def check_image(artwork_path):
-        # print(artwork_path)
         if artwork_path.startswith('http'):
             # It's a URL, so return the path with the proxy URL appended
             return f"{proxy_url}{artwork_path}"
@@ -154,12 +153,10 @@ def main(page: ft.Page):
         def resume_podcast(self, e=None):
             self.player.play()
             self.audio_playing = True
-            print(f"Resume podcast: {self.name}")
             self.toggle_current_status()
             self.page.update()
 
         def toggle_current_status(self):
-            print('toggle is running')
             if self.audio_playing:
                 play_button.visible = False
                 pause_button.visible = True
@@ -179,9 +176,6 @@ def main(page: ft.Page):
 
         def record_history(self):
             user_id = get_user_id()
-            print(self.name)
-            print(user_id)
-        
             database_functions.functions.record_podcast_history(cnx, self.name, user_id, 0)
 
     def refresh_podcasts(e):
@@ -293,18 +287,14 @@ def main(page: ft.Page):
         page.go("/pod_list")
 
     def go_homelogin(page):
-        print(f'audio playing on return to home: {current_episode.audio_playing}')
         # navbar.visible = True
         page.appbar.visible = True
-        print(active_user.fullname)
         navbar = NavBar(page).create_navbar()
         page.overlay.append(ft.Stack([navbar], expand=True))
         page.update()
         page.go("/")
 
     def go_home(e):
-        print(f'audio playing on return to home: {current_episode.audio_playing}')
-        print(current_episode.active_pod)
         page.update()
         page.go("/")
 
@@ -321,7 +311,6 @@ def main(page: ft.Page):
                 home_ep_number = 1
                 home_ep_rows = []
                 home_ep_row_dict = {}
-                print("There are no episodes yet.")
                 home_pod_name = "No Podcasts added yet"
                 home_ep_title = "Podcasts you add will display new episodes here."
                 home_pub_date = ""
@@ -334,7 +323,6 @@ def main(page: ft.Page):
                 artwork_no = random.randint(1, 12)
                 none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
                 none_artwork_url_parsed = check_image(none_artwork_url)
-                print(none_artwork_url_parsed)
                 home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
                 home_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
@@ -377,7 +365,6 @@ def main(page: ft.Page):
                     home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
                     home_art_url = home_ep_artwork if home_ep_artwork else home_art_fallback
                     home_art_parsed = check_image(home_art_url)
-                    print(home_art_parsed)
                     home_entry_artwork_url = ft.Image(src=home_art_parsed, width=150, height=150)
                     home_ep_play_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
@@ -515,8 +502,6 @@ def main(page: ft.Page):
                         search_art_no = random.randint(1, 12)
                         search_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{search_art_no}.jpeg")
                         search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
-                        # print(d['title'])
-                        # print(d['artwork'])
                         podimage_parsed = check_image(search_art_url)
                         pod_image = ft.Image(src=podimage_parsed, width=150, height=150)
                         
@@ -825,7 +810,6 @@ def main(page: ft.Page):
                 hist_ep_rows = []
                 hist_ep_row_dict = {}
 
-                print("There are no episodes yet.")
                 hist_pod_name = "No Podcasts history yet"
                 hist_ep_title = "Podcasts you add will display here after you listen to them."
                 hist_pub_date = ""
@@ -871,8 +855,6 @@ def main(page: ft.Page):
                     hist_ep_url = entry['EpisodeURL']
                     hist_ep_listen_date = entry['ListenDate']
                     # do something with the episode information
-                    print(hist_ep_title)
-                    print(hist_ep_artwork)
                     hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                     hist_entry_description = ft.Text(hist_ep_desc, width=800)
                     hist_entry_audio_url = ft.Text(hist_ep_url)
@@ -1103,7 +1085,6 @@ def main(page: ft.Page):
                 # page.appbar.visible = True
                 go_homelogin(page)
             else:
-                print('test')
                 on_click_wronguser(page)
 
         def logout_pypods(self, e):
@@ -1138,8 +1119,6 @@ def main(page: ft.Page):
     )
 
     active_user = User(page)
-
-    print(f'Current User: {active_user.username}')
 
 # Create Sidebar------------------------------------------------------
 
