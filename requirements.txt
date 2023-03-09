@@ -3,3 +3,5 @@ flet
 requests
 python-dateutil
 feedparser
+flask
+flask-cors

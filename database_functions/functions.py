@@ -132,17 +132,18 @@ def remove_podcast(cnx, podcast_name):
 def remove_user(cnx, user_name):
     pass
 
-def return_episodes(cnx):
+def return_episodes(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
-    query = ("SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL "
-             "FROM Episodes "
-             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             "WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
-             "ORDER BY Episodes.EpisodePubDate DESC")
+    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL "
+             f"FROM Episodes "
+             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
+             f"AND Podcasts.UserID = %s "
+             f"ORDER BY Episodes.EpisodePubDate DESC")
 
-    cursor.execute(query)
+    cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
 
     cursor.close()
@@ -152,13 +153,15 @@ def return_episodes(cnx):
 
     return rows
 
-def return_pods(cnx):
+
+def return_pods(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = ("SELECT PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
-            "FROM Podcasts;")
+            "FROM Podcasts "
+            "WHERE UserID = %s")
 
-    cursor.execute(query)
+    cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
 
     cursor.close()
@@ -307,6 +310,25 @@ def get_user_id(cnx, username):
         return result[0]
     else:
         return 1
+
+def get_user_details(cnx, username):
+    cursor = cnx.cursor()
+    query = "SELECT * FROM Users WHERE Username = %s"
+    cursor.execute(query, (username,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return {
+            'UserID': result[0],
+            'Fullname': result[1],
+            'Username': result[2],
+            'Email': result[3],
+            'Hashed_PW': result[4],
+            'Salt': result[5]
+        }
+    else:
+        return None
 
 def user_history(cnx, user_id):
     cursor = cnx.cursor()
