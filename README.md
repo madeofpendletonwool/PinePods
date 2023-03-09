@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="300" height="300" src="./images/pypods-logos_transparent.png">
+  <img width="300" height="300" src="./images/Pypods-logos_blue.jpeg">
 </p>
 
 # PyPods
@@ -38,6 +38,8 @@ N/A
  - [ ] Allow local downloads, to just download the mp3 files direct
  - [ ] Create login screen
  - [ ] Theme settings
+ - [ ] Admin area for User management
+ - [ ] Remove Podcasts from search or just don't allow adding a second time
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub

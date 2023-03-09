@@ -8,9 +8,14 @@ services:
     ports:
       - "3306:3306"
     restart: always
+  pypods-imageproxy:
+    image: madeofpendletonwool/pypods-imageproxy:latest
+    ports:
+      - "8000:8000"
   # pypods:
   #   image: madeofpendletonwool/pypods:latest
   #   ports:
-  #     - "8000:8000"
+  #     - "8080:8080"
   #   depends_on:
   #     - db
+  #     - pypods-imageproxy
