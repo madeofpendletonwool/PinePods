@@ -1042,60 +1042,115 @@ def main(page: ft.Page):
                     download_pods_active = True
                     download_ep_number += 1
 
+            download_title = ft.Text(
+            "Downloaded Episodes:",
+            size=30,
+            font_family="RobotoSlab",
+            weight=ft.FontWeight.W_300,
+        )
+            download_title_row = ft.Row(controls=[download_title], alignment=ft.MainAxisAlignment.CENTER)
+
+
             # Create search view object
-            ep_hist_view = ft.View("/downloads",
+            ep_download_view = ft.View("/downloads",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
 
                         top_bar,
+                        download_title_row,
                         *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
 
                     ]
                     
                 )
-            ep_hist_view.scroll = ft.ScrollMode.AUTO
+            ep_download_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
-                ep_hist_view
+                ep_download_view
                     
                 )
 
         if page.route == "/queue" or page.route == "/queue":
 
-            # Get Pod info
-            user_id = get_user_id()
-            print(user_id)
-            hist_episodes = database_functions.functions.user_history(cnx, user_id)
-            hist_episodes.reverse()
+            # episode_queue_list.reverse()
+            def get_queue():
+                pass
 
-            # page.overlay.pop(2)
 
-            if hist_episodes is None:
-                hist_ep_number = 1
-                hist_ep_rows = []
-                hist_ep_row_dict = {}
+            episode_queue_list = get_queue()
+            # database_functions.functions.queue_episode_list(cnx, active_user.user_id)
+
+
+            if episode_queue_list is None:
+                queue_ep_number = 1
+                queue_ep_rows = []
+                queue_ep_row_dict = {}
+                queue_pod_name = "No Podcasts added yet"
+                queue_ep_title = "Podcasts you queue will display here."
+                queue_pub_date = ""
+                queue_ep_desc = "Click the dropdown on podcasts and select queue. This will queue the podcast to the server for local storage."
+                queue_ep_url = ""
+                queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                queue_entry_description = ft.Text(queue_ep_desc, width=800)
+                queue_entry_audio_url = ft.Text(queue_ep_url)
+                queue_entry_released = ft.Text(queue_pub_date)
+                artwork_no = random.randint(1, 12)
+                queue_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                queue_artwork_url_parsed = check_image(queue_artwork_url)
+                queue_entry_artwork_url = ft.Image(src=queue_artwork_url_parsed, width=150, height=150)
+                queue_ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color="blue400",
+                    icon_size=40,
+                    tooltip="No Episodes Added Yet"
+                )
+                # Creating column and row for queue layout
+                queue_ep_column = ft.Column(
+                    controls=[queue_entry_title, queue_entry_description, queue_entry_released]
+                )
+                queue_ep_row = ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[queue_entry_artwork_url, queue_ep_column, queue_ep_play_button]
+                )
+                queue_ep_rows.append(queue_ep_row)
+                queue_ep_row_dict[f'search_row{queue_ep_number}'] = queue_ep_row
+                queue_pods_active = True
+                queue_ep_number += 1
 
 
             else:
-                hist_ep_number = 1
-                hist_ep_rows = []
-                hist_ep_row_dict = {}
+                queue_ep_number = 1
+                queue_ep_rows = []
+                queue_ep_row_dict = {}
+
+            queue_title = ft.Text(
+            "Current Listen Queue:",
+            size=30,
+            font_family="RobotoSlab",
+            weight=ft.FontWeight.W_300,
+        )
+            queue_title_row = ft.Row(controls=[queue_title], alignment=ft.MainAxisAlignment.CENTER)
+
 
 
             # Create search view object
-            ep_hist_view = ft.View("/queue",
+            ep_queue_view = ft.View("/queue",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], )
+                        actions=[theme_icon_button], ),
+                        top_bar,
+                        queue_title_row,
+                        *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
+
 
                     ]
                     
                 )
-            ep_hist_view.scroll = ft.ScrollMode.AUTO
+            ep_queue_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
-                ep_hist_view
+                ep_queue_view
                     
                 )
 
