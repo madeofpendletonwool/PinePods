@@ -696,14 +696,22 @@ def main(page: ft.Page):
                     tooltip="Play Episode",
                     on_click = lambda x, url=parsed_audio_url, title=parsed_title: play_selected_episode(url, title)
                 )
-                
+                ep_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                # icon_size=40, icon_color="blue400", tooltip="Options",
+                    items=[
+                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title: queue_selected_episode(url, title)),
+                        ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title))
+                    ]
+                )
+                ep_play_options = ft.Column(controls=[ep_play_button, ep_popup_button])
+            
                 # Creating column and row for search layout
                 ep_column = ft.Column(
                     controls=[entry_title, entry_description, entry_released]
                 )
                 ep_row = ft.Row(
                     alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[entry_artwork_url, ep_column, ep_play_button]
+                    controls=[entry_artwork_url, ep_column, ep_play_options]
                 )
                 ep_rows.append(ep_row)
                 ep_row_dict[f'search_row{ep_number}'] = ep_row
@@ -888,7 +896,14 @@ def main(page: ft.Page):
                         tooltip="Play Episode",
                         on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
                     )
-                
+                    hist_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                    # icon_size=40, icon_color="blue400", tooltip="Options",
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
+                        ]
+                    )
+                    hist_play_options = ft.Column(controls=[hist_ep_play_button, hist_popup_button])
                     
                     # Creating column and row for search layout
                     hist_ep_column = ft.Column(
@@ -896,7 +911,7 @@ def main(page: ft.Page):
                     )
                     hist_ep_row = ft.Row(
                         alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[hist_entry_artwork_url, hist_ep_column, hist_ep_play_button]
+                        controls=[hist_entry_artwork_url, hist_ep_column, hist_play_options]
                     )
                     hist_ep_rows.append(hist_ep_row)
                     hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
