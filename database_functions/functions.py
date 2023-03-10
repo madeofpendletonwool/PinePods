@@ -1,5 +1,9 @@
 import mysql.connector
 import sys
+import os
+import requests
+import datetime
+import time
 
 def add_podcast(cnx, podcast_values):
     cursor = cnx.cursor()
@@ -347,6 +351,108 @@ def user_history(cnx, user_id):
     return results
 
 
+def download_podcast(cnx, url, title, user_id):
+    # Get the episode ID from the Episodes table
+    cursor = cnx.cursor()
+    query = ("SELECT EpisodeID FROM Episodes "
+             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
+    cursor.execute(query, (url, title))
+    episode_id = cursor.fetchone()
+
+    if episode_id is None:
+        # Episode not found
+        return False
+
+    episode_id = episode_id[0]
+    print(episode_id)
+    print(title)
+
+    # Get the current date and time for DownloadedDate
+    downloaded_date = datetime.datetime.now()
+
+    # Make the request to download the file
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    # Get the file size from the Content-Length header
+    file_size = int(response.headers.get("Content-Length", 0))
+
+    # Set the download location to the user's downloads folder
+    download_location = "/opt/pypods/downloads"
+
+    # Generate a unique filename based on the current timestamp
+    timestamp = time.time()
+    filename = f"{user_id}-{episode_id}-{timestamp}.mp3"
+    file_path = os.path.join(download_location, filename)
+    print(file_path)
+
+    # Write the file to disk
+    with open(file_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=1024):
+            f.write(chunk)
+
+    # Insert a new row into the DownloadedEpisodes table
+    cursor = cnx.cursor()
+    query = ("INSERT INTO DownloadedEpisodes "
+             "(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) "
+             "VALUES (%s, %s, %s, %s, %s)")
+    cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
+    cnx.commit()
+
+    return True
+
+def download_episode_list(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
+             f"Podcasts.WebsiteURL, DownloadedEpisodes.DownloadedLocation "
+             f"FROM DownloadedEpisodes "
+             f"INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
+             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"WHERE DownloadedEpisodes.UserID = %s "
+             f"ORDER BY DownloadedEpisodes.DownloadedDate DESC")
+
+    cursor.execute(query, (user_id,))
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
+def delete_podcast(cnx, url, title, user_id):
+
+    cursor = cnx.cursor()
+
+    # Get the download ID from the DownloadedEpisodes table
+    query = ("SELECT DownloadID, DownloadedLocation "
+             "FROM DownloadedEpisodes "
+             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
+    cursor.execute(query, (title, url, user_id))
+    result = cursor.fetchone()
+
+    if not result:
+        print("No matching download found.")
+        return
+
+    download_id, downloaded_location = result
+
+    # Delete the downloaded file
+    os.remove(downloaded_location)
+    print(f"Deleted downloaded file at {downloaded_location}")
+
+    # Remove the entry from the DownloadedEpisodes table
+    query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+    cursor.execute(query, (download_id,))
+    cnx.commit()
+    print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+    
+    cursor.close()
 
 
 if __name__ == '__main__':

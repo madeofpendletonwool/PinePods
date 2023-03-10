@@ -178,6 +178,15 @@ def main(page: ft.Page):
             user_id = get_user_id()
             database_functions.functions.record_podcast_history(cnx, self.name, user_id, 0)
 
+        def download_pod(self):
+            database_functions.functions.download_podcast(cnx, self.url, self.title, active_user.user_id)
+
+        def delete_pod(self):
+            database_functions.functions.delete_podcast(cnx, self.url, self.title, active_user.user_id)
+
+
+        # def queue_pod(self):
+
     def refresh_podcasts(e):
         pr = ft.ProgressRing()
         page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
@@ -330,6 +339,7 @@ def main(page: ft.Page):
                     icon_size=40,
                     tooltip="No Episodes Added Yet"
                 )
+                home_play_options = ft.Column(controls=[home_ep_play_button, home_popup_button])
                 # Creating column and row for home layout
                 home_ep_column = ft.Column(
                     controls=[home_entry_title, home_entry_description, home_entry_released]
@@ -373,15 +383,21 @@ def main(page: ft.Page):
                         tooltip="Play Episode",
                         on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
                     )
-                
-                    
-                    # Creating column and row for search layout
+                    home_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                    # icon_size=40, icon_color="blue400", tooltip="Options",
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title))
+                        ]
+                    )
+                    home_play_options = ft.Column(controls=[home_ep_play_button, home_popup_button])
+                    # Creating column and row for home layout
                     home_ep_column = ft.Column(
                         controls=[home_entry_title, home_entry_description, home_entry_released]
                     )
                     home_ep_row = ft.Row(
                         alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
+                        controls=[home_entry_artwork_url, home_ep_column, home_play_options]
                     )
                     home_ep_rows.append(home_ep_row)
                     home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
@@ -916,30 +932,109 @@ def main(page: ft.Page):
         if page.route == "/downloads" or page.route == "/downloads":
 
             # Get Pod info
-            user_id = get_user_id()
-            print(user_id)
-            hist_episodes = database_functions.functions.user_history(cnx, user_id)
-            hist_episodes.reverse()
+            download_episode_list = database_functions.functions.download_episode_list(cnx, active_user.user_id)
 
             # page.overlay.pop(2)
 
-            if hist_episodes is None:
-                hist_ep_number = 1
-                hist_ep_rows = []
-                hist_ep_row_dict = {}
-
-                print("There are no episodes yet.")
+            if download_episode_list is None:
+                download_ep_number = 1
+                download_ep_rows = []
+                download_ep_row_dict = {}
+                download_pod_name = "No Podcasts added yet"
+                download_ep_title = "Podcasts you download will display here."
+                download_pub_date = ""
+                download_ep_desc = "Click the dropdown on podcasts and select download. This will download the podcast to the server for local storage."
+                download_ep_url = ""
+                download_entry_title = ft.Text(f'{download_pod_name} - {download_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                download_entry_description = ft.Text(download_ep_desc, width=800)
+                download_entry_audio_url = ft.Text(download_ep_url)
+                download_entry_released = ft.Text(download_pub_date)
+                artwork_no = random.randint(1, 12)
+                download_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                download_artwork_url_parsed = check_image(download_artwork_url)
+                download_entry_artwork_url = ft.Image(src=download_artwork_url_parsed, width=150, height=150)
+                download_ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color="blue400",
+                    icon_size=40,
+                    tooltip="No Episodes Added Yet"
+                )
+                # Creating column and row for download layout
+                download_ep_column = ft.Column(
+                    controls=[download_entry_title, download_entry_description, download_entry_released]
+                )
+                download_ep_row = ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[download_entry_artwork_url, download_ep_column, download_ep_play_button]
+                )
+                download_ep_rows.append(download_ep_row)
+                download_ep_row_dict[f'search_row{download_ep_number}'] = download_ep_row
+                download_pods_active = True
+                download_ep_number += 1
 
             else:
-                hist_ep_number = 1
-                hist_ep_rows = []
-                hist_ep_row_dict = {}
+                download_episode_list.reverse()
+                download_ep_number = 1
+                download_ep_rows = []
+                download_ep_row_dict = {}
+
+                for entry in download_episode_list:
+                    download_ep_title = entry['EpisodeTitle']
+                    download_pod_name = entry['PodcastName']
+                    download_pub_date = entry['EpisodePubDate']
+                    download_ep_desc = entry['EpisodeDescription']
+                    download_ep_artwork = entry['EpisodeArtwork']
+                    download_ep_url = entry['EpisodeURL']
+                    download_ep_local_url = entry['DownloadedLocation']
+                    
+                    # do something with the episode information
+
+                    download_entry_title = ft.Text(f'{download_pod_name} - {download_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    download_entry_description = ft.Text(download_ep_desc, width=800)
+                    download_entry_audio_url = ft.Text(download_ep_url)
+                    download_entry_released = ft.Text(download_pub_date)
+
+                    download_art_no = random.randint(1, 12)
+                    download_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{download_art_no}.jpeg")
+                    download_art_url = download_ep_artwork if download_ep_artwork else download_art_fallback
+                    download_art_parsed = check_image(download_art_url)
+                    download_entry_artwork_url = ft.Image(src=download_art_parsed, width=150, height=150)
+                    download_ep_play_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color="blue400",
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=download_ep_local_url, title=download_ep_title: play_selected_episode(url, title)
+                    )
+                    download_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                    # icon_size=40, icon_color="blue400", tooltip="Options",
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Download", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title))
+                        ]
+                    )
+                    download_play_options = ft.Column(controls=[download_ep_play_button, download_popup_button])
+                    # Creating column and row for download layout
+                    download_ep_column = ft.Column(
+                        controls=[download_entry_title, download_entry_description, download_entry_released]
+                    )
+                    download_ep_row = ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        controls=[download_entry_artwork_url, download_ep_column, download_play_options]
+                    )
+                    download_ep_rows.append(download_ep_row)
+                    download_ep_row_dict[f'search_row{download_ep_number}'] = download_ep_row
+                    download_pods_active = True
+                    download_ep_number += 1
 
             # Create search view object
             ep_hist_view = ft.View("/downloads",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], )
+                        actions=[theme_icon_button], ),
+
+                        top_bar,
+                        *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
 
                     ]
                     
@@ -1340,6 +1435,21 @@ def main(page: ft.Page):
         current_episode.url = url
         current_episode.name = title
         current_episode.play_episode()
+
+    def download_selected_episode(url, title):
+        current_episode.url = url
+        current_episode.title = title
+        current_episode.download_pod()
+        
+    def delete_selected_episode(url, title):
+        current_episode.url = url
+        current_episode.title = title
+        current_episode.delete_pod()
+
+    def queue_selected_episode(url, title):
+        current_episode.url = url
+        current_episode.title = title
+        
 
 # Starting Page Layout
 
