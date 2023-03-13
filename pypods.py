@@ -24,6 +24,7 @@ import time
 import threading
 import vlc
 import random
+import datetime
 
 # Make login Screen start on boot
 login_screen = False
@@ -97,7 +98,7 @@ def main(page: ft.Page):
     class Toggle_Pod:
         initialized = False
 
-        def __init__(self, page, go_home, url=None, name=None):
+        def __init__(self, page, go_home, url=None, name=None, length=None):
             if not Toggle_Pod.initialized:
                 self.page = page
                 self.go_home = go_home
@@ -109,9 +110,10 @@ def main(page: ft.Page):
                 self.instance = vlc.Instance("--no-xlib") # Use "--no-xlib" option to run on server without GUI
                 self.player = self.instance.media_player_new()
                 self.thread = None
-                self.length = 0
+                self.length = length or ""
                 self.length_min = 0
-                self.length_max = 100
+                self.length_max = 3000
+                self.seconds = 1
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -131,22 +133,50 @@ def main(page: ft.Page):
                 self.instance = vlc.Instance("--no-xlib") # Use "--no-xlib" option to run on server without GUI
                 self.player = self.instance.media_player_new()
                 self.thread = None
-                self.length = 0
+                self.length = length or ""
                 self.length_min = 0
-                self.length_max = 100
+                self.length_max = 3000
+                self.seconds = 1
                 # self.episode_name = self.name
                 self.queue = []
 
         def play_episode(self, e=None):
             media = self.instance.media_new(self.url)
+            media.parse_with_options(vlc.MediaParseFlag.network, 1000)  # wait for media to finish loading
             self.player.set_media(media)
             self.player.play()
             self.thread = threading.Thread(target=self._monitor_audio)
             self.thread.start()
             self.audio_playing = True
-            self.toggle_current_status()
+
             self.record_history()
-            self.length = 1
+
+            time.sleep(1)
+
+            # get the length of the media in milliseconds
+            media_length = self.player.get_length()
+
+            # convert milliseconds to a timedelta object
+            delta = datetime.timedelta(milliseconds=media_length)
+
+            # convert timedelta object to datetime object
+            datetime_obj = datetime.datetime(1, 1, 1) + delta
+
+            # format datetime object to hh:mm:ss format with two decimal places
+            total_length = datetime_obj.strftime('%H:%M:%S')
+
+            self.length = total_length
+            self.toggle_current_status()
+            page.update()
+    # convert milliseconds to seconds
+            total_seconds = media_length // 1000
+            self.seconds = total_seconds
+            audio_scrubber.max = self.seconds
+            for i in range(total_seconds):
+                self.current_progress = self.get_current_time()
+                self.toggle_second_status()
+                time.sleep(1)
+
 
         def _monitor_audio(self):
             while True:
@@ -174,17 +204,43 @@ def main(page: ft.Page):
                 pause_button.visible = True
                 audio_container.visible = True
                 currently_playing.content = ft.Text(self.name)
+                current_time.content = ft.Text(self.length)
+                podcast_length.content = ft.Text(self.length)
                 self.page.update()
             else:
                 pause_button.visible = False
                 play_button.visible = True
                 currently_playing.content = ft.Text(self.name)
                 self.page.update()
+                
+        def toggle_second_status(self):
+            print(current_episode.seconds)
+
+            audio_scrubber.value = self.get_current_seconds()
+            audio_scrubber.update()
+            current_time.content = ft.Text(self.current_progress)
+            current_time.update()
+
+            # self.page.update()
 
         def seek_episode(self):
             seconds = 10
             time = self.player.get_time()
             self.player.set_time(time + seconds * 1000) # VLC seeks in milliseconds
+
+        def time_scrub(self, time):
+            """
+            Seeks to a specific time within the podcast.
+
+            Args:
+                time (int): The time in seconds to seek to.
+            """
+            time_ms = int(time * 1000)  # convert seconds to milliseconds
+            if time_ms < 0:
+                time_ms = 0
+            elif time > self.seconds:
+                time = self.seconds
+            self.player.set_time(time_ms)
 
         def record_history(self):
             user_id = get_user_id()
@@ -215,6 +271,21 @@ def main(page: ft.Page):
 
         def get_queue(self):
             return self.queue
+
+        def get_current_time(self):
+            time = self.player.get_time() // 1000  # convert milliseconds to seconds
+            hours, remainder = divmod(time, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+        def get_current_seconds(self):
+            time_ms = self.player.get_time()  # get current time in milliseconds
+            if time_ms is not None:
+                time_sec = int(time_ms // 1000)  # convert milliseconds to seconds
+                return time_sec
+            else:
+                return 0
+
 
     def refresh_podcasts(e):
         pr = ft.ProgressRing()
@@ -1538,12 +1609,29 @@ def main(page: ft.Page):
     )
     ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
     # Create the currently playing container
-    currently_playing = ft.Container(content=ft.Text(current_episode.name))
+    currently_playing = ft.Container(content=ft.Text('test'))
     currently_playing.padding=ft.padding.only(left=20)
     currently_playing.padding=ft.padding.only(top=10)
 
+    def format_time(time):
+        hours, remainder = divmod(int(time), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-    audio_scrubber = ft.Slider(value=current_episode.length, max=current_episode.length_max, min=current_episode.length_min, label="{value}")
+
+    def slider_changed(e):
+        print(audio_scrubber.value)
+        formatted_scrub = format_time(audio_scrubber.value)
+        current_time.content = ft.Text(formatted_scrub)
+        current_time.update()
+        current_episode.time_scrub(audio_scrubber.value)
+
+
+    podcast_length = ft.Container(content=ft.Text('doesntmatter'))
+    current_time = ft.Container(content=ft.Text('placeholder'))
+    audio_scrubber = ft.Slider(min=0, max=current_episode.seconds, label="{value}", on_change=slider_changed)
+
+
 
     ep_height = 50
     ep_width = 4000
@@ -1556,7 +1644,7 @@ def main(page: ft.Page):
         content=ft.Row(
             vertical_alignment=ft.CrossAxisAlignment.END,  
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-            controls=[currently_playing, audio_scrubber, ep_audio_controls]
+            controls=[currently_playing, current_time, audio_scrubber, podcast_length, ep_audio_controls]
         )
     )
         
