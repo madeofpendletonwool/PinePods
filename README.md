@@ -56,6 +56,12 @@ N/A
      - [ ] Android App
      - [ ] IOS App
 
+## Quick Fixes
+
+- [ ] Check user values when adding new user
+- [ ] Prevent user from being added without required info 
+- [ ] Prevent submit for user from being hit without populated values
+
 ## Platform Availability
 
 The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. The server will be run from docker and connect to the clients on these platforms

@@ -71,6 +71,7 @@ CREATE TABLE EpisodeQueue (
   QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UserID INT,
   EpisodeID INT,
+  QueuePosition INT NOT NULL DEFAULT 0,
   FOREIGN KEY (UserID) REFERENCES Users(UserID),
   FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );

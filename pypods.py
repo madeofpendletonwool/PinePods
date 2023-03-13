@@ -25,6 +25,9 @@ import threading
 import vlc
 import random
 
+# Make login Screen start on boot
+login_screen = False
+
 #Initial Vars needed to start and used throughout
 proxy_url = 'http://localhost:8000/proxy?url='
 audio_playing = False
@@ -106,11 +109,15 @@ def main(page: ft.Page):
                 self.instance = vlc.Instance("--no-xlib") # Use "--no-xlib" option to run on server without GUI
                 self.player = self.instance.media_player_new()
                 self.thread = None
+                self.length = 0
+                self.length_min = 0
+                self.length_max = 100
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
                 else:
                     self.active_pod = self.name
+                self.queue = []
                 Toggle_Pod.initialized = True
             else:
                 self.page = page
@@ -124,7 +131,11 @@ def main(page: ft.Page):
                 self.instance = vlc.Instance("--no-xlib") # Use "--no-xlib" option to run on server without GUI
                 self.player = self.instance.media_player_new()
                 self.thread = None
+                self.length = 0
+                self.length_min = 0
+                self.length_max = 100
                 # self.episode_name = self.name
+                self.queue = []
 
         def play_episode(self, e=None):
             media = self.instance.media_new(self.url)
@@ -135,6 +146,7 @@ def main(page: ft.Page):
             self.audio_playing = True
             self.toggle_current_status()
             self.record_history()
+            self.length = 1
 
         def _monitor_audio(self):
             while True:
@@ -185,7 +197,24 @@ def main(page: ft.Page):
             database_functions.functions.delete_podcast(cnx, self.url, self.title, active_user.user_id)
 
 
-        # def queue_pod(self):
+        def queue_pod(self):
+            if self.audio_playing:
+                # Add the new episode URL to the vlc playlist
+                media = self.instance.media_new(self.url)
+                media_list = self.instance.media_list_new([media])
+                media_list_player = self.instance.media_list_player_new()
+                media_list_player.set_media_list(media_list)
+
+                # Update the internal queue list
+                self.queue.append(self.url)
+
+                print(f"Added episode '{self.title}' to the queue")
+                print(self.queue)
+            else:
+                self.play_episode()
+
+        def get_queue(self):
+            return self.queue
 
     def refresh_podcasts(e):
         pr = ft.ProgressRing()
@@ -339,8 +368,6 @@ def main(page: ft.Page):
                     icon_size=40,
                     tooltip="No Episodes Added Yet"
                 )
-                home_play_options = ft.Column(controls=[home_ep_play_button, home_popup_button])
-                # Creating column and row for home layout
                 home_ep_column = ft.Column(
                     controls=[home_entry_title, home_entry_description, home_entry_released]
                 )
@@ -1073,12 +1100,9 @@ def main(page: ft.Page):
 
         if page.route == "/queue" or page.route == "/queue":
 
-            # episode_queue_list.reverse()
-            def get_queue():
-                pass
-
-
-            episode_queue_list = get_queue()
+            current_queue_list = current_episode.get_queue()
+            episode_queue_list = database_functions.functions.get_queue_list(cnx, current_queue_list)
+            print(episode_queue_list)
             # database_functions.functions.queue_episode_list(cnx, active_user.user_id)
 
 
@@ -1123,6 +1147,55 @@ def main(page: ft.Page):
                 queue_ep_number = 1
                 queue_ep_rows = []
                 queue_ep_row_dict = {}
+
+                for entry in episode_queue_list:
+                    queue_ep_title = entry['EpisodeTitle']
+                    queue_pod_name = entry['PodcastName']
+                    queue_pub_date = entry['EpisodePubDate']
+                    queue_ep_desc = entry['EpisodeDescription']
+                    queue_ep_artwork = entry['EpisodeArtwork']
+                    queue_ep_url = entry['EpisodeURL']
+                    queue_ep_date = entry['QueueDate']
+                    
+                    # do something with the episode information
+
+                    queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    queue_entry_description = ft.Text(queue_ep_desc, width=800)
+                    queue_entry_audio_url = ft.Text(queue_ep_url)
+                    queue_entry_released = ft.Text(queue_pub_date)
+
+                    queue_art_no = random.randint(1, 12)
+                    queue_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{queue_art_no}.jpeg")
+                    queue_art_url = queue_ep_artwork if queue_ep_artwork else queue_art_fallback
+                    queue_art_parsed = check_image(queue_art_url)
+                    queue_entry_artwork_url = ft.Image(src=queue_art_parsed, width=150, height=150)
+                    queue_ep_play_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color="blue400",
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=queue_ep_url, title=queue_ep_title: play_selected_episode(url, title)
+                    )
+                    queue_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                    # icon_size=40, icon_color="blue400", tooltip="Options",
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: delete_selected_episode(url, title))
+                        ]
+                    )
+                    queue_play_options = ft.Column(controls=[queue_ep_play_button, queue_popup_button])
+                    # Creating column and row for queue layout
+                    queue_ep_column = ft.Column(
+                        controls=[queue_entry_title, queue_entry_description, queue_entry_released]
+                    )
+                    queue_ep_row = ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        controls=[queue_entry_artwork_url, queue_ep_column, queue_play_options]
+                    )
+                    queue_ep_rows.append(queue_ep_row)
+                    queue_ep_row_dict[f'search_row{queue_ep_number}'] = queue_ep_row
+                    queue_pods_active = True
+                    queue_ep_number += 1
 
             queue_title = ft.Text(
             "Current Listen Queue:",
@@ -1469,6 +1542,9 @@ def main(page: ft.Page):
     currently_playing.padding=ft.padding.only(left=20)
     currently_playing.padding=ft.padding.only(top=10)
 
+
+    audio_scrubber = ft.Slider(value=current_episode.length, max=current_episode.length_max, min=current_episode.length_min, label="{value}")
+
     ep_height = 50
     ep_width = 4000
     audio_container = ft.Container(
@@ -1480,7 +1556,7 @@ def main(page: ft.Page):
         content=ft.Row(
             vertical_alignment=ft.CrossAxisAlignment.END,  
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-            controls=[currently_playing, ep_audio_controls]
+            controls=[currently_playing, audio_scrubber, ep_audio_controls]
         )
     )
         
@@ -1519,6 +1595,8 @@ def main(page: ft.Page):
     def queue_selected_episode(url, title):
         current_episode.url = url
         current_episode.title = title
+        current_episode.name = title
+        current_episode.queue_pod()
         
 
 # Starting Page Layout
@@ -1529,7 +1607,13 @@ def main(page: ft.Page):
     # navbar.visible = False
     page.appbar.visible = False
     
-    start_login(page)
+    if login_screen == True:
+
+        start_login(page)
+    else:
+        active_user.user_id = 1
+        active_user.fullname = 'Guest User'
+        go_homelogin(page)
 
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER)

@@ -264,26 +264,29 @@ def refresh_single_pod(cnx, podcast_id):
 def record_podcast_history(cnx, episode_title, user_id, episode_pos):
     from datetime import datetime
     cursor = cnx.cursor()
-    
+
     # Check if the episode exists in the database
     check_episode = ("SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s")
     cursor.execute(check_episode, (episode_title,))
     result = cursor.fetchone()
-    
+
     if result is not None:
         episode_id = result[0]
 
+        # Fetch the result of the first query before executing the second query
+        cursor.fetchone()
+
         # Check if a record already exists in the UserEpisodeHistory table
         check_history = ("SELECT * FROM UserEpisodeHistory "
-                            "WHERE EpisodeID = %s AND UserID = %s")
+                          "WHERE EpisodeID = %s AND UserID = %s")
         cursor.execute(check_history, (episode_id, user_id))
         result = cursor.fetchone()
 
         if result is not None:
             # Update the existing record
             update_history = ("UPDATE UserEpisodeHistory "
-                                "SET ListenDuration = %s, ListenDate = %s "
-                                "WHERE UserEpisodeHistoryID = %s")
+                              "SET ListenDuration = %s, ListenDate = %s "
+                              "WHERE UserEpisodeHistoryID = %s")
             progress_id = result[0]
             new_listen_duration = round(episode_pos)
             now = datetime.now()
@@ -300,8 +303,9 @@ def record_podcast_history(cnx, episode_title, user_id, episode_pos):
             cursor.execute(add_history, values)
 
         cnx.commit()
-        
+
     cursor.close()
+
 
 def get_user_id(cnx, username):
     cursor = cnx.cursor()
@@ -453,6 +457,94 @@ def delete_podcast(cnx, url, title, user_id):
     print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
     
     cursor.close()
+
+def get_episode_id(cnx, podcast_id, episode_title, episode_url):
+    cursor = cnx.cursor()
+
+    query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s AND EpisodeTitle = %s AND EpisodeURL = %s"
+    params = (podcast_id, episode_title, episode_url)
+
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+
+    if result:
+        episode_id = result[0]
+    else:
+        # Episode not found, insert a new episode into the Episodes table
+        query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeURL) VALUES (%s, %s, %s)"
+        params = (podcast_id, episode_title, episode_url)
+
+        cursor.execute(query, params)
+        episode_id = cursor.lastrowid
+
+    cnx.commit()
+    cursor.close()
+
+    return episode_id
+
+def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
+    cursor = cnx.cursor()
+
+    # Get the episode ID using the episode title and URL
+    query = "SELECT EpisodeID, PodcastID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+    cursor.execute(query, (episode_title, episode_url))
+    result = cursor.fetchone()
+
+    if result:
+        episode_id, podcast_id = result
+
+        # Check if the episode is already in the queue
+        query = "SELECT COUNT(*) FROM EpisodeQueue WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id))
+        count = cursor.fetchone()[0]
+
+        if count > 0:
+            # Episode is already in the queue, move it to position 1 and update the QueueDate
+            query = "UPDATE EpisodeQueue SET QueuePosition = 1, QueueDate = CURRENT_TIMESTAMP WHERE UserID = %s AND EpisodeID = %s"
+            cursor.execute(query, (user_id, episode_id))
+            cnx.commit()
+        else:
+            # Episode is not in the queue, insert it at position 1
+            query = "INSERT INTO EpisodeQueue (UserID, EpisodeID, QueuePosition) VALUES (%s, %s, 1)"
+            cursor.execute(query, (user_id, episode_id))
+            cnx.commit()
+
+        cursor.close()
+
+        return True
+    else:
+        # Episode not found in the database
+        cursor.close()
+        return False
+
+
+
+
+
+
+def get_queue_list(cnx, queue_urls):
+    if not queue_urls:
+        return None
+    
+    query_template = """
+        SELECT Episodes.EpisodeTitle, Podcasts.PodcastName, Episodes.EpisodePubDate,
+            Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL,
+            NOW() as QueueDate
+        FROM Episodes
+        INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+        WHERE Episodes.EpisodeURL IN ({})
+    """
+    placeholders = ",".join(["%s"] * len(queue_urls))
+    query = query_template.format(placeholders)
+
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(query, queue_urls)
+
+    episode_list = cursor.fetchall()
+    cursor.close()
+    return episode_list
+
+
 
 
 if __name__ == '__main__':
