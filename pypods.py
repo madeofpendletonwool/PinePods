@@ -62,12 +62,7 @@ def main(page: ft.Page):
         page.update() 
 
     def validate_user(input_username, input_pass):
-        return Auth.Passfunctions.verify_password(cnx, input_username, input_pass)
-
-    def user_created_prompt(e):
-        page.dialog = user_dlg
-        user_dlg.open = True
-        page.update() 
+        return Auth.Passfunctions.verify_password(cnx, input_username, input_pass) 
 
     def close_dlg(e):
         user_dlg.open = False
@@ -295,6 +290,7 @@ def main(page: ft.Page):
         print('refresh complete')
         page.overlay.pop(2)
         page.update()
+        go_home(e)
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         global clicked_podcast
@@ -316,6 +312,12 @@ def main(page: ft.Page):
             self.website = website
 
 #---Flet Various Elements----------------------------------------------------------------
+    def close_invalid_dlg(e):
+        username_invalid_dlg.open = False
+        password_invalid_dlg.open = False
+        email_invalid_dlg.open = False
+        username_exists_dlg.open = False
+        page.update() 
     # Define User Creation Dialog
     user_dlg = ft.AlertDialog(
         modal=True,
@@ -332,11 +334,37 @@ def main(page: ft.Page):
         title=ft.Text("Username Invalid!"),
         content=ft.Text("Usernames require at least 6 characters!"),
         actions=[
-            ft.TextButton("Okay", on_click=close_dlg),
+            ft.TextButton("Okay", on_click=close_invalid_dlg),
         ],
-        actions_alignment=ft.MainAxisAlignment.END,
-        on_dismiss=lambda e: go_home
+        actions_alignment=ft.MainAxisAlignment.END
+    ) 
+    password_invalid_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Password Invalid!"),
+        content=ft.Text("Passwords require at least 8 characters, a capital letter and a special character!"),
+        actions=[
+            ft.TextButton("Okay", on_click=close_invalid_dlg),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+    ) 
+    email_invalid_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Invalid Email!"),
+        content=ft.Text("Email appears to be non-standard email layout!"),
+        actions=[
+            ft.TextButton("Okay", on_click=close_invalid_dlg),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
     )   
+    username_exists_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Username already exists"),
+        content=ft.Text("This username is already in use. Please try another."),
+        actions=[
+            ft.TextButton("Okay", on_click=close_invalid_dlg),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+    ) 
 
 #---Code for Theme Change----------------------------------------------------------------
 
@@ -481,7 +509,7 @@ def main(page: ft.Page):
                         tooltip="Play Episode",
                         on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
                     )
-                    home_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                    home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                     # icon_size=40, icon_color="blue400", tooltip="Options",
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
@@ -677,9 +705,9 @@ def main(page: ft.Page):
                 new_user.set_email(user_email.value),
                 new_user.set_name(user_name.value),
                 new_user.verify_user_values(),
-                new_user.popup_user_values(e),
+                # new_user.popup_user_values(e),
                 new_user.create_user(), 
-                user_created_prompt(e)))
+                new_user.user_created_prompt()))
             user_column = ft.Column(
                             controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
                         )
@@ -1184,7 +1212,7 @@ def main(page: ft.Page):
                 queue_pod_name = "No Podcasts added yet"
                 queue_ep_title = "Podcasts you queue will display here."
                 queue_pub_date = ""
-                queue_ep_desc = "Click the dropdown on podcasts and select queue. This will queue the podcast to the server for local storage."
+                queue_ep_desc = "Click the dropdown on podcasts and select queue. This will queue the podcast to play next."
                 queue_ep_url = ""
                 queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                 queue_entry_description = ft.Text(queue_ep_desc, width=800)
@@ -1353,19 +1381,53 @@ def main(page: ft.Page):
             self.fullname = new_name
 
         def verify_user_values(self):
+            print(self.username)
+            print(self.password)
             self.valid_username = len(self.username) >= 6
             self.valid_password = len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
             self.valid_email = re.match(regex, self.email) is not None
             print(f'email is valid {self.valid_email}')
+            print(f'user is valid {self.valid_username}')
+            print(f'pass is valid {self.valid_password}')
+            invalid_value = False
+            if not self.valid_username:
+                self.page.dialog = username_invalid_dlg
+                username_invalid_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            elif not self.valid_password:
+                self.page.dialog = password_invalid_dlg
+                password_invalid_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            elif not self.valid_email:
+                self.page.dialog = email_invalid_dlg
+                email_invalid_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            elif database_functions.functions.check_usernames(cnx, self.username):
+                self.page.dialog = username_exists_dlg
+                username_exists_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            self.new_user_valid = not invalid_value
+
+        def user_created_prompt(self):
+            if self.new_user_valid == True:
+                self.page.dialog = user_dlg
+                user_dlg.open = True
+                self.page.update()
+                
 
         def popup_user_values(self, e):
             pass
 
         def create_user(self):
-            salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
-            user_values = (self.fullname, self.username, self.email, hash_pw, salt)
-            database_functions.functions.add_user(cnx, user_values)
+            if self.new_user_valid == True:
+                salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
+                user_values = (self.fullname, self.username, self.email, hash_pw, salt)
+                database_functions.functions.add_user(cnx, user_values)
 
     # Active User Stuff --------------------------
 

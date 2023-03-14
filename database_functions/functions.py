@@ -196,6 +196,37 @@ def refresh_pods(cnx):
 
     cursor.close()
 
+def remove_unavailable_episodes(cnx):
+    cursor = cnx.cursor()
+
+    # select all episodes
+    select_episodes = "SELECT EpisodeID, PodcastID, EpisodeTitle, EpisodeURL, EpisodePubDate FROM Episodes"
+    cursor.execute(select_episodes)
+    episodes = cursor.fetchall()
+
+    # iterate through all episodes
+    for episode in episodes:
+        episode_id, podcast_id, episode_title, episode_url, published_date = episode
+
+        try:
+            print('checking')
+            # check if episode URL is still valid
+            response = requests.head(episode_url)
+            if response.status_code == 404:
+                print('deleteing')
+                # remove episode from database
+                delete_episode = "DELETE FROM Episodes WHERE EpisodeID=%s"
+                cursor.execute(delete_episode, (episode_id,))
+                cnx.commit()
+
+        except Exception as e:
+            print(f"Error checking episode {episode_id}: {e}")
+
+    cursor.close()
+
+
+
+
 def get_podcast_id_by_title(cnx, podcast_title):
     cursor = cnx.cursor()
 
@@ -543,6 +574,15 @@ def get_queue_list(cnx, queue_urls):
     episode_list = cursor.fetchall()
     cursor.close()
     return episode_list
+
+def check_usernames(cnx, username):
+    cursor = cnx.cursor()
+    query = ("SELECT COUNT(*) FROM Users WHERE Username = %s")
+    cursor.execute(query, (username,))
+    count = cursor.fetchone()[0]
+    cursor.close()
+    return count > 0
+
 
 
 
