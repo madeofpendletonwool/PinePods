@@ -209,8 +209,6 @@ def main(page: ft.Page):
                 self.page.update()
                 
         def toggle_second_status(self):
-            print(current_episode.seconds)
-
             audio_scrubber.value = self.get_current_seconds()
             audio_scrubber.update()
             current_time.content = ft.Text(self.current_progress)
@@ -260,7 +258,6 @@ def main(page: ft.Page):
                 self.queue.append(self.url)
 
                 print(f"Added episode '{self.title}' to the queue")
-                print(self.queue)
             else:
                 self.play_episode()
 
@@ -492,8 +489,11 @@ def main(page: ft.Page):
                     home_ep_url = entry['EpisodeURL']
                     # do something with the episode information
 
-                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                    home_entry_description = ft.Text(home_ep_desc, width=800)
+                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    home_entry_row = ft.ResponsiveRow([
+    ft.Column(col={"sm": 6}, controls=[home_entry_title]),
+])
+                    home_entry_description = ft.Text(home_ep_desc)
                     home_entry_audio_url = ft.Text(home_ep_url)
                     home_entry_released = ft.Text(home_pub_date)
 
@@ -510,21 +510,17 @@ def main(page: ft.Page):
                         on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
                     )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
-                    # icon_size=40, icon_color="blue400", tooltip="Options",
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title))
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
                         ]
                     )
-                    home_play_options = ft.Column(controls=[home_ep_play_button, home_popup_button])
-                    # Creating column and row for home layout
-                    home_ep_column = ft.Column(
-                        controls=[home_entry_title, home_entry_description, home_entry_released]
-                    )
-                    home_ep_row = ft.Row(
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[home_entry_artwork_url, home_ep_column, home_play_options]
-                    )
+                    home_ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                    ])
+                    home_ep_row = ft.Container(content=home_ep_row_content)
+                    home_ep_row.padding=padding.only(left=70, right=50)
                     home_ep_rows.append(home_ep_row)
                     home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
                     home_pods_active = True
@@ -1005,8 +1001,8 @@ def main(page: ft.Page):
                     hist_ep_url = entry['EpisodeURL']
                     hist_ep_listen_date = entry['ListenDate']
                     # do something with the episode information
-                    hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                    hist_entry_description = ft.Text(hist_ep_desc, width=800)
+                    hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    hist_entry_description = ft.Text(hist_ep_desc)
                     hist_entry_audio_url = ft.Text(hist_ep_url)
                     hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
 
@@ -1022,23 +1018,18 @@ def main(page: ft.Page):
                         tooltip="Play Episode",
                         on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
                     )
-                    hist_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
-                    # icon_size=40, icon_color="blue400", tooltip="Options",
+                    hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: queue_selected_episode(url, title)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
                         ]
                     )
-                    hist_play_options = ft.Column(controls=[hist_ep_play_button, hist_popup_button])
-                    
-                    # Creating column and row for search layout
-                    hist_ep_column = ft.Column(
-                        controls=[hist_entry_title, hist_entry_description, hist_entry_listened]
-                    )
-                    hist_ep_row = ft.Row(
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[hist_entry_artwork_url, hist_ep_column, hist_play_options]
-                    )
+                    hist_ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
+                    ])
+                    hist_ep_row = ft.Container(content=hist_ep_row_content)
+                    hist_ep_row.padding=padding.only(left=70, right=50)
                     hist_ep_rows.append(hist_ep_row)
                     hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
                     hist_pods_active = True
@@ -1130,8 +1121,8 @@ def main(page: ft.Page):
                     
                     # do something with the episode information
 
-                    download_entry_title = ft.Text(f'{download_pod_name} - {download_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                    download_entry_description = ft.Text(download_ep_desc, width=800)
+                    download_entry_title = ft.Text(f'{download_pod_name} - {download_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    download_entry_description = ft.Text(download_ep_desc)
                     download_entry_audio_url = ft.Text(download_ep_url)
                     download_entry_released = ft.Text(download_pub_date)
 
@@ -1147,22 +1138,18 @@ def main(page: ft.Page):
                         tooltip="Play Episode",
                         on_click=lambda x, url=download_ep_local_url, title=download_ep_title: play_selected_episode(url, title)
                     )
-                    download_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
-                    # icon_size=40, icon_color="blue400", tooltip="Options",
+                    download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title: queue_selected_episode(url, title)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Download", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title))
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title))
                         ]
                     )
-                    download_play_options = ft.Column(controls=[download_ep_play_button, download_popup_button])
-                    # Creating column and row for download layout
-                    download_ep_column = ft.Column(
-                        controls=[download_entry_title, download_entry_description, download_entry_released]
-                    )
-                    download_ep_row = ft.Row(
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[download_entry_artwork_url, download_ep_column, download_play_options]
-                    )
+                    download_ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
+                    ])
+                    download_ep_row = ft.Container(content=download_ep_row_content)
+                    download_ep_row.padding=padding.only(left=70, right=50)
                     download_ep_rows.append(download_ep_row)
                     download_ep_row_dict[f'search_row{download_ep_number}'] = download_ep_row
                     download_pods_active = True
@@ -1201,7 +1188,7 @@ def main(page: ft.Page):
 
             current_queue_list = current_episode.get_queue()
             episode_queue_list = database_functions.functions.get_queue_list(cnx, current_queue_list)
-            print(episode_queue_list)
+
             # database_functions.functions.queue_episode_list(cnx, active_user.user_id)
 
 
@@ -1381,15 +1368,10 @@ def main(page: ft.Page):
             self.fullname = new_name
 
         def verify_user_values(self):
-            print(self.username)
-            print(self.password)
             self.valid_username = len(self.username) >= 6
             self.valid_password = len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
             self.valid_email = re.match(regex, self.email) is not None
-            print(f'email is valid {self.valid_email}')
-            print(f'user is valid {self.valid_username}')
-            print(f'pass is valid {self.valid_password}')
             invalid_value = False
             if not self.valid_username:
                 self.page.dialog = username_invalid_dlg
@@ -1682,7 +1664,6 @@ def main(page: ft.Page):
 
 
     def slider_changed(e):
-        print(audio_scrubber.value)
         formatted_scrub = format_time(audio_scrubber.value)
         current_time.content = ft.Text(formatted_scrub)
         current_time.update()
@@ -1691,24 +1672,66 @@ def main(page: ft.Page):
 
     podcast_length = ft.Container(content=ft.Text('doesntmatter'))
     current_time = ft.Container(content=ft.Text('placeholder'))
-    audio_scrubber = ft.Slider(min=0, max=current_episode.seconds, label="{value}", on_change=slider_changed)
+    audio_scrubber = ft.Slider(min=0, expand=True,  max=current_episode.seconds, label="{value}", on_change=slider_changed)
+    audio_scrubber.width = '100%'
+    audio_scrubber_column = ft.Column(controls=[audio_scrubber])
+    audio_scrubber_column.horizontal_alignment.STRETCH
+    audio_scrubber_column.width = '100%'
 
-
-
-    ep_height = 50
-    ep_width = 4000
-    audio_container = ft.Container(
-        height=ep_height,
-        width=ep_width,
-        bgcolor='black',
-        border_radius=45,
-        padding=6,
-        content=ft.Row(
-            vertical_alignment=ft.CrossAxisAlignment.END,  
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-            controls=[currently_playing, current_time, audio_scrubber, podcast_length, ep_audio_controls]
+    scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
+    audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, controls=[scrub_bar_row, ep_audio_controls])
+    def page_checksize(e):
+        if page.width <= 768:
+            ep_height = 100
+            ep_width = 4000
+            audio_container.height = ep_height
+            audio_container.content = ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
+                controls=[currently_playing, audio_controls_row])
+            audio_container.update()
+            page.update()
+        else:
+            print(page.width)
+            ep_height = 50
+            ep_width = 4000
+            audio_container.height = ep_height
+            audio_container.content = ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.END,  
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
+                controls=[currently_playing, audio_controls_row])
+            audio_container.update()
+    if page.width <= 768:
+        ep_height = 100
+        ep_width = 4000
+        audio_container = ft.Container(
+            height=ep_height,
+            width=ep_width,
+            bgcolor='black',
+            border_radius=45,
+            padding=6,
+            content=ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.END,  
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
+                controls=[currently_playing, audio_controls_row]
+            )
         )
-    )
+    else:
+        ep_height = 50
+        ep_width = 4000
+        audio_container = ft.Container(
+            height=ep_height,
+            width=ep_width,
+            bgcolor='black',
+            border_radius=45,
+            padding=6,
+            content=ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.END,  
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
+                controls=[currently_playing, audio_controls_row]
+            )
+        )
+
+    page.on_resize = page_checksize
         
     # page.overlay.append(audio_container)
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
@@ -1732,10 +1755,20 @@ def main(page: ft.Page):
         current_episode.name = title
         current_episode.play_episode()
 
-    def download_selected_episode(url, title):
+    def download_selected_episode(url, title, page):
+        pr = ft.ProgressRing()
+        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        page.update()
         current_episode.url = url
         current_episode.title = title
+        print('predownload')
         current_episode.download_pod()
+        print('postdownload')
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+        page.snack_bar.open = True
+        page.overlay.pop(2)
+        page.update()
+
         
     def delete_selected_episode(url, title):
         current_episode.url = url
@@ -1766,6 +1799,6 @@ def main(page: ft.Page):
         go_homelogin(page)
 
 # Browser Version
-# ft.app(target=main, view=ft.WEB_BROWSER)
+# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
 ft.app(target=main, port=8034)

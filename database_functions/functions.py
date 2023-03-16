@@ -372,12 +372,14 @@ def get_user_details(cnx, username):
 def user_history(cnx, user_id):
     cursor = cnx.cursor()
     query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
-             "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-             "Episodes.EpisodeURL, Podcasts.PodcastName, Episodes.EpisodePubDate "
-             "FROM UserEpisodeHistory "
-             "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
-             "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             "WHERE UserEpisodeHistory.UserID = %s")
+            "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
+            "Episodes.EpisodeURL, Podcasts.PodcastName, Episodes.EpisodePubDate "
+            "FROM UserEpisodeHistory "
+            "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
+            "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+            "WHERE UserEpisodeHistory.UserID = %s "
+            "ORDER BY UserEpisodeHistory.ListenDate")
+
     cursor.execute(query, (user_id,))
     # results = cursor.fetchall()
     results = [dict(zip([column[0] for column in cursor.description], row)) for row in cursor.fetchall()]

@@ -35,6 +35,7 @@ N/A
  - [x] Add visual progress bar based on time listened to podcasts partly listened to
  - [x] Add Download option for podcasts. In addition, display downloaded podcasts in downloads area. Allow for deletion of these after downloaded
  - [ ] Add Queue, and allow podcasts to be removed from queue once added (Queue is added but you can't remove them from it yet)
+ - [ ] Implement smoother scrolling with big list loading
  - [ ] Implement saved episodes
  - [ ] Allow local downloads, to just download the mp3 files direct
  - [x] Create login screen
@@ -64,7 +65,6 @@ N/A
 ## Quick Fixes
 
 - [x] Check for and remove podcasts no longer available (This will be handled from scheduled cron job that queues)
-- [ ] Implement smoother scrolling with big list loading
 - [ ] Check user values when adding new user
 - [ ] Prevent user from being added without required info 
 - [ ] Prevent submit for user from being hit without populated values

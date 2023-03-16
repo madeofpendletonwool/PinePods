@@ -4,7 +4,8 @@ CREATE TABLE Users (
   Username TEXT,
   Email VARCHAR(255),
   Hashed_PW CHAR(60),
-  Salt CHAR(60)
+  Salt CHAR(60),
+  IsAdmin TINYINT(1)
 );
 
 INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt)
