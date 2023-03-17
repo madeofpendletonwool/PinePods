@@ -4,11 +4,12 @@ CREATE TABLE Users (
   Username TEXT,
   Email VARCHAR(255),
   Hashed_PW CHAR(60),
-  Salt CHAR(60)
+  Salt CHAR(60),
+  IsAdmin TINYINT(1)
 );
 
-INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt)
-VALUES ('Guest User', 'guest', 'guest@pypods.com', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh');
+INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
+VALUES ('Guest User', 'guest', 'guest@pypods.com', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0);
 
 
 CREATE TABLE Podcasts (
@@ -71,6 +72,7 @@ CREATE TABLE EpisodeQueue (
   QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UserID INT,
   EpisodeID INT,
+  QueuePosition INT NOT NULL DEFAULT 0,
   FOREIGN KEY (UserID) REFERENCES Users(UserID),
   FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );

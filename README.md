@@ -31,30 +31,50 @@ N/A
  - [x] Play Audio Files using Python - The python vlc package is used for this
  - [x] Record listen history and display user history on specific page
  - [ ] Record accurate listen time. So if you stop listening part-way through you can resume from the same spot
- - [ ] Scrubbing playback from a progress bar - ft.slider()
- - [ ] Add visual progress bar based on time listened to podcasts partly listened to
- - [ ] Add Download option for podcasts. In addition, display downloaded podcasts in downloads area. Allow for deletion of these after downloaded
- - [ ] Add Queue, and allow podcasts to be removed from queue once added
+ - [x] Scrubbing playback from a progress bar - ft.slider()
+ - [x] Add visual progress bar based on time listened to podcasts partly listened to
+ - [x] Add Download option for podcasts. In addition, display downloaded podcasts in downloads area. Allow for deletion of these after downloaded
+ - [ ] Add Queue, and allow podcasts to be removed from queue once added (Queue is added but you can't remove them from it yet)
+ - [ ] Implement smoother scrolling with big list loading
+ - [ ] Implement saved episodes
  - [ ] Allow local downloads, to just download the mp3 files direct
- - [ ] Create login screen
+ - [x] Create login screen
+ - [ ] Customize login screen
  - [ ] Theme settings
  - [ ] Admin area for User management
  - [ ] Remove Podcasts from search or just don't allow adding a second time
+ - [ ] Add Itunes podcast API
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
      - [ ] Create Docker-Compose Code
  - [ ] Create Web App
-     - [ ] Security and Logins
+     - [ ] More responsive layout 
+     - [x] Security and Logins
      - [ ] Database interaction for users and podcast data
      - [ ] MFA Logins - Github integration and local MFA
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
+     - [x] Proper web layout
      - [ ] Windows App
      - [ ] Mac App
      - [ ] Android App
      - [ ] IOS App
+
+## Quick Fixes
+
+- [x] Check for and remove podcasts no longer available (This will be handled from scheduled cron job that queues)
+- [x] Check user values when adding new user
+- [x] Prevent user from being added without required info 
+- [x] Prevent submit for user from being hit without populated values
+- [ ] Add loading wheels throughout
+- [ ] Add picture of current episode to soundbar
+- [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)
+- [ ] Figure out why some podcasts don't appear in search
+- [ ] Fix local images
+- [ ] If a podcast is already downloaded do not allow downloads - instead remove
+
 
 ## Platform Availability
 
