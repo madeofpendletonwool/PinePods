@@ -467,10 +467,12 @@ def main(page: ft.Page):
                 home_ep_column = ft.Column(
                     controls=[home_entry_title, home_entry_description, home_entry_released]
                 )
-                home_ep_row = ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[home_entry_artwork_url, home_ep_column, home_ep_play_button]
-                )
+                home_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
+                ])
+                home_ep_row = ft.Container(content=home_ep_row_content)
+                home_ep_row.padding=padding.only(left=70, right=50)
                 home_ep_rows.append(home_ep_row)
                 home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
                 home_pods_active = True
@@ -645,10 +647,10 @@ def main(page: ft.Page):
                         
                         # Defining the attributes of each podcast that will be displayed on screen
                         pod_title = ft.TextButton(
-                            text=d['title'], width=600,
+                            text=d['title'],
                             on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
                         )
-                        pod_desc = ft.Text(d['description'], width=700)
+                        pod_desc = ft.Text(d['description'])
                         # Episode Count and subtitle
                         pod_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD)
                         pod_ep_count = ft.Text(d['episodeCount'])
@@ -664,9 +666,12 @@ def main(page: ft.Page):
                         search_column = ft.Column(
                             controls=[pod_title, pod_desc, pod_ep_info]
                         )
-                        search_row = ft.Row(
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            controls=[pod_image, search_column, add_pod_button])
+                        search_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[pod_image]),
+                            ft.Column(col={"md": 10}, controls=[search_column, add_pod_button]),
+                        ])
+                        search_row = ft.Container(content=search_row_content)
+                        search_row.padding=padding.only(left=70, right=50)
                         search_rows.append(search_row)
                         search_row_dict[f'search_row{pod_number}'] = search_row
                         pod_number += 1
@@ -687,6 +692,45 @@ def main(page: ft.Page):
             )
 
         if page.route == "/settings" or page.route == "/settings":
+
+            # User Settings
+            user_setting = ft.Text(
+            "Personal Settings:",
+            size=30,
+            font_family="RobotoSlab",
+            weight=ft.FontWeight.W_300,
+        )
+            user_setting_text = ft.Container(content=user_setting)
+            user_setting_text.padding=padding.only(left=70, right=50)
+
+            # Theme Select Elements
+            theme_text = ft.Text('Select Custom Theme:')
+            theme_drop = ft.Dropdown(width=150,
+             options=[
+                ft.dropdown.Option("Abyss"),
+                ft.dropdown.Option("Dracula"),
+                ft.dropdown.Option("Dracula Light"),
+                ft.dropdown.Option("Greenie Meanie"),
+                ft.dropdown.Option("HotDogStand"),
+             ]
+             )
+            theme_submit = ft.TextButton("Submit")
+            theme_column = ft.Column(controls=[theme_text, theme_drop, theme_submit])
+            theme_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            controls=[theme_column])
+
+            # Admin Only Settings
+
+            admin_setting = ft.Text(
+            "Administration Settings:",
+            size=30,
+            font_family="RobotoSlab",
+            weight=ft.FontWeight.W_300,
+        )
+            admin_setting_text = ft.Container(content=admin_setting)
+            admin_setting_text.padding=padding.only(left=70, right=50)
 
             # New User Creation Elements
             new_user = User(page)
@@ -712,30 +756,16 @@ def main(page: ft.Page):
                             alignment=ft.MainAxisAlignment.CENTER,
                             controls=[user_column])
 
-            # Theme Select Elements
-            theme_text = ft.Text('Select Custom Theme:')
-            theme_drop = ft.Dropdown(width=150,
-             options=[
-                ft.dropdown.Option("Abyss"),
-                ft.dropdown.Option("Dracula"),
-                ft.dropdown.Option("Dracula Light"),
-                ft.dropdown.Option("Greenie Meanie"),
-                ft.dropdown.Option("HotDogStand"),
-             ]
-             )
-            theme_column = ft.Column(controls=[theme_text, theme_drop])
-            theme_row = ft.Row(
-                            vertical_alignment=ft.CrossAxisAlignment.START,
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            controls=[theme_column])
 
             # Create search view object
-            settings_view = ft.View("/searchpod",
+            settings_view = ft.View("/settings",
                     [
                         AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
                         actions=[theme_icon_button], ),
+                        user_setting_text,
+                        theme_row,
+                        admin_setting_text,
                         user_row,
-                        theme_row
                     ]
                     
                 )
@@ -755,16 +785,23 @@ def main(page: ft.Page):
             display_pod_art_parsed = check_image(display_pod_art_url)
             pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
             pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
-            pod_feed_desc = ft.Text(clicked_podcast.description, width=700)
+            pod_feed_desc = ft.Text(clicked_podcast.description)
             pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
             # pod_feed_site1 = ft.Text(clicked_podcast.website, style=ft.TextThemeStyle.TITLE_SMALL)
             
-            feed_column = ft.Column(
-                controls=[pod_feed_title, pod_feed_desc, pod_feed_site]
-            )
-            feed_row = ft.Row(
-                alignment=ft.MainAxisAlignment.CENTER,
-                controls=[pod_image, feed_column])
+            # feed_column = ft.Column(
+            #     controls=[pod_feed_title, pod_feed_desc, pod_feed_site]
+            # )
+            # feed_row = ft.Row(
+            #     alignment=ft.MainAxisAlignment.CENTER,
+            #     controls=[pod_image, feed_column])
+
+            feed_row_content = ft.ResponsiveRow([
+            ft.Column(col={"md": 4}, controls=[pod_image]),
+            ft.Column(col={"md": 8}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
+            ])
+            feed_row = ft.Container(content=feed_row_content)
+            feed_row.padding=padding.only(left=70, right=50)
 
             # Episode Info
             # Run Function to get episode data
@@ -803,8 +840,8 @@ def main(page: ft.Page):
                 else:
                     print("Skipping entry without required attributes or enclosures")
 
-                entry_title = ft.Text(parsed_title, width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                entry_description = ft.Text(parsed_description, width=800)
+                entry_title = ft.Text(parsed_title, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                entry_description = ft.Text(parsed_description)
                 entry_audio_url = ft.Text(parsed_audio_url)
                 entry_released = ft.Text(parsed_release_date)
                 display_art_entry_parsed = check_image(display_art_url)
@@ -818,23 +855,28 @@ def main(page: ft.Page):
                     tooltip="Play Episode",
                     on_click = lambda x, url=parsed_audio_url, title=parsed_title: play_selected_episode(url, title)
                 )
-                ep_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
-                # icon_size=40, icon_color="blue400", tooltip="Options",
-                    items=[
+                ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
+                        items=[
                         ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title: queue_selected_episode(url, title)),
                         ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title))
                     ]
                 )
-                ep_play_options = ft.Column(controls=[ep_play_button, ep_popup_button])
+                ep_play_options = ft.Row(controls=[ep_play_button, ep_popup_button])
             
                 # Creating column and row for search layout
-                ep_column = ft.Column(
-                    controls=[entry_title, entry_description, entry_released]
-                )
-                ep_row = ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[entry_artwork_url, ep_column, ep_play_options]
-                )
+                # ep_column = ft.Column(
+                #     controls=[entry_title, entry_description, entry_released]
+                # )
+                # ep_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[entry_artwork_url, ep_column, ep_play_options]
+                # )
+                ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released, ep_play_options])])
+                
+                ep_row = ft.Container(content=ep_row_content)
+                ep_row.padding=padding.only(left=70, right=50)
                 ep_rows.append(ep_row)
                 ep_row_dict[f'search_row{ep_number}'] = ep_row
                 ep_number += 1
@@ -873,33 +915,31 @@ def main(page: ft.Page):
                 evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
                 open_poddisplay(e)
         
-            for entry in pod_list_data:
-                pod_list_title = entry['PodcastName']
-                pod_list_artwork = entry['ArtworkURL']
-                pod_list_desc = entry['Description']
-                pod_list_ep_count = entry['EpisodeCount']
-                pod_list_website = entry['WebsiteURL']
-                pod_list_feed = entry['FeedURL']
-                pod_list_author = entry['Author']
-                pod_list_categories = entry['Categories']
+            if pod_list_data is None:
+                pod_list_title = 'No Podcasts added yet'
+                artwork_no = random.randint(1, 12)
+                pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading episodes as well as queueing them. Enjoy the listening!"
+                pod_list_ep_count = 'Start Searching!'
+                pod_list_website = "https://github.com/madeofpendletonwool/pypods"
+                pod_list_feed = ""
+                pod_list_author = "Pypods"
+                pod_list_categories = ""
 
                 # Parse webpages needed to extract podcast artwork
                 pod_list_art_parsed = check_image(pod_list_artwork)
                 pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
 
                 # Defining the attributes of each podcast that will be displayed on screen
-                pod_list_title_display = ft.TextButton(
-                    text=pod_list_title, width=600,
-                    on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork, author=pod_list_author, categories=pod_list_categories, desc=pod_list_desc, ep_count=pod_list_ep_count, feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website)
-                )
-                pod_list_desc_display = ft.Text(pod_list_desc, width=700)
+                pod_list_title_display = ft.Text(pod_list_title)
+                pod_list_desc_display = ft.Text(pod_list_desc)
                 # Episode Count and subtitle
-                pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD)
+                pod_list_ep_title = ft.Text('Pypods:', weight=ft.FontWeight.BOLD)
                 pod_list_ep_count_display = ft.Text(pod_list_ep_count)
                 pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
                 remove_pod_button = ft.IconButton(
-                    icon=ft.icons.INDETERMINATE_CHECK_BOX,
-                    icon_color="red400",
+                    icon=ft.icons.EMOJI_EMOTIONS,
+                    icon_color="blue400",
                     icon_size=40,
                     tooltip="Remove Podcast",
                     on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title)
@@ -909,12 +949,69 @@ def main(page: ft.Page):
                 pod_list_column = ft.Column(
                     controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
                 )
-                pod_list_row = ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
+                # pod_list_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
+                pod_list_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
+                    ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
+                ])
+                pod_list_row = ft.Container(content=pod_list_row_content)
+                pod_list_row.padding=padding.only(left=70, right=50)
                 pod_list_rows.append(pod_list_row)
                 pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
-                pod_list_number += 1
+                # pod_list_number += 1
+
+            else:
+
+                for entry in pod_list_data:
+                    pod_list_title = entry['PodcastName']
+                    pod_list_artwork = entry['ArtworkURL']
+                    pod_list_desc = entry['Description']
+                    pod_list_ep_count = entry['EpisodeCount']
+                    pod_list_website = entry['WebsiteURL']
+                    pod_list_feed = entry['FeedURL']
+                    pod_list_author = entry['Author']
+                    pod_list_categories = entry['Categories']
+
+                    # Parse webpages needed to extract podcast artwork
+                    pod_list_art_parsed = check_image(pod_list_artwork)
+                    pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
+
+                    # Defining the attributes of each podcast that will be displayed on screen
+                    pod_list_title_display = ft.TextButton(
+                        text=pod_list_title,
+                        on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork, author=pod_list_author, categories=pod_list_categories, desc=pod_list_desc, ep_count=pod_list_ep_count, feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website)
+                    )
+                    pod_list_desc_display = ft.Text(pod_list_desc)
+                    # Episode Count and subtitle
+                    pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD)
+                    pod_list_ep_count_display = ft.Text(pod_list_ep_count)
+                    pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
+                    remove_pod_button = ft.IconButton(
+                        icon=ft.icons.INDETERMINATE_CHECK_BOX,
+                        icon_color="red400",
+                        icon_size=40,
+                        tooltip="Remove Podcast",
+                        on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title)
+                    )
+
+                    # Creating column and row for search layout
+                    pod_list_column = ft.Column(
+                        controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
+                    )
+                    # pod_list_row = ft.Row(
+                    #     alignment=ft.MainAxisAlignment.CENTER,
+                    #     controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
+                    pod_list_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
+                        ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
+                    ])
+                    pod_list_row = ft.Container(content=pod_list_row_content)
+                    pod_list_row.padding=padding.only(left=70, right=50)
+                    pod_list_rows.append(pod_list_row)
+                    pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
+                    pod_list_number += 1
             pod_view_title = ft.Text(
             "Added Podcasts:",
             size=30,
@@ -979,10 +1076,13 @@ def main(page: ft.Page):
                 hist_ep_column = ft.Column(
                     controls=[hist_entry_title, hist_entry_description, hist_entry_released]
                 )
-                hist_ep_row = ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[hist_entry_artwork_url, hist_ep_column, hist_ep_play_button]
-                )
+
+                hist_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[hist_ep_column, hist_ep_play_button]),
+                ])
+                hist_ep_row = ft.Container(content=hist_ep_row_content)
+                hist_ep_row.padding=padding.only(left=70, right=50)
                 hist_ep_rows.append(hist_ep_row)
                 hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
                 hist_pods_active = True
@@ -1095,10 +1195,16 @@ def main(page: ft.Page):
                 download_ep_column = ft.Column(
                     controls=[download_entry_title, download_entry_description, download_entry_released]
                 )
-                download_ep_row = ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[download_entry_artwork_url, download_ep_column, download_ep_play_button]
-                )
+                # download_ep_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[download_entry_artwork_url, download_ep_column, download_ep_play_button]
+                # )
+                download_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[download_ep_column, download_ep_play_button]),
+                ])
+                download_ep_row = ft.Container(content=download_ep_row_content)
+                download_ep_row.padding=padding.only(left=70, right=50)
                 download_ep_rows.append(download_ep_row)
                 download_ep_row_dict[f'search_row{download_ep_number}'] = download_ep_row
                 download_pods_active = True
@@ -1201,8 +1307,8 @@ def main(page: ft.Page):
                 queue_pub_date = ""
                 queue_ep_desc = "Click the dropdown on podcasts and select queue. This will queue the podcast to play next."
                 queue_ep_url = ""
-                queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                queue_entry_description = ft.Text(queue_ep_desc, width=800)
+                queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                queue_entry_description = ft.Text(queue_ep_desc)
                 queue_entry_audio_url = ft.Text(queue_ep_url)
                 queue_entry_released = ft.Text(queue_pub_date)
                 artwork_no = random.randint(1, 12)
@@ -1219,10 +1325,16 @@ def main(page: ft.Page):
                 queue_ep_column = ft.Column(
                     controls=[queue_entry_title, queue_entry_description, queue_entry_released]
                 )
-                queue_ep_row = ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[queue_entry_artwork_url, queue_ep_column, queue_ep_play_button]
-                )
+                # queue_ep_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[queue_entry_artwork_url, queue_ep_column, queue_ep_play_button]
+                # )
+                queue_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[queue_ep_column, queue_ep_play_button]),
+                ])
+                queue_ep_row = ft.Container(content=queue_ep_row_content)
+                queue_ep_row.padding=padding.only(left=70, right=50)
                 queue_ep_rows.append(queue_ep_row)
                 queue_ep_row_dict[f'search_row{queue_ep_number}'] = queue_ep_row
                 queue_pods_active = True
@@ -1245,8 +1357,8 @@ def main(page: ft.Page):
                     
                     # do something with the episode information
 
-                    queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                    queue_entry_description = ft.Text(queue_ep_desc, width=800)
+                    queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    queue_entry_description = ft.Text(queue_ep_desc)
                     queue_entry_audio_url = ft.Text(queue_ep_url)
                     queue_entry_released = ft.Text(queue_pub_date)
 
@@ -1274,10 +1386,16 @@ def main(page: ft.Page):
                     queue_ep_column = ft.Column(
                         controls=[queue_entry_title, queue_entry_description, queue_entry_released]
                     )
-                    queue_ep_row = ft.Row(
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[queue_entry_artwork_url, queue_ep_column, queue_play_options]
-                    )
+                    # queue_ep_row = ft.Row(
+                    #     alignment=ft.MainAxisAlignment.CENTER,
+                    #     controls=[queue_entry_artwork_url, queue_ep_column, queue_play_options]
+                    # )
+                    queue_ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[queue_ep_column, queue_play_options]),
+                    ])
+                    queue_ep_row = ft.Container(content=queue_ep_row_content)
+                    queue_ep_row.padding=padding.only(left=70, right=50)
                     queue_ep_rows.append(queue_ep_row)
                     queue_ep_row_dict[f'search_row{queue_ep_number}'] = queue_ep_row
                     queue_pods_active = True

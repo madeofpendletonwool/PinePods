@@ -8,8 +8,8 @@ CREATE TABLE Users (
   IsAdmin TINYINT(1)
 );
 
-INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt)
-VALUES ('Guest User', 'guest', 'guest@pypods.com', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh');
+INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
+VALUES ('Guest User', 'guest', 'guest@pypods.com', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0);
 
 
 CREATE TABLE Podcasts (

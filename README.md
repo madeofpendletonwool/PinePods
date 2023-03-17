@@ -56,7 +56,7 @@ N/A
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
-     - [ ] Proper web layout
+     - [x] Proper web layout
      - [ ] Windows App
      - [ ] Mac App
      - [ ] Android App
@@ -65,14 +65,15 @@ N/A
 ## Quick Fixes
 
 - [x] Check for and remove podcasts no longer available (This will be handled from scheduled cron job that queues)
-- [ ] Check user values when adding new user
-- [ ] Prevent user from being added without required info 
-- [ ] Prevent submit for user from being hit without populated values
+- [x] Check user values when adding new user
+- [x] Prevent user from being added without required info 
+- [x] Prevent submit for user from being hit without populated values
 - [ ] Add loading wheels throughout
-- [ ] Add picture of current episode to navbar
-- [ ] Layout navbar properly
+- [ ] Add picture of current episode to soundbar
+- [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)
 - [ ] Figure out why some podcasts don't appear in search
 - [ ] Fix local images
+- [ ] If a podcast is already downloaded do not allow downloads - instead remove
 
 
 ## Platform Availability
