@@ -1916,6 +1916,6 @@ def main(page: ft.Page):
         go_homelogin(page)
 
 # Browser Version
-# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-ft.app(target=main, port=8034)
+# ft.app(target=main, port=8034)

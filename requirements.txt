@@ -6,3 +6,4 @@ feedparser
 python-vlc
 flask
 flask-cors
+python-dateutil
