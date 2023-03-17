@@ -941,8 +941,7 @@ def main(page: ft.Page):
                     icon=ft.icons.EMOJI_EMOTIONS,
                     icon_color="blue400",
                     icon_size=40,
-                    tooltip="Remove Podcast",
-                    on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title)
+                    tooltip="Remove Podcast"
                 )
 
                 # Creating column and row for search layout
