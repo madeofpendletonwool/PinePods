@@ -56,47 +56,15 @@ def search_podcast(e):
 
                     page.add(search_row)
                     pod_number += 1
-                # if k == 'description':
-                #     page.add(ft.Text(f"{v}"))
-                #     page.add(ft.Text('next pod ---------'))
-                
-                # print("new item: {} = {}".format(k, v))
-                # page.add(ft.Text(f'{k}:'))
-                # page.add(ft.Text(v))
 
 def parse_feed(feed_url):
     d = feedparser.parse(feed_url)
-    # print("Feed Title: ", d.feed.title)
-    # print("Feed Link: ", d.feed.link)
-    # print("Feed Description: ", d.feed.description)
-    # print("Feed Published Date: ", d.feed.published)
     return d
-    # print(d)
 
-    # for entry in d.entries:
-    #     audio_file = None
-    #     for link in entry.links:
-    #         if link.get("type", "").startswith("audio/"):
-    #             audio_file = link.href
-    #             break
-        # if audio_file:
-        #     print("\n")
-        #     print("Title: ", entry.title)
-        #     print("Link: ", entry.link)
-        #     print("Description: ", entry.description)
-        #     print("Audio File: ", audio_file)
-        #     # print("Published Date: ", entry.published)
-        # else:
-        #     print("\n")
-        #     print("Title: ", entry.title)
-        #     print("Link: ", entry.link)
-        #     print("Description: ", entry.description)
-        #     print("No audio file found for this entry")
-        #     print("Published Date: ", entry.published)
 
 if __name__ == "__main__":
     # Example usage
-    feed_url = "https://changelog.com/practicalai/feed"
+    feed_url = "https://feeds.fireside.fm/asknoah/rss"
     d = parse_feed(feed_url)
     for entry in d.entries:
         audio_file = None
@@ -111,6 +79,11 @@ if __name__ == "__main__":
             print("Description: ", entry.description)
             print("Audio File: ", audio_file)
             # print("Published Date: ", entry.published)
+            # print(entry.itunes_image)
+            parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+            # if parsed_artwork_url == None:
+                # parsed_artwork_url = clicked_podcast.artwork
+            print(parsed_artwork_url)
         else:
             print("\n")
             print("Title: ", entry.title)
@@ -118,3 +91,4 @@ if __name__ == "__main__":
             print("Description: ", entry.description)
             print("No audio file found for this entry")
             print("Published Date: ", entry.published)
+            print(entry.itunes_image)
