@@ -1,4 +1,5 @@
 import mysql.connector
+from mysql.connector import errorcode
 import sys
 import os
 import requests
@@ -373,7 +374,7 @@ def user_history(cnx, user_id):
     cursor = cnx.cursor()
     query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
             "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-            "Episodes.EpisodeURL, Podcasts.PodcastName, Episodes.EpisodePubDate "
+            "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
             "FROM UserEpisodeHistory "
             "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
             "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -585,11 +586,92 @@ def check_usernames(cnx, username):
     cursor.close()
     return count > 0
 
+def record_listen_duration(cnx, url, title, user_id, listen_duration):
+    listen_date = datetime.datetime.now()
+    cursor = cnx.cursor()
+
+    # Get EpisodeID from Episodes table
+    cursor.execute("SELECT EpisodeID FROM Episodes WHERE EpisodeURL=%s AND EpisodeTitle=%s", (url, title))
+    result = cursor.fetchone()
+    if result is None:
+        # Episode not found in database, handle this case
+        cursor.close()
+        return
+    episode_id = result[0]
+
+    # Check if UserEpisodeHistory row already exists for the given user and episode
+    cursor.execute("SELECT * FROM UserEpisodeHistory WHERE UserID=%s AND EpisodeID=%s", (user_id, episode_id))
+    existing_row = cursor.fetchone()
+
+    if existing_row:
+        # UserEpisodeHistory row already exists, update ListenDuration
+        listen_duration_data = (listen_duration, user_id, episode_id)
+        update_listen_duration = ("UPDATE UserEpisodeHistory SET ListenDuration=%s WHERE UserID=%s AND EpisodeID=%s")
+        cursor.execute(update_listen_duration, listen_duration_data)
+    else:
+        # UserEpisodeHistory row does not exist, insert new row
+        add_listen_duration = ("INSERT INTO UserEpisodeHistory "
+                            "(UserID, EpisodeID, ListenDate, ListenDuration) "
+                            "VALUES (%s, %s, %s, %s)")
+        listen_duration_data = (user_id, episode_id, listen_date, listen_duration)
+        cursor.execute(add_listen_duration, listen_duration_data)
+
+    cnx.commit()
+    cursor.close()
+
+def check_episode_playback(cnx, user_id, episode_title, episode_url):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        # Get the EpisodeID from the Episodes table
+        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+        cursor.execute(query, (episode_title, episode_url))
+        episode_id = cursor.fetchone()[0]
+
+        # Check if the user has played the episode before
+        query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id))
+        result = cursor.fetchone()
+
+        if result:
+            listen_duration = result[0]
+            return True, listen_duration
+        else:
+            return False, 0
+    finally:
+        if cursor:
+            cursor.fetchall()
+            cursor.close()
+        cnx.commit()
+
+
+def get_episode_listen_time(cnx, user_id, title, url):
+        cursor = None
+        try:
+            cursor = cnx.cursor()
+
+            # Get the EpisodeID from the Episodes table
+            query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+            cursor.execute(query, (title, url))
+            episode_id = cursor.fetchone()[0]
+
+            # Get the user's listen duration for this episode
+            query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
+            cursor.execute(query, (user_id, episode_id))
+            listen_duration = cursor.fetchone()[0]
+
+            return listen_duration
+
+            # Seek to the user's last listen duration
+            # current_episode.seek_to_second(listen_duration)
+
+        finally:
+            if cursor:
+                cursor.close()
 
 
 
 
-if __name__ == '__main__':
-    feed_url = "https://changelog.com/practicalai/feed"
-    cnx = 'test'
-    add_episodes(cnx, feed_url)
+
+

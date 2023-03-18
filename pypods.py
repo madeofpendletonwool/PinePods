@@ -82,6 +82,12 @@ def main(page: ft.Page):
     def launch_pod_site(e):
         page.launch_url(clicked_podcast.website)
 
+    def seconds_to_time(seconds):
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return '{:02d}:{:02d}:{:02d}'.format(hours, minutes, seconds)
+
+
     def check_image(artwork_path):
         if artwork_path.startswith('http'):
             # It's a URL, so return the path with the proxy URL appended
@@ -109,6 +115,7 @@ def main(page: ft.Page):
                 self.length_min = 0
                 self.length_max = 3000
                 self.seconds = 1
+                self.last_listen_duration_update = datetime.datetime.now()
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -132,14 +139,23 @@ def main(page: ft.Page):
                 self.length_min = 0
                 self.length_max = 3000
                 self.seconds = 1
+                self.last_listen_duration_update = datetime.datetime.now()
                 # self.episode_name = self.name
                 self.queue = []
 
-        def play_episode(self, e=None):
+        def play_episode(self, e=None, listen_duration=None):
+            print(listen_duration)
             media = self.instance.media_new(self.url)
             media.parse_with_options(vlc.MediaParseFlag.network, 1000)  # wait for media to finish loading
             self.player.set_media(media)
             self.player.play()
+            
+            # Set the playback position to the given listen duration
+            if listen_duration:
+                print(f'in duration {listen_duration}')
+                print(type(listen_duration))
+                self.player.set_time(listen_duration * 1000)
+            
             self.thread = threading.Thread(target=self._monitor_audio)
             self.thread.start()
             self.audio_playing = True
@@ -163,14 +179,22 @@ def main(page: ft.Page):
             self.length = total_length
             self.toggle_current_status()
             page.update()
-    # convert milliseconds to seconds
+            
+            # convert milliseconds to seconds
             total_seconds = media_length // 1000
             self.seconds = total_seconds
             audio_scrubber.max = self.seconds
+            
             for i in range(total_seconds):
                 self.current_progress = self.get_current_time()
                 self.toggle_second_status()
                 time.sleep(1)
+                
+                if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
+                    self.record_listen_duration()
+                    self.last_listen_duration_update = datetime.datetime.now()
+
+
 
 
         def _monitor_audio(self):
@@ -278,6 +302,17 @@ def main(page: ft.Page):
             else:
                 return 0
 
+        def record_listen_duration(self):
+            listen_duration = self.get_current_seconds()
+            database_functions.functions.record_listen_duration(cnx, self.url, self.name, active_user.user_id, listen_duration)
+
+        def seek_to_second(self, second):
+            """
+            Set the media position to the specified second.
+            """
+            print(f'in seek {second}')
+            self.player.set_time(int(second * 1000))
+
 
     def refresh_podcasts(e):
         pr = ft.ProgressRing()
@@ -287,7 +322,114 @@ def main(page: ft.Page):
         print('refresh complete')
         page.overlay.pop(2)
         page.update()
-        go_home(e)
+        # Reset current view if on homepage
+        if page.route == "/" or page.route == "/":
+            page.views.clear()
+
+            # Home Screen Podcast Layout (Episodes in Newest order)
+
+            home_episodes = database_functions.functions.return_episodes(cnx, active_user.user_id)
+
+            if home_episodes is None:
+                home_ep_number = 1
+                home_ep_rows = []
+                home_ep_row_dict = {}
+                home_pod_name = "No Podcasts added yet"
+                home_ep_title = "Podcasts you add will display new episodes here."
+                home_pub_date = ""
+                home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
+                home_ep_url = ""
+                home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                home_entry_description = ft.Text(home_ep_desc, width=800)
+                home_entry_audio_url = ft.Text(home_ep_url)
+                home_entry_released = ft.Text(home_pub_date)
+                artwork_no = random.randint(1, 12)
+                none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                none_artwork_url_parsed = check_image(none_artwork_url)
+                home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
+                home_ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color="blue400",
+                    icon_size=40,
+                    tooltip="No Episodes Added Yet"
+                )
+                home_ep_column = ft.Column(
+                    controls=[home_entry_title, home_entry_description, home_entry_released]
+                )
+                home_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
+                ])
+                home_ep_row = ft.Container(content=home_ep_row_content)
+                home_ep_row.padding=padding.only(left=70, right=50)
+                home_ep_rows.append(home_ep_row)
+                home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                home_pods_active = True
+                home_ep_number += 1
+            else:
+                home_ep_number = 1
+                home_ep_rows = []
+                home_ep_row_dict = {}
+
+                for entry in home_episodes:
+                    home_ep_title = entry['EpisodeTitle']
+                    home_pod_name = entry['PodcastName']
+                    home_pub_date = entry['EpisodePubDate']
+                    home_ep_desc = entry['EpisodeDescription']
+                    home_ep_artwork = entry['EpisodeArtwork']
+                    home_ep_url = entry['EpisodeURL']
+                    # do something with the episode information
+
+                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    home_entry_row = ft.ResponsiveRow([
+    ft.Column(col={"sm": 6}, controls=[home_entry_title]),
+])
+                    home_entry_description = ft.Text(home_ep_desc)
+                    home_entry_audio_url = ft.Text(home_ep_url)
+                    home_entry_released = ft.Text(home_pub_date)
+
+                    home_art_no = random.randint(1, 12)
+                    home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
+                    home_art_url = home_ep_artwork if home_ep_artwork else home_art_fallback
+                    home_art_parsed = check_image(home_art_url)
+                    home_entry_artwork_url = ft.Image(src=home_art_parsed, width=150, height=150)
+                    home_ep_play_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color="blue400",
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
+                    )
+                    home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
+                        ]
+                    )
+                    home_ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                    ])
+                    home_ep_row = ft.Container(content=home_ep_row_content)
+                    home_ep_row.padding=padding.only(left=70, right=50)
+                    home_ep_rows.append(home_ep_row)
+                    home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                    home_pods_active = True
+                    home_ep_number += 1
+
+            home_view = ft.View("/",                 [
+                        AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+                            actions=[theme_icon_button], ),
+
+                        top_bar,
+                        *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
+                    ]
+                )
+            home_view.scroll = ft.ScrollMode.AUTO
+            page.views.append(
+                    home_view
+            )
+            page.update()
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         global clicked_podcast
@@ -373,7 +515,6 @@ def main(page: ft.Page):
         :param e: The event that triggered the function
         """
         # page.splash.visible = True
-        page.update()
         page.theme_mode = "light" if page.theme_mode == "dark" else "dark"
         # page.splash.visible = False
         theme_icon_button.selected = not theme_icon_button.selected
@@ -1099,23 +1240,30 @@ def main(page: ft.Page):
                     hist_ep_artwork = entry['EpisodeArtwork']
                     hist_ep_url = entry['EpisodeURL']
                     hist_ep_listen_date = entry['ListenDate']
+                    hist_ep_duration = entry['EpisodeDuration']
                     # do something with the episode information
                     hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
                     hist_entry_description = ft.Text(hist_ep_desc)
                     hist_entry_audio_url = ft.Text(hist_ep_url)
-                    hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
-
+                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(cnx, user_id, hist_ep_title, hist_ep_url)
                     hist_art_no = random.randint(1, 12)
                     hist_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{hist_art_no}.jpeg")
                     hist_art_url = hist_ep_artwork if hist_ep_artwork else hist_art_fallback
                     hist_art_url_parsed = check_image(hist_art_url)
                     hist_entry_artwork_url = ft.Image(src=hist_art_url_parsed, width=150, height=150)
                     hist_ep_play_button = ft.IconButton(
+                        icon=ft.icons.NOT_STARTED,
+                        icon_color="blue400",
+                        icon_size=40,
+                        tooltip="Start Episode From Beginning",
+                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
+                    )
+                    hist_ep_resume_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
                         icon_color="blue400",
                         icon_size=40,
-                        tooltip="Play Episode",
-                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
+                        tooltip="Resume Episode",
+                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title, listen_duration=listen_duration: resume_selected_episode(url, title, listen_duration)
                     )
                     hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
@@ -1123,10 +1271,20 @@ def main(page: ft.Page):
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
                         ]
                     )
-                    hist_ep_row_content = ft.ResponsiveRow([
-                        ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                        ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
-                    ])
+                    
+                    if check_episode_playback == True:
+                        listen_prog = seconds_to_time(listen_duration)
+                        hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date} Progress: {listen_prog} of {hist_ep_duration}')
+                        hist_ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
+                            ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
+                        ])
+                    else:
+                        hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
+                        hist_ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
+                            ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
+                        ])
                     hist_ep_row = ft.Container(content=hist_ep_row_content)
                     hist_ep_row.padding=padding.only(left=70, right=50)
                     hist_ep_rows.append(hist_ep_row)
@@ -1872,15 +2030,22 @@ def main(page: ft.Page):
         current_episode.name = title
         current_episode.play_episode()
 
+    def resume_selected_episode(url, title, listen_duration):
+        current_episode.url = url
+        current_episode.name = title
+        print(f'in resume episode {listen_duration}')
+        current_episode.play_episode(listen_duration=listen_duration)
+
+
+
+
     def download_selected_episode(url, title, page):
         pr = ft.ProgressRing()
         page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
         page.update()
         current_episode.url = url
         current_episode.title = title
-        print('predownload')
         current_episode.download_pod()
-        print('postdownload')
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
         page.snack_bar.open = True
         page.overlay.pop(2)
@@ -1916,6 +2081,6 @@ def main(page: ft.Page):
         go_homelogin(page)
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)

@@ -36,6 +36,8 @@ N/A
  - [x] Add Download option for podcasts. In addition, display downloaded podcasts in downloads area. Allow for deletion of these after downloaded
  - [ ] Add Queue, and allow podcasts to be removed from queue once added (Queue is added but you can't remove them from it yet)
  - [ ] Implement smoother scrolling with big list loading
+ - [ ] Implement Episode view (Should be able to display html via markdown)
+ - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes
  - [ ] Allow local downloads, to just download the mp3 files direct
  - [x] Create login screen
