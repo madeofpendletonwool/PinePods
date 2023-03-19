@@ -71,6 +71,7 @@ N/A
 - [x] Check user values when adding new user
 - [x] Prevent user from being added without required info 
 - [x] Prevent submit for user from being hit without populated values
+- [ ] Fix issues with episodes playing not in database
 - [ ] Add loading wheels throughout
 - [ ] Add picture of current episode to soundbar
 - [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)

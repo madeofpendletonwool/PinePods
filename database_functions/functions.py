@@ -42,6 +42,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
     import feedparser
     import dateutil.parser
+    import re
 
     episode_dump = feedparser.parse(feed_url)
 
@@ -52,6 +53,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
             if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
                 # get the episode title
                 parsed_title = entry.title
+                
 
                 # get the episode description
                 parsed_description = entry.summary
@@ -70,6 +72,34 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 if parsed_artwork_url == None:
                     parsed_artwork_url = artwork_url
 
+
+
+                parsed_duration = 0
+                if entry.itunes_duration:
+                    print('itunes_duration:')
+                    duration_string = entry.itunes_duration
+                    match = re.match(r'(\d+):(\d+)', duration_string)
+                    if match:
+                        parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
+                        print('Found duration using itunes_duration')
+                    else:
+                        try:
+                            parsed_duration = int(duration_string)
+                            print('Found duration using itunes_duration')
+                        except ValueError:
+                            print(f'Error parsing duration from itunes_duration: {duration_string}')
+
+                elif entry.itunes_duration_seconds:
+                    parsed_duration = entry.itunes_duration
+                elif entry.duration:
+                    parsed_duration = entry.itunes_duration
+                elif entry.length:
+                    parsed_duration = entry.itunes_duration
+                else:
+                    parsed_duration = 0
+
+                print(parsed_duration)
+
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
                                 "WHERE PodcastID = %s AND EpisodeTitle = %s")
@@ -79,9 +109,10 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                     # episode already exists, skip it
                     continue
 
+
                 # insert the episode into the database
                 query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, 0)
+                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, parsed_duration)
                 cursor.execute(query, values)
 
                 # check if any rows were affected by the insert operation
@@ -669,6 +700,36 @@ def get_episode_listen_time(cnx, user_id, title, url):
         finally:
             if cursor:
                 cursor.close()
+
+def get_theme(cnx, user_id):
+        cursor = None
+        try:
+            cursor = cnx.cursor()
+
+            # Get the EpisodeID from the Episodes table
+            query = "SELECT Theme FROM UserSettings WHERE UserID = %s"
+            cursor.execute(query, (user_id,))
+            theme = cursor.fetchone()[0]
+
+            return theme
+
+        finally:
+            if cursor:
+                cursor.close()
+
+def set_theme(cnx, user_id, theme):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        # Update the UserSettings table with the new theme value
+        query = "UPDATE UserSettings SET Theme = %s WHERE UserID = %s"
+        cursor.execute(query, (theme, user_id))
+        cnx.commit()
+
+    finally:
+        if cursor:
+            cursor.close()
 
 
 

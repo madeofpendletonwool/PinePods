@@ -46,8 +46,6 @@ cnx = mysql.connector.connect(
     database="pypods_database"
 )
 
-
-
 def main(page: ft.Page):
 
 #---Flet Various Functions---------------------------------------------------------------
@@ -86,6 +84,14 @@ def main(page: ft.Page):
         minutes, seconds = divmod(seconds, 60)
         hours, minutes = divmod(minutes, 60)
         return '{:02d}:{:02d}:{:02d}'.format(hours, minutes, seconds)
+
+    def get_progress(listen_time, duration):
+        if duration == 0:
+            progress = 0
+            return progress
+        else:
+            progress = listen_time / duration
+            return progress
 
 
     def check_image(artwork_path):
@@ -221,6 +227,7 @@ def main(page: ft.Page):
             if self.audio_playing:
                 play_button.visible = False
                 pause_button.visible = True
+                audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
                 currently_playing.content = ft.Text(self.name)
                 current_time.content = ft.Text(self.length)
@@ -418,7 +425,7 @@ def main(page: ft.Page):
                     home_ep_number += 1
 
             home_view = ft.View("/",                 [
-                        AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+                        AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor=main_color,
                             actions=[theme_icon_button], ),
 
                         top_bar,
@@ -507,6 +514,7 @@ def main(page: ft.Page):
 
 #---Code for Theme Change----------------------------------------------------------------
 
+
     def change_theme(e):
         """
         When the button(to change theme) is clicked, the progress bar is made visible, the theme is changed,
@@ -514,7 +522,7 @@ def main(page: ft.Page):
 
         :param e: The event that triggered the function
         """
-        # page.splash.visible = True
+        page.splash.visible = True
         page.theme_mode = "light" if page.theme_mode == "dark" else "dark"
         # page.splash.visible = False
         theme_icon_button.selected = not theme_icon_button.selected
@@ -563,6 +571,8 @@ def main(page: ft.Page):
 
     def go_homelogin(page):
         # navbar.visible = True
+        active_user.theme_select()
+        print(active_user.main_color)
         page.appbar.visible = True
         navbar = NavBar(page).create_navbar()
         page.overlay.append(ft.Stack([navbar], expand=True))
@@ -577,6 +587,7 @@ def main(page: ft.Page):
 
         page.views.clear()
         if page.route == "/" or page.route == "/":
+            page.bgcolor = colors.BLUE_GREY
 
             # Home Screen Podcast Layout (Episodes in Newest order)
 
@@ -669,14 +680,15 @@ def main(page: ft.Page):
                     home_pods_active = True
                     home_ep_number += 1
 
-            home_view = ft.View("/",                 [
-                        AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
+            home_view = ft.View("/", [
+                        AppBar(title=Text("Pypods - A Python based podcast app!", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color,
                             actions=[theme_icon_button], ),
 
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
                 )
+            home_view.bgcolor = active_user.bgcolor
             home_view.scroll = ft.ScrollMode.AUTO
             page.views.append(
                     home_view
@@ -848,14 +860,15 @@ def main(page: ft.Page):
             theme_text = ft.Text('Select Custom Theme:')
             theme_drop = ft.Dropdown(width=150,
              options=[
-                ft.dropdown.Option("Abyss"),
-                ft.dropdown.Option("Dracula"),
-                ft.dropdown.Option("Dracula Light"),
-                ft.dropdown.Option("Greenie Meanie"),
-                ft.dropdown.Option("HotDogStand"),
+                ft.dropdown.Option("nordic"),
+                ft.dropdown.Option("abyss"),
+                ft.dropdown.Option("dracula"),
+                ft.dropdown.Option("dracula light"),
+                ft.dropdown.Option("greenie meanie"),
+                ft.dropdown.Option("hotdogstand"),
              ]
              )
-            theme_submit = ft.TextButton("Submit")
+            theme_submit = ft.TextButton("Submit", on_click=lambda event: active_user.set_theme(theme_drop.value))
             theme_column = ft.Column(controls=[theme_text, theme_drop, theme_submit])
             theme_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -928,14 +941,6 @@ def main(page: ft.Page):
             pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
             pod_feed_desc = ft.Text(clicked_podcast.description)
             pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
-            # pod_feed_site1 = ft.Text(clicked_podcast.website, style=ft.TextThemeStyle.TITLE_SMALL)
-            
-            # feed_column = ft.Column(
-            #     controls=[pod_feed_title, pod_feed_desc, pod_feed_site]
-            # )
-            # feed_row = ft.Row(
-            #     alignment=ft.MainAxisAlignment.CENTER,
-            #     controls=[pod_image, feed_column])
 
             feed_row_content = ft.ResponsiveRow([
             ft.Column(col={"md": 4}, controls=[pod_image]),
@@ -1253,19 +1258,19 @@ def main(page: ft.Page):
                     hist_entry_artwork_url = ft.Image(src=hist_art_url_parsed, width=150, height=150)
                     hist_ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
-                        icon_color="blue400",
+                        icon_color=main_color,
                         icon_size=40,
                         tooltip="Start Episode From Beginning",
                         on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
                     )
                     hist_ep_resume_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
-                        icon_color="blue400",
+                        icon_color=main_color,
                         icon_size=40,
                         tooltip="Resume Episode",
                         on_click=lambda x, url=hist_ep_url, title=hist_ep_title, listen_duration=listen_duration: resume_selected_episode(url, title, listen_duration)
                     )
-                    hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
+                    hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=main_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: queue_selected_episode(url, title)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
@@ -1274,10 +1279,13 @@ def main(page: ft.Page):
                     
                     if check_episode_playback == True:
                         listen_prog = seconds_to_time(listen_duration)
-                        hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date} Progress: {listen_prog} of {hist_ep_duration}')
+                        hist_ep_prog = seconds_to_time(hist_ep_duration)
+                        progress_value = get_progress(listen_duration, hist_ep_duration)
+                        hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
+                        hist_entry_progress = ft.Row(controls=[ft.Text(listen_prog), ft.ProgressBar(expand=True, value=progress_value, color=main_color), ft.Text(hist_ep_prog)])
                         hist_ep_row_content = ft.ResponsiveRow([
                             ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                            ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
+                            ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, hist_entry_progress, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
                         ])
                     else:
                         hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
@@ -1624,6 +1632,7 @@ def main(page: ft.Page):
             self.username = None
             self.password = None
             self.email = None
+            self.main_color = 'colors.BLUE_GREY'
             self.user_id = None
             self.page = page
             self.fullname = 'Login First'
@@ -1709,11 +1718,52 @@ def main(page: ft.Page):
                 self.fullname = login_details['Fullname']
                 self.username = login_details['Username']
                 self.email = login_details['Email']
-                # navbar.visible = True
-                # page.appbar.visible = True
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
+
+    # Setup Theming-------------------------------------------------------
+        def theme_select(self):
+            active_theme = database_functions.functions.get_theme(cnx, self.user_id)
+            print(active_theme)
+            if active_theme == 'nordic':
+                page.theme_mode = "dark"
+                self.main_color = '#323542'
+                self.accent_color = colors.WHITE
+                self.tertiary_color = '#23282E'
+                self.bgcolor = '#3C4252'
+                page.bgcolor = '#3C4252'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'abyss':
+                page.theme_mode = "dark"
+                self.main_color = '#051336'
+                self.accent_color = '#FFFFFF'
+                self.tertiary_color = '#13326A'
+                self.bgcolor = '#000C18'
+                page.bgcolor = '#3C4252'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'dracula':
+                page.theme_mode = "dark"
+                self.main_color = '#323542'
+                self.accent_color = colors.WHITE
+                self.tertiary_color = '#23282E'
+                self.bgcolor = '#3C4252'
+                page.bgcolor = '#3C4252'
+                page.window_bgcolor = '#3C4252'
+            else:
+                page.theme_mode = "dark"
+                self.main_color = '#323542'
+                self.accent_color = colors.WHITE
+                self.tertiary_color = '#23282E'
+                self.bgcolor = '#3C4252'
+                page.bgcolor = '#3C4252'
+                page.window_bgcolor = '#3C4252'
+
+        def set_theme(self, theme):
+            print(theme)
+            database_functions.functions.set_theme(cnx, self.user_id, theme)
+            self.theme_select
+            self.page.update()
 
         def logout_pypods(self, e):
             pass
@@ -1782,7 +1832,7 @@ def main(page: ft.Page):
                         IconButton(
                             icon=icon_name,
                             icon_size=18,
-                            icon_color="white54",
+                            icon_color=active_user.accent_color,
                             tooltip=tooltip,
                             selected=False,
                             on_click=destination,
@@ -1810,7 +1860,7 @@ def main(page: ft.Page):
             width=62,
             height=580,
             animate=animation.Animation(500, "decelerate"),
-            bgcolor="black",
+            bgcolor=active_user.main_color,
             border_radius=10,
             padding=10,
             content=ft.Column(
@@ -1828,10 +1878,11 @@ def main(page: ft.Page):
                     width=42,
                     height=42,
                     border_radius=8,
-                    bgcolor="bluegrey900",
+                    bgcolor=active_user.tertiary_color,
                     alignment=alignment.center,
                     content=Text(
                         value=active_user.initials,
+                        color=active_user.accent_color,
                         size=20,
                         weight="bold",
                     ),
@@ -1849,13 +1900,12 @@ def main(page: ft.Page):
             ),
         )
 
-    # navbar = NavBar(page).create_navbar()
-    
+
 
 # Create Page--------------------------------------------------------
 
+
     page.title = "PyPods"
-    page.theme_mode = "dark"
     theme_icon_button = ft.IconButton(icons.DARK_MODE, selected_icon=icons.LIGHT_MODE, icon_color=colors.BLACK,
                                    icon_size=35, tooltip="change theme", on_click=change_theme,
                                    style=ButtonStyle(color={"": colors.BLACK, "selected": colors.WHITE}, ), )
@@ -1966,7 +2016,6 @@ def main(page: ft.Page):
             audio_container.update()
             page.update()
         else:
-            print(page.width)
             ep_height = 50
             ep_width = 4000
             audio_container.height = ep_height
@@ -1981,7 +2030,7 @@ def main(page: ft.Page):
         audio_container = ft.Container(
             height=ep_height,
             width=ep_width,
-            bgcolor='black',
+            bgcolor=active_user.main_color,
             border_radius=45,
             padding=6,
             content=ft.Row(
@@ -1996,7 +2045,7 @@ def main(page: ft.Page):
         audio_container = ft.Container(
             height=ep_height,
             width=ep_width,
-            bgcolor='black',
+            bgcolor=active_user.main_color,
             border_radius=45,
             padding=6,
             content=ft.Row(
