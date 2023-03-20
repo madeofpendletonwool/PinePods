@@ -111,6 +111,7 @@ def main(page: ft.Page):
                 self.go_home = go_home
                 self.url = url
                 self.name = name or ""
+                self.artwork = ""
                 self.audio_playing = False
                 self.episode_file = url
                 self.episode_name = name
@@ -134,6 +135,7 @@ def main(page: ft.Page):
                 self.go_home = go_home
                 self.url = url
                 self.name = name or ""
+                self.artwork = ""
                 self.audio_playing = False
                 self.active_pod = self.name
                 self.episode_file = url
@@ -229,9 +231,13 @@ def main(page: ft.Page):
                 pause_button.visible = True
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
-                currently_playing.content = ft.Text(self.name, color=active_user.nav_color1)
+                currently_playing.content = ft.Text(self.name, color=active_user.nav_color1, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.nav_color1)
                 podcast_length.content = ft.Text(self.length, color=active_user.nav_color1)
+                audio_container_image_landing.src = self.artwork
+                audio_container_image_landing.width = 25
+                audio_container_image_landing.height = 25
+                audio_container_image_landing.update()
                 audio_scrubber.active_color = active_user.nav_color2
                 audio_scrubber.inactive_color = active_user.nav_color2
                 audio_scrubber.thumb_color = active_user.accent_color
@@ -411,7 +417,7 @@ def main(page: ft.Page):
                         icon_color="blue400",
                         icon_size=40,
                         tooltip="Play Episode",
-                        on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
+                        on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: play_selected_episode(url, title, artwork)
                     )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
@@ -724,7 +730,7 @@ def main(page: ft.Page):
                         icon_color=active_user.accent_color,
                         icon_size=40,
                         tooltip="Play Episode",
-                        on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
+                        on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: play_selected_episode(url, title, artwork)
                     )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
@@ -1063,7 +1069,7 @@ def main(page: ft.Page):
                     icon_color="blue400",
                     icon_size=40,
                     tooltip="Play Episode",
-                    on_click = lambda x, url=parsed_audio_url, title=parsed_title: play_selected_episode(url, title)
+                    on_click = lambda x, url=parsed_audio_url, title=parsed_title, artwork=parsed_artwork_url: play_selected_episode(url, title, artwork)
                 )
                 ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
@@ -1320,19 +1326,19 @@ def main(page: ft.Page):
                     hist_entry_artwork_url = ft.Image(src=hist_art_url_parsed, width=150, height=150)
                     hist_ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
-                        icon_color=main_color,
+                        icon_color=active_user.main_color,
                         icon_size=40,
                         tooltip="Start Episode From Beginning",
-                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title: play_selected_episode(url, title)
+                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork: play_selected_episode(url, title, artwork)
                     )
                     hist_ep_resume_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
-                        icon_color=main_color,
+                        icon_color=active_user.main_color,
                         icon_size=40,
                         tooltip="Resume Episode",
-                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title, listen_duration=listen_duration: resume_selected_episode(url, title, listen_duration)
+                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
                     )
-                    hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=main_color, size=40, tooltip="Play Episode"), 
+                    hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.main_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: queue_selected_episode(url, title)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
@@ -1344,7 +1350,7 @@ def main(page: ft.Page):
                         hist_ep_prog = seconds_to_time(hist_ep_duration)
                         progress_value = get_progress(listen_duration, hist_ep_duration)
                         hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}')
-                        hist_entry_progress = ft.Row(controls=[ft.Text(listen_prog), ft.ProgressBar(expand=True, value=progress_value, color=main_color), ft.Text(hist_ep_prog)])
+                        hist_entry_progress = ft.Row(controls=[ft.Text(listen_prog), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(hist_ep_prog)])
                         hist_ep_row_content = ft.ResponsiveRow([
                             ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
                             ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, hist_entry_progress, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
@@ -1468,7 +1474,7 @@ def main(page: ft.Page):
                         icon_color="blue400",
                         icon_size=40,
                         tooltip="Play Episode",
-                        on_click=lambda x, url=download_ep_local_url, title=download_ep_title: play_selected_episode(url, title)
+                        on_click=lambda x, url=download_ep_local_url, title=download_ep_title, artwork=download_ep_artwork: play_selected_episode(url, title, artwork)
                     )
                     download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
@@ -1596,7 +1602,7 @@ def main(page: ft.Page):
                         icon_color="blue400",
                         icon_size=40,
                         tooltip="Play Episode",
-                        on_click=lambda x, url=queue_ep_url, title=queue_ep_title: play_selected_episode(url, title)
+                        on_click=lambda x, url=queue_ep_url, title=queue_ep_title, artwork=queue_ep_artwork: play_selected_episode(url, title, artwork)
                     )
                     queue_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
                     # icon_size=40, icon_color="blue400", tooltip="Options",
@@ -2080,8 +2086,7 @@ def main(page: ft.Page):
     ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
     # Create the currently playing container
     currently_playing = ft.Container(content=ft.Text('test'))
-    currently_playing.padding=ft.padding.only(left=20)
-    currently_playing.padding=ft.padding.only(top=10)
+    currently_playing.padding=ft.padding.only(bottom=5)
 
     def format_time(time):
         hours, remainder = divmod(int(time), 3600)
@@ -2103,9 +2108,19 @@ def main(page: ft.Page):
     audio_scrubber_column = ft.Column(controls=[audio_scrubber])
     audio_scrubber_column.horizontal_alignment.STRETCH
     audio_scrubber_column.width = '100%'
+    # Image for podcast playing
+    audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/Pypods-logos_blue.png", width=25, height=25)
+    audio_container_image = ft.Container(content=audio_container_image_landing)
+    audio_container_image.border_radius = ft.border_radius.all(25)
 
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
     audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, controls=[scrub_bar_row, ep_audio_controls])
+    audio_container_row_landing = ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.END,  
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
+                controls=[audio_container_image_landing, currently_playing, audio_controls_row])
+    audio_container_row = ft.Container(content=audio_container_row_landing)
+    audio_container_row.padding=ft.padding.only(left=20)
     def page_checksize(e):
         if page.width <= 768:
             ep_height = 100
@@ -2113,17 +2128,14 @@ def main(page: ft.Page):
             audio_container.height = ep_height
             audio_container.content = ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
-                controls=[currently_playing, audio_controls_row])
+                controls=[audio_container_image_landing, currently_playing, audio_controls_row])
             audio_container.update()
             page.update()
         else:
             ep_height = 50
             ep_width = 4000
             audio_container.height = ep_height
-            audio_container.content = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.END,  
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-                controls=[currently_playing, audio_controls_row])
+            audio_container.content = audio_container_row
             audio_container.update()
     if page.width <= 768:
         ep_height = 100
@@ -2134,11 +2146,9 @@ def main(page: ft.Page):
             bgcolor=active_user.main_color,
             border_radius=45,
             padding=6,
-            content=ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.END,  
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-                controls=[currently_playing, audio_controls_row]
-            )
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
+                controls=[audio_container_image_landing, currently_playing, audio_controls_row])
         )
     else:
         ep_height = 50
@@ -2149,11 +2159,7 @@ def main(page: ft.Page):
             bgcolor=active_user.main_color,
             border_radius=45,
             padding=6,
-            content=ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.END,  
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-                controls=[currently_playing, audio_controls_row]
-            )
+            content=audio_container_row
         )
 
     page.on_resize = page_checksize
@@ -2175,14 +2181,16 @@ def main(page: ft.Page):
     test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
 
 
-    def play_selected_episode(url, title):
+    def play_selected_episode(url, title, artwork):
         current_episode.url = url
         current_episode.name = title
+        current_episode.artwork = artwork
         current_episode.play_episode()
 
-    def resume_selected_episode(url, title, listen_duration):
+    def resume_selected_episode(url, title, artwork, listen_duration):
         current_episode.url = url
         current_episode.name = title
+        current_episode.artwork = artwork
         print(f'in resume episode {listen_duration}')
         current_episode.play_episode(listen_duration=listen_duration)
 
