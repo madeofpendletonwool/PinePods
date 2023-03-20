@@ -229,20 +229,26 @@ def main(page: ft.Page):
                 pause_button.visible = True
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
-                currently_playing.content = ft.Text(self.name)
-                current_time.content = ft.Text(self.length)
-                podcast_length.content = ft.Text(self.length)
+                currently_playing.content = ft.Text(self.name, color=active_user.nav_color1)
+                current_time.content = ft.Text(self.length, color=active_user.nav_color1)
+                podcast_length.content = ft.Text(self.length, color=active_user.nav_color1)
+                audio_scrubber.active_color = active_user.nav_color2
+                audio_scrubber.inactive_color = active_user.nav_color2
+                audio_scrubber.thumb_color = active_user.accent_color
+                play_button.icon_color = active_user.accent_color
+                pause_button.icon_color = active_user.accent_color
+                seek_button.icon_color = active_user.accent_color
                 self.page.update()
             else:
                 pause_button.visible = False
                 play_button.visible = True
-                currently_playing.content = ft.Text(self.name)
+                currently_playing.content = ft.Text(self.name, color=active_user.nav_color1)
                 self.page.update()
                 
         def toggle_second_status(self):
             audio_scrubber.value = self.get_current_seconds()
             audio_scrubber.update()
-            current_time.content = ft.Text(self.current_progress)
+            current_time.content = ft.Text(self.current_progress, color=active_user.nav_color1)
             current_time.update()
 
             # self.page.update()
@@ -425,13 +431,12 @@ def main(page: ft.Page):
                     home_ep_number += 1
 
             home_view = ft.View("/",                 [
-                        AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor=main_color,
-                            actions=[theme_icon_button], ),
-
+                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
                 )
+            home_view.bgcolor = active_user.bgcolor
             home_view.scroll = ft.ScrollMode.AUTO
             page.views.append(
                     home_view
@@ -573,11 +578,69 @@ def main(page: ft.Page):
         # navbar.visible = True
         active_user.theme_select()
         print(active_user.main_color)
-        page.appbar.visible = True
+        # Theme user elements
+        pypods_appbar.bgcolor = active_user.main_color
+        pypods_appbar.color = active_user.accent_color
+        refresh_btn.icon_color = active_user.font_color
+        banner_button.bgcolor = active_user.accent_color
+        banner_button.color = active_user.main_color
+        page.banner.bgcolor = active_user.accent_color
+        page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
+        page.banner.content = ft.Text("""
+    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    """, color=active_user.main_color
+        )
+        page.banner.actions = [
+            ft.ElevatedButton('Open PyPods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
+        ]
+        search_pods.color = active_user.accent_color
+        search_pods.focused_bgcolor = active_user.accent_color
+        search_pods.focused_border_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.cursor_color = active_user.accent_color
+        search_btn.bgcolor = active_user.accent_color
+        search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
+        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         page.overlay.append(ft.Stack([navbar], expand=True))
         page.update()
         page.go("/")
+
+    def go_theme_rebuild(page):
+        # navbar.visible = True
+        active_user.theme_select()
+        print(active_user.main_color)
+        # Theme user elements
+        pypods_appbar.bgcolor = active_user.main_color
+        pypods_appbar.color = active_user.accent_color
+        refresh_btn.icon_color = active_user.font_color
+        banner_button.bgcolor = active_user.accent_color
+        banner_button.color = active_user.main_color
+        page.banner.bgcolor = active_user.accent_color
+        page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
+        page.banner.content = ft.Text("""
+    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    """, color=active_user.main_color
+        )
+        page.banner.actions = [
+            ft.ElevatedButton('Open PyPods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
+        ]
+        search_pods.color = active_user.accent_color
+        search_pods.focused_bgcolor = active_user.accent_color
+        search_pods.focused_border_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.cursor_color = active_user.accent_color
+        search_btn.bgcolor = active_user.accent_color
+        search_btn.color = active_user.main_color
+        navbar = NavBar(page).create_navbar()
+        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+        page.overlay.append(ft.Stack([navbar], expand=True))
+        page.update()
+        page.go("/settings")
 
     def go_home(e):
         page.update()
@@ -612,7 +675,7 @@ def main(page: ft.Page):
                 home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
                 home_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
-                    icon_color="blue400",
+                    icon_color=active_user.accent_color,
                     icon_size=40,
                     tooltip="No Episodes Added Yet"
                 )
@@ -643,13 +706,13 @@ def main(page: ft.Page):
                     home_ep_url = entry['EpisodeURL']
                     # do something with the episode information
 
-                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
                     home_entry_row = ft.ResponsiveRow([
     ft.Column(col={"sm": 6}, controls=[home_entry_title]),
 ])
-                    home_entry_description = ft.Text(home_ep_desc)
-                    home_entry_audio_url = ft.Text(home_ep_url)
-                    home_entry_released = ft.Text(home_pub_date)
+                    home_entry_description = ft.Text(home_ep_desc, color=active_user.font_color)
+                    home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
+                    home_entry_released = ft.Text(home_pub_date, color=active_user.font_color)
 
                     home_art_no = random.randint(1, 12)
                     home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
@@ -658,12 +721,12 @@ def main(page: ft.Page):
                     home_entry_artwork_url = ft.Image(src=home_art_parsed, width=150, height=150)
                     home_ep_play_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
-                        icon_color="blue400",
+                        icon_color=active_user.accent_color,
                         icon_size=40,
                         tooltip="Play Episode",
                         on_click=lambda x, url=home_ep_url, title=home_ep_title: play_selected_episode(url, title)
                     )
-                    home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
+                    home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
@@ -673,17 +736,18 @@ def main(page: ft.Page):
                         ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
                         ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
                     ])
-                    home_ep_row = ft.Container(content=home_ep_row_content)
+                    home_div_row = ft.Divider(color=active_user.accent_color)
+                    home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
+                    home_ep_row = ft.Container(content=home_ep_column)
                     home_ep_row.padding=padding.only(left=70, right=50)
                     home_ep_rows.append(home_ep_row)
+                    # home_ep_rows.append(ft.Text('test'))
                     home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
                     home_pods_active = True
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        AppBar(title=Text("Pypods - A Python based podcast app!", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color,
-                            actions=[theme_icon_button], ),
-
+                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -831,8 +895,7 @@ def main(page: ft.Page):
             # Create search view object
             search_view = ft.View("/searchpod",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+                        pypods_appbar,
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
                     ]
                     
@@ -860,6 +923,8 @@ def main(page: ft.Page):
             theme_text = ft.Text('Select Custom Theme:')
             theme_drop = ft.Dropdown(width=150,
              options=[
+                ft.dropdown.Option("light"),
+                ft.dropdown.Option("dark"),
                 ft.dropdown.Option("nordic"),
                 ft.dropdown.Option("abyss"),
                 ft.dropdown.Option("dracula"),
@@ -914,8 +979,7 @@ def main(page: ft.Page):
             # Create search view object
             settings_view = ft.View("/settings",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+                        pypods_appbar,
                         user_setting_text,
                         theme_row,
                         admin_setting_text,
@@ -1032,8 +1096,7 @@ def main(page: ft.Page):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+                        pypods_appbar,
                         feed_row,
                         *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
@@ -1169,8 +1232,7 @@ def main(page: ft.Page):
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+                        pypods_appbar,
                         pod_view_row,
                         *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
 
@@ -1311,8 +1373,7 @@ def main(page: ft.Page):
             # Create search view object
             ep_hist_view = ft.View("/history",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+                        pypods_appbar,
                         history_title_row,
                         *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
 
@@ -1438,9 +1499,7 @@ def main(page: ft.Page):
             # Create search view object
             ep_download_view = ft.View("/downloads",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
-
+                        pypods_appbar,
                         top_bar,
                         download_title_row,
                         *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
@@ -1579,12 +1638,10 @@ def main(page: ft.Page):
             # Create search view object
             ep_queue_view = ft.View("/queue",
                     [
-                        AppBar(title=Text("PyPods - A Python based podcast app!", color="white"), center_title=True, bgcolor="blue",
-                        actions=[theme_icon_button], ),
+                        pypods_appbar,
                         top_bar,
                         queue_title_row,
                         *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
-
 
                     ]
                     
@@ -1633,6 +1690,9 @@ def main(page: ft.Page):
             self.password = None
             self.email = None
             self.main_color = 'colors.BLUE_GREY'
+            self.accent_color = 'colors.BLUE_GREY'
+            self.tertiary_color = 'colors.BLUE_GREY'
+            self.font_color = 'colors.BLUE_GREY'
             self.user_id = None
             self.page = page
             self.fullname = 'Login First'
@@ -1726,11 +1786,39 @@ def main(page: ft.Page):
         def theme_select(self):
             active_theme = database_functions.functions.get_theme(cnx, self.user_id)
             print(active_theme)
-            if active_theme == 'nordic':
+            if active_theme == 'light':
+                page.theme_mode = "dark"
+                self.main_color = '#E1E1E1'
+                self.accent_color = colors.BLACK
+                self.tertiary_color = '#C7C7C7'
+                self.font_color = colors.BLACK
+                self.bonus_color = colors.BLACK
+                self.nav_color1 = colors.BLACK
+                self.nav_color2 = '#C7C7C7'
+                self.bgcolor = '#ECECEC'
+                page.bgcolor = '#3C4252'
+                page.window_bgcolor = '#ECECEC'
+            elif active_theme == 'dark':
+                page.theme_mode = "dark"
+                self.main_color = '#010409'
+                self.accent_color = '#8B949E'
+                self.tertiary_color = '#8B949E'
+                self.font_color = '#F5F5F5'
+                self.bonus_color = colors.BLACK
+                self.nav_color1 = colors.BLACK
+                self.nav_color2 = colors.BLACK
+                self.bgcolor = '#0D1117'
+                page.bgcolor = '#3C4252'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'nordic':
                 page.theme_mode = "dark"
                 self.main_color = '#323542'
                 self.accent_color = colors.WHITE
                 self.tertiary_color = '#23282E'
+                self.font_color = colors.BLACK
+                self.bonus_color = colors.BLACK
+                self.nav_color1 = colors.BLACK
+                self.nav_color2 = colors.BLACK
                 self.bgcolor = '#3C4252'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#3C4252'
@@ -1739,6 +1827,10 @@ def main(page: ft.Page):
                 self.main_color = '#051336'
                 self.accent_color = '#FFFFFF'
                 self.tertiary_color = '#13326A'
+                self.font_color = '#42A5F5'
+                self.bonus_color = colors.BLACK
+                self.nav_color1 = colors.BLACK
+                self.nav_color2 = colors.BLACK
                 self.bgcolor = '#000C18'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#3C4252'
@@ -1747,6 +1839,10 @@ def main(page: ft.Page):
                 self.main_color = '#323542'
                 self.accent_color = colors.WHITE
                 self.tertiary_color = '#23282E'
+                self.font_color = colors.BLACK
+                self.bonus_color = colors.BLACK
+                self.nav_color1 = colors.BLACK
+                self.nav_color2 = colors.BLACK
                 self.bgcolor = '#3C4252'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#3C4252'
@@ -1755,6 +1851,10 @@ def main(page: ft.Page):
                 self.main_color = '#323542'
                 self.accent_color = colors.WHITE
                 self.tertiary_color = '#23282E'
+                self.font_color = colors.BLACK
+                self.bonus_color = colors.BLACK
+                self.nav_color1 = colors.BLACK
+                self.nav_color2 = colors.BLACK
                 self.bgcolor = '#3C4252'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#3C4252'
@@ -1763,6 +1863,7 @@ def main(page: ft.Page):
             print(theme)
             database_functions.functions.set_theme(cnx, self.user_id, theme)
             self.theme_select
+            go_theme_rebuild(self.page)
             self.page.update()
 
         def logout_pypods(self, e):
@@ -1816,8 +1917,8 @@ def main(page: ft.Page):
                 e.control.bgcolor = None
                 e.control.update()
 
-                e.control.content.controls[0].icon_color = "white54"
-                e.control.content.controls[1].color = "white54"
+                e.control.content.controls[0].icon_color = active_user.accent_color
+                e.control.content.controls[1].color = active_user.accent_color
                 e.control.content.update()
 
         def ContainedIcon(self, tooltip, icon_name, text, destination):
@@ -1858,10 +1959,10 @@ def main(page: ft.Page):
             active_user.get_initials()
             return Container(
             width=62,
-            height=580,
+            # height=580,
+            expand=True,
             animate=animation.Animation(500, "decelerate"),
             bgcolor=active_user.main_color,
-            border_radius=10,
             padding=10,
             content=ft.Column(
                 alignment=MainAxisAlignment.START,
@@ -1871,7 +1972,7 @@ def main(page: ft.Page):
                         value=(f'PyPods'),
                         size=10,
                         weight="bold",
-                        color="white"
+                        color=active_user.accent_color
                     ),
                 Divider(color="white24", height=5),
                 Container(
@@ -1926,7 +2027,7 @@ def main(page: ft.Page):
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color="blue400", tooltip="Refresh Podcast List", on_click=refresh_podcasts)
+    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
     search_box = ft.Container(
         content=search_pods,
         alignment=ft.alignment.top_right
@@ -2117,8 +2218,13 @@ def main(page: ft.Page):
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
-    # page.overlay.append(ft.Stack([navbar], expand=True))
-    # navbar.visible = False
+    pypods_appbar = AppBar(title=Text("PyPods - A Python based podcast app!", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color,
+                            actions=[theme_icon_button])
+    # pypods_appbar = ft.Container(content=pypods_app)
+    # pypods_appbar.border = ft.border.only(bottom=ft.border.BorderSide(4, active_user.tertiary_color))
+    page.add(pypods_appbar)
+    # page.appbar.visible = True
+    # page.appbar.update()
     page.appbar.visible = False
     
     if login_screen == True:
