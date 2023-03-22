@@ -40,7 +40,7 @@ N/A
  - [x] Check user values when adding new user
  - [x] Prevent user from being added without required info 
  - [x] Prevent submit for user from being hit without populated values
-- [x] Figure out why some podcasts don't appear in search (This was because of the old podcast index python package. Rebuilt using requests and now it works great)
+ - [x] Figure out why some podcasts don't appear in search (This was because of the old podcast index python package. Rebuilt using requests and now it works great)
  - [ ] Implement resume playback throughout all areas of the app
  - [ ] Implement smoother scrolling with big list loading
  - [ ] Implement Episode view (Should be able to display html via markdown)

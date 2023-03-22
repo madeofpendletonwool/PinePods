@@ -25,6 +25,8 @@ import threading
 import vlc
 import random
 import datetime
+import html2text
+from html.parser import HTMLParser
 
 # Make login Screen start on boot
 login_screen = False
@@ -102,6 +104,18 @@ def main(page: ft.Page):
             # It's a local file path, so return the path as is
             return artwork_path
 
+    class MyHTMLParser(HTMLParser):
+        def __init__(self):
+            self.is_html = False
+            super().__init__()
+
+        def handle_starttag(self, tag, attrs):
+            self.is_html = True
+
+    def is_html(text):
+        parser = MyHTMLParser()
+        parser.feed(text)
+        return parser.is_html
     class Toggle_Pod:
         initialized = False
 
@@ -1137,7 +1151,7 @@ def main(page: ft.Page):
                 )
                 ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
-                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
+                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=entry_artwork_url: queue_selected_episode(url, title, artwork)),
                         ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title))
                     ]
                 )
@@ -1734,7 +1748,6 @@ def main(page: ft.Page):
             episode_info = database_functions.functions.return_selected_episode(cnx, active_user.user_id, current_episode.title, current_episode.url)
             
             for entry in episode_info:
-                print(entry)
                 ep_title = entry['EpisodeTitle']
                 ep_pod_name = entry['PodcastName']
                 ep_pod_site = entry['WebsiteURL']
@@ -1750,9 +1763,9 @@ def main(page: ft.Page):
             display_pod_art_url = ep_artwork if ep_artwork else display_pod_art_fallback
             display_pod_art_parsed = check_image(display_pod_art_url)
             pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
-            pod_feed_title = ft.Text(ep_title, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
-            pod_feed_date = ft.Text(ep_pub_date)
-            pod_feed_desc = ft.Text(ep_desc)
+            pod_feed_title = ft.Text(ep_title, color=active_user.font_color, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+            pod_feed_date = ft.Text(ep_pub_date, color=active_user.font_color)
+            podcast_feed_name = ft.Text(ep_pod_name, color=active_user.font_color, style=ft.TextThemeStyle.DISPLAY_MEDIUM)
             pod_feed_site = ft.ElevatedButton(text=ep_pod_site, on_click=launch_pod_site)
 
             ep_play_button = ft.IconButton(
@@ -1774,10 +1787,23 @@ def main(page: ft.Page):
             ft.Column(col={"md": 4}, controls=[pod_image]),
             ft.Column(col={"md": 8}, controls=[pod_feed_title, pod_feed_date, ep_play_options]),
             ])
+            podcast_row = ft.Container(content=podcast_feed_name)
+            podcast_row.padding=padding.only(left=70, right=50)
             feed_row = ft.Container(content=feed_row_content)
             feed_row.padding=padding.only(left=70, right=50)
-            desc_row = ft.Container(content=pod_feed_desc)
-            desc_row.padding=padding.only(left=70, right=50)
+            # Check for html in description
+            if is_html(ep_desc):
+                # convert HTML to Markdown
+                markdown_desc = html2text.html2text(ep_desc)
+                pod_feed_desc = ft.Markdown(markdown_desc, )
+                desc_row = ft.Container(content=pod_feed_desc)
+                desc_row.padding=padding.only(left=70, right=50)
+            else:
+                # display plain text
+                markdown_desc = ep_desc
+                pod_feed_desc = ft.Text(ep_desc, color=active_user.font_color)
+                desc_row = ft.Container(content=pod_feed_desc)
+                desc_row.padding=padding.only(left=70, right=50)
 
 
             # page.overlay.pop(2)
@@ -1786,6 +1812,7 @@ def main(page: ft.Page):
                     "/poddisplay",
                     [
                         pypods_appbar,
+                        podcast_row,
                         feed_row,
                         desc_row
                         
