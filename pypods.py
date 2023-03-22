@@ -235,8 +235,10 @@ def main(page: ft.Page):
                 current_time.content = ft.Text(self.length, color=active_user.nav_color1)
                 podcast_length.content = ft.Text(self.length, color=active_user.nav_color1)
                 audio_container_image_landing.src = self.artwork
-                audio_container_image_landing.width = 25
-                audio_container_image_landing.height = 25
+                audio_container_image_landing.width = 40
+                audio_container_image_landing.height = 40
+                audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                audio_container_image.border_radius = ft.border_radius.all(75)
                 audio_container_image_landing.update()
                 audio_scrubber.active_color = active_user.nav_color2
                 audio_scrubber.inactive_color = active_user.nav_color2
@@ -303,6 +305,37 @@ def main(page: ft.Page):
                 print(f"Added episode '{self.title}' to the queue")
             else:
                 self.play_episode()
+
+        def remove_queued_pod(self):
+            # Get the current playlist and media player
+            media_list_player = self.instance.media_list_player_new()
+            media_list_player.set_media_player(self.player)
+            media_list = self.instance.media_list_new()
+
+            # Populate the media list with the current queue
+            for url in self.queue:
+                media = self.instance.media_new(url)
+                media_list.add_media(media)
+
+            media_list_player.set_media_list(media_list)
+
+            # Iterate through the media list and remove the media object that corresponds to the URL
+            for i in range(media_list.count()):
+                media = media_list.item_at_index(i)
+                if media.get_mrl() == self.url:
+                    media_list.lock()
+                    media_list.remove_index(i)
+                    media_list.unlock()
+                    break
+
+            # Update the internal queue list
+            self.queue.remove(self.url)
+
+            print(f"Removed episode '{self.title}' from the queue")
+
+            # Remove the episode from the database queue
+            database_functions.functions.episode_remove_queue(cnx, active_user.user_id, self.url, self.title)
+
 
         def get_queue(self):
             return self.queue
@@ -421,7 +454,7 @@ def main(page: ft.Page):
                     )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
                         ]
                     )
@@ -429,9 +462,12 @@ def main(page: ft.Page):
                         ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
                         ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
                     ])
-                    home_ep_row = ft.Container(content=home_ep_row_content)
+                    home_div_row = ft.Divider(color=active_user.accent_color)
+                    home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
+                    home_ep_row = ft.Container(content=home_ep_column)
                     home_ep_row.padding=padding.only(left=70, right=50)
                     home_ep_rows.append(home_ep_row)
+                    # home_ep_rows.append(ft.Text('test'))
                     home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
                     home_pods_active = True
                     home_ep_number += 1
@@ -574,6 +610,11 @@ def main(page: ft.Page):
     def open_history(e):
         page.go("/history")
 
+    def open_episode_select(page, url, title):
+        current_episode.url = url
+        current_episode.title = title
+        page.go("/episode_display")
+
     def open_pod_list(e):
         pr = ft.ProgressRing()
         page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
@@ -646,7 +687,7 @@ def main(page: ft.Page):
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         page.overlay.append(ft.Stack([navbar], expand=True))
         page.update()
-        page.go("/settings")
+        page.go("/")
 
     def go_home(e):
         page.update()
@@ -671,8 +712,8 @@ def main(page: ft.Page):
                 home_pub_date = ""
                 home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
                 home_ep_url = ""
-                home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                home_entry_description = ft.Text(home_ep_desc, width=800)
+                home_entry_title = ft.TextButton(text=f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
+                home_entry_description = ft.Text(home_ep_desc)
                 home_entry_audio_url = ft.Text(home_ep_url)
                 home_entry_released = ft.Text(home_pub_date)
                 artwork_no = random.randint(1, 12)
@@ -710,14 +751,16 @@ def main(page: ft.Page):
                     home_ep_desc = entry['EpisodeDescription']
                     home_ep_artwork = entry['EpisodeArtwork']
                     home_ep_url = entry['EpisodeURL']
+                    home_ep_duration = entry['EpisodeDuration']
                     # do something with the episode information
-
-                    home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
+                    home_entry_title_button = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
+                    home_entry_title = ft.TextButton(content=home_entry_title_button, on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
                     home_entry_row = ft.ResponsiveRow([
     ft.Column(col={"sm": 6}, controls=[home_entry_title]),
 ])
                     home_entry_description = ft.Text(home_ep_desc, color=active_user.font_color)
                     home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
+                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(cnx, active_user.user_id, home_ep_title, home_ep_url)
                     home_entry_released = ft.Text(home_pub_date, color=active_user.font_color)
 
                     home_art_no = random.randint(1, 12)
@@ -732,16 +775,33 @@ def main(page: ft.Page):
                         tooltip="Play Episode",
                         on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: play_selected_episode(url, title, artwork)
                     )
+                    home_ep_resume_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Resume Episode",
+                        on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
+                    )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
                         ]
                     )
-                    home_ep_row_content = ft.ResponsiveRow([
-                        ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                        ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
-                    ])
+                    if check_episode_playback == True:
+                        listen_prog = seconds_to_time(listen_duration)
+                        home_ep_prog = seconds_to_time(home_ep_duration)
+                        progress_value = get_progress(listen_duration, home_ep_duration)
+                        home_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(home_ep_prog, color=active_user.font_color)])
+                        home_ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                            ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
+                        ])
+                    else:
+                        home_ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                            ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                        ])
                     home_div_row = ft.Divider(color=active_user.accent_color)
                     home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
                     home_ep_row = ft.Container(content=home_ep_column)
@@ -917,7 +977,7 @@ def main(page: ft.Page):
 
             # User Settings
             user_setting = ft.Text(
-            "Personal Settings:",
+            "Personal Settings:", color=active_user.font_color,
             size=30,
             font_family="RobotoSlab",
             weight=ft.FontWeight.W_300,
@@ -926,20 +986,23 @@ def main(page: ft.Page):
             user_setting_text.padding=padding.only(left=70, right=50)
 
             # Theme Select Elements
-            theme_text = ft.Text('Select Custom Theme:')
-            theme_drop = ft.Dropdown(width=150,
+            theme_text = ft.Text('Select Custom Theme:', color=active_user.font_color)
+            theme_drop = ft.Dropdown(width=150, border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
              options=[
                 ft.dropdown.Option("light"),
                 ft.dropdown.Option("dark"),
                 ft.dropdown.Option("nordic"),
                 ft.dropdown.Option("abyss"),
                 ft.dropdown.Option("dracula"),
-                ft.dropdown.Option("dracula light"),
+                ft.dropdown.Option("kimbie"),
                 ft.dropdown.Option("greenie meanie"),
-                ft.dropdown.Option("hotdogstand"),
+                ft.dropdown.Option("neon"),
+                ft.dropdown.Option("greenie meanie"),
+                ft.dropdown.Option("wilderberries"),
+                ft.dropdown.Option("hotdogstand - MY EYES"),
              ]
              )
-            theme_submit = ft.TextButton("Submit", on_click=lambda event: active_user.set_theme(theme_drop.value))
+            theme_submit = ft.ElevatedButton("Submit", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda event: active_user.set_theme(theme_drop.value))
             theme_column = ft.Column(controls=[theme_text, theme_drop, theme_submit])
             theme_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -949,7 +1012,7 @@ def main(page: ft.Page):
             # Admin Only Settings
 
             admin_setting = ft.Text(
-            "Administration Settings:",
+            "Administration Settings:", color = active_user.font_color,
             size=30,
             font_family="RobotoSlab",
             weight=ft.FontWeight.W_300,
@@ -959,12 +1022,12 @@ def main(page: ft.Page):
 
             # New User Creation Elements
             new_user = User(page)
-            user_text = Text('Enter New User Information:')
-            user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods')
-            user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com') 
-            user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999')
-            user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-            user_submit = ft.ElevatedButton(text="Submit!", on_click=lambda x: (
+            user_text = Text('Enter New User Information:', color=active_user.font_color)
+            user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.set_username(user_username.value), 
                 new_user.set_password(user_password.value), 
                 new_user.set_email(user_email.value),
@@ -993,6 +1056,7 @@ def main(page: ft.Page):
                     ]
                     
                 )
+            settings_view.bgcolor = active_user.bgcolor
             settings_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
@@ -1073,20 +1137,12 @@ def main(page: ft.Page):
                 )
                 ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
-                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title: queue_selected_episode(url, title)),
+                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
                         ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title))
                     ]
                 )
                 ep_play_options = ft.Row(controls=[ep_play_button, ep_popup_button])
-            
-                # Creating column and row for search layout
-                # ep_column = ft.Column(
-                #     controls=[entry_title, entry_description, entry_released]
-                # )
-                # ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[entry_artwork_url, ep_column, ep_play_options]
-                # )
+
                 ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released, ep_play_options])])
@@ -1340,7 +1396,7 @@ def main(page: ft.Page):
                     )
                     hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.main_color, size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
                         ]
                     )
@@ -1478,7 +1534,7 @@ def main(page: ft.Page):
                     )
                     download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title))
                         ]
                     )
@@ -1547,7 +1603,7 @@ def main(page: ft.Page):
                 queue_entry_artwork_url = ft.Image(src=queue_artwork_url_parsed, width=150, height=150)
                 queue_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
-                    icon_color="blue400",
+                    icon_color=active_user.accent_color,
                     icon_size=40,
                     tooltip="No Episodes Added Yet"
                 )
@@ -1584,13 +1640,15 @@ def main(page: ft.Page):
                     queue_ep_artwork = entry['EpisodeArtwork']
                     queue_ep_url = entry['EpisodeURL']
                     queue_ep_date = entry['QueueDate']
+                    queue_ep_duration = entry['EpisodeDuration']
                     
                     # do something with the episode information
 
-                    queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
-                    queue_entry_description = ft.Text(queue_ep_desc)
-                    queue_entry_audio_url = ft.Text(queue_ep_url)
-                    queue_entry_released = ft.Text(queue_pub_date)
+                    queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
+                    queue_entry_description = ft.Text(queue_ep_desc, color=active_user.font_color)
+                    queue_entry_audio_url = ft.Text(queue_ep_url, color=active_user.font_color)
+                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(cnx, active_user.user_id, queue_ep_title, queue_ep_url)
+                    queue_entry_released = ft.Text(queue_pub_date, color=active_user.font_color)
 
                     queue_art_no = random.randint(1, 12)
                     queue_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{queue_art_no}.jpeg")
@@ -1599,31 +1657,41 @@ def main(page: ft.Page):
                     queue_entry_artwork_url = ft.Image(src=queue_art_parsed, width=150, height=150)
                     queue_ep_play_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
-                        icon_color="blue400",
+                        icon_color=active_user.accent_color,
                         icon_size=40,
                         tooltip="Play Episode",
                         on_click=lambda x, url=queue_ep_url, title=queue_ep_title, artwork=queue_ep_artwork: play_selected_episode(url, title, artwork)
                     )
-                    queue_popup_button = ft.PopupMenuButton(icon=ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, 
+                    queue_ep_resume_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Resume Episode",
+                        on_click=lambda x, url=queue_ep_url, title=queue_ep_title, artwork=queue_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
+                    )
+                    queue_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                     # icon_size=40, icon_color="blue400", tooltip="Options",
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: queue_selected_episode(url, title)),
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From Queue", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: episode_remove_queue(url, title)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: delete_selected_episode(url, title))
                         ]
                     )
-                    queue_play_options = ft.Column(controls=[queue_ep_play_button, queue_popup_button])
-                    # Creating column and row for queue layout
-                    queue_ep_column = ft.Column(
-                        controls=[queue_entry_title, queue_entry_description, queue_entry_released]
-                    )
-                    # queue_ep_row = ft.Row(
-                    #     alignment=ft.MainAxisAlignment.CENTER,
-                    #     controls=[queue_entry_artwork_url, queue_ep_column, queue_play_options]
-                    # )
-                    queue_ep_row_content = ft.ResponsiveRow([
-                        ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                        ft.Column(col={"md": 10}, controls=[queue_ep_column, queue_play_options]),
-                    ])
+                    if check_episode_playback == True:
+                        listen_prog = seconds_to_time(listen_duration)
+                        queue_ep_prog = seconds_to_time(queue_ep_duration)
+                        progress_value = get_progress(listen_duration, queue_ep_duration)
+                        queue_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(queue_ep_prog, color=active_user.font_color)])
+                        queue_ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
+                            ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_entry_progress, ft.Row(controls=[queue_ep_play_button, queue_ep_resume_button, queue_popup_button])]),
+                        ])
+                    else:
+                        queue_ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
+                            ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
+                        ])
+                    queue_div_row = ft.Divider(color=active_user.accent_color)
+                    queue_ep_column = ft.Column(controls=[queue_ep_row_content, queue_div_row])
                     queue_ep_row = ft.Container(content=queue_ep_row_content)
                     queue_ep_row.padding=padding.only(left=70, right=50)
                     queue_ep_rows.append(queue_ep_row)
@@ -1652,12 +1720,84 @@ def main(page: ft.Page):
                     ]
                     
                 )
+            ep_queue_view.bgcolor = active_user.bgcolor
             ep_queue_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
                 ep_queue_view
                     
                 )
+
+
+        if page.route == "/episode_display" or page.route == "/episode_display":
+            # Creating attributes for page layout
+            episode_info = database_functions.functions.return_selected_episode(cnx, active_user.user_id, current_episode.title, current_episode.url)
+            
+            for entry in episode_info:
+                print(entry)
+                ep_title = entry['EpisodeTitle']
+                ep_pod_name = entry['PodcastName']
+                ep_pod_site = entry['WebsiteURL']
+                ep_pub_date = entry['EpisodePubDate']
+                ep_desc = entry['EpisodeDescription']
+                ep_artwork = entry['EpisodeArtwork']
+                ep_url = entry['EpisodeURL']
+                ep_duration = entry['EpisodeDuration']
+
+            ep_podcast_name = ft.Text("ep_pod_name")
+            display_pod_art_no = random.randint(1, 12)
+            display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
+            display_pod_art_url = ep_artwork if ep_artwork else display_pod_art_fallback
+            display_pod_art_parsed = check_image(display_pod_art_url)
+            pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
+            pod_feed_title = ft.Text(ep_title, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+            pod_feed_date = ft.Text(ep_pub_date)
+            pod_feed_desc = ft.Text(ep_desc)
+            pod_feed_site = ft.ElevatedButton(text=ep_pod_site, on_click=launch_pod_site)
+
+            ep_play_button = ft.IconButton(
+                icon=ft.icons.PLAY_CIRCLE,
+                icon_color=active_user.accent_color,
+                icon_size=40,
+                tooltip="Play Episode",
+                on_click = lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: play_selected_episode(url, title, artwork)
+            )
+            ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
+                    items=[
+                    ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: queue_selected_episode(url, title, artwork)),
+                    ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title))
+                ]
+            )
+            ep_play_options = ft.Row(controls=[ep_play_button, ep_popup_button])
+
+            feed_row_content = ft.ResponsiveRow([
+            ft.Column(col={"md": 4}, controls=[pod_image]),
+            ft.Column(col={"md": 8}, controls=[pod_feed_title, pod_feed_date, ep_play_options]),
+            ])
+            feed_row = ft.Container(content=feed_row_content)
+            feed_row.padding=padding.only(left=70, right=50)
+            desc_row = ft.Container(content=pod_feed_desc)
+            desc_row.padding=padding.only(left=70, right=50)
+
+
+            # page.overlay.pop(2)
+            # Create search view object
+            pod_view = ft.View(
+                    "/poddisplay",
+                    [
+                        pypods_appbar,
+                        feed_row,
+                        desc_row
+                        
+                    ]
+                    
+                )
+            pod_view.bgcolor = active_user.bgcolor
+            pod_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                    pod_view
+        )
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
@@ -1821,7 +1961,7 @@ def main(page: ft.Page):
                 self.main_color = '#323542'
                 self.accent_color = colors.WHITE
                 self.tertiary_color = '#23282E'
-                self.font_color = colors.BLACK
+                self.font_color = colors.WHITE
                 self.bonus_color = colors.BLACK
                 self.nav_color1 = colors.BLACK
                 self.nav_color2 = colors.BLACK
@@ -1836,24 +1976,72 @@ def main(page: ft.Page):
                 self.font_color = '#42A5F5'
                 self.bonus_color = colors.BLACK
                 self.nav_color1 = colors.BLACK
-                self.nav_color2 = colors.BLACK
+                self.nav_color2 = colors.WHITE
                 self.bgcolor = '#000C18'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#3C4252'
             elif active_theme == 'dracula':
                 page.theme_mode = "dark"
-                self.main_color = '#323542'
-                self.accent_color = colors.WHITE
-                self.tertiary_color = '#23282E'
-                self.font_color = colors.BLACK
-                self.bonus_color = colors.BLACK
-                self.nav_color1 = colors.BLACK
+                self.main_color = '#262626'
+                self.accent_color = '#5196B2'
+                self.tertiary_color = '#5196B2'
+                self.font_color = colors.WHITE
+                self.bonus_color = '#D5BC5C'
+                self.nav_color1 = '#D5BC5C'
                 self.nav_color2 = colors.BLACK
-                self.bgcolor = '#3C4252'
-                page.bgcolor = '#3C4252'
+                self.bgcolor = '#282A36'
+                page.bgcolor = '#282A36'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'kimbie':
+                page.theme_mode = "dark"
+                self.main_color = '#362712'
+                self.accent_color = '#B23958'
+                self.tertiary_color = '#AC8E2F'
+                self.font_color = '#B1AD86'
+                self.bonus_color = '#221A1F'
+                self.nav_color1 = '#221A1F'
+                self.nav_color2 = '#B1AD86'
+                self.bgcolor = '#221A0F'
+                page.bgcolor = '#282A36'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'hotdogstand - MY EYES':
+                page.theme_mode = "dark"
+                self.main_color = '#EEB911'
+                self.accent_color = '#C3590D'
+                self.tertiary_color = '#730B1B'
+                self.font_color = colors.WHITE
+                self.bonus_color = '#D5BC5C'
+                self.nav_color1 = '#D5BC5C'
+                self.nav_color2 = colors.BLACK
+                self.bgcolor = '#E31836'
+                page.bgcolor = '#282A36'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'neon':
+                page.theme_mode = "dark"
+                self.main_color = '#262626'
+                self.accent_color = '#5196B2'
+                self.tertiary_color = '#5196B2'
+                self.font_color = colors.WHITE
+                self.bonus_color = '#D5BC5C'
+                self.nav_color1 = '#D5BC5C'
+                self.nav_color2 = colors.BLACK
+                self.bgcolor = '#282A36'
+                page.bgcolor = '#282A36'
+                page.window_bgcolor = '#3C4252'
+            elif active_theme == 'wildberries':
+                page.theme_mode = "dark"
+                self.main_color = '#262626'
+                self.accent_color = '#5196B2'
+                self.tertiary_color = '#5196B2'
+                self.font_color = colors.WHITE
+                self.bonus_color = '#D5BC5C'
+                self.nav_color1 = '#D5BC5C'
+                self.nav_color2 = colors.BLACK
+                self.bgcolor = '#282A36'
+                page.bgcolor = '#282A36'
                 page.window_bgcolor = '#3C4252'
             else:
-                page.theme_mode = "dark"
+                page.theme_mode = "greenie meanie"
                 self.main_color = '#323542'
                 self.accent_color = colors.WHITE
                 self.tertiary_color = '#23282E'
@@ -1989,7 +2177,7 @@ def main(page: ft.Page):
                     alignment=alignment.center,
                     content=Text(
                         value=active_user.initials,
-                        color=active_user.accent_color,
+                        color=active_user.nav_color2,
                         size=20,
                         weight="bold",
                     ),
@@ -2109,18 +2297,18 @@ def main(page: ft.Page):
     audio_scrubber_column.horizontal_alignment.STRETCH
     audio_scrubber_column.width = '100%'
     # Image for podcast playing
-    audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/Pypods-logos_blue.png", width=25, height=25)
+    audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/Pypods-logos_blue.png", width=40, height=40)
     audio_container_image = ft.Container(content=audio_container_image_landing)
     audio_container_image.border_radius = ft.border_radius.all(25)
-
+    currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
     audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, controls=[scrub_bar_row, ep_audio_controls])
     audio_container_row_landing = ft.Row(
                 vertical_alignment=ft.CrossAxisAlignment.END,  
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
-                controls=[audio_container_image_landing, currently_playing, audio_controls_row])
+                controls=[currently_playing_container, audio_controls_row])
     audio_container_row = ft.Container(content=audio_container_row_landing)
-    audio_container_row.padding=ft.padding.only(left=20)
+    audio_container_row.padding=ft.padding.only(left=10)
     def page_checksize(e):
         if page.width <= 768:
             ep_height = 100
@@ -2128,7 +2316,7 @@ def main(page: ft.Page):
             audio_container.height = ep_height
             audio_container.content = ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
-                controls=[audio_container_image_landing, currently_playing, audio_controls_row])
+                controls=[audio_container_image, currently_playing, audio_controls_row])
             audio_container.update()
             page.update()
         else:
@@ -2148,7 +2336,7 @@ def main(page: ft.Page):
             padding=6,
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
-                controls=[audio_container_image_landing, currently_playing, audio_controls_row])
+                controls=[audio_container_image, currently_playing, audio_controls_row])
         )
     else:
         ep_height = 50
@@ -2195,8 +2383,6 @@ def main(page: ft.Page):
         current_episode.play_episode(listen_duration=listen_duration)
 
 
-
-
     def download_selected_episode(url, title, page):
         pr = ft.ProgressRing()
         page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
@@ -2215,11 +2401,17 @@ def main(page: ft.Page):
         current_episode.title = title
         current_episode.delete_pod()
 
-    def queue_selected_episode(url, title):
+    def queue_selected_episode(url, title, artwork):
         current_episode.url = url
         current_episode.title = title
+        current_episode.artwork = artwork
         current_episode.name = title
         current_episode.queue_pod()
+
+    def episode_remove_queue(url, title):
+        current_episode.url = url
+        current_episode.title = title
+        current_episode.remove_queued_pod()
         
 
 # Starting Page Layout

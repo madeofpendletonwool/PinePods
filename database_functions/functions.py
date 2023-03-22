@@ -172,7 +172,7 @@ def return_episodes(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration "
              f"FROM Episodes "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
              f"WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
@@ -188,6 +188,38 @@ def return_episodes(cnx, user_id):
         return None
 
     return rows
+
+def return_selected_episode(cnx, user_id, title, url):
+    cursor = cnx.cursor()
+    query = ("SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
+            "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
+            "Podcasts.PodcastName, Podcasts.WebsiteURL "
+            "FROM Episodes "
+            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+            "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s")
+
+    cursor.execute(query, (title, url))
+    result = cursor.fetchall()
+
+    cursor.close()
+
+    episodes = []
+    for row in result:
+        episode = {
+            'EpisodeTitle': row[0],
+            'EpisodeDescription': row[1],
+            'EpisodeURL': row[2],
+            'EpisodeArtwork': row[3],
+            'EpisodePubDate': row[4],
+            'EpisodeDuration': row[5],
+            'PodcastName': row[6],
+            'WebsiteURL': row[7]
+        }
+        episodes.append(episode)
+
+    return episodes
+
+
 
 
 def return_pods(cnx, user_id):
@@ -582,8 +614,27 @@ def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
         cursor.close()
         return False
 
+def episode_remove_queue(cnx, user_id, url, title):
+    cursor = cnx.cursor()
 
+    # Get the episode ID using the episode title and URL
+    query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+    cursor.execute(query, (title, url))
+    episode_id = cursor.fetchone()
 
+    if episode_id:
+        # Remove the episode from the user's queue
+        query = "DELETE FROM EpisodeQueue WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id[0])) # Extract the episode ID from the tuple
+        cnx.commit()
+
+        cursor.close()
+
+        return True
+    else:
+        # Episode not found in the database
+        cursor.close()
+        return False
 
 
 
@@ -593,7 +644,7 @@ def get_queue_list(cnx, queue_urls):
     
     query_template = """
         SELECT Episodes.EpisodeTitle, Podcasts.PodcastName, Episodes.EpisodePubDate,
-            Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL,
+            Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, 
             NOW() as QueueDate
         FROM Episodes
         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID

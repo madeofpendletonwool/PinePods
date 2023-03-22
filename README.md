@@ -31,17 +31,22 @@ N/A
  - [x] Play Audio Files using Python - The python vlc package is used for this
  - [x] Record listen history and display user history on specific page
  - [x] Record accurate listen time. So if you stop listening part-way through you can resume from the same spot
- - [ ] Implement resume playback throughout all areas of the app
  - [x] Scrubbing playback from a progress bar - ft.slider()
  - [x] Add visual progress bar based on time listened to podcasts partly listened to
  - [x] Add Download option for podcasts. In addition, display downloaded podcasts in downloads area. Allow for deletion of these after downloaded
- - [ ] Add Queue, and allow podcasts to be removed from queue once added (Queue is added but you can't remove them from it yet)
+ - [x] Add Queue, and allow podcasts to be removed from queue once added (Queue is added but you can't remove them from it yet)
+ - [x] Create login screen
+ - [x] Check for and remove podcasts no longer available (This will be handled from scheduled cron job that queues)
+ - [x] Check user values when adding new user
+ - [x] Prevent user from being added without required info 
+ - [x] Prevent submit for user from being hit without populated values
+- [x] Figure out why some podcasts don't appear in search (This was because of the old podcast index python package. Rebuilt using requests and now it works great)
+ - [ ] Implement resume playback throughout all areas of the app
  - [ ] Implement smoother scrolling with big list loading
  - [ ] Implement Episode view (Should be able to display html via markdown)
  - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes view
  - [ ] Allow local downloads, to just download the mp3 files direct
- - [x] Create login screen
  - [ ] Customize login screen
  - [ ] Theme settings
  - [ ] Admin area for User management
@@ -64,20 +69,14 @@ N/A
      - [ ] Mac App
      - [ ] Android App
      - [ ] IOS App
-
-## Quick Fixes
-
-- [x] Check for and remove podcasts no longer available (This will be handled from scheduled cron job that queues)
-- [x] Check user values when adding new user
-- [x] Prevent user from being added without required info 
-- [x] Prevent submit for user from being hit without populated values
-- [ ] Fix issues with episodes playing not in database
-- [ ] Add loading wheels throughout
-- [ ] Add picture of current episode to soundbar
-- [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)
-- [x] Figure out why some podcasts don't appear in search (This was because of the old podcast index python package. Rebuilt using requests and now it works great)
-- [ ] Fix local images
-- [ ] If a podcast is already downloaded do not allow downloads - instead remove
+  - [ ] Fix issues with episodes playing not in database
+  - [ ] Add caching to image server
+  - [ ] Add loading wheels throughout
+  - [ ] Add picture of current episode to soundbar
+  - [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)
+  - [ ] Fix local images
+  - [ ] If a podcast is already downloaded do not allow downloads - instead remove
+  - [ ] The math is currently wrong on the queued time
 
 
 ## Platform Availability
