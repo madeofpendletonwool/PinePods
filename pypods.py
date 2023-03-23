@@ -772,7 +772,38 @@ def main(page: ft.Page):
                     home_entry_row = ft.ResponsiveRow([
     ft.Column(col={"sm": 6}, controls=[home_entry_title]),
 ])
-                    home_entry_description = ft.Text(home_ep_desc, color=active_user.font_color)
+
+                    num_lines = home_ep_desc.count('\n')
+                    if num_lines > 15:
+                        if is_html(home_ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(home_ep_desc)
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = markdown_desc.splitlines()[:15]
+                                markdown_desc = '\n'.join(lines)
+                            # add inline style to change font color                            
+                            home_entry_description = ft.Markdown(markdown_desc)
+                            home_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
+                        else:
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = home_ep_desc.splitlines()[:15]
+                                home_ep_desc = '\n'.join(lines)
+                            # display plain text
+                            home_entry_description = ft.Text(home_ep_desc, color=active_user.font_color)
+
+                    else:
+                        if is_html(home_ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(home_ep_desc)
+                            # add inline style to change font color
+                            home_entry_description = ft.Markdown(markdown_desc)
+                        else:
+                            # display plain text
+                            markdown_desc = home_ep_desc
+                            home_entry_description = ft.Text(home_ep_desc, color=active_user.font_color)
+
                     home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
                     check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(cnx, active_user.user_id, home_ep_title, home_ep_url)
                     home_entry_released = ft.Text(home_pub_date, color=active_user.font_color)
@@ -807,15 +838,27 @@ def main(page: ft.Page):
                         home_ep_prog = seconds_to_time(home_ep_duration)
                         progress_value = get_progress(listen_duration, home_ep_duration)
                         home_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(home_ep_prog, color=active_user.font_color)])
-                        home_ep_row_content = ft.ResponsiveRow([
-                            ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                            ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
-                        ])
+                        if num_lines > 15:
+                            home_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
+                            ])
+                        else:
+                            home_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
+                            ]) 
                     else:
-                        home_ep_row_content = ft.ResponsiveRow([
-                            ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                            ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
-                        ])
+                        if num_lines > 15:
+                            home_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                            ])
+                        else:
+                            home_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                            ]) 
                     home_div_row = ft.Divider(color=active_user.accent_color)
                     home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
                     home_ep_row = ft.Container(content=home_ep_column)
@@ -1775,7 +1818,7 @@ def main(page: ft.Page):
                 tooltip="Play Episode",
                 on_click = lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: play_selected_episode(url, title, artwork)
             )
-            ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
+            ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                     items=[
                     ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: queue_selected_episode(url, title, artwork)),
                     ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title))
@@ -1795,7 +1838,10 @@ def main(page: ft.Page):
             if is_html(ep_desc):
                 # convert HTML to Markdown
                 markdown_desc = html2text.html2text(ep_desc)
-                pod_feed_desc = ft.Markdown(markdown_desc, )
+
+                # add inline style to change font color
+                
+                pod_feed_desc = ft.Markdown(markdown_desc)
                 desc_row = ft.Container(content=pod_feed_desc)
                 desc_row.padding=padding.only(left=70, right=50)
             else:
@@ -1804,6 +1850,7 @@ def main(page: ft.Page):
                 pod_feed_desc = ft.Text(ep_desc, color=active_user.font_color)
                 desc_row = ft.Container(content=pod_feed_desc)
                 desc_row.padding=padding.only(left=70, right=50)
+
 
 
             # page.overlay.pop(2)
@@ -1960,7 +2007,7 @@ def main(page: ft.Page):
             active_theme = database_functions.functions.get_theme(cnx, self.user_id)
             print(active_theme)
             if active_theme == 'light':
-                page.theme_mode = "dark"
+                page.theme_mode = "light"
                 self.main_color = '#E1E1E1'
                 self.accent_color = colors.BLACK
                 self.tertiary_color = '#C7C7C7'
