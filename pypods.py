@@ -79,6 +79,9 @@ def main(page: ft.Page):
         page.snack_bar.open = True
         page.update()
 
+    def launch_clicked_url(e):
+        page.launch_url(e.data)
+
     def launch_pod_site(e):
         page.launch_url(clicked_podcast.website)
 
@@ -783,7 +786,7 @@ def main(page: ft.Page):
                                 lines = markdown_desc.splitlines()[:15]
                                 markdown_desc = '\n'.join(lines)
                             # add inline style to change font color                            
-                            home_entry_description = ft.Markdown(markdown_desc)
+                            home_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
                             home_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
                         else:
                             if num_lines > 15:
@@ -798,7 +801,7 @@ def main(page: ft.Page):
                             # convert HTML to Markdown
                             markdown_desc = html2text.html2text(home_ep_desc)
                             # add inline style to change font color
-                            home_entry_description = ft.Markdown(markdown_desc)
+                            home_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
                         else:
                             # display plain text
                             markdown_desc = home_ep_desc
@@ -1841,7 +1844,7 @@ def main(page: ft.Page):
 
                 # add inline style to change font color
                 
-                pod_feed_desc = ft.Markdown(markdown_desc)
+                pod_feed_desc = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
                 desc_row = ft.Container(content=pod_feed_desc)
                 desc_row.padding=padding.only(left=70, right=50)
             else:
