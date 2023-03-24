@@ -201,12 +201,26 @@ def main(page: ft.Page):
             self.thread.start()
             self.audio_playing = True
 
-            self.record_history()
+            time.sleep(.5)
 
-            time.sleep(1)
 
             # get the length of the media in milliseconds
             media_length = self.player.get_length()
+            print(media_length)
+
+
+            # try up to three times to get the media length if it's 0
+            count = 0
+            while media_length == 0 and count < 5:
+                time.sleep(.5)
+                media_length = self.player.get_length()
+                count += 1
+                print(count)
+
+            if media_length == 0:
+                raise ValueError("Unable to get media length")
+
+            self.record_history()
 
             # convert milliseconds to a timedelta object
             delta = datetime.timedelta(milliseconds=media_length)
@@ -216,8 +230,9 @@ def main(page: ft.Page):
 
             # format datetime object to hh:mm:ss format with two decimal places
             total_length = datetime_obj.strftime('%H:%M:%S')
-
+            time.sleep(1)
             self.length = total_length
+            print(self.length)
             self.toggle_current_status()
             page.update()
             
@@ -225,6 +240,7 @@ def main(page: ft.Page):
             total_seconds = media_length // 1000
             self.seconds = total_seconds
             audio_scrubber.max = self.seconds
+
             
             for i in range(total_seconds):
                 self.current_progress = self.get_current_time()
@@ -265,7 +281,7 @@ def main(page: ft.Page):
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
                 currently_playing.content = ft.Text(self.name, size=16)
-                current_time.content = ft.Text(self.length)
+                current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_container_image_landing.src = self.artwork
                 audio_container_image_landing.width = 40
@@ -279,6 +295,9 @@ def main(page: ft.Page):
                 play_button.icon_color = active_user.accent_color
                 pause_button.icon_color = active_user.accent_color
                 seek_button.icon_color = active_user.accent_color
+                currently_playing.color = active_user.font_color
+                # current_time_text.color = active_user.font_color
+                podcast_length.color = active_user.font_color
                 self.page.update()
             else:
                 pause_button.visible = False
@@ -289,7 +308,7 @@ def main(page: ft.Page):
         def toggle_second_status(self):
             audio_scrubber.value = self.get_current_seconds()
             audio_scrubber.update()
-            current_time.content = ft.Text(self.current_progress, color=active_user.nav_color1)
+            current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
             current_time.update()
 
             # self.page.update()
@@ -757,6 +776,17 @@ def main(page: ft.Page):
         search_pods.cursor_color = active_user.accent_color
         search_btn.bgcolor = active_user.accent_color
         search_btn.color = active_user.main_color
+        audio_container.bgcolor = active_user.main_color
+        audio_scrubber.active_color = active_user.nav_color2
+        audio_scrubber.inactive_color = active_user.nav_color2
+        audio_scrubber.thumb_color = active_user.accent_color
+        play_button.icon_color = active_user.accent_color
+        pause_button.icon_color = active_user.accent_color
+        seek_button.icon_color = active_user.accent_color
+        currently_playing.color = active_user.font_color
+        current_time.color = active_user.font_color
+        podcast_length.color = active_user.font_color
+
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         page.overlay.append(ft.Stack([navbar], expand=True))
@@ -2614,7 +2644,8 @@ def main(page: ft.Page):
 
 
     podcast_length = ft.Container(content=ft.Text('doesntmatter'))
-    current_time = ft.Container(content=ft.Text('placeholder'))
+    current_time_text = ft.Text('placeholder')
+    current_time = ft.Container(content=current_time_text)
     audio_scrubber = ft.Slider(min=0, expand=True,  max=current_episode.seconds, label="{value}", on_change=slider_changed)
     audio_scrubber.width = '100%'
     audio_scrubber_column = ft.Column(controls=[audio_scrubber])
