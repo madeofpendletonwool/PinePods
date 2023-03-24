@@ -47,6 +47,7 @@ N/A
  - [x] Fix issues with episodes playing not in database (Sorta fixed. For now episodes played are always in database. External to database episodes coming soon)
  - [x] Add picture of current episode to soundbar
  - [ ] Fix issue with podcasts sometimes not registering time when played
+ - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] Implement smoother scrolling with big list loading
  - [ ] Episode Streaming via external web client doesn't currently work
  - [ ] Implement download episode checking throughout
