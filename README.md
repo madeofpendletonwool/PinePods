@@ -41,14 +41,14 @@ N/A
  - [x] Prevent user from being added without required info 
  - [x] Prevent submit for user from being hit without populated values
  - [x] Figure out why some podcasts don't appear in search (This was because of the old podcast index python package. Rebuilt using requests and now it works great)
- - [ ] Implement resume playback throughout all areas of the app
+ - [x] Implement resume playback throughout all areas of the app
  - [ ] Implement smoother scrolling with big list loading
- - [ ] Implement Episode view (Should be able to display html via markdown)
+ - [x] Implement Episode view (Should be able to display html via markdown)
  - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes view
  - [ ] Allow local downloads, to just download the mp3 files direct
  - [ ] Customize login screen
- - [ ] Theme settings
+ - [x] Theme settings
  - [ ] Admin area for User management
  - [ ] Remove Podcasts from search or just don't allow adding a second time
  - [ ] Add Itunes podcast API
@@ -69,14 +69,14 @@ N/A
      - [ ] Mac App
      - [ ] Android App
      - [ ] IOS App
-  - [ ] Fix issues with episodes playing not in database
+  - [x] Fix issues with episodes playing not in database (Sorta fixed. For now episodes played are always in database. External to database episodes coming soon)
   - [ ] Add caching to image server
   - [ ] Add loading wheels throughout
-  - [ ] Add picture of current episode to soundbar
+  - [x] Add picture of current episode to soundbar
   - [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)
   - [ ] Fix local images
-  - [ ] If a podcast is already downloaded do not allow downloads - instead remove
   - [ ] The math is currently wrong on the queued time
+  - [ ] Episode Streaming via external web client doesn't currently work
 
 
 ## Platform Availability
