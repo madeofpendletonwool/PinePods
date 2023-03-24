@@ -1,4 +1,5 @@
 import mysql.connector
+from mysql.connector import errorcode
 import sys
 import os
 import requests
@@ -41,6 +42,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
     import feedparser
     import dateutil.parser
+    import re
 
     episode_dump = feedparser.parse(feed_url)
 
@@ -51,6 +53,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
             if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
                 # get the episode title
                 parsed_title = entry.title
+                
 
                 # get the episode description
                 parsed_description = entry.summary
@@ -69,6 +72,34 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 if parsed_artwork_url == None:
                     parsed_artwork_url = artwork_url
 
+
+
+                parsed_duration = 0
+                if entry.itunes_duration:
+                    print('itunes_duration:')
+                    duration_string = entry.itunes_duration
+                    match = re.match(r'(\d+):(\d+)', duration_string)
+                    if match:
+                        parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
+                        print('Found duration using itunes_duration')
+                    else:
+                        try:
+                            parsed_duration = int(duration_string)
+                            print('Found duration using itunes_duration')
+                        except ValueError:
+                            print(f'Error parsing duration from itunes_duration: {duration_string}')
+
+                elif entry.itunes_duration_seconds:
+                    parsed_duration = entry.itunes_duration
+                elif entry.duration:
+                    parsed_duration = entry.itunes_duration
+                elif entry.length:
+                    parsed_duration = entry.itunes_duration
+                else:
+                    parsed_duration = 0
+
+                print(parsed_duration)
+
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
                                 "WHERE PodcastID = %s AND EpisodeTitle = %s")
@@ -78,9 +109,10 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                     # episode already exists, skip it
                     continue
 
+
                 # insert the episode into the database
                 query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, 0)
+                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, parsed_duration)
                 cursor.execute(query, values)
 
                 # check if any rows were affected by the insert operation
@@ -140,7 +172,7 @@ def return_episodes(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration "
              f"FROM Episodes "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
              f"WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
@@ -156,6 +188,38 @@ def return_episodes(cnx, user_id):
         return None
 
     return rows
+
+def return_selected_episode(cnx, user_id, title, url):
+    cursor = cnx.cursor()
+    query = ("SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
+            "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
+            "Podcasts.PodcastName, Podcasts.WebsiteURL "
+            "FROM Episodes "
+            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+            "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s")
+
+    cursor.execute(query, (title, url))
+    result = cursor.fetchall()
+
+    cursor.close()
+
+    episodes = []
+    for row in result:
+        episode = {
+            'EpisodeTitle': row[0],
+            'EpisodeDescription': row[1],
+            'EpisodeURL': row[2],
+            'EpisodeArtwork': row[3],
+            'EpisodePubDate': row[4],
+            'EpisodeDuration': row[5],
+            'PodcastName': row[6],
+            'WebsiteURL': row[7]
+        }
+        episodes.append(episode)
+
+    return episodes
+
+
 
 
 def return_pods(cnx, user_id):
@@ -373,7 +437,7 @@ def user_history(cnx, user_id):
     cursor = cnx.cursor()
     query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
             "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-            "Episodes.EpisodeURL, Podcasts.PodcastName, Episodes.EpisodePubDate "
+            "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
             "FROM UserEpisodeHistory "
             "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
             "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -442,7 +506,7 @@ def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
              f"Podcasts.WebsiteURL, DownloadedEpisodes.DownloadedLocation "
              f"FROM DownloadedEpisodes "
              f"INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
@@ -550,8 +614,27 @@ def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
         cursor.close()
         return False
 
+def episode_remove_queue(cnx, user_id, url, title):
+    cursor = cnx.cursor()
 
+    # Get the episode ID using the episode title and URL
+    query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+    cursor.execute(query, (title, url))
+    episode_id = cursor.fetchone()
 
+    if episode_id:
+        # Remove the episode from the user's queue
+        query = "DELETE FROM EpisodeQueue WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id[0])) # Extract the episode ID from the tuple
+        cnx.commit()
+
+        cursor.close()
+
+        return True
+    else:
+        # Episode not found in the database
+        cursor.close()
+        return False
 
 
 
@@ -561,7 +644,7 @@ def get_queue_list(cnx, queue_urls):
     
     query_template = """
         SELECT Episodes.EpisodeTitle, Podcasts.PodcastName, Episodes.EpisodePubDate,
-            Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL,
+            Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, 
             NOW() as QueueDate
         FROM Episodes
         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -585,11 +668,122 @@ def check_usernames(cnx, username):
     cursor.close()
     return count > 0
 
+def record_listen_duration(cnx, url, title, user_id, listen_duration):
+    listen_date = datetime.datetime.now()
+    cursor = cnx.cursor()
+
+    # Get EpisodeID from Episodes table
+    cursor.execute("SELECT EpisodeID FROM Episodes WHERE EpisodeURL=%s AND EpisodeTitle=%s", (url, title))
+    result = cursor.fetchone()
+    if result is None:
+        # Episode not found in database, handle this case
+        cursor.close()
+        return
+    episode_id = result[0]
+
+    # Check if UserEpisodeHistory row already exists for the given user and episode
+    cursor.execute("SELECT * FROM UserEpisodeHistory WHERE UserID=%s AND EpisodeID=%s", (user_id, episode_id))
+    existing_row = cursor.fetchone()
+
+    if existing_row:
+        # UserEpisodeHistory row already exists, update ListenDuration
+        listen_duration_data = (listen_duration, user_id, episode_id)
+        update_listen_duration = ("UPDATE UserEpisodeHistory SET ListenDuration=%s WHERE UserID=%s AND EpisodeID=%s")
+        cursor.execute(update_listen_duration, listen_duration_data)
+    else:
+        # UserEpisodeHistory row does not exist, insert new row
+        add_listen_duration = ("INSERT INTO UserEpisodeHistory "
+                            "(UserID, EpisodeID, ListenDate, ListenDuration) "
+                            "VALUES (%s, %s, %s, %s)")
+        listen_duration_data = (user_id, episode_id, listen_date, listen_duration)
+        cursor.execute(add_listen_duration, listen_duration_data)
+
+    cnx.commit()
+    cursor.close()
+
+def check_episode_playback(cnx, user_id, episode_title, episode_url):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        # Get the EpisodeID from the Episodes table
+        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+        cursor.execute(query, (episode_title, episode_url))
+        episode_id = cursor.fetchone()[0]
+
+        # Check if the user has played the episode before
+        query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id))
+        result = cursor.fetchone()
+
+        if result:
+            listen_duration = result[0]
+            return True, listen_duration
+        else:
+            return False, 0
+    finally:
+        if cursor:
+            cursor.fetchall()
+            cursor.close()
+        cnx.commit()
+
+
+def get_episode_listen_time(cnx, user_id, title, url):
+        cursor = None
+        try:
+            cursor = cnx.cursor()
+
+            # Get the EpisodeID from the Episodes table
+            query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+            cursor.execute(query, (title, url))
+            episode_id = cursor.fetchone()[0]
+
+            # Get the user's listen duration for this episode
+            query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
+            cursor.execute(query, (user_id, episode_id))
+            listen_duration = cursor.fetchone()[0]
+
+            return listen_duration
+
+            # Seek to the user's last listen duration
+            # current_episode.seek_to_second(listen_duration)
+
+        finally:
+            if cursor:
+                cursor.close()
+
+def get_theme(cnx, user_id):
+        cursor = None
+        try:
+            cursor = cnx.cursor()
+
+            # Get the EpisodeID from the Episodes table
+            query = "SELECT Theme FROM UserSettings WHERE UserID = %s"
+            cursor.execute(query, (user_id,))
+            theme = cursor.fetchone()[0]
+
+            return theme
+
+        finally:
+            if cursor:
+                cursor.close()
+
+def set_theme(cnx, user_id, theme):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        # Update the UserSettings table with the new theme value
+        query = "UPDATE UserSettings SET Theme = %s WHERE UserID = %s"
+        cursor.execute(query, (theme, user_id))
+        cnx.commit()
+
+    finally:
+        if cursor:
+            cursor.close()
 
 
 
 
-if __name__ == '__main__':
-    feed_url = "https://changelog.com/practicalai/feed"
-    cnx = 'test'
-    add_episodes(cnx, feed_url)
+
+

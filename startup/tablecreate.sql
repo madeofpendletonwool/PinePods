@@ -41,10 +41,13 @@ CREATE TABLE Episodes (
 CREATE TABLE UserSettings (
   UserSettingID INT AUTO_INCREMENT PRIMARY KEY,
   UserID INT,
-  SettingName TEXT,
-  SettingValue TEXT,
+  Theme VARCHAR(255) DEFAULT 'nordic',
   FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
+
+INSERT INTO UserSettings (UserID, Theme)
+VALUES ('1', 'nordic');
+
 
 CREATE TABLE UserEpisodeHistory (
   UserEpisodeHistoryID INT AUTO_INCREMENT PRIMARY KEY,
