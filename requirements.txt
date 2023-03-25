@@ -8,3 +8,4 @@ flask
 flask-cors
 python-dateutil
 html2text
+bcrypt

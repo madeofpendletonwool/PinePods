@@ -424,6 +424,8 @@ def main(page: ft.Page):
         database_functions.functions.refresh_pods(cnx)
         print('refresh complete')
         page.overlay.pop(2)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
+        page.snack_bar.open = True
         page.update()
         # Reset current view if on homepage
         if page.route == "/" or page.route == "/":
@@ -437,28 +439,31 @@ def main(page: ft.Page):
                 home_ep_number = 1
                 home_ep_rows = []
                 home_ep_row_dict = {}
+
                 home_pod_name = "No Podcasts added yet"
                 home_ep_title = "Podcasts you add will display new episodes here."
                 home_pub_date = ""
                 home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
                 home_ep_url = ""
-                home_entry_title = ft.TextButton(text=f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
-                home_entry_description = ft.Text(home_ep_desc)
+                home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                home_entry_description = ft.Text(home_ep_desc, width=800)
                 home_entry_audio_url = ft.Text(home_ep_url)
                 home_entry_released = ft.Text(home_pub_date)
-                artwork_no = random.randint(1, 12)
-                none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-                none_artwork_url_parsed = check_image(none_artwork_url)
-                home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
+                home_artwork_no = random.randint(1, 12)
+                home_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{home_artwork_no}.jpeg")
+                home_art_url_parsed = check_image(home_artwork_url)
+                home_entry_artwork_url = ft.Image(src=home_art_url_parsed, width=150, height=150)
                 home_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
                     icon_color=active_user.accent_color,
                     icon_size=40,
-                    tooltip="No Episodes Added Yet"
+                    tooltip="No Episodes Listened to yet"
                 )
+                # Creating column and row for home layout
                 home_ep_column = ft.Column(
                     controls=[home_entry_title, home_entry_description, home_entry_released]
                 )
+
                 home_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
@@ -651,6 +656,10 @@ def main(page: ft.Page):
         ],
         actions_alignment=ft.MainAxisAlignment.END
     ) 
+    # username = 'placeholder'
+
+
+
 
 #---Code for Theme Change----------------------------------------------------------------
 
@@ -811,28 +820,31 @@ def main(page: ft.Page):
                 home_ep_number = 1
                 home_ep_rows = []
                 home_ep_row_dict = {}
+
                 home_pod_name = "No Podcasts added yet"
                 home_ep_title = "Podcasts you add will display new episodes here."
                 home_pub_date = ""
                 home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
                 home_ep_url = ""
-                home_entry_title = ft.TextButton(text=f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
-                home_entry_description = ft.Text(home_ep_desc)
+                home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                home_entry_description = ft.Text(home_ep_desc, width=800)
                 home_entry_audio_url = ft.Text(home_ep_url)
                 home_entry_released = ft.Text(home_pub_date)
-                artwork_no = random.randint(1, 12)
-                none_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-                none_artwork_url_parsed = check_image(none_artwork_url)
-                home_entry_artwork_url = ft.Image(src=none_artwork_url_parsed, width=150, height=150)
+                home_artwork_no = random.randint(1, 12)
+                home_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{home_artwork_no}.jpeg")
+                home_art_url_parsed = check_image(home_artwork_url)
+                home_entry_artwork_url = ft.Image(src=home_art_url_parsed, width=150, height=150)
                 home_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
                     icon_color=active_user.accent_color,
                     icon_size=40,
-                    tooltip="No Episodes Added Yet"
+                    tooltip="No Episodes Listened to yet"
                 )
+                # Creating column and row for home layout
                 home_ep_column = ft.Column(
                     controls=[home_entry_title, home_entry_description, home_entry_released]
                 )
+
                 home_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
@@ -1136,7 +1148,7 @@ def main(page: ft.Page):
 
             # Theme Select Elements
             theme_text = ft.Text('Select Custom Theme:', color=active_user.font_color)
-            theme_drop = ft.Dropdown(width=150, border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
+            theme_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
              options=[
                 ft.dropdown.Option("light"),
                 ft.dropdown.Option("dark"),
@@ -1155,8 +1167,10 @@ def main(page: ft.Page):
             theme_column = ft.Column(controls=[theme_text, theme_drop, theme_submit])
             theme_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
-                            alignment=ft.MainAxisAlignment.CENTER,
+                            alignment=ft.MainAxisAlignment.START,
                             controls=[theme_column])
+            theme_row_container = ft.Container(content=theme_row)
+            theme_row_container.padding = padding.only(left=70, right=50)
 
             # Admin Only Settings
 
@@ -1173,7 +1187,7 @@ def main(page: ft.Page):
             new_user = User(page)
             user_text = Text('Enter New User Information:', color=active_user.font_color)
             user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
-            user_email = ft.TextField(label="email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
@@ -1190,8 +1204,63 @@ def main(page: ft.Page):
                         )
             user_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
-                            alignment=ft.MainAxisAlignment.CENTER,
+                            alignment=ft.MainAxisAlignment.START,
                             controls=[user_column])
+            user_row_container = ft.Container(content=user_row)
+            user_row_container.padding=padding.only(left=70, right=50)
+            #User Table Setup - Admin only
+            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color)
+
+            user_information = database_functions.functions.get_user_info(cnx)
+            user_table_rows = []
+
+            for entry in user_information:
+                user_id = entry['UserID']
+                fullname = entry['Fullname']
+                username = entry['Username']
+                email = entry['Email']
+                is_admin_numeric = entry['IsAdmin']
+                if is_admin_numeric == 1:
+                    is_admin = 'yes'
+                else: is_admin = 'no'
+
+                
+                # Create a new data row with the user information
+                row = ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(user_id)),
+                        ft.DataCell(ft.Text(fullname)),
+                        ft.DataCell(ft.Text(username)),
+                        ft.DataCell(ft.Text(email)),
+                        ft.DataCell(ft.Text(str(is_admin))),
+                    ], on_select_changed=lambda x: (modify_user.open_edit_user(username, is_admin_numeric))
+                )
+                
+                # Append the row to the list of data rows
+                user_table_rows.append(row)
+
+            user_table = ft.DataTable(
+                bgcolor=active_user.main_color, 
+                border=ft.border.all(2, active_user.main_color),
+                border_radius=10,
+                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                heading_row_color=active_user.nav_color1,
+                heading_row_height=100,
+                data_row_color={"hovered": active_user.font_color},
+                # show_checkbox_column=True,
+                columns=[
+                ft.DataColumn(ft.Text("User ID"), numeric=True),
+                ft.DataColumn(ft.Text("Fullname")),
+                ft.DataColumn(ft.Text("Username")),
+                ft.DataColumn(ft.Text("Email")),
+                ft.DataColumn(ft.Text("Admin User"))
+            ],
+                rows=user_table_rows
+                )
+            user_edit_column = ft.Column(controls=[edit_user_text, user_table])
+            user_edit_container = ft.Container(content=user_edit_column)
+            user_edit_container.padding=padding.only(left=70, right=50)
 
 
             # Create search view object
@@ -1199,9 +1268,10 @@ def main(page: ft.Page):
                     [
                         pypods_appbar,
                         user_setting_text,
-                        theme_row,
+                        theme_row_container,
                         admin_setting_text,
-                        user_row,
+                        user_row_container,
+                        user_edit_container
                     ]
                     
                 )
@@ -1276,9 +1346,6 @@ def main(page: ft.Page):
                 else:
                     print("Skipping entry without required attributes or enclosures")
                 entry_title = ft.Text(f'{parsed_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                # entry_title_button = ft.TextButton(content=entry_title, on_click=lambda x, url=entry_audio_url, title=entry_title: open_episode_select(page, url, title))
-                # entry_title = ft.Text(parsed_title, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                # entry_description = ft.Text(parsed_description)
                 entry_audio_url = ft.Text(parsed_audio_url)
                 entry_released = ft.Text(parsed_release_date)
                 display_art_entry_parsed = check_image(display_art_url)
@@ -1294,28 +1361,17 @@ def main(page: ft.Page):
                     markdown_desc = parsed_description
                     entry_description = ft.Text(markdown_desc)
                 
-                # # current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
-                # ep_play_button = ft.IconButton(
-                #     icon=ft.icons.PLAY_CIRCLE,
-                #     icon_color="blue400,
-                #     icon_size=40,
-                #     tooltip="Play Episode",
-                #     on_click = lambda x, url=parsed_audio_url, title=parsed_title, artwork=parsed_artwork_url: play_selected_episode(url, title, artwork)
-                # )
-                # ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color="blue400", size=40, tooltip="Play Episode"), 
-                #         items=[
-                #         ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=entry_artwork_url: queue_selected_episode(url, title, artwork)),
-                #         ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title))
-                #     ]
-                # )
-                # ep_play_options = ft.Row(controls=[ep_play_button, ep_popup_button])
                 ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
                     ])
+
+                ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+                ep_row_list.controls.append(ep_row_content)
                 div_row = ft.Divider(color=active_user.accent_color)
-                ep_column = ft.Column(controls=[ep_row_content, div_row])
+                ep_column = ft.Column(controls=[ep_row_list, div_row])
                 ep_row = ft.Container(content=ep_column)
+
                 ep_row.padding=padding.only(left=70, right=50)
                 ep_rows.append(ep_row)
                 # home_ep_rows.append(ft.Text('test'))
@@ -1465,6 +1521,7 @@ def main(page: ft.Page):
             pod_list_view = ft.View("/pod_list",
                     [
                         pypods_appbar,
+                        top_bar,
                         pod_view_row,
                         *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
 
@@ -1507,7 +1564,7 @@ def main(page: ft.Page):
                 hist_entry_artwork_url = ft.Image(src=hist_art_url_parsed, width=150, height=150)
                 hist_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
-                    icon_color="blue400",
+                    icon_color=active_user.accent_color,
                     icon_size=40,
                     tooltip="No Episodes Listened to yet"
                 )
@@ -1656,6 +1713,7 @@ def main(page: ft.Page):
             ep_hist_view = ft.View("/history",
                     [
                         pypods_appbar,
+                        top_bar,
                         history_title_row,
                         *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
 
@@ -1902,10 +1960,6 @@ def main(page: ft.Page):
                 queue_ep_column = ft.Column(
                     controls=[queue_entry_title, queue_entry_description, queue_entry_released]
                 )
-                # queue_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[queue_entry_artwork_url, queue_ep_column, queue_ep_play_button]
-                # )
                 queue_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[queue_ep_column, queue_ep_play_button]),
@@ -2139,6 +2193,7 @@ def main(page: ft.Page):
                     "/poddisplay",
                     [
                         pypods_appbar,
+                        top_bar,
                         podcast_row,
                         feed_row,
                         desc_row
@@ -2254,6 +2309,37 @@ def main(page: ft.Page):
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 database_functions.functions.add_user(cnx, user_values)
+
+    # Modify User Stuff---------------------------
+        def open_edit_user(self, username, admin):
+            if admin == 1:
+                admin_box = True
+            else: admin_box = False
+
+            def close_modify_dlg(e):
+                modify_user_dlg.open = False
+                page.update()
+
+            print(username)
+            self.username = username
+            modify_user_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Modify User: {modify_user.username}"),
+            content=ft.Column(controls=[ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods'), ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com'), ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999'), ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!'), ft.Checkbox(label="Set User as Admin", value=admin_box)]),
+            actions=[
+                ft.TextButton("Change", on_click=modify_user.change_user_attributes()),
+                ft.TextButton("Cancel", on_click=close_modify_dlg)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        ) 
+            print('test')
+            self.page.dialog = modify_user_dlg
+            modify_user_dlg.open = True
+            self.page.update()
+
+        def change_user_attributes(self):
+            pass
+
 
     # Active User Stuff --------------------------
 
@@ -2416,6 +2502,9 @@ def main(page: ft.Page):
 
         def logout_pypods(self, e):
             pass
+
+    # Initial user value set
+    modify_user = User(page)
 
     def GradientGenerator(start, end):
         ColorGradient = LinearGradient(

@@ -48,13 +48,16 @@ N/A
  - [x] Add picture of current episode to soundbar
  - [x] Fix issue with podcasts sometimes not registering time when played (Occured becuase of VLC not registering time. It now tries 5 times and always works)
  - [ ] Second bar can sometimes lag a bit. Need to optimize
- - [ ] Implement smoother scrolling with big list loading
+ - [x] Implement smoother scrolling with big list loading (Mostly fixed. If there's a podcast with hundreds of episodes with loads of markdown rendered it can still cause slowdown. Moving this to the back burner.)
  - [ ] Episode Streaming via external web client doesn't currently work
  - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes view
  - [ ] Allow local downloads, to just download the mp3 files direct
  - [ ] Customize login screen
  - [ ] Admin area for User management
+ - [ ] Add new user currently doesn't set admin or not. Just NULL
+ - [ ] Make Admin properties not available to standard users
+ - [ ] Ability to Delete Users
  - [ ] Remove Podcasts from search or just don't allow adding a second time
  - [ ] Add Itunes podcast API
  - [ ] Dockerize

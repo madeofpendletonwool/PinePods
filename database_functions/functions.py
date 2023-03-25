@@ -782,6 +782,24 @@ def set_theme(cnx, user_id, theme):
         if cursor:
             cursor.close()
 
+def get_user_info(cnx):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT Users.UserID, Users.Fullname, Users.Username, "
+             f"Users.Email, Users.IsAdmin "
+             f"FROM Users ")
+
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
 
 
 
