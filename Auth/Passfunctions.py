@@ -20,6 +20,9 @@ def hash_password(password: str):
 #     return password_hash == hashed_password
 
 def verify_password(cnx, username: str, password: str) -> bool:
+    if cnx is None:
+        return False
+        print(f'cnx wrong, {cnx}')
     with cnx.cursor() as cursor:
         # Query the database to get the user's hashed password and salt
         cursor.execute("SELECT Hashed_PW, Salt FROM Users WHERE Username = %s", (username,))
@@ -35,7 +38,6 @@ def verify_password(cnx, username: str, password: str) -> bool:
 
         # Compare the hashed password with the stored hash
         return password_hash == hashed_password
-    
 
 
 

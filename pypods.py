@@ -1017,6 +1017,7 @@ def main(page: ft.Page):
 
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
+            print(guest_enabled)
             if guest_enabled == True:
                 login_startpage = Column(
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -1083,7 +1084,7 @@ def main(page: ft.Page):
                                                     width=160,
                                                     height=40,
                                                     # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                    on_click = go_homelogin(page)
+                                                    on_click = lambda e: go_homelogin_guest(page)
                                                     # on_click=lambda e: go_homelogin(e)
                                                 ),
                                             ],

@@ -1,4 +1,5 @@
 mysql.connector
+mysql-connector-python
 flet
 requests
 python-dateutil

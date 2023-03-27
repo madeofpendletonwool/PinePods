@@ -13,10 +13,10 @@ if __name__ == "__main__":
 	username = sys.argv[6]
 	email = sys.argv[7]
 	password = sys.argv[8]
+	isadmin = sys.argv[9]
 
 	salt, hash_pw = Auth.Passfunctions.hash_password(password)
-	user_values = (fullname, username, email, hash_pw, salt)
+	user_values = (fullname, username, email, hash_pw, salt, isadmin)
 	cnx = mysql.connector.connect(user=database_user, password=database_pass, host=database_host, database=database_name)
-	user_values = (fullname, username, email, hash_pw, salt)
 	database_functions.functions.add_user(cnx, user_values)
 	cnx.close()
