@@ -58,7 +58,7 @@ Added in order they will be completed:
  - [x] Allow guest user to be disabled
  - [x] Ensure changes cannot be made to guest user
  - [x] Ensure Users cannot delete themselves
- - [ ] Guest sign in via button on login screen when enabled
+ - [x] Guest sign in via button on login screen when enabled
  - [ ] Implement sign in retention. Cookies sort of
  - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] Bugs
@@ -77,6 +77,7 @@ Added in order they will be completed:
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
      - [ ] Create Docker-Compose Code
+     - [ ] Option to run your own local podcast index api connection
  - [ ] Create Web App
      - [ ] More responsive layout 
      - [x] Security and Logins
