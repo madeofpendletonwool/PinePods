@@ -29,10 +29,18 @@ def add_user(cnx, user_values):
     cursor = cnx.cursor()
     
     add_user = ("INSERT INTO Users "
-                "(Fullname, Username, Email, Hashed_PW, Salt) "
-                "VALUES (%s, %s, %s, %s, %s)")
+                "(Fullname, Username, Email, Hashed_PW, Salt, IsAdmin) "
+                "VALUES (%s, %s, %s, %s, %s, 0)")
     
     cursor.execute(add_user, user_values)
+    
+    user_id = cursor.lastrowid
+    
+    add_user_settings = ("INSERT INTO UserSettings "
+                         "(UserID, Theme) "
+                         "VALUES (%s, %s)")
+    
+    cursor.execute(add_user_settings, (user_id, 'nordic'))
     
     cnx.commit()
     
@@ -753,20 +761,21 @@ def get_episode_listen_time(cnx, user_id, title, url):
                 cursor.close()
 
 def get_theme(cnx, user_id):
-        cursor = None
-        try:
-            cursor = cnx.cursor()
+    print(user_id)
+    cursor = None
+    try:
+        cursor = cnx.cursor()
 
-            # Get the EpisodeID from the Episodes table
-            query = "SELECT Theme FROM UserSettings WHERE UserID = %s"
-            cursor.execute(query, (user_id,))
-            theme = cursor.fetchone()[0]
+        # Get the EpisodeID from the Episodes table
+        query = "SELECT Theme FROM UserSettings WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+        theme = cursor.fetchone()[0]
 
-            return theme
+        return theme
 
-        finally:
-            if cursor:
-                cursor.close()
+    finally:
+        if cursor:
+            cursor.close()
 
 def set_theme(cnx, user_id, theme):
     cursor = None
@@ -800,8 +809,139 @@ def get_user_info(cnx):
 
     return rows
 
+def set_username(cnx, user_id, new_username):
+    cursor = cnx.cursor()
+    query = "UPDATE Users SET Username = %s WHERE UserID = %s"
+    cursor.execute(query, (new_username, user_id))
+    cnx.commit()
+    cursor.close()
+
+def set_password(cnx, user_id, salt, hash_pw):
+    cursor = cnx.cursor()
+    update_query = "UPDATE Users SET Salt=%s, Hashed_PW=%s WHERE UserID=%s"
+    cursor.execute(update_query, (salt, hash_pw, user_id))
+    cnx.commit()
+    cursor.close()
 
 
+def set_email(cnx, user_id, new_email):
+    cursor = cnx.cursor()
+    query = "UPDATE Users SET Email = %s WHERE UserID = %s"
+    cursor.execute(query, (new_email, user_id))
+    cnx.commit()
+    cursor.close()
+
+def set_fullname(cnx, user_id, new_name):
+    cursor = cnx.cursor()
+    query = "UPDATE Users SET Fullname = %s WHERE UserID = %s"
+    cursor.execute(query, (new_name, user_id))
+    cnx.commit()
+    cursor.close()
+
+def set_isadmin(cnx, user_id, isadmin):
+    cursor = cnx.cursor()
+    
+    # Convert boolean isadmin value to integer (0 or 1)
+    isadmin_int = int(isadmin)
+    
+    query = f"UPDATE Users SET IsAdmin = {isadmin_int} WHERE UserID = {user_id}"
+    
+    cursor.execute(query)
+    cnx.commit()
+    
+    cursor.close()
+
+def delete_user(cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Delete user from UserEpisodeHistory table
+    try:
+        query = "DELETE FROM UserEpisodeHistory WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+    except:
+        pass
+
+    # Delete user from DownloadedEpisodes table
+    try:
+        query = "DELETE FROM DownloadedEpisodes WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+    except:
+        pass
+
+    # Delete user from EpisodeQueue table
+    try:
+        query = "DELETE FROM EpisodeQueue WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+    except:
+        pass
+
+    # Delete user from Podcasts table
+    try:
+        query = "DELETE FROM Podcasts WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+    except:
+        pass
+
+    # Delete user from UserSettings table
+    try:
+        query = "DELETE FROM UserSettings WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+    except:
+        pass
+
+    # Delete user from Users table
+    query = "DELETE FROM Users WHERE UserID = %s"
+    cursor.execute(query, (user_id,))
+    cnx.commit()
+
+    cursor.close()
 
 
+def user_admin_check(cnx, user_id):
+    cursor = cnx.cursor()
+    query = f"SELECT IsAdmin FROM Users WHERE UserID = '{user_id}'"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+    
+    if result is None:
+        return False
+    
+    return bool(result[0])
+
+def final_admin(cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Check if user being deleted is the final admin user
+    query = "SELECT COUNT(*) FROM Users WHERE IsAdmin = 1"
+    cursor.execute(query)
+    admin_count = cursor.fetchone()[0]
+
+    if admin_count == 1:
+        query = "SELECT IsAdmin FROM Users WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+        is_admin = cursor.fetchone()[0]
+        if is_admin == 1:
+            return True
+
+    cursor.close()
+    return False
+
+def guest_status(cnx):
+    cursor = cnx.cursor()
+    query = "SELECT Email FROM Users WHERE Email = 'active'"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+    if result:
+        return True
+    else:
+        return False
+
+def enable_disable_guest(cnx):
+    cursor = cnx.cursor()
+    query = "UPDATE Users SET Email = CASE WHEN Email = 'inactive' THEN 'active' ELSE 'inactive' END WHERE Username = 'guest'"
+    cursor.execute(query)
+    cnx.commit()
+    cursor.close()
 

@@ -29,7 +29,7 @@ import html2text
 from html.parser import HTMLParser
 
 # Make login Screen start on boot
-login_screen = False
+login_screen = True
 
 #Initial Vars needed to start and used throughout
 proxy_url = 'http://localhost:8000/proxy?url='
@@ -84,6 +84,9 @@ def main(page: ft.Page):
 
     def launch_pod_site(e):
         page.launch_url(clicked_podcast.website)
+
+    def guest_user_change(e):
+        database_functions.functions.enable_disable_guest(cnx)
 
     def seconds_to_time(seconds):
         minutes, seconds = divmod(seconds, 60)
@@ -185,7 +188,6 @@ def main(page: ft.Page):
                 self.queue = []
 
         def play_episode(self, e=None, listen_duration=None):
-            print(listen_duration)
             media = self.instance.media_new(self.url)
             media.parse_with_options(vlc.MediaParseFlag.network, 1000)  # wait for media to finish loading
             self.player.set_media(media)
@@ -193,8 +195,6 @@ def main(page: ft.Page):
             
             # Set the playback position to the given listen duration
             if listen_duration:
-                print(f'in duration {listen_duration}')
-                print(type(listen_duration))
                 self.player.set_time(listen_duration * 1000)
             
             self.thread = threading.Thread(target=self._monitor_audio)
@@ -206,7 +206,6 @@ def main(page: ft.Page):
 
             # get the length of the media in milliseconds
             media_length = self.player.get_length()
-            print(media_length)
 
 
             # try up to three times to get the media length if it's 0
@@ -215,7 +214,6 @@ def main(page: ft.Page):
                 time.sleep(.5)
                 media_length = self.player.get_length()
                 count += 1
-                print(count)
 
             if media_length == 0:
                 raise ValueError("Unable to get media length")
@@ -232,7 +230,6 @@ def main(page: ft.Page):
             total_length = datetime_obj.strftime('%H:%M:%S')
             time.sleep(1)
             self.length = total_length
-            print(self.length)
             self.toggle_current_status()
             page.update()
             
@@ -413,7 +410,6 @@ def main(page: ft.Page):
             """
             Set the media position to the specified second.
             """
-            print(f'in seek {second}')
             self.player.set_time(int(second * 1000))
 
 
@@ -632,7 +628,7 @@ def main(page: ft.Page):
     password_invalid_dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text("Password Invalid!"),
-        content=ft.Text("Passwords require at least 8 characters, a capital letter and a special character!"),
+        content=ft.Text("Passwords require at least 8 characters, a number, a capital letter and a special character!"),
         actions=[
             ft.TextButton("Okay", on_click=close_invalid_dlg),
         ],
@@ -722,6 +718,42 @@ def main(page: ft.Page):
         page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
         page.update()
         page.go("/pod_list")
+
+    def go_homelogin_guest(page):
+        active_user.user_id = 1
+        active_user.fullname = 'Guest User'
+        # navbar.visible = True
+        active_user.theme_select()
+        print(active_user.main_color)
+        # Theme user elements
+        pypods_appbar.bgcolor = active_user.main_color
+        pypods_appbar.color = active_user.accent_color
+        refresh_btn.icon_color = active_user.font_color
+        banner_button.bgcolor = active_user.accent_color
+        banner_button.color = active_user.main_color
+        page.banner.bgcolor = active_user.accent_color
+        page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
+        page.banner.content = ft.Text("""
+    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    """, color=active_user.main_color
+        )
+        page.banner.actions = [
+            ft.ElevatedButton('Open PyPods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
+        ]
+        search_pods.color = active_user.accent_color
+        search_pods.focused_bgcolor = active_user.accent_color
+        search_pods.focused_border_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.cursor_color = active_user.accent_color
+        search_btn.bgcolor = active_user.accent_color
+        search_btn.color = active_user.main_color
+        navbar = NavBar(page).create_navbar()
+        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+        page.overlay.append(ft.Stack([navbar], expand=True))
+        page.update()
+        page.go("/")
 
     def go_homelogin(page):
         # navbar.visible = True
@@ -984,7 +1016,86 @@ def main(page: ft.Page):
             )
 
         if page.route == "/login" or page.route == "/login":
-            login_startpage = Column(
+            guest_enabled = database_functions.functions.guest_status(cnx)
+            if guest_enabled == True:
+                login_startpage = Column(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        Card(
+                            elevation=15,
+                            content=Container(
+                                width=550,
+                                height=550,
+                                padding=padding.all(30),
+                                gradient=GradientGenerator(
+                                    "#2f2937", "#251867"
+                                ),
+                                border_radius=border_radius.all(12),
+                                content=Column(
+                                    horizontal_alignment="center",
+                                    alignment="start",
+                                    controls=[
+                                        Text(
+                                            "Pypods: A podcast app built in python",
+                                            size=32,
+                                            weight="w700",
+                                            text_align="center",
+                                        ),
+                                        Text(
+                                            "Please login with your user account to start listening to podcasts. If you didn't set a default user up please check the docker logs for a default account and credentials",
+                                            size=14,
+                                            weight="w700",
+                                            text_align="center",
+                                            color="#64748b",
+                                        ),
+                                        Container(
+                                            padding=padding.only(bottom=20)
+                                        ),
+                                        login_username,
+                                        Container(
+                                            padding=padding.only(bottom=10)
+                                        ),
+                                        login_password,
+                                        Container(
+                                            padding=padding.only(bottom=20)
+                                        ),
+                                        Row(
+                                            alignment="center",
+                                            spacing=20,
+                                            controls=[
+                                                FilledButton(
+                                                    content=Text(
+                                                        "Login",
+                                                        weight="w700",
+                                                    ),
+                                                    width=160,
+                                                    height=40,
+                                                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                    on_click=lambda e: active_user.login(login_username.value, login_password.value)
+                                                    # on_click=lambda e: go_homelogin(e)
+                                                ),
+                                                FilledButton(
+                                                    content=Text(
+                                                        "Guest Login",
+                                                        weight="w700",
+                                                    ),
+                                                    width=160,
+                                                    height=40,
+                                                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                    on_click = go_homelogin(page)
+                                                    # on_click=lambda e: go_homelogin(e)
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        )
+                    ],
+                )
+            else:
+                login_startpage = Column(
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
@@ -1069,7 +1180,6 @@ def main(page: ft.Page):
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
             podcast_value = search_pods.value
-            print(podcast_value)
             search_results = internal_functions.functions.searchpod(podcast_value)
             return_results = search_results['feeds']
             page.overlay.pop(2)
@@ -1233,7 +1343,10 @@ def main(page: ft.Page):
                         ft.DataCell(ft.Text(username)),
                         ft.DataCell(ft.Text(email)),
                         ft.DataCell(ft.Text(str(is_admin))),
-                    ], on_select_changed=lambda x: (modify_user.open_edit_user(username, is_admin_numeric))
+                    ],
+                    on_select_changed=(lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy: 
+                        lambda x: modify_user.open_edit_user(username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy)
+                    )(username, is_admin_numeric, fullname, email, user_id)
                 )
                 
                 # Append the row to the list of data rows
@@ -1262,6 +1375,32 @@ def main(page: ft.Page):
             user_edit_container = ft.Container(content=user_edit_column)
             user_edit_container.padding=padding.only(left=70, right=50)
 
+            # Guest User Settings 
+            guest_status_bool = database_functions.functions.guest_status(cnx)
+            if guest_status_bool == True:
+                guest_status = 'enabled'
+            else:
+                guest_status = 'disabled'
+            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if pypods is exposed to the internet):', color=active_user.font_color)
+            disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
+            if guest_status_bool == True:
+                guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                guest_info_button = ft.ElevatedButton(f'Enable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            guest_info_col = ft.Column(controls=[disable_guest_text, disable_guest_notify, guest_info_button])
+            guest_info = ft.Container(content=guest_info_col)
+            guest_info.padding=padding.only(left=70, right=50)
+
+            # Check if admin settings should be displayed 
+            user_is_admin = database_functions.functions.user_admin_check(cnx, int(active_user.user_id))
+            if user_is_admin == True:
+                pass
+            else:
+                admin_setting_text.visible = False
+                user_row_container.visible = False
+                user_edit_container.visible = False
+                guest_info.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
@@ -1271,7 +1410,8 @@ def main(page: ft.Page):
                         theme_row_container,
                         admin_setting_text,
                         user_row_container,
-                        user_edit_container
+                        user_edit_container,
+                        guest_info
                     ]
                     
                 )
@@ -2240,6 +2380,7 @@ def main(page: ft.Page):
 
 # Login/User Changes------------------------------------------------------
     class User:
+        email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
         def __init__(self, page):
             self.username = None
             self.password = None
@@ -2251,26 +2392,43 @@ def main(page: ft.Page):
             self.user_id = None
             self.page = page
             self.fullname = 'Login First'
+            self.isadmin = None
 
     # New User Stuff ----------------------------
 
         def set_username(self, new_username):
-            self.username = new_username
+            if new_username is None or not new_username.strip():
+                self.username = None
+            else:
+                self.username = new_username
 
         def set_password(self, new_password):
-            self.password = new_password
+            if new_password is None or not new_password.strip():
+                self.password = None
+            else:
+                self.password = new_password
 
         def set_email(self, new_email):
-            self.email = new_email
+            if new_email is None or not new_email.strip():
+                self.email = None
+            else:
+                self.email = new_email
 
         def set_name(self, new_name):
-            self.fullname = new_name
+            if new_name is None or not new_name.strip():
+                self.fullname = None
+            else:
+                self.fullname = new_name
+
+        def set_admin(self, new_admin):
+            self.isadmin = new_admin
 
         def verify_user_values(self):
-            self.valid_username = len(self.username) >= 6
-            self.valid_password = len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
+            self.valid_username = self.username is not None and len(self.username) >= 6
+            print(self.password)
+            self.valid_password = self.password is not None and len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-            self.valid_email = re.match(regex, self.email) is not None
+            self.valid_email = self.email is not None and re.match(self.email_regex, self.email) is not None
             invalid_value = False
             if not self.valid_username:
                 self.page.dialog = username_invalid_dlg
@@ -2311,34 +2469,127 @@ def main(page: ft.Page):
                 database_functions.functions.add_user(cnx, user_values)
 
     # Modify User Stuff---------------------------
-        def open_edit_user(self, username, admin):
-            if admin == 1:
-                admin_box = True
-            else: admin_box = False
-
+        def open_edit_user(self, username, admin, fullname, email, user_id):
             def close_modify_dlg(e):
                 modify_user_dlg.open = False
                 page.update()
 
-            print(username)
-            self.username = username
-            modify_user_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Modify User: {modify_user.username}"),
-            content=ft.Column(controls=[ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods'), ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com'), ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999'), ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!'), ft.Checkbox(label="Set User as Admin", value=admin_box)]),
-            actions=[
-                ft.TextButton("Change", on_click=modify_user.change_user_attributes()),
+            if username == 'guest':
+                modify_user_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Guest user cannot be changed"),
+                actions=[
                 ft.TextButton("Cancel", on_click=close_modify_dlg)
-            ],
-            actions_alignment=ft.MainAxisAlignment.END
-        ) 
-            print('test')
-            self.page.dialog = modify_user_dlg
-            modify_user_dlg.open = True
-            self.page.update()
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+                self.page.dialog = modify_user_dlg
+                modify_user_dlg.open = True
+                self.page.update()
+            else:
+                self.user_id = user_id
+                if admin == 1:
+                    admin_box = True
+                else: admin_box = False
+
+                print(username)
+                self.username = username
+                user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods') 
+                user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com')
+                user_modify_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999') 
+                user_modify_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
+                user_modify_admin = ft.Checkbox(label="Set User as Admin", value=admin_box)
+                modify_user_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Modify User: {modify_user.username}"),
+                content=ft.Column(controls=[
+                        user_modify_name,
+                        user_modify_email,
+                        user_modify_username,
+                        user_modify_password,
+                        user_modify_admin
+                    ]),
+                actions=[
+                    ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
+                        modify_user.delete_user(user_id),
+                        close_modify_dlg
+                        )),
+                    ft.TextButton("Confirm Changes", on_click=lambda x: (
+                    modify_user.set_username(user_modify_username.value), 
+                    modify_user.set_password(user_modify_password.value), 
+                    modify_user.set_email(user_modify_email.value),
+                    modify_user.set_name(user_modify_name.value),
+                    modify_user.set_admin(user_modify_admin.value),
+                    modify_user.change_user_attributes()
+                    )),
+
+                    ft.TextButton("Cancel", on_click=close_modify_dlg)
+                    ],
+                actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
+            )
+                self.page.dialog = modify_user_dlg
+                modify_user_dlg.open = True
+                self.page.update()
 
         def change_user_attributes(self):
-            pass
+            if self.fullname is not None:
+                database_functions.functions.fullname(cnx, self.user_id, self.fullname)
+                
+            if self.password is not None:
+                if len(self.password) < 8 or not any(c.isupper() for c in self.password) or not any(c.isdigit() for c in self.password):
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"Passwords must contain a number, a capital letter and a special character"))
+                    page.snack_bar.open = True
+                    page.update()
+                else:
+                    salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
+                    database_functions.functions.set_password(cnx, self.user_id, salt, hash_pw)
+
+            if self.email is not None:
+                if not re.match(self.email_regex, self.email):
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"This does not appear to be a properly formatted email"))
+                    page.snack_bar.open = True
+                    page.update()
+                else:
+                    database_functions.functions.set_email(cnx, self.user_id, self.email)
+
+            if self.username is not None:
+                if len(self.username) < 6:
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"Username must be at least 6 characters"))
+                    page.snack_bar.open = True
+                    page.update()
+                else:
+                    database_functions.functions.set_username(cnx, self.user_id, self.username)
+
+            database_functions.functions.set_isadmin(cnx, self.user_id, self.isadmin)
+            user_changed = True
+
+            if user_changed == True:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Changed! Leave the page and return to see changes."))
+                page.snack_bar.open = True
+                page.update()
+
+
+        # page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+        # page.snack_bar.open = True
+        # page.overlay.pop(2)
+        # page.update()
+
+        def delete_user(self, user_id):
+            admin_check = database_functions.functions.final_admin(cnx, user_id)
+            if user_id == active_user.user_id:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
+                page.snack_bar.open = True
+                page.update()
+            elif admin_check == True: 
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete the final admin user"))
+                page.snack_bar.open = True
+                page.update()
+            else:
+                database_functions.functions.delete_user(cnx, user_id)
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
+                page.snack_bar.open = True
+                page.update()
+
 
 
     # Active User Stuff --------------------------

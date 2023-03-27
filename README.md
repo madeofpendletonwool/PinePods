@@ -26,6 +26,8 @@ N/A
 
 ## ToDo
 
+Added in order they will be completed:
+
  - [x] Create Code that can pull Podcasts
  - [x] Integrate Podcast Index
  - [x] Play Audio Files using Python - The python vlc package is used for this
@@ -47,17 +49,27 @@ N/A
  - [x] Fix issues with episodes playing not in database (Sorta fixed. For now episodes played are always in database. External to database episodes coming soon)
  - [x] Add picture of current episode to soundbar
  - [x] Fix issue with podcasts sometimes not registering time when played (Occured becuase of VLC not registering time. It now tries 5 times and always works)
+ - [x] Implement smoother scrolling with big list loading (Mostly fixed. If there's a podcast with hundreds of episodes with loads of markdown rendered it can still cause slowdown. Moving this to the backlog.)
+ - [x] Admin area for User management
+ - [x] Add new user currently doesn't set admin or not. Just NULL (It now sets non admin by default)
+ - [x] Make Admin options not available to standard users
+ - [x] Ability to Delete Users
+ - [x] Ensure there is always at least one admin user
+ - [x] Allow guest user to be disabled
+ - [x] Ensure changes cannot be made to guest user
+ - [x] Ensure Users cannot delete themselves
+ - [ ] Guest sign in via button on login screen when enabled
  - [ ] Second bar can sometimes lag a bit. Need to optimize
- - [x] Implement smoother scrolling with big list loading (Mostly fixed. If there's a podcast with hundreds of episodes with loads of markdown rendered it can still cause slowdown. Moving this to the back burner.)
+ - [ ] Bugs
+    - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
+    - [ ] There's an issue with Queue not working properly. Sometimes it just plays instead of queues
  - [ ] Episode Streaming via external web client doesn't currently work
  - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes view
- - [ ] Allow local downloads, to just download the mp3 files direct
+ - [ ] Add caching to image server
+ - [ ] Add loading wheels throughout
+ - [ ] Allow local downloads to just download the mp3 files direct
  - [ ] Customize login screen
- - [ ] Admin area for User management
- - [ ] Add new user currently doesn't set admin or not. Just NULL
- - [ ] Make Admin properties not available to standard users
- - [ ] Ability to Delete Users
  - [ ] Remove Podcasts from search or just don't allow adding a second time
  - [ ] Add Itunes podcast API
  - [ ] Dockerize
@@ -77,10 +89,9 @@ N/A
      - [ ] Mac App
      - [ ] Android App
      - [ ] IOS App
-  - [ ] Add caching to image server
-  - [ ] Add loading wheels throughout
-  - [ ] Layout soundbar properly (it adjusts for screensize but can overlap at times with the episode title)
-  - [ ] Fix local images
+  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
+  - [ ] Fix local images on web edition
+  - [ ] Add verification before deleting user
   - [ ] The math is currently wrong on the queued time
 
 
