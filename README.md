@@ -59,6 +59,7 @@ Added in order they will be completed:
  - [x] Ensure changes cannot be made to guest user
  - [x] Ensure Users cannot delete themselves
  - [ ] Guest sign in via button on login screen when enabled
+ - [ ] Implement sign in retention. Cookies sort of
  - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] Bugs
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
