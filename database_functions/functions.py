@@ -46,6 +46,27 @@ def add_user(cnx, user_values):
     
     cursor.close()
 
+def add_admin_user(cnx, user_values):
+    cursor = cnx.cursor()
+    
+    add_user = ("INSERT INTO Users "
+                "(Fullname, Username, Email, Hashed_PW, Salt, IsAdmin) "
+                "VALUES (%s, %s, %s, %s, %s, 1)")
+    
+    cursor.execute(add_user, user_values)
+    
+    user_id = cursor.lastrowid
+    
+    add_user_settings = ("INSERT INTO UserSettings "
+                         "(UserID, Theme) "
+                         "VALUES (%s, %s)")
+    
+    cursor.execute(add_user_settings, (user_id, 'nordic'))
+    
+    cnx.commit()
+    
+    cursor.close()
+
 def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
     import feedparser

@@ -21,8 +21,8 @@ import os
 import requests
 import tempfile
 import time
-import threading
-import vlc
+# import threading
+# import vlc
 import random
 import datetime
 import html2text
@@ -32,7 +32,7 @@ from html.parser import HTMLParser
 login_screen = True
 
 #Initial Vars needed to start and used throughout
-proxy_url = 'http://localhost:8000/proxy?url='
+proxy_url = 'http://100.107.105.96:8000/proxy?url='
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -138,6 +138,7 @@ def main(page: ft.Page):
         parser = MyHTMLParser()
         parser.feed(text)
         return parser.is_html
+
     class Toggle_Pod:
         initialized = False
 
@@ -151,13 +152,13 @@ def main(page: ft.Page):
                 self.audio_playing = False
                 self.episode_file = url
                 self.episode_name = name
-                self.instance = vlc.Instance("--no-xlib") # Use "--no-xlib" option to run on server without GUI
-                self.player = self.instance.media_player_new()
+                self.audio_element = None  # HTML5 audio element
                 self.thread = None
                 self.length = length or ""
                 self.length_min = 0
                 self.length_max = 3000
                 self.seconds = 1
+                self.pod_loaded = False
                 self.last_listen_duration_update = datetime.datetime.now()
                 # self.episode_name = self.name
                 if url is None or name is None:
@@ -176,49 +177,42 @@ def main(page: ft.Page):
                 self.active_pod = self.name
                 self.episode_file = url
                 self.episode_name = name
-                self.instance = vlc.Instance("--no-xlib") # Use "--no-xlib" option to run on server without GUI
-                self.player = self.instance.media_player_new()
+                self.audio_element = None  # HTML5 audio element
                 self.thread = None
                 self.length = length or ""
                 self.length_min = 0
                 self.length_max = 3000
                 self.seconds = 1
+                self.pod_loaded = False
                 self.last_listen_duration_update = datetime.datetime.now()
                 # self.episode_name = self.name
                 self.queue = []
 
         def play_episode(self, e=None, listen_duration=None):
-            media = self.instance.media_new(self.url)
-            media.parse_with_options(vlc.MediaParseFlag.network, 1000)  # wait for media to finish loading
-            self.player.set_media(media)
-            self.player.play()
+            if self.pod_loaded == True:
+                self.audio_element.release()
+            self.audio_element = ft.Audio(src=f'{proxy_url}{self.url}', autoplay=True, volume=1)
+            page.overlay.append(self.audio_element)
+            # self.audio_element.play()
             
             # Set the playback position to the given listen duration
             if listen_duration:
-                self.player.set_time(listen_duration * 1000)
-            
-            self.thread = threading.Thread(target=self._monitor_audio)
-            self.thread.start()
+                self.audio_element.seek(listen_duration)
+
             self.audio_playing = True
-
-            time.sleep(.5)
-
-
-            # get the length of the media in milliseconds
-            media_length = self.player.get_length()
-
-
-            # try up to three times to get the media length if it's 0
-            count = 0
-            while media_length == 0 and count < 5:
-                time.sleep(.5)
-                media_length = self.player.get_length()
-                count += 1
-
-            if media_length == 0:
-                raise ValueError("Unable to get media length")
+            page.update()
+            waittime = 1
+        
+            while True:
+                duration = self.audio_element.get_duration()
+                if duration > 0:
+                    print(f"Duration: {duration} seconds")
+                    media_length = duration
+                    break  # Exit the loop when the duration is greater than zero
+                time.sleep(1)
 
             self.record_history()
+            self.pod_loaded = True
 
             # convert milliseconds to a timedelta object
             delta = datetime.timedelta(milliseconds=media_length)
@@ -260,13 +254,13 @@ def main(page: ft.Page):
                 time.sleep(1)
 
         def pause_episode(self, e=None):
-            self.player.pause()
+            self.audio_element.pause()
             self.audio_playing = False
             self.toggle_current_status()
             self.page.update()
 
         def resume_podcast(self, e=None):
-            self.player.play()
+            self.audio_playing.resume()
             self.audio_playing = True
             self.toggle_current_status()
             self.page.update()
@@ -312,8 +306,10 @@ def main(page: ft.Page):
 
         def seek_episode(self):
             seconds = 10
-            time = self.player.get_time()
-            self.player.set_time(time + seconds * 1000) # VLC seeks in milliseconds
+            time = self.audio_element.get_current_position()
+            seek_position = time + 10000
+            print(seek_position)
+            self.audio_element.seek(seek_position)
 
         def time_scrub(self, time):
             """
@@ -389,13 +385,13 @@ def main(page: ft.Page):
             return self.queue
 
         def get_current_time(self):
-            time = self.player.get_time() // 1000  # convert milliseconds to seconds
+            time = self.audio_element.get_current_position() // 1000  # convert milliseconds to seconds
             hours, remainder = divmod(time, 3600)
             minutes, seconds = divmod(remainder, 60)
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
         def get_current_seconds(self):
-            time_ms = self.player.get_time()  # get current time in milliseconds
+            time_ms = self.audio_element.get_current_position()  # get current time in milliseconds
             if time_ms is not None:
                 time_sec = int(time_ms // 1000)  # convert milliseconds to seconds
                 return time_sec
