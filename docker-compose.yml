@@ -12,6 +12,7 @@ services:
     image: madeofpendletonwool/pypods-imageproxy:latest
     ports:
       - "8000:8000"
+    restart: always
   # pypods:
   #   image: madeofpendletonwool/pypods:latest
   #   ports:

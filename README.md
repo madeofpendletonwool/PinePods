@@ -1,19 +1,19 @@
 <p align="center">
-  <img width="300" height="300" src="./images/Pypods-logos_blue.jpeg">
+  <img width="300" height="300" src="./images/pinepods-logo.jpeg">
 </p>
 
-# PyPods
+# PinePods
 
-- [PyPods](#PyPods)
-  - [Features](#Features)
-  - [Hosting](#Hosting)
-  - [Installing/Running](#Installing/Running)
-  - [ToDo](#ToDo)
-  - [Platform Availability](#Platform-Availability)
-  - [API Notes](#API-Notes)
-  - [Screenshots](#Screenshots)
+- [PinePods](#pinepods)
+  - [Features](#features)
+  - [Hosting](#hosting)
+  - [Installing/Running](#installingrunning)
+  - [ToDo](#todo)
+  - [Platform Availability](#platform-availability)
+  - [API Notes](#api-notes)
+  - [Screenshots](#screenshots)
       
-PyPods will be a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
+PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 
 ## Features
 N/A
