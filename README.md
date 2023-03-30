@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="300" height="300" src="./images/pinepods-logo.jpeg">
+  <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
 # PinePods

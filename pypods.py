@@ -32,7 +32,7 @@ from html.parser import HTMLParser
 login_screen = True
 
 #Initial Vars needed to start and used throughout
-proxy_url = 'http://100.107.105.96:8000/proxy?url='
+proxy_url = 'http://localhost:8000/proxy?url='
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -260,7 +260,7 @@ def main(page: ft.Page):
             self.page.update()
 
         def resume_podcast(self, e=None):
-            self.audio_playing.resume()
+            self.audio_element.resume()
             self.audio_playing = True
             self.toggle_current_status()
             self.page.update()
@@ -730,11 +730,11 @@ def main(page: ft.Page):
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
     """, color=active_user.main_color
         )
         page.banner.actions = [
-            ft.ElevatedButton('Open PyPods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
         search_pods.color = active_user.accent_color
@@ -764,11 +764,11 @@ def main(page: ft.Page):
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
     """, color=active_user.main_color
         )
         page.banner.actions = [
-            ft.ElevatedButton('Open PyPods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
         search_pods.color = active_user.accent_color
@@ -798,11 +798,11 @@ def main(page: ft.Page):
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
     """, color=active_user.main_color
         )
         page.banner.actions = [
-            ft.ElevatedButton('Open PyPods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
         search_pods.color = active_user.accent_color
@@ -1034,8 +1034,14 @@ def main(page: ft.Page):
                                     alignment="start",
                                     controls=[
                                         Text(
-                                            "Pypods: A podcast app built in python",
+                                            "PinePods",
                                             size=32,
+                                            weight="w700",
+                                            text_align="center",
+                                        ),
+                                        Text(
+                                            "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
+                                            size=22,
                                             weight="w700",
                                             text_align="center",
                                         ),
@@ -1111,8 +1117,14 @@ def main(page: ft.Page):
                                 alignment="start",
                                 controls=[
                                     Text(
-                                        "Pypods: A podcast app built in python",
+                                        "PinePods",
                                         size=32,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    Text(
+                                        "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
+                                        size=22,
                                         weight="w700",
                                         text_align="center",
                                     ),
@@ -1293,9 +1305,9 @@ def main(page: ft.Page):
             # New User Creation Elements
             new_user = User(page)
             user_text = Text('Enter New User Information:', color=active_user.font_color)
-            user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
-            user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
-            user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.set_username(user_username.value), 
@@ -1378,7 +1390,7 @@ def main(page: ft.Page):
                 guest_status = 'enabled'
             else:
                 guest_status = 'disabled'
-            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if pypods is exposed to the internet):', color=active_user.font_color)
+            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color)
             disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
             if guest_status_bool == True:
                 guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1554,11 +1566,11 @@ def main(page: ft.Page):
                 pod_list_title = 'No Podcasts added yet'
                 artwork_no = random.randint(1, 12)
                 pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-                pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading episodes as well as queueing them. Enjoy the listening!"
+                pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                 pod_list_ep_count = 'Start Searching!'
                 pod_list_website = "https://github.com/madeofpendletonwool/pypods"
                 pod_list_feed = ""
-                pod_list_author = "Pypods"
+                pod_list_author = "PinePods"
                 pod_list_categories = ""
 
                 # Parse webpages needed to extract podcast artwork
@@ -1569,14 +1581,14 @@ def main(page: ft.Page):
                 pod_list_title_display = ft.Text(pod_list_title)
                 pod_list_desc_display = ft.Text(pod_list_desc)
                 # Episode Count and subtitle
-                pod_list_ep_title = ft.Text('Pypods:', weight=ft.FontWeight.BOLD)
+                pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
                 pod_list_ep_count_display = ft.Text(pod_list_ep_count)
                 pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
                 remove_pod_button = ft.IconButton(
                     icon=ft.icons.EMOJI_EMOTIONS,
                     icon_color=active_user.accent_color,
                     icon_size=40,
-                    tooltip="Remove Podcast"
+                    tooltip="Start Adding Podcasts!"
                 )
 
                 # Creating column and row for search layout
@@ -2360,11 +2372,11 @@ def main(page: ft.Page):
         bgcolor=ft.colors.BLUE,
         leading=ft.Icon(ft.icons.WAVING_HAND, color=ft.colors.DEEP_ORANGE_500, size=40),
         content=ft.Text("""
-    Welcome to PyPods! PyPods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. Pypods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PyPods from the repository:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
     """, color=colors.BLACK
         ),
         actions=[
-            ft.TextButton('Open PyPods Repo', on_click=open_repo),
+            ft.TextButton('Open PinePods Repo', on_click=open_repo),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner)
         ],
     )
@@ -2491,9 +2503,9 @@ def main(page: ft.Page):
 
                 print(username)
                 self.username = username
-                user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John Pypods') 
-                user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepypods@pypods.com')
-                user_modify_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pypods_user1999') 
+                user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
+                user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com')
+                user_modify_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999') 
                 user_modify_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
                 user_modify_admin = ft.Checkbox(label="Set User as Admin", value=admin_box)
                 modify_user_dlg = ft.AlertDialog(
@@ -2854,8 +2866,8 @@ def main(page: ft.Page):
                 horizontal_alignment="center",
                 controls=[
                 Text(
-                        value=(f'PyPods'),
-                        size=10,
+                        value=(f'PinePods'),
+                        size=8,
                         weight="bold",
                         color=active_user.accent_color
                     ),
@@ -2891,15 +2903,15 @@ def main(page: ft.Page):
 # Create Page--------------------------------------------------------
 
 
-    page.title = "PyPods"
+    page.title = "PinePods"
     theme_icon_button = ft.IconButton(icons.DARK_MODE, selected_icon=icons.LIGHT_MODE, icon_color=colors.BLACK,
                                    icon_size=35, tooltip="change theme", on_click=change_theme,
                                    style=ButtonStyle(color={"": colors.BLACK, "selected": colors.WHITE}, ), )
 
-    page.appbar = AppBar(title=Text("Pypods - A Python based podcast app!", color="white"), center_title=True, bgcolor="green",
+    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True, bgcolor="green",
                         actions=[theme_icon_button], )
 
-    page.title = "PyPods - A python based podcast app!"
+    page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
 
     def progress_ring(e):
         pr = ft.Column(
@@ -2989,7 +3001,7 @@ def main(page: ft.Page):
     audio_scrubber_column.horizontal_alignment.STRETCH
     audio_scrubber_column.width = '100%'
     # Image for podcast playing
-    audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/Pypods-logos_blue.png", width=40, height=40)
+    audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg", width=40, height=40)
     audio_container_image = ft.Container(content=audio_container_image_landing)
     audio_container_image.border_radius = ft.border_radius.all(25)
     currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
@@ -3110,7 +3122,7 @@ def main(page: ft.Page):
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
-    pypods_appbar = AppBar(title=Text("PyPods - A Python based podcast app!", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color,
+    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color,
                             actions=[theme_icon_button])
     # pypods_appbar = ft.Container(content=pypods_app)
     # pypods_appbar.border = ft.border.only(bottom=ft.border.BorderSide(4, active_user.tertiary_color))

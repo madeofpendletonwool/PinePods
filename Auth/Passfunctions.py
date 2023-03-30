@@ -20,6 +20,7 @@ def hash_password(password: str):
 #     return password_hash == hashed_password
 
 def verify_password(cnx, username: str, password: str) -> bool:
+    print(cnx)
     if cnx is None:
         return False
         print(f'cnx wrong, {cnx}')
