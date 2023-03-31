@@ -27,6 +27,20 @@ import random
 import datetime
 import html2text
 from html.parser import HTMLParser
+from flask import Flask
+from flask_caching import Cache
+
+app = Flask(__name__)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+
+@app.route('/preload/<path:url>')
+def preload_audio_file(url):
+    # Try to get the response from cache
+    response = requests.get('http://localhost:5000/proxy', params={'url': url})
+    if response.status_code == 200:
+        # Cache the file content
+        cache.set(url, response.content)
+    return ""
 
 # Make login Screen start on boot
 login_screen = True
@@ -166,6 +180,7 @@ def main(page: ft.Page):
                 else:
                     self.active_pod = self.name
                 self.queue = []
+                self.state = 'stopped'
                 Toggle_Pod.initialized = True
             else:
                 self.page = page
@@ -187,11 +202,21 @@ def main(page: ft.Page):
                 self.last_listen_duration_update = datetime.datetime.now()
                 # self.episode_name = self.name
                 self.queue = []
+                self.state = 'stopped'
 
         def play_episode(self, e=None, listen_duration=None):
-            if self.pod_loaded == True:
+            pr = ft.ProgressRing()
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
+            page.update()
+            # release audio_element if it exists
+            if self.audio_element:
                 self.audio_element.release()
-            self.audio_element = ft.Audio(src=f'{proxy_url}{self.url}', autoplay=True, volume=1)
+
+            # Preload the audio file and cache it
+            preload_audio_file(self.url)
+
+            self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
             page.overlay.append(self.audio_element)
             # self.audio_element.play()
             
@@ -203,16 +228,22 @@ def main(page: ft.Page):
             page.update()
             waittime = 1
         
+            tries = 0
             while True:
-                duration = self.audio_element.get_duration()
-                if duration > 0:
-                    print(f"Duration: {duration} seconds")
-                    media_length = duration
-                    break  # Exit the loop when the duration is greater than zero
-                time.sleep(1)
+                try:
+                    duration = self.audio_element.get_duration()
+                    time.sleep(.5)
+                    if duration > 0:
+                        print(f"Duration: {duration} seconds")
+                        media_length = duration
+                        break
+                except Exception as e:
+                    tries += 1
+                    if tries >= 5:
+                        print("Max retries exceeded, unable to load audio")
+                        return
 
             self.record_history()
-            self.pod_loaded = True
 
             # convert milliseconds to a timedelta object
             delta = datetime.timedelta(milliseconds=media_length)
@@ -225,6 +256,11 @@ def main(page: ft.Page):
             time.sleep(1)
             self.length = total_length
             self.toggle_current_status()
+
+            print('removing overlay')
+            # page.overlay.pop(2)
+            page.overlay.remove(progress_stack)
+            print(page.overlay)
             page.update()
             
             # convert milliseconds to seconds
@@ -235,7 +271,7 @@ def main(page: ft.Page):
             
             for i in range(total_seconds):
                 self.current_progress = self.get_current_time()
-                self.toggle_second_status()
+                self.toggle_second_status(self.audio_element.data)
                 time.sleep(1)
                 
                 if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
@@ -243,7 +279,18 @@ def main(page: ft.Page):
                     self.last_listen_duration_update = datetime.datetime.now()
 
 
-
+        def on_state_changed(self, status):
+            self.state = status
+            if status == 'completed':
+                # If there are episodes in the queue, play the next episode
+                if len(self.queue) > 0:
+                    next_episode_url = self.queue.pop(0)
+                    self.play_episode(next_episode_url)
+                else:
+                    # Stop playing when the queue is empty
+                    self.audio_element.release()
+                    self.audio_playing = False
+                    self.toggle_current_status()
 
         def _monitor_audio(self):
             while True:
@@ -296,11 +343,13 @@ def main(page: ft.Page):
                 currently_playing.content = ft.Text(self.name, color=active_user.nav_color1)
                 self.page.update()
                 
-        def toggle_second_status(self):
-            audio_scrubber.value = self.get_current_seconds()
-            audio_scrubber.update()
-            current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
-            current_time.update()
+        def toggle_second_status(self, status):
+            print(self.state)
+            if self.state == 'playing':
+                audio_scrubber.value = self.get_current_seconds()
+                audio_scrubber.update()
+                current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
+                current_time.update()
 
             # self.page.update()
 
@@ -323,7 +372,7 @@ def main(page: ft.Page):
                 time_ms = 0
             elif time > self.seconds:
                 time = self.seconds
-            self.player.set_time(time_ms)
+            self.audio_element.seek(time_ms)
 
         def record_history(self):
             database_functions.functions.record_podcast_history(cnx, self.name, active_user.user_id, 0)
@@ -335,50 +384,15 @@ def main(page: ft.Page):
             database_functions.functions.delete_podcast(cnx, self.url, self.title, active_user.user_id)
 
 
-        def queue_pod(self):
-            if self.audio_playing:
-                # Add the new episode URL to the vlc playlist
-                media = self.instance.media_new(self.url)
-                media_list = self.instance.media_list_new([media])
-                media_list_player = self.instance.media_list_player_new()
-                media_list_player.set_media_list(media_list)
-
-                # Update the internal queue list
-                self.queue.append(self.url)
-
-                print(f"Added episode '{self.title}' to the queue")
-            else:
-                self.play_episode()
+        def queue_pod(self, url):
+            self.queue.append(url)
 
         def remove_queued_pod(self):
-            # Get the current playlist and media player
-            media_list_player = self.instance.media_list_player_new()
-            media_list_player.set_media_player(self.player)
-            media_list = self.instance.media_list_new()
-
-            # Populate the media list with the current queue
-            for url in self.queue:
-                media = self.instance.media_new(url)
-                media_list.add_media(media)
-
-            media_list_player.set_media_list(media_list)
-
-            # Iterate through the media list and remove the media object that corresponds to the URL
-            for i in range(media_list.count()):
-                media = media_list.item_at_index(i)
-                if media.get_mrl() == self.url:
-                    media_list.lock()
-                    media_list.remove_index(i)
-                    media_list.unlock()
-                    break
-
-            # Update the internal queue list
-            self.queue.remove(self.url)
-
-            print(f"Removed episode '{self.title}' from the queue")
-
-            # Remove the episode from the database queue
-            database_functions.functions.episode_remove_queue(cnx, active_user.user_id, self.url, self.title)
+            try:
+                self.queue.remove(self.url)
+                print(f"Removed episode '{url}' from the queue")
+            except ValueError:
+                print(f"Episode '{url}' not found in queue")
 
 
         def get_queue(self):
@@ -836,7 +850,7 @@ def main(page: ft.Page):
 
     def route_change(e):
 
-        page.views.clear()
+        # page.views.clear()
         if page.route == "/" or page.route == "/":
             page.bgcolor = colors.BLUE_GREY
 
@@ -3110,7 +3124,7 @@ def main(page: ft.Page):
         current_episode.title = title
         current_episode.artwork = artwork
         current_episode.name = title
-        current_episode.queue_pod()
+        current_episode.queue_pod(url)
 
     def episode_remove_queue(url, title):
         current_episode.url = url
@@ -3143,3 +3157,6 @@ def main(page: ft.Page):
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
 ft.app(target=main, port=8034)
+
+if __name__ == '__main__':
+    app.run(port=5001)

@@ -62,14 +62,18 @@ Added in order they will be completed:
  - [ ] Implement sign in retention. Cookies sort of
  - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] Bugs
+    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
     - [ ] There's an issue with Queue not working properly. Sometimes it just plays instead of queues
- - [ ] Episode Streaming via external web client doesn't currently work
+    - [ ] Pausing audio changes font color
+ - [x] Episode Streaming via external web client doesn't currently work (Fixed, mostly. I now use flet audio controls to do everything)
  - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes view
  - [ ] Add caching to image server
  - [ ] Add loading wheels throughout
  - [ ] Allow local downloads to just download the mp3 files direct
+ - [ ] Audio volume interaction
+ - [ ] Ability to skip to next episode in queue
  - [ ] Customize login screen
  - [ ] Remove Podcasts from search or just don't allow adding a second time
  - [ ] Add Itunes podcast API
