@@ -10,3 +10,4 @@ flask-cors
 python-dateutil
 html2text
 bcrypt
+flask_caching
