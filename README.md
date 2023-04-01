@@ -64,12 +64,15 @@ Added in order they will be completed:
  - [ ] Bugs
     - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
-    - [ ] There's an issue with Queue not working properly. Sometimes it just plays instead of queues
+    - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
     - [ ] Pausing audio changes font color
  - [x] Episode Streaming via external web client doesn't currently work (Fixed, mostly. I now use flet audio controls to do everything)
  - [ ] Implement download episode checking throughout
  - [ ] Implement saved episodes view
- - [ ] Add caching to image server
+ - [ ] User self service creation
+ - [x] On hover user hello
+ - [ ] User container click stats page
+ - [x] Add caching to image server
  - [ ] Add loading wheels throughout
  - [ ] Allow local downloads to just download the mp3 files direct
  - [ ] Audio volume interaction
@@ -99,6 +102,8 @@ Added in order they will be completed:
   - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
   - [ ] The math is currently wrong on the queued time
+  - [ ] Ratings
+  - [ ] Sharing
 
 
 ## Platform Availability

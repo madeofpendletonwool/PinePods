@@ -42,9 +42,16 @@ def add_user(cnx, user_values):
     
     cursor.execute(add_user_settings, (user_id, 'nordic'))
     
+    add_user_stats = ("INSERT INTO UserStats "
+                      "(UserID) "
+                      "VALUES (%s)")
+    
+    cursor.execute(add_user_stats, (user_id,))
+    
     cnx.commit()
     
     cursor.close()
+
 
 def add_admin_user(cnx, user_values):
     cursor = cnx.cursor()
@@ -910,6 +917,13 @@ def delete_user(cnx, user_id):
     except:
         pass
 
+    # Delete user from UserStats table
+    try:
+        query = "DELETE FROM UserStats WHERE UserID = %s"
+        cursor.execute(query, (user_id,))
+    except:
+        pass
+
     # Delete user from Users table
     query = "DELETE FROM Users WHERE UserID = %s"
     cursor.execute(query, (user_id,))
@@ -965,4 +979,28 @@ def enable_disable_guest(cnx):
     cursor.execute(query)
     cnx.commit()
     cursor.close()
+
+def get_stats(cnx, user_id):
+    cursor = cnx.cursor()
+    
+    query = ("SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded "
+             "FROM UserStats "
+             "WHERE UserID = %s")
+    
+    cursor.execute(query, (user_id,))
+    
+    result = cursor.fetchone()
+    stats = {
+        "UserCreated": result[0],
+        "PodcastsPlayed": result[1],
+        "TimeListened": result[2],
+        "PodcastsAdded": result[3],
+        "EpisodesSaved": result[4],
+        "EpisodesDownloaded": result[5]
+    }
+    
+    cursor.close()
+    
+    return stats
+
 

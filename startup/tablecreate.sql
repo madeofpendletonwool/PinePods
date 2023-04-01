@@ -8,6 +8,18 @@ CREATE TABLE Users (
   IsAdmin TINYINT(1)
 );
 
+CREATE TABLE UserStats (
+  UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID INT,
+  UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PodcastsPlayed INT DEFAULT 0,
+  TimeListened INT DEFAULT 0,
+  PodcastsAdded INT DEFAULT 0,
+  EpisodesSaved INT DEFAULT 0,
+  EpisodesDownloaded INT DEFAULT 0,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
 INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0);
 

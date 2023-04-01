@@ -36,7 +36,7 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 @app.route('/preload/<path:url>')
 def preload_audio_file(url):
     # Try to get the response from cache
-    response = requests.get('http://localhost:5000/proxy', params={'url': url})
+    response = requests.get('http://10.0.0.15:5000/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
@@ -101,6 +101,15 @@ def main(page: ft.Page):
 
     def guest_user_change(e):
         database_functions.functions.enable_disable_guest(cnx)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def display_hello(e):
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Hello {active_user.fullname}! Click name for information"))
+        page.snack_bar.open = True
+        page.update()
+
 
     def seconds_to_time(seconds):
         minutes, seconds = divmod(seconds, 60)
@@ -152,6 +161,55 @@ def main(page: ft.Page):
         parser = MyHTMLParser()
         parser.feed(text)
         return parser.is_html
+
+    def self_service_user(self):
+        def close_self_serv_dlg(e):
+            modify_user_dlg.open = False
+            page.update()
+
+        self.user_id = user_id
+        if admin == 1:
+            admin_box = True
+        else: admin_box = False
+
+        print(username)
+        self.username = username
+        user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
+        user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com')
+        user_modify_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999') 
+        user_modify_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
+        user_modify_admin = ft.Checkbox(label="Set User as Admin", value=admin_box)
+        modify_user_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"Modify User: {modify_user.username}"),
+        content=ft.Column(controls=[
+                user_modify_name,
+                user_modify_email,
+                user_modify_username,
+                user_modify_password,
+                user_modify_admin
+            ]),
+        actions=[
+            ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
+                modify_user.delete_user(user_id),
+                close_modify_dlg
+                )),
+            ft.TextButton("Confirm Changes", on_click=lambda x: (
+            modify_user.set_username(user_modify_username.value), 
+            modify_user.set_password(user_modify_password.value), 
+            modify_user.set_email(user_modify_email.value),
+            modify_user.set_name(user_modify_name.value),
+            modify_user.set_admin(user_modify_admin.value),
+            modify_user.change_user_attributes()
+            )),
+
+            ft.TextButton("Cancel", on_click=close_modify_dlg)
+            ],
+        actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
+    )
+        self.page.dialog = modify_user_dlg
+        modify_user_dlg.open = True
+        self.page.update()
 
     class Toggle_Pod:
         initialized = False
@@ -399,18 +457,29 @@ def main(page: ft.Page):
             return self.queue
 
         def get_current_time(self):
-            time = self.audio_element.get_current_position() // 1000  # convert milliseconds to seconds
+            try:
+                time = self.audio_element.get_current_position() // 1000  # convert milliseconds to seconds
+            except Exception as e:
+                time = self.audio_element.get_current_position() // 1000
             hours, remainder = divmod(time, 3600)
             minutes, seconds = divmod(remainder, 60)
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
         def get_current_seconds(self):
-            time_ms = self.audio_element.get_current_position()  # get current time in milliseconds
-            if time_ms is not None:
-                time_sec = int(time_ms // 1000)  # convert milliseconds to seconds
-                return time_sec
-            else:
-                return 0
+            try:
+                time_ms = self.audio_element.get_current_position()  # get current time in milliseconds
+                if time_ms is not None:
+                    time_sec = int(time_ms // 1000)  # convert milliseconds to seconds
+                    return time_sec
+                else:
+                    return 0
+            except Exception as e:
+                time_ms = self.audio_element.get_current_position()  # get current time in milliseconds
+                if time_ms is not None:
+                    time_sec = int(time_ms // 1000)  # convert milliseconds to seconds
+                    return time_sec
+                else:
+                    return 0
 
         def record_listen_duration(self):
             listen_duration = self.get_current_seconds()
@@ -718,6 +787,9 @@ def main(page: ft.Page):
     def open_history(e):
         page.go("/history")
 
+    def open_user_stats(e):
+        page.go("/userstats")
+
     def open_episode_select(page, url, title):
         current_episode.url = url
         current_episode.title = title
@@ -761,7 +833,8 @@ def main(page: ft.Page):
         search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        page.overlay.append(ft.Stack([navbar], expand=True))
+        active_user.navbar_stack = ft.Stack([navbar], expand=True)
+        page.overlay.append(active_user.navbar_stack)
         page.update()
         page.go("/")
 
@@ -795,7 +868,8 @@ def main(page: ft.Page):
         search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        page.overlay.append(ft.Stack([navbar], expand=True))
+        active_user.navbar_stack = ft.Stack([navbar], expand=True)
+        page.overlay.append(active_user.navbar_stack)
         page.update()
         page.go("/")
 
@@ -840,7 +914,8 @@ def main(page: ft.Page):
 
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        page.overlay.append(ft.Stack([navbar], expand=True))
+        active_user.navbar_stack = ft.Stack([navbar], expand=True)
+        page.overlay.append(active_user.navbar_stack)
         page.update()
         page.go("/")
 
@@ -1025,6 +1100,44 @@ def main(page: ft.Page):
                     home_view
             )
 
+        if page.route == "/userstats" or page.route == "/userstats":
+
+            user_stats = database_functions.functions.get_stats(cnx, active_user.user_id)
+
+            stats_created_date = user_stats['UserCreated']
+            stats_pods_played = user_stats['PodcastsPlayed']
+            stats_time_listened = user_stats['TimeListened']
+            stats_pods_added = user_stats['PodcastsAdded']
+            stats_eps_saved = user_stats['EpisodesSaved']
+            stats_eps_downloaded = user_stats['EpisodesDownloaded']
+
+            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
+            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
+            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to')
+            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
+            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
+            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcast episodes currently saved')
+            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcast episodes currently downloaded')
+            stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_saved_display, eps_downloaded_display])
+            stats_container = ft.Container(content=stats_column)
+            stats_container.padding=padding.only(left=70, right=50)
+
+
+            stats_view = ft.View("/userstats",
+                    [
+                        pypods_appbar,
+                        stats_container
+                    ]
+                    
+                )
+            stats_view.bgcolor = active_user.bgcolor
+            stats_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                stats_view
+                
+            )
+
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
             print(guest_enabled)
@@ -1037,7 +1150,7 @@ def main(page: ft.Page):
                             elevation=15,
                             content=Container(
                                 width=550,
-                                height=550,
+                                height=580,
                                 padding=padding.all(30),
                                 gradient=GradientGenerator(
                                     "#2f2937", "#251867"
@@ -1089,7 +1202,7 @@ def main(page: ft.Page):
                                                     width=160,
                                                     height=40,
                                                     # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                    on_click=lambda e: active_user.login(login_username.value, login_password.value)
+                                                    on_click=lambda e: active_user.login(login_username, login_password)
                                                     # on_click=lambda e: go_homelogin(e)
                                                 ),
                                                 FilledButton(
@@ -1105,6 +1218,15 @@ def main(page: ft.Page):
                                                 ),
                                             ],
                                         ),
+                                        ft.Row(
+                                            alignment="center",
+                                            spacing=20,
+                                            controls=[
+                                                ft.Text("Haven't created a user yet?"),
+                                                ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                            ]
+
+                                        )
                                     ],
                                 ),
                             ),
@@ -2416,6 +2538,7 @@ def main(page: ft.Page):
             self.page = page
             self.fullname = 'Login First'
             self.isadmin = None
+            self.navbar_stack = None
 
     # New User Stuff ----------------------------
 
@@ -2627,7 +2750,13 @@ def main(page: ft.Page):
             # return the initials as uppercase
             self.initials = initials_lower.upper()
 
-        def login(self, username, password):
+        def login(self, username_field, password_field):
+            username = username_field.value
+            password = password_field.value
+            username_field.value = ''
+            password_field.value = ''
+            username_field.update()
+            password_field.update()
             if not username or not password:
                 on_click_novalues(page)
                 return
@@ -2641,6 +2770,17 @@ def main(page: ft.Page):
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
+
+        def logout_pinepods(self, e):
+            active_user = User(page)
+            page.overlay.remove(self.navbar_stack)
+            if login_screen == True:
+
+                start_login(page)
+            else:
+                active_user.user_id = 1
+                active_user.fullname = 'Guest User'
+                go_homelogin(page)
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
@@ -2774,9 +2914,6 @@ def main(page: ft.Page):
             go_theme_rebuild(self.page)
             self.page.update()
 
-        def logout_pypods(self, e):
-            pass
-
     # Initial user value set
     modify_user = User(page)
 
@@ -2896,8 +3033,10 @@ def main(page: ft.Page):
                         value=active_user.initials,
                         color=active_user.nav_color2,
                         size=20,
-                        weight="bold",
+                        weight="bold"
                     ),
+                    on_hover=display_hello,
+                    on_click=open_user_stats
                 ),
                     Divider(height=5, color="transparent"),
                     self.ContainedIcon('Home', icons.HOME, "Home", go_home),
@@ -2907,7 +3046,7 @@ def main(page: ft.Page):
                     self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
                     Divider(color="white24", height=5),
                     self.ContainedIcon('Settings', icons.SETTINGS, "Settings", open_settings),
-                    self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pypods),
+                    self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pinepods),
                 ],
             ),
         )
@@ -3158,5 +3297,5 @@ def main(page: ft.Page):
 # App version
 ft.app(target=main, port=8034)
 
-if __name__ == '__main__':
-    app.run(port=5001)
+# if __name__ == '__main__':
+#     app.run(port=5001)
