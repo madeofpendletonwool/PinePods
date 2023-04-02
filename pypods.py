@@ -21,8 +21,6 @@ import os
 import requests
 import tempfile
 import time
-# import threading
-# import vlc
 import random
 import datetime
 import html2text
@@ -68,7 +66,7 @@ def main(page: ft.Page):
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
-        database_functions.functions.add_podcast(cnx, podcast_values)
+        database_functions.functions.add_podcast(cnx, podcast_values, active_user.user_id)
             
     def invalid_username():
         page.dialog = username_invalid_dlg
@@ -302,6 +300,7 @@ def main(page: ft.Page):
                         return
 
             self.record_history()
+            database_functions.functions.increment_played(cnx, active_user.user_id)
 
             # convert milliseconds to a timedelta object
             delta = datetime.timedelta(milliseconds=media_length)
@@ -402,7 +401,6 @@ def main(page: ft.Page):
                 self.page.update()
                 
         def toggle_second_status(self, status):
-            print(self.state)
             if self.state == 'playing':
                 audio_scrubber.value = self.get_current_seconds()
                 audio_scrubber.update()
@@ -452,6 +450,11 @@ def main(page: ft.Page):
             except ValueError:
                 print(f"Episode '{url}' not found in queue")
 
+        def save_pod(self):
+            database_functions.functions.save_episode(cnx, self.url, self.title, active_user.user_id)
+
+        def remove_saved_pod(self):
+            database_functions.functions.remove_saved_episode(cnx, self.url, self.title, active_user.user_id)
 
         def get_queue(self):
             return self.queue
@@ -625,8 +628,9 @@ def main(page: ft.Page):
                     )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
                     if check_episode_playback == True:
@@ -783,6 +787,9 @@ def main(page: ft.Page):
 
     def open_downloads(e):
         page.go("/downloads")
+
+    def open_saved_pods(e):
+        page.go("/saved")
 
     def open_history(e):
         page.go("/history")
@@ -1048,8 +1055,9 @@ def main(page: ft.Page):
                     )
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page))
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
                     if check_episode_playback == True:
@@ -1111,14 +1119,17 @@ def main(page: ft.Page):
             stats_eps_saved = user_stats['EpisodesSaved']
             stats_eps_downloaded = user_stats['EpisodesDownloaded']
 
+            user_ep_count = database_functions.functions.get_user_episode_count(cnx, active_user.user_id)
+
             user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
             date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
             pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to')
             time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
             pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
+            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database')
             eps_saved_display = ft.Text(f'{stats_eps_saved} Podcast episodes currently saved')
             eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcast episodes currently downloaded')
-            stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_saved_display, eps_downloaded_display])
+            stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_added_display, eps_saved_display, eps_downloaded_display])
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
 
@@ -1242,7 +1253,7 @@ def main(page: ft.Page):
                         elevation=15,
                         content=Container(
                             width=550,
-                            height=550,
+                            height=580,
                             padding=padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
@@ -1294,11 +1305,20 @@ def main(page: ft.Page):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: active_user.login(login_username.value, login_password.value)
+                                                on_click=lambda e: active_user.login(login_username, login_password)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
                                     ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.Text("Haven't created a user yet?"),
+                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                        ]
+
+                                    )
                                 ],
                             ),
                         ),
@@ -1775,7 +1795,7 @@ def main(page: ft.Page):
                         icon_color="red400",
                         icon_size=40,
                         tooltip="Remove Podcast",
-                        on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title)
+                        on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title, active_user.user_id)
                     )
 
                     # Creating column and row for search layout
@@ -1943,8 +1963,9 @@ def main(page: ft.Page):
                     )
                     hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork: queue_selected_episode(url, title, artwork)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title))
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
                     
@@ -2010,6 +2031,203 @@ def main(page: ft.Page):
             # Create final page
             page.views.append(
                 ep_hist_view
+                    
+                )
+
+        if page.route == "/saved" or page.route == "/saved":
+
+            # Get Pod info
+            saved_episode_list = database_functions.functions.saved_episode_list(cnx, active_user.user_id)
+
+            # page.overlay.pop(2)
+
+            if saved_episode_list is None:
+                saved_ep_number = 1
+                saved_ep_rows = []
+                saved_ep_row_dict = {}
+                saved_pod_name = "No Podcasts added yet"
+                saved_ep_title = "Podcasts you save will display here."
+                saved_pub_date = ""
+                saved_ep_desc = "Click the dropdown on podcasts and select save. This will save the podcast in order to easily find them for later listening. Think of this like a permanant queue."
+                saved_ep_url = ""
+                saved_entry_title = ft.Text(f'{saved_pod_name} - {saved_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                saved_entry_description = ft.Text(saved_ep_desc, width=800)
+                saved_entry_audio_url = ft.Text(saved_ep_url)
+                saved_entry_released = ft.Text(saved_pub_date)
+                artwork_no = random.randint(1, 12)
+                saved_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                saved_artwork_url_parsed = check_image(saved_artwork_url)
+                saved_entry_artwork_url = ft.Image(src=saved_artwork_url_parsed, width=150, height=150)
+                saved_ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color=active_user.accent_color,
+                    icon_size=40,
+                    tooltip="No Episodes Added Yet"
+                )
+                # Creating column and row for saved layout
+                saved_ep_column = ft.Column(
+                    controls=[saved_entry_title, saved_entry_description, saved_entry_released]
+                )
+                # saved_ep_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[saved_entry_artwork_url, saved_ep_column, saved_ep_play_button]
+                # )
+                saved_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[saved_ep_column, saved_ep_play_button]),
+                ])
+                saved_ep_row = ft.Container(content=saved_ep_row_content)
+                saved_ep_row.padding=padding.only(left=70, right=50)
+                saved_ep_rows.append(saved_ep_row)
+                saved_ep_row_dict[f'search_row{saved_ep_number}'] = saved_ep_row
+                saved_pods_active = True
+                saved_ep_number += 1
+
+            else:
+                saved_episode_list.reverse()
+                saved_ep_number = 1
+                saved_ep_rows = []
+                saved_ep_row_dict = {}
+
+                for entry in saved_episode_list:
+                    saved_ep_title = entry['EpisodeTitle']
+                    saved_pod_name = entry['PodcastName']
+                    saved_pub_date = entry['EpisodePubDate']
+                    saved_ep_desc = entry['EpisodeDescription']
+                    saved_ep_artwork = entry['EpisodeArtwork']
+                    saved_ep_url = entry['EpisodeURL']
+                    saved_ep_duration = entry['EpisodeDuration']
+                    
+                    # do something with the episode information
+                    saved_entry_title_button = ft.Text(f'{saved_pod_name} - {saved_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
+                    saved_entry_title = ft.TextButton(content=saved_entry_title_button, on_click=lambda x, url=saved_ep_url, title=saved_ep_title: open_episode_select(page, url, title))
+                    saved_entry_row = ft.ResponsiveRow([
+    ft.Column(col={"sm": 6}, controls=[saved_entry_title]),
+])
+
+                    num_lines = saved_ep_desc.count('\n')
+                    if num_lines > 15:
+                        if is_html(saved_ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(saved_ep_desc)
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = markdown_desc.splitlines()[:15]
+                                markdown_desc = '\n'.join(lines)
+                            # add inline style to change font color                            
+                            saved_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                            saved_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=saved_ep_url, title=saved_ep_title: open_episode_select(page, url, title))
+                        else:
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = saved_ep_desc.splitlines()[:15]
+                                saved_ep_desc = '\n'.join(lines)
+                            # display plain text
+                            saved_entry_description = ft.Text(saved_ep_desc)
+
+                    else:
+                        if is_html(saved_ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(saved_ep_desc)
+                            # add inline style to change font color
+                            saved_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                        else:
+                            # display plain text
+                            markdown_desc = saved_ep_desc
+                            saved_entry_description = ft.Text(saved_ep_desc)
+                    saved_entry_audio_url = ft.Text(saved_ep_url, color=active_user.font_color)
+                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(cnx, active_user.user_id, saved_ep_title, saved_ep_url)
+                    saved_entry_released = ft.Text(f'Released on: {saved_pub_date}', color=active_user.font_color)
+
+
+                    saved_art_no = random.randint(1, 12)
+                    saved_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{saved_art_no}.jpeg")
+                    saved_art_url = saved_ep_artwork if saved_ep_artwork else saved_art_fallback
+                    saved_art_parsed = check_image(saved_art_url)
+                    saved_entry_artwork_url = ft.Image(src=saved_art_parsed, width=150, height=150)
+                    saved_ep_play_button = ft.IconButton(
+                        icon=ft.icons.NOT_STARTED,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=saved_ep_url, title=saved_ep_title, artwork=saved_ep_artwork: play_selected_episode(url, title, artwork)
+                    )
+                    saved_ep_resume_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Resume Episode",
+                        on_click=lambda x, url=saved_ep_url, title=saved_ep_title, artwork=saved_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
+                    )
+                    saved_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=saved_ep_url, title=saved_ep_title, artwork=saved_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=saved_ep_url, title=saved_ep_title: download_selected_episode(url, title, page)),         
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode", on_click=lambda x, url=saved_ep_url, title=saved_ep_title: remove_saved_episode(url, title, page))
+                        ]
+                    )
+                    if check_episode_playback == True:
+                        listen_prog = seconds_to_time(listen_duration)
+                        saved_ep_prog = seconds_to_time(saved_ep_duration)
+                        progress_value = get_progress(listen_duration, saved_ep_duration)
+                        saved_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(saved_ep_prog, color=active_user.font_color)])
+                        if num_lines > 15:
+                            saved_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_seemore, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
+                            ])
+                        else:
+                            saved_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
+                            ]) 
+                    else:
+                        if num_lines > 15:
+                            saved_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_seemore, saved_entry_released, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
+                            ])
+                        else:
+                            saved_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
+                            ]) 
+                    saved_div_row = ft.Divider(color=active_user.accent_color)
+                    saved_ep_column = ft.Column(controls=[saved_ep_row_content, saved_div_row])
+                    saved_ep_row = ft.Container(content=saved_ep_column)
+                    saved_ep_row.padding=padding.only(left=70, right=50)
+                    saved_ep_rows.append(saved_ep_row)
+                    # saved_ep_rows.append(ft.Text('test'))
+                    saved_ep_row_dict[f'search_row{saved_ep_number}'] = saved_ep_row
+                    saved_pods_active = True
+                    saved_ep_number += 1
+
+            saved_title = ft.Text(
+            "Saved Episodes:",
+            size=30,
+            font_family="RobotoSlab",
+            color=active_user.font_color,
+            weight=ft.FontWeight.W_300,
+        )
+            saved_title_row = ft.Row(controls=[saved_title], alignment=ft.MainAxisAlignment.CENTER)
+
+
+            # Create search view object
+            ep_saved_view = ft.View("/saved",
+                    [
+                        pypods_appbar,
+                        top_bar,
+                        saved_title_row,
+                        *[saved_ep_row_dict.get(f'search_row{i+1}') for i in range(len(saved_ep_rows))]
+
+                    ]
+                    
+                )
+            ep_saved_view.bgcolor = active_user.bgcolor
+            ep_saved_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                ep_saved_view
                     
                 )
 
@@ -2141,8 +2359,9 @@ def main(page: ft.Page):
                     )
                     download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=download_ep_artwork: queue_selected_episode(url, title, artwork)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Downloaded Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title))
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=download_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Downloaded Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
                     if check_episode_playback == True:
@@ -2335,8 +2554,9 @@ def main(page: ft.Page):
                     queue_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                     # icon_size=40, icon_color="blue400", tooltip="Options",
                         items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From Queue", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: episode_remove_queue(url, title)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: delete_selected_episode(url, title))
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From Queue", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: episode_remove_queue(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
                     if check_episode_playback == True:
@@ -2439,8 +2659,9 @@ def main(page: ft.Page):
             )
             ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                     items=[
-                    ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: queue_selected_episode(url, title, artwork)),
-                    ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title))
+                    ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                    ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
+                    ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=ep_url, title=ep_title: save_selected_episode(url, title, page))
                 ]
             )
             ep_play_options = ft.Row(controls=[ep_play_button, ep_popup_button])
@@ -3041,6 +3262,7 @@ def main(page: ft.Page):
                     Divider(height=5, color="transparent"),
                     self.ContainedIcon('Home', icons.HOME, "Home", go_home),
                     self.ContainedIcon('Queue', icons.QUEUE, "Queue", open_queue),
+                    self.ContainedIcon('Saved Podcasts',icons.SAVE, "Saved Podcasts", open_saved_pods),
                     self.ContainedIcon('Downloaded',icons.DOWNLOAD, "Downloaded", open_downloads),
                     self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
                     self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
@@ -3253,22 +3475,47 @@ def main(page: ft.Page):
         page.update()
 
         
-    def delete_selected_episode(url, title):
+    def delete_selected_episode(url, title, page):
         current_episode.url = url
         current_episode.title = title
         current_episode.delete_pod()
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
+        page.snack_bar.open = True
+        page.update()
 
-    def queue_selected_episode(url, title, artwork):
+    def queue_selected_episode(url, title, artwork, page):
         current_episode.url = url
         current_episode.title = title
         current_episode.artwork = artwork
         current_episode.name = title
         current_episode.queue_pod(url)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been added to the queue!"))
+        page.snack_bar.open = True
+        page.update()
 
-    def episode_remove_queue(url, title):
+    def episode_remove_queue(url, title, page):
         current_episode.url = url
         current_episode.title = title
         current_episode.remove_queued_pod()
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from the queue!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def save_selected_episode(url, title, page):
+        current_episode.url = url
+        current_episode.title = title
+        current_episode.save_pod()
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been added to saved podcasts!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def remove_saved_episode(url, title, page):
+        current_episode.url = url
+        current_episode.title = title
+        current_episode.remove_saved_pod()
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from saved podcasts!"))
+        page.snack_bar.open = True
+        page.update()
         
 
 # Starting Page Layout

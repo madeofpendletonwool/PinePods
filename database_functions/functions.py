@@ -6,7 +6,7 @@ import requests
 import datetime
 import time
 
-def add_podcast(cnx, podcast_values):
+def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
 
     add_podcast = ("INSERT INTO Podcasts "
@@ -17,6 +17,11 @@ def add_podcast(cnx, podcast_values):
 
     # get the ID of the newly-inserted podcast
     podcast_id = cursor.lastrowid
+
+    # Update UserStats table to increment PodcastsAdded count
+    query = ("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
 
     cnx.commit()
 
@@ -69,6 +74,12 @@ def add_admin_user(cnx, user_values):
                          "VALUES (%s, %s)")
     
     cursor.execute(add_user_settings, (user_id, 'nordic'))
+
+    add_user_stats = ("INSERT INTO UserStats "
+                      "(UserID) "
+                      "VALUES (%s)")
+    
+    cursor.execute(add_user_stats, (user_id,))
     
     cnx.commit()
     
@@ -167,7 +178,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     finally:
         cursor.close()
 
-def remove_podcast(cnx, podcast_name):
+def remove_podcast(cnx, podcast_name, user_id):
     cursor = cnx.cursor()
 
     # Get the PodcastID for the given podcast name
@@ -183,6 +194,10 @@ def remove_podcast(cnx, podcast_name):
     delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
     cursor.execute(delete_downloaded, (podcast_id,))
 
+    # Delete saved episodes associated with the podcast
+    delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+    cursor.execute(delete_saved, (podcast_id,))
+
     # Delete episode queue items associated with the podcast
     delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
     cursor.execute(delete_queue, (podcast_id,))
@@ -194,6 +209,11 @@ def remove_podcast(cnx, podcast_name):
     # Delete the podcast
     delete_podcast = "DELETE FROM Podcasts WHERE PodcastName = %s"
     cursor.execute(delete_podcast, (podcast_name,))
+
+    # Update UserStats table to decrement PodcastsAdded count
+    query = ("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
 
     cnx.commit()
 
@@ -534,6 +554,12 @@ def download_podcast(cnx, url, title, user_id):
              "(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) "
              "VALUES (%s, %s, %s, %s, %s)")
     cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
+
+    # Update UserStats table to increment EpisodesDownloaded count
+    query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+
     cnx.commit()
 
     return True
@@ -588,6 +614,11 @@ def delete_podcast(cnx, url, title, user_id):
     cursor.execute(query, (download_id,))
     cnx.commit()
     print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+    # Update UserStats table to increment EpisodesDownloaded count
+    query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
     
     cursor.close()
 
@@ -1003,4 +1034,114 @@ def get_stats(cnx, user_id):
     
     return stats
 
+def saved_episode_list(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
 
+    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+             f"Podcasts.WebsiteURL "
+             f"FROM SavedEpisodes "
+             f"INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
+             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"WHERE SavedEpisodes.UserID = %s "
+             f"ORDER BY SavedEpisodes.SaveDate DESC")
+
+    cursor.execute(query, (user_id,))
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
+def save_episode(cnx, url, title, user_id):
+    # Get the episode ID from the Episodes table
+    cursor = cnx.cursor()
+    query = ("SELECT EpisodeID FROM Episodes "
+             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
+    cursor.execute(query, (url, title))
+    episode_id = cursor.fetchone()
+
+    if episode_id is None:
+        # Episode not found
+        return False
+
+    episode_id = episode_id[0]
+    print(episode_id)
+    print(title)
+
+    # Insert a new row into the DownloadedEpisodes table
+    cursor = cnx.cursor()
+    query = ("INSERT INTO SavedEpisodes "
+             "(UserID, EpisodeID) "
+             "VALUES (%s, %s)")
+    cursor.execute(query, (user_id, episode_id))
+
+    # Update UserStats table to increment EpisodesSaved count
+    query = ("UPDATE UserStats SET EpisodesSaved = EpisodesSaved + 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+
+    cnx.commit()
+
+    return True
+
+def remove_saved_episode(cnx, url, title, user_id):
+
+    cursor = cnx.cursor()
+
+    # Get the Save ID from the SavedEpisodes table
+    query = ("SELECT SaveID "
+             "FROM SavedEpisodes "
+             "INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
+    cursor.execute(query, (title, url, user_id))
+    save_id = cursor.fetchone()
+
+    if not save_id:
+        print("No matching episode found.")
+        return
+
+    # Remove the entry from the SavedEpisodes table
+    query = "DELETE FROM SavedEpisodes WHERE SaveID = %s"
+    cursor.execute(query, (save_id[0],))
+
+    # Update UserStats table to increment EpisodesSaved count
+    query = ("UPDATE UserStats SET EpisodesSaved = EpisodesSaved - 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+
+    cnx.commit()
+    print(f"Removed {cursor.rowcount} entry from the SavedEpisodes table.")
+    
+    cursor.close()
+
+def increment_played(cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Update UserStats table to increment PodcastsPlayed count
+    query = ("UPDATE UserStats SET PodcastsPlayed = PodcastsPlayed + 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+    cnx.commit()
+    
+    cursor.close()
+
+def get_user_episode_count(cnx, user_id):
+    cursor = cnx.cursor()
+    
+    query = ("SELECT COUNT(*) "
+             "FROM Episodes "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Podcasts.UserID = %s")
+    
+    cursor.execute(query, (user_id,))
+    
+    episode_count = cursor.fetchone()[0]
+    
+    cursor.close()
+    
+    return episode_count

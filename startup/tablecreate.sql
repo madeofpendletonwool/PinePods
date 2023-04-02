@@ -22,6 +22,7 @@ CREATE TABLE UserStats (
 
 INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0);
+INSERT INTO UserStats (UserID) VALUES (1);
 
 
 CREATE TABLE Podcasts (
@@ -67,6 +68,15 @@ CREATE TABLE UserEpisodeHistory (
   EpisodeID INT,
   ListenDate DATETIME,
   ListenDuration INT,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+);
+
+CREATE TABLE SavedEpisodes (
+  SaveID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID INT,
+  EpisodeID INT,
+  SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (UserID) REFERENCES Users(UserID),
   FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );
