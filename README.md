@@ -9,6 +9,8 @@
   - [Hosting](#hosting)
   - [Installing/Running](#installingrunning)
   - [ToDo](#todo)
+    - [Needed pre-beta release](#needed-pre-beta-release)
+    - [To be added after version 1](#to-be-added-after-version-1)
   - [Platform Availability](#platform-availability)
   - [API Notes](#api-notes)
   - [Screenshots](#screenshots)
@@ -78,6 +80,7 @@ Added in order they will be completed:
  - [ ] The math is currently wrong on the queued time
  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
+ - [ ] Finish Themes
  - [ ] Bugs
     - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
@@ -98,6 +101,7 @@ Added in order they will be completed:
  ### To be added after version 1
 
  - [ ] Allow local downloads to just download the mp3 files direct
+ - [ ] No retention on guest user. Once logged out it should delete everything
  - [ ] Customize login screen
  - [ ] Add Itunes podcast API
  - [ ] GUI Wrapper for App

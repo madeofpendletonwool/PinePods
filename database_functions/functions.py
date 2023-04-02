@@ -1011,6 +1011,24 @@ def enable_disable_guest(cnx):
     cnx.commit()
     cursor.close()
 
+def self_service_status(cnx):
+    cursor = cnx.cursor()
+    query = "SELECT SelfServiceUser FROM AppSettings WHERE SelfServiceUser = 1"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+    if result:
+        return True
+    else:
+        return False
+
+def enable_disable_self_service(cnx):
+    cursor = cnx.cursor()
+    query = "UPDATE AppSettings SET SelfServiceUser = CASE WHEN SelfServiceUser = 0 THEN 1 ELSE 0 END"
+    cursor.execute(query)
+    cnx.commit()
+    cursor.close()
+
 def get_stats(cnx, user_id):
     cursor = cnx.cursor()
     

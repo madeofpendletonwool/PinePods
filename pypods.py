@@ -103,6 +103,12 @@ def main(page: ft.Page):
         page.snack_bar.open = True
         page.update()
 
+    def self_service_change(e):
+        database_functions.functions.enable_disable_self_service(cnx)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
+        page.snack_bar.open = True
+        page.update()
+
     def display_hello(e):
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Hello {active_user.fullname}! Click name for information"))
         page.snack_bar.open = True
@@ -162,52 +168,62 @@ def main(page: ft.Page):
 
     def self_service_user(self):
         def close_self_serv_dlg(e):
-            modify_user_dlg.open = False
+            self_service_dlg.open = False
             page.update()
 
-        self.user_id = user_id
-        if admin == 1:
-            admin_box = True
-        else: admin_box = False
+        self_service_status = database_functions.functions.self_service_status(cnx)
 
-        print(username)
-        self.username = username
-        user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
-        user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com')
-        user_modify_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999') 
-        user_modify_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-        user_modify_admin = ft.Checkbox(label="Set User as Admin", value=admin_box)
-        modify_user_dlg = ft.AlertDialog(
-        modal=True,
-        title=ft.Text(f"Modify User: {modify_user.username}"),
-        content=ft.Column(controls=[
-                user_modify_name,
-                user_modify_email,
-                user_modify_username,
-                user_modify_password,
-                user_modify_admin
-            ]),
-        actions=[
-            ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
-                modify_user.delete_user(user_id),
-                close_modify_dlg
+        if self_service_status == 0:
+            self_service_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"User Creation"),
+                content=ft.Column(controls=[
+                        ft.Text("Self Service User Creation is disabled. If you'd like an account please contact the admin or have them enable self service.")
+                    ]),
+                actions=[
+                    ft.TextButton("Close", on_click=close_self_serv_dlg)
+                    ],
+                actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
+            )
+            self.page.dialog = self_service_dlg
+            self_service_dlg.open = True
+            self.page.update()
+
+        elif self_service_status == 1:
+            new_user = User(page)
+
+            self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
+            self_service_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com')
+            self_service_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999') 
+            self_service_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
+            self_service_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Create User:"),
+            content=ft.Column(controls=[
+                    self_service_name,
+                    self_service_email,
+                    self_service_username,
+                    self_service_password
+                ]),
+            actions=[
+                ft.TextButton("Create User", on_click=lambda x: (
+                new_user.set_username(self_service_username.value), 
+                new_user.set_password(self_service_password.value), 
+                new_user.set_email(self_service_email.value),
+                new_user.set_name(self_service_name.value),
+                new_user.verify_user_values_snack(),
+                new_user.create_user(),
+                new_user.user_created_snack(),
+                close_self_serv_dlg
                 )),
-            ft.TextButton("Confirm Changes", on_click=lambda x: (
-            modify_user.set_username(user_modify_username.value), 
-            modify_user.set_password(user_modify_password.value), 
-            modify_user.set_email(user_modify_email.value),
-            modify_user.set_name(user_modify_name.value),
-            modify_user.set_admin(user_modify_admin.value),
-            modify_user.change_user_attributes()
-            )),
 
-            ft.TextButton("Cancel", on_click=close_modify_dlg)
-            ],
-        actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
-    )
-        self.page.dialog = modify_user_dlg
-        modify_user_dlg.open = True
-        self.page.update()
+                ft.TextButton("Cancel", on_click=close_self_serv_dlg)
+                ],
+            actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
+        )
+            self.page.dialog = self_service_dlg
+            self_service_dlg.open = True
+            self.page.update()
 
     class Toggle_Pod:
         initialized = False
@@ -1511,7 +1527,7 @@ def main(page: ft.Page):
                     ],
                     on_select_changed=(lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy: 
                         lambda x: modify_user.open_edit_user(username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy)
-                    )(username, is_admin_numeric, fullname, email, user_id)
+                    )(username, is_admin_numeric, fullname, email, user_idgf)
                 )
                 
                 # Append the row to the list of data rows
@@ -1557,6 +1573,23 @@ def main(page: ft.Page):
             guest_info = ft.Container(content=guest_info_col)
             guest_info.padding=padding.only(left=70, right=50)
 
+            # User Self Service Creation
+            self_service_bool = database_functions.functions.self_service_status(cnx)
+            if self_service_bool == True:
+                self_service_status = 'enabled'
+            else:
+                self_service_status = 'disabled'
+            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color)
+            self_service_notify = ft.Text(f'Self Service user creation is currently {self_service_status}')
+            if self_service_bool == True:
+                self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                self_service_button = ft.ElevatedButton(f'Enable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            self_service_info_col = ft.Column(controls=[self_service_text, self_service_notify, self_service_button])
+            self_service_info = ft.Container(content=self_service_info_col)
+            self_service_info.padding=padding.only(left=70, right=50)
+
             # Check if admin settings should be displayed 
             user_is_admin = database_functions.functions.user_admin_check(cnx, int(active_user.user_id))
             if user_is_admin == True:
@@ -1566,6 +1599,7 @@ def main(page: ft.Page):
                 user_row_container.visible = False
                 user_edit_container.visible = False
                 guest_info.visible = False
+                self_service_info.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
@@ -1576,7 +1610,8 @@ def main(page: ft.Page):
                         admin_setting_text,
                         user_row_container,
                         user_edit_container,
-                        guest_info
+                        guest_info,
+                        self_service_info
                     ]
                     
                 )
@@ -2819,11 +2854,45 @@ def main(page: ft.Page):
                 invalid_value = True
             self.new_user_valid = not invalid_value
 
+        def verify_user_values_snack(self):
+            self.valid_username = self.username is not None and len(self.username) >= 6
+            print(self.password)
+            self.valid_password = self.password is not None and len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
+            regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+            self.valid_email = self.email is not None and re.match(self.email_regex, self.email) is not None
+            invalid_value = False
+            if not self.valid_username:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Usernames must be unique and require at least 6 characters"))
+                page.snack_bar.open = True
+                self.page.update()
+                invalid_value = True
+            elif not self.valid_password:
+                self.page.dialog = password_invalid_dlg
+                password_invalid_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            elif not self.valid_email:
+                self.page.dialog = email_invalid_dlg
+                email_invalid_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            elif database_functions.functions.check_usernames(cnx, self.username):
+                self.page.dialog = username_exists_dlg
+                username_exists_dlg.open = True
+                self.page.update()
+                invalid_value = True
+            self.new_user_valid = not invalid_value
+
         def user_created_prompt(self):
             if self.new_user_valid == True:
                 self.page.dialog = user_dlg
                 user_dlg.open = True
                 self.page.update()
+
+        def user_created_snack(self):
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"New user created successfully. You may now login and begin using Pinepods. Enjoy!"))
+            page.snack_bar.open = True
+            page.update()
                 
 
         def popup_user_values(self, e):
