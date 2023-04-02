@@ -59,27 +59,30 @@ Added in order they will be completed:
  - [x] Ensure changes cannot be made to guest user
  - [x] Ensure Users cannot delete themselves
  - [x] Guest sign in via button on login screen when enabled
+ - [x] Episode Streaming via external web client doesn't currently work (Fixed, mostly. I now use flet audio controls to do everything)
+ - [x] Implement saved episodes view
+ - [x] On hover user hello
+ - [x] Add caching to image server
+
+ ### Needed pre-beta release
+ - [ ] User container click stats page
  - [ ] Implement sign in retention. Cookies sort of
  - [ ] Second bar can sometimes lag a bit. Need to optimize
+ - [ ] Implement download episode checking throughout
+ - [ ] User self service creation
+ - [ ] Add loading wheels throughout
+ - [ ] Add verification snack bars throughout
+ - [ ] Audio volume interaction
+ - [ ] Ability to skip to next episode in queue
+ - [ ] Remove Podcasts from search or just don't allow adding a second time
+ - [ ] The math is currently wrong on the queued time
+ - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
+ - [ ] Fully update Readme with updated info and docs including deployment guide
  - [ ] Bugs
     - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
     - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
     - [ ] Pausing audio changes font color
- - [x] Episode Streaming via external web client doesn't currently work (Fixed, mostly. I now use flet audio controls to do everything)
- - [ ] Implement download episode checking throughout
- - [ ] Implement saved episodes view
- - [ ] User self service creation
- - [x] On hover user hello
- - [ ] User container click stats page
- - [x] Add caching to image server
- - [ ] Add loading wheels throughout
- - [ ] Allow local downloads to just download the mp3 files direct
- - [ ] Audio volume interaction
- - [ ] Ability to skip to next episode in queue
- - [ ] Customize login screen
- - [ ] Remove Podcasts from search or just don't allow adding a second time
- - [ ] Add Itunes podcast API
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
@@ -90,6 +93,13 @@ Added in order they will be completed:
      - [x] Security and Logins
      - [ ] Database interaction for users and podcast data
      - [ ] MFA Logins - Github integration and local MFA
+
+
+ ### To be added after version 1
+
+ - [ ] Allow local downloads to just download the mp3 files direct
+ - [ ] Customize login screen
+ - [ ] Add Itunes podcast API
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
@@ -98,10 +108,8 @@ Added in order they will be completed:
      - [ ] Mac App
      - [ ] Android App
      - [ ] IOS App
-  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
   - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
-  - [ ] The math is currently wrong on the queued time
   - [ ] Ratings
   - [ ] Sharing
 
