@@ -67,10 +67,11 @@ Added in order they will be completed:
  - [x] Add caching to image server
  - [x] User self service creation
  - [x] User container click stats page
+ - [x] Implement download episode checking throughout
+ - [x] Implement saved episode checking throughout
 
  ### Needed pre-beta release
  - [ ] Implement sign in retention. Cookies sort of
- - [ ] Implement download episode checking throughout
  - [ ] Add loading wheels throughout
  - [ ] Add verification snack bars throughout
  - [ ] Audio volume interaction
@@ -81,10 +82,13 @@ Added in order they will be completed:
  - [ ] Fully update Readme with updated info and docs including deployment guide
  - [ ] Finish Themes
  - [ ] Bugs
+    - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
     - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
+    - [ ] Fix any additional browser playback bugs
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
     - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
     - [ ] Pausing audio changes font color
+    - [ ] Double and triple check all interactions to verify functionality
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
@@ -102,6 +106,8 @@ Added in order they will be completed:
  - [ ] Allow local downloads to just download the mp3 files direct
  - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] No retention on guest user. Once logged out it should delete everything
+ - [ ] Improve image caching
+ - [ ] Reloaded not needed to add and remove episodes from pages
  - [ ] Customize login screen
  - [ ] Add highlight to indicate which page you're on
  - [ ] Add Itunes podcast API

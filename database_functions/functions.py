@@ -564,6 +564,33 @@ def download_podcast(cnx, url, title, user_id):
 
     return True
 
+def check_downloaded(cnx, user_id, title, url):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        # Get the EpisodeID from the Episodes table
+        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+        cursor.execute(query, (title, url))
+        episode_id = cursor.fetchone()[0]
+
+        # Check if the episode is downloaded for the user
+        query = "SELECT DownloadID FROM DownloadedEpisodes WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id))
+        result = cursor.fetchone()
+
+        if result:
+            return True
+        else:
+            return False
+
+    except mysql.connector.errors.InterfaceError:
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        cnx.commit()
+
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
@@ -1109,6 +1136,33 @@ def save_episode(cnx, url, title, user_id):
 
     return True
 
+def check_saved(cnx, user_id, title, url):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        # Get the EpisodeID from the Episodes table
+        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+        cursor.execute(query, (title, url))
+        episode_id = cursor.fetchone()[0]
+
+        # Check if the episode is saved for the user
+        query = "SELECT * FROM SavedEpisodes WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id))
+        result = cursor.fetchone()
+
+        if result:
+            return True
+        else:
+            return False
+    except mysql.connector.Error as err:
+        print("Error checking saved episode: {}".format(err))
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+
+
 def remove_saved_episode(cnx, url, title, user_id):
 
     cursor = cnx.cursor()
@@ -1177,3 +1231,22 @@ def get_user_episode_count(cnx, user_id):
     cursor.close()
     
     return episode_count
+
+def check_podcast(cnx, user_id, podcast_name):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+
+        query = "SELECT PodcastID FROM Podcasts WHERE UserID = %s AND PodcastName = %s"
+        cursor.execute(query, (user_id, podcast_name))
+
+        if cursor.fetchone() is not None:
+            return True
+        else:
+            return False
+    except mysql.connector.errors.InterfaceError:
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        cnx.commit()

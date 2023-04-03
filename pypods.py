@@ -1622,6 +1622,8 @@ def main(page: ft.Page):
                 )
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
+            # Check if podcast is already in database for user
+            podcast_status = database_functions.functions.check_podcast(cnx, active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
             # First Podcast Info
             display_pod_art_no = random.randint(1, 12)
@@ -1639,11 +1641,25 @@ def main(page: ft.Page):
                 tooltip="Add Podcast",
                 on_click=lambda x: send_podcast(clicked_podcast.name, clicked_podcast.artwork, clicked_podcast.author, clicked_podcast.categories, clicked_podcast.description, clicked_podcast.episode_count, clicked_podcast.feedurl, clicked_podcast.website)
             )
-            feed_row_content = ft.ResponsiveRow([
-            ft.Column(col={"md": 4}, controls=[pod_image]),
-            ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
-            ft.Column(col={"md": 1}, controls=[pod_feed_add_button]),
-            ])
+            pod_feed_remove_button = ft.IconButton(
+                icon=ft.icons.INDETERMINATE_CHECK_BOX,
+                icon_color="red400",
+                icon_size=40,
+                tooltip="Remove Podcast",
+                on_click=lambda x, title=clicked_podcast.name: database_functions.functions.remove_podcast(cnx, title, active_user.user_id)
+            )
+            if podcast_status == True:
+                feed_row_content = ft.ResponsiveRow([
+                ft.Column(col={"md": 4}, controls=[pod_image]),
+                ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
+                ft.Column(col={"md": 1}, controls=[pod_feed_remove_button]),
+                ])
+            else:
+                feed_row_content = ft.ResponsiveRow([
+                ft.Column(col={"md": 4}, controls=[pod_image]),
+                ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
+                ft.Column(col={"md": 1}, controls=[pod_feed_add_button]),
+                ])
             feed_row = ft.Container(content=feed_row_content)
             feed_row.padding=padding.only(left=70, right=50)
 
@@ -1698,11 +1714,32 @@ def main(page: ft.Page):
                     # display plain text
                     markdown_desc = parsed_description
                     entry_description = ft.Text(markdown_desc)
-                
-                ep_row_content = ft.ResponsiveRow([
+                if podcast_status == True:
+                    ep_resume_button = ft.IconButton(
+                        icon=ft.icons.NOT_STARTED,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=display_art_entry_parsed: play_selected_episode(url, title, artwork)
+                    )
+                    ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=display_art_entry_parsed: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=entry_audio_url, title=entry_title: save_selected_episode(url, title, page))
+                        ]
+                    )
+                    ep_controls_row = ft.Row(controls=[ep_resume_button, ep_popup_button])
+                    ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                    ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
+                    ft.Column(col={"md": 8}, controls=[entry_title, entry_description, entry_released]),
+                    ft.Column(col={"md": 2}, controls=[ep_controls_row])
                     ])
+                else:
+                    ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
+                        ])
 
                 ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
                 ep_row_list.controls.append(ep_row_content)
@@ -2078,7 +2115,7 @@ def main(page: ft.Page):
                 saved_ep_number = 1
                 saved_ep_rows = []
                 saved_ep_row_dict = {}
-                saved_pod_name = "No Podcasts added yet"
+                saved_pod_name = "No podcasts saved yet"
                 saved_ep_title = "Podcasts you save will display here."
                 saved_pub_date = ""
                 saved_ep_desc = "Click the dropdown on podcasts and select save. This will save the podcast in order to easily find them for later listening. Think of this like a permanant queue."
@@ -3345,23 +3382,14 @@ def main(page: ft.Page):
 
 
     page.title = "PinePods"
-    theme_icon_button = ft.IconButton(icons.DARK_MODE, selected_icon=icons.LIGHT_MODE, icon_color=colors.BLACK,
-                                   icon_size=35, tooltip="change theme", on_click=change_theme,
-                                   style=ButtonStyle(color={"": colors.BLACK, "selected": colors.WHITE}, ), )
-
-    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True, bgcolor="green",
-                        actions=[theme_icon_button], )
-
+    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True)
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
-
     def progress_ring(e):
         pr = ft.Column(
             [ft.ProgressRing(), ft.Text("I'm going to run for ages...")],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         page.overlay.append(pr)
-        
-
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
@@ -3378,9 +3406,6 @@ def main(page: ft.Page):
         content=refresh_btn,
         alignment=ft.alignment.top_left
     )
-
-    def load_podcast():
-        pass
 
     # get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -3431,7 +3456,6 @@ def main(page: ft.Page):
         current_time.content = ft.Text(formatted_scrub)
         current_time.update()
         current_episode.time_scrub(audio_scrubber.value)
-
 
     podcast_length = ft.Container(content=ft.Text('doesntmatter'))
     current_time_text = ft.Text('placeholder')
@@ -3528,16 +3552,22 @@ def main(page: ft.Page):
 
 
     def download_selected_episode(url, title, page):
-        pr = ft.ProgressRing()
-        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
-        page.update()
-        current_episode.url = url
-        current_episode.title = title
-        current_episode.download_pod()
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
-        page.snack_bar.open = True
-        page.overlay.pop(2)
-        page.update()
+        check_downloads = database_functions.functions.check_downloaded(cnx, active_user.user_id, title, url)
+        if check_downloads:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
+            page.snack_bar.open = True
+            page.update()
+        else:
+            pr = ft.ProgressRing()
+            page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+            page.update()
+            current_episode.url = url
+            current_episode.title = title
+            current_episode.download_pod()
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+            page.snack_bar.open = True
+            page.overlay.pop(2)
+            page.update()
 
         
     def delete_selected_episode(url, title, page):
@@ -3567,12 +3597,18 @@ def main(page: ft.Page):
         page.update()
 
     def save_selected_episode(url, title, page):
-        current_episode.url = url
-        current_episode.title = title
-        current_episode.save_pod()
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been added to saved podcasts!"))
-        page.snack_bar.open = True
-        page.update()
+        check_saved = database_functions.functions.check_saved(cnx, active_user.user_id, title, url)
+        if check_saved:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already saved!"))
+            page.snack_bar.open = True
+            page.update()
+        else:
+            current_episode.url = url
+            current_episode.title = title
+            current_episode.save_pod()
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been added to saved podcasts!"))
+            page.snack_bar.open = True
+            page.update()
 
     def remove_saved_episode(url, title, page):
         current_episode.url = url
@@ -3587,10 +3623,7 @@ def main(page: ft.Page):
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
-    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color,
-                            actions=[theme_icon_button])
-    # pypods_appbar = ft.Container(content=pypods_app)
-    # pypods_appbar.border = ft.border.only(bottom=ft.border.BorderSide(4, active_user.tertiary_color))
+    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color)
     page.add(pypods_appbar)
     # page.appbar.visible = True
     # page.appbar.update()
@@ -3608,6 +3641,3 @@ def main(page: ft.Page):
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
 ft.app(target=main, port=8034)
-
-# if __name__ == '__main__':
-#     app.run(port=5001)
