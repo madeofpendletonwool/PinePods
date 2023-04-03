@@ -417,7 +417,7 @@ def main(page: ft.Page):
             else:
                 pause_button.visible = False
                 play_button.visible = True
-                currently_playing.content = ft.Text(self.name, color=active_user.nav_color1)
+                currently_playing.content = ft.Text(self.name, color=active_user.font_color, size=16)
                 self.page.update()
                 
         def toggle_second_status(self, status):
@@ -1167,13 +1167,13 @@ def main(page: ft.Page):
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
             if guest_enabled == True:
-                login_startpage = Column(
+                login_startpage = ft.Column(
                     alignment=ft.MainAxisAlignment.CENTER,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
-                        Card(
+                        ft.Card(
                             elevation=15,
-                            content=Container(
+                            content=ft.Container(
                                 width=550,
                                 height=580,
                                 padding=padding.all(30),
@@ -1181,46 +1181,46 @@ def main(page: ft.Page):
                                     "#2f2937", "#251867"
                                 ),
                                 border_radius=border_radius.all(12),
-                                content=Column(
+                                content=ft.Column(
                                     horizontal_alignment="center",
                                     alignment="start",
                                     controls=[
-                                        Text(
+                                        ft.Text(
                                             "PinePods",
                                             size=32,
                                             weight="w700",
                                             text_align="center",
                                         ),
-                                        Text(
+                                        ft.Text(
                                             "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
                                             size=22,
                                             weight="w700",
                                             text_align="center",
                                         ),
-                                        Text(
+                                        ft.Text(
                                             "Please login with your user account to start listening to podcasts. If you didn't set a default user up please check the docker logs for a default account and credentials",
                                             size=14,
                                             weight="w700",
                                             text_align="center",
                                             color="#64748b",
                                         ),
-                                        Container(
+                                        ft.Container(
                                             padding=padding.only(bottom=20)
                                         ),
                                         login_username,
-                                        Container(
+                                        ft.Container(
                                             padding=padding.only(bottom=10)
                                         ),
                                         login_password,
-                                        Container(
+                                        ft.Container(
                                             padding=padding.only(bottom=20)
                                         ),
-                                        Row(
+                                        ft.Row(
                                             alignment="center",
                                             spacing=20,
                                             controls=[
-                                                FilledButton(
-                                                    content=Text(
+                                                ft.FilledButton(
+                                                    content=ft.Text(
                                                         "Login",
                                                         weight="w700",
                                                     ),
@@ -1230,8 +1230,8 @@ def main(page: ft.Page):
                                                     on_click=lambda e: active_user.login(login_username, login_password)
                                                     # on_click=lambda e: go_homelogin(e)
                                                 ),
-                                                FilledButton(
-                                                    content=Text(
+                                                ft.FilledButton(
+                                                    content=ft.Text(
                                                         "Guest Login",
                                                         weight="w700",
                                                     ),
@@ -3119,7 +3119,7 @@ def main(page: ft.Page):
                 self.font_color = colors.BLACK
                 self.bonus_color = colors.BLACK
                 self.nav_color1 = colors.BLACK
-                self.nav_color2 = '#C7C7C7'
+                self.nav_color2 = colors.BLACK
                 self.bgcolor = '#ECECEC'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#ECECEC'
@@ -3139,7 +3139,7 @@ def main(page: ft.Page):
                 page.theme_mode = "dark"
                 self.main_color = '#323542'
                 self.accent_color = colors.WHITE
-                self.tertiary_color = '#23282E'
+                self.tertiary_color = colors.WHITE
                 self.font_color = colors.WHITE
                 self.bonus_color = colors.BLACK
                 self.nav_color1 = colors.BLACK

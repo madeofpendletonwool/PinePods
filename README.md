@@ -85,9 +85,11 @@ Added in order they will be completed:
     - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
     - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
     - [ ] Fix any additional browser playback bugs
+    - [ ] Links when searching an episode are blue (wrong color)
     - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
     - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
-    - [ ] Pausing audio changes font color
+    - [x] Pausing audio changes font color
+    - [ ] Starting a podcast results in audio bar being in phone mode on application version
     - [ ] Double and triple check all interactions to verify functionality
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
