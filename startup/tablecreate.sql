@@ -8,8 +8,28 @@ CREATE TABLE Users (
   IsAdmin TINYINT(1)
 );
 
+CREATE TABLE UserStats (
+  UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID INT,
+  UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PodcastsPlayed INT DEFAULT 0,
+  TimeListened INT DEFAULT 0,
+  PodcastsAdded INT DEFAULT 0,
+  EpisodesSaved INT DEFAULT 0,
+  EpisodesDownloaded INT DEFAULT 0,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
+CREATE TABLE AppSettings (
+  AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+  SelfServiceUser TINYINT(1) DEFAULT 0
+);
+
+INSERT INTO AppSettings (SelfServiceUser) VALUES (0);
+
 INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0);
+INSERT INTO UserStats (UserID) VALUES (1);
 
 
 CREATE TABLE Podcasts (
@@ -55,6 +75,15 @@ CREATE TABLE UserEpisodeHistory (
   EpisodeID INT,
   ListenDate DATETIME,
   ListenDuration INT,
+  FOREIGN KEY (UserID) REFERENCES Users(UserID),
+  FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+);
+
+CREATE TABLE SavedEpisodes (
+  SaveID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID INT,
+  EpisodeID INT,
+  SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (UserID) REFERENCES Users(UserID),
   FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );

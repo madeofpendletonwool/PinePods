@@ -1,19 +1,21 @@
 <p align="center">
-  <img width="300" height="300" src="./images/Pypods-logos_blue.jpeg">
+  <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
-# PyPods
+# PinePods
 
-- [PyPods](#PyPods)
-  - [Features](#Features)
-  - [Hosting](#Hosting)
-  - [Installing/Running](#Installing/Running)
-  - [ToDo](#ToDo)
-  - [Platform Availability](#Platform-Availability)
-  - [API Notes](#API-Notes)
-  - [Screenshots](#Screenshots)
+- [PinePods](#pinepods)
+  - [Features](#features)
+  - [Hosting](#hosting)
+  - [Installing/Running](#installingrunning)
+  - [ToDo](#todo)
+    - [Needed pre-beta release](#needed-pre-beta-release)
+    - [To be added after version 1](#to-be-added-after-version-1)
+  - [Platform Availability](#platform-availability)
+  - [API Notes](#api-notes)
+  - [Screenshots](#screenshots)
       
-PyPods will be a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
+PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 
 ## Features
 N/A
@@ -59,20 +61,34 @@ Added in order they will be completed:
  - [x] Ensure changes cannot be made to guest user
  - [x] Ensure Users cannot delete themselves
  - [x] Guest sign in via button on login screen when enabled
+ - [x] Episode Streaming via external web client doesn't currently work (Fixed, mostly. I now use flet audio controls to do everything)
+ - [x] Implement saved episodes view
+ - [x] On hover user hello
+ - [x] Add caching to image server
+ - [x] User self service creation
+ - [x] User container click stats page
+ - [x] Implement download episode checking throughout
+ - [x] Implement saved episode checking throughout
+
+ ### Needed pre-beta release
  - [ ] Implement sign in retention. Cookies sort of
- - [ ] Second bar can sometimes lag a bit. Need to optimize
- - [ ] Bugs
-    - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
-    - [ ] There's an issue with Queue not working properly. Sometimes it just plays instead of queues
- - [ ] Episode Streaming via external web client doesn't currently work
- - [ ] Implement download episode checking throughout
- - [ ] Implement saved episodes view
- - [ ] Add caching to image server
  - [ ] Add loading wheels throughout
- - [ ] Allow local downloads to just download the mp3 files direct
- - [ ] Customize login screen
+ - [ ] Add verification snack bars throughout
+ - [ ] Audio volume interaction
+ - [ ] Ability to skip to next episode in queue
  - [ ] Remove Podcasts from search or just don't allow adding a second time
- - [ ] Add Itunes podcast API
+ - [ ] The math is currently wrong on the queued time
+ - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
+ - [ ] Fully update Readme with updated info and docs including deployment guide
+ - [ ] Finish Themes
+ - [ ] Bugs
+    - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
+    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
+    - [ ] Fix any additional browser playback bugs
+    - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
+    - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
+    - [ ] Pausing audio changes font color
+    - [ ] Double and triple check all interactions to verify functionality
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
@@ -83,6 +99,18 @@ Added in order they will be completed:
      - [x] Security and Logins
      - [ ] Database interaction for users and podcast data
      - [ ] MFA Logins - Github integration and local MFA
+
+
+ ### To be added after version 1
+
+ - [ ] Allow local downloads to just download the mp3 files direct
+ - [ ] Second bar can sometimes lag a bit. Need to optimize
+ - [ ] No retention on guest user. Once logged out it should delete everything
+ - [ ] Improve image caching
+ - [ ] Reloaded not needed to add and remove episodes from pages
+ - [ ] Customize login screen
+ - [ ] Add highlight to indicate which page you're on
+ - [ ] Add Itunes podcast API
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
@@ -91,10 +119,10 @@ Added in order they will be completed:
      - [ ] Mac App
      - [ ] Android App
      - [ ] IOS App
-  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
   - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
-  - [ ] The math is currently wrong on the queued time
+  - [ ] Ratings
+  - [ ] Sharing
 
 
 ## Platform Availability

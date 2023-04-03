@@ -20,24 +20,22 @@ def hash_password(password: str):
 #     return password_hash == hashed_password
 
 def verify_password(cnx, username: str, password: str) -> bool:
-    if cnx is None:
-        return False
-        print(f'cnx wrong, {cnx}')
-    with cnx.cursor() as cursor:
-        # Query the database to get the user's hashed password and salt
-        cursor.execute("SELECT Hashed_PW, Salt FROM Users WHERE Username = %s", (username,))
-        result = cursor.fetchone()
-        if not result:
-            return False  # user not found
+    cursor = cnx.cursor()
+    cursor.execute("SELECT Hashed_PW, Salt FROM Users WHERE Username = %s", (username,))
+    result = cursor.fetchone()
+    cursor.close()
+    if not result:
+        return False  # user not found
 
-        hashed_password = result[0].encode('utf-8')
-        salt = result[1].encode('utf-8')
+    hashed_password = result[0].encode('utf-8')
+    salt = result[1].encode('utf-8')
 
-        # Hash the password with the stored salt
-        password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
+    # Hash the password with the stored salt
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
 
-        # Compare the hashed password with the stored hash
-        return password_hash == hashed_password
+    # Compare the hashed password with the stored hash
+    return password_hash == hashed_password
+
 
 
 
