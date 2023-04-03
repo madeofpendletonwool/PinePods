@@ -20,6 +20,13 @@ CREATE TABLE UserStats (
   FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
+CREATE TABLE AppSettings (
+  AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+  SelfServiceUser TINYINT(1) DEFAULT 0
+);
+
+INSERT INTO AppSettings (SelfServiceUser) VALUES (0);
+
 INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0);
 INSERT INTO UserStats (UserID) VALUES (1);

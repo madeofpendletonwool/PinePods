@@ -24,6 +24,7 @@ import time
 import random
 import datetime
 import html2text
+import threading
 from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
@@ -167,7 +168,7 @@ def main(page: ft.Page):
         return parser.is_html
 
     def self_service_user(self):
-        def close_self_serv_dlg(e):
+        def close_self_serv_dlg(page):
             self_service_dlg.open = False
             page.update()
 
@@ -214,7 +215,7 @@ def main(page: ft.Page):
                 new_user.verify_user_values_snack(),
                 new_user.create_user(),
                 new_user.user_created_snack(),
-                close_self_serv_dlg
+                close_self_serv_dlg(page)
                 )),
 
                 ft.TextButton("Cancel", on_click=close_self_serv_dlg)
@@ -276,6 +277,13 @@ def main(page: ft.Page):
                 self.queue = []
                 self.state = 'stopped'
 
+        def run_function_every_60_seconds(self):
+            while True:
+                time.sleep(60)
+                print('adding time entry')
+                if self.audio_playing:
+                    database_functions.functions.increment_listen_time(cnx, active_user.user_id)
+
         def play_episode(self, e=None, listen_duration=None):
             pr = ft.ProgressRing()
             progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
@@ -306,7 +314,6 @@ def main(page: ft.Page):
                     duration = self.audio_element.get_duration()
                     time.sleep(.5)
                     if duration > 0:
-                        print(f"Duration: {duration} seconds")
                         media_length = duration
                         break
                 except Exception as e:
@@ -330,10 +337,7 @@ def main(page: ft.Page):
             self.length = total_length
             self.toggle_current_status()
 
-            print('removing overlay')
-            # page.overlay.pop(2)
             page.overlay.remove(progress_stack)
-            print(page.overlay)
             page.update()
             
             # convert milliseconds to seconds
@@ -341,16 +345,16 @@ def main(page: ft.Page):
             self.seconds = total_seconds
             audio_scrubber.max = self.seconds
 
-            
+            threading.Thread(target=self.run_function_every_60_seconds, daemon=True).start()
             for i in range(total_seconds):
                 self.current_progress = self.get_current_time()
                 self.toggle_second_status(self.audio_element.data)
                 time.sleep(1)
                 
                 if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
+                    print(total_seconds)
                     self.record_listen_duration()
                     self.last_listen_duration_update = datetime.datetime.now()
-
 
         def on_state_changed(self, status):
             self.state = status
@@ -429,7 +433,6 @@ def main(page: ft.Page):
             seconds = 10
             time = self.audio_element.get_current_position()
             seek_position = time + 10000
-            print(seek_position)
             self.audio_element.seek(seek_position)
 
         def time_scrub(self, time):
@@ -462,7 +465,6 @@ def main(page: ft.Page):
         def remove_queued_pod(self):
             try:
                 self.queue.remove(self.url)
-                print(f"Removed episode '{url}' from the queue")
             except ValueError:
                 print(f"Episode '{url}' not found in queue")
 
@@ -718,7 +720,7 @@ def main(page: ft.Page):
     username_invalid_dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text("Username Invalid!"),
-        content=ft.Text("Usernames require at least 6 characters!"),
+        content=ft.Text("Usernames must be unique and require at least 6 characters!"),
         actions=[
             ft.TextButton("Okay", on_click=close_invalid_dlg),
         ],
@@ -829,7 +831,6 @@ def main(page: ft.Page):
         active_user.fullname = 'Guest User'
         # navbar.visible = True
         active_user.theme_select()
-        print(active_user.main_color)
         # Theme user elements
         pypods_appbar.bgcolor = active_user.main_color
         pypods_appbar.color = active_user.accent_color
@@ -864,7 +865,6 @@ def main(page: ft.Page):
     def go_homelogin(page):
         # navbar.visible = True
         active_user.theme_select()
-        print(active_user.main_color)
         # Theme user elements
         pypods_appbar.bgcolor = active_user.main_color
         pypods_appbar.color = active_user.accent_color
@@ -899,7 +899,6 @@ def main(page: ft.Page):
     def go_theme_rebuild(page):
         # navbar.visible = True
         active_user.theme_select()
-        print(active_user.main_color)
         # Theme user elements
         pypods_appbar.bgcolor = active_user.main_color
         pypods_appbar.color = active_user.accent_color
@@ -1167,7 +1166,6 @@ def main(page: ft.Page):
 
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
-            print(guest_enabled)
             if guest_enabled == True:
                 login_startpage = Column(
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -1527,7 +1525,7 @@ def main(page: ft.Page):
                     ],
                     on_select_changed=(lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy: 
                         lambda x: modify_user.open_edit_user(username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy)
-                    )(username, is_admin_numeric, fullname, email, user_idgf)
+                    )(username, is_admin_numeric, fullname, email, user_id)
                 )
                 
                 # Append the row to the list of data rows
@@ -2827,7 +2825,6 @@ def main(page: ft.Page):
 
         def verify_user_values(self):
             self.valid_username = self.username is not None and len(self.username) >= 6
-            print(self.password)
             self.valid_password = self.password is not None and len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
             self.valid_email = self.email is not None and re.match(self.email_regex, self.email) is not None
@@ -2856,7 +2853,6 @@ def main(page: ft.Page):
 
         def verify_user_values_snack(self):
             self.valid_username = self.username is not None and len(self.username) >= 6
-            print(self.password)
             self.valid_password = self.password is not None and len(self.password) >= 8 and any(c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
             self.valid_email = self.email is not None and re.match(self.email_regex, self.email) is not None
@@ -2865,23 +2861,26 @@ def main(page: ft.Page):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Usernames must be unique and require at least 6 characters"))
                 page.snack_bar.open = True
                 self.page.update()
-                invalid_value = True
+                self.invalid_value = True
             elif not self.valid_password:
-                self.page.dialog = password_invalid_dlg
-                password_invalid_dlg.open = True
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Passwords require at least 8 characters, a number, a capital letter and a special character!"))
+                page.snack_bar.open = True
                 self.page.update()
-                invalid_value = True
+                self.invalid_value = True
             elif not self.valid_email:
-                self.page.dialog = email_invalid_dlg
-                email_invalid_dlg.open = True
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Email appears to be non-standard email layout!"))
+                page.snack_bar.open = True
                 self.page.update()
-                invalid_value = True
+                self.invalid_value = True
             elif database_functions.functions.check_usernames(cnx, self.username):
-                self.page.dialog = username_exists_dlg
-                username_exists_dlg.open = True
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"This username appears to be already taken"))
+                page.snack_bar.open = True
                 self.page.update()
-                invalid_value = True
-            self.new_user_valid = not invalid_value
+                self.invalid_value = True
+            if self.invalid_value == True:
+                self.new_user_valid = False
+            else:
+                self.new_user_valid = not invalid_value
 
         def user_created_prompt(self):
             if self.new_user_valid == True:
@@ -2890,9 +2889,10 @@ def main(page: ft.Page):
                 self.page.update()
 
         def user_created_snack(self):
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"New user created successfully. You may now login and begin using Pinepods. Enjoy!"))
-            page.snack_bar.open = True
-            page.update()
+            if self.new_user_valid == True:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"New user created successfully. You may now login and begin using Pinepods. Enjoy!"))
+                page.snack_bar.open = True
+                page.update()
                 
 
         def popup_user_values(self, e):
@@ -2928,7 +2928,6 @@ def main(page: ft.Page):
                     admin_box = True
                 else: admin_box = False
 
-                print(username)
                 self.username = username
                 user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
                 user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com')
@@ -3075,7 +3074,6 @@ def main(page: ft.Page):
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
             active_theme = database_functions.functions.get_theme(cnx, self.user_id)
-            print(active_theme)
             if active_theme == 'light':
                 page.theme_mode = "light"
                 self.main_color = '#E1E1E1'
@@ -3198,7 +3196,6 @@ def main(page: ft.Page):
                 page.window_bgcolor = '#3C4252'
 
         def set_theme(self, theme):
-            print(theme)
             database_functions.functions.set_theme(cnx, self.user_id, theme)
             self.theme_select
             go_theme_rebuild(self.page)
@@ -3527,7 +3524,6 @@ def main(page: ft.Page):
         current_episode.url = url
         current_episode.name = title
         current_episode.artwork = artwork
-        print(f'in resume episode {listen_duration}')
         current_episode.play_episode(listen_duration=listen_duration)
 
 

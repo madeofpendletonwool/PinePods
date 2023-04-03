@@ -788,11 +788,14 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
             return True, listen_duration
         else:
             return False, 0
+    except mysql.connector.errors.InterfaceError:
+        return False, 0
     finally:
         if cursor:
-            cursor.fetchall()
             cursor.close()
         cnx.commit()
+
+
 
 
 def get_episode_listen_time(cnx, user_id, title, url):
@@ -1142,6 +1145,17 @@ def increment_played(cnx, user_id):
 
     # Update UserStats table to increment PodcastsPlayed count
     query = ("UPDATE UserStats SET PodcastsPlayed = PodcastsPlayed + 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+    cnx.commit()
+    
+    cursor.close()
+
+def increment_listen_time(cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Update UserStats table to increment PodcastsPlayed count
+    query = ("UPDATE UserStats SET TimeListened = TimeListened + 1 "
              "WHERE UserID = %s")
     cursor.execute(query, (user_id,))
     cnx.commit()

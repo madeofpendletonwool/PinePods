@@ -65,13 +65,12 @@ Added in order they will be completed:
  - [x] Implement saved episodes view
  - [x] On hover user hello
  - [x] Add caching to image server
+ - [x] User self service creation
+ - [x] User container click stats page
 
  ### Needed pre-beta release
- - [ ] User container click stats page
  - [ ] Implement sign in retention. Cookies sort of
- - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] Implement download episode checking throughout
- - [ ] User self service creation
  - [ ] Add loading wheels throughout
  - [ ] Add verification snack bars throughout
  - [ ] Audio volume interaction
@@ -101,8 +100,10 @@ Added in order they will be completed:
  ### To be added after version 1
 
  - [ ] Allow local downloads to just download the mp3 files direct
+ - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] No retention on guest user. Once logged out it should delete everything
  - [ ] Customize login screen
+ - [ ] Add highlight to indicate which page you're on
  - [ ] Add Itunes podcast API
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
