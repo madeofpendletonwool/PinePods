@@ -11,17 +11,17 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 @app.route('/preload/<path:url>')
 def preload_audio_file(url):
     # Try to get the response from cache
-    response = requests.get('http://localhost:5000/proxy', params={'url': url})
+    response = requests.get('http://10.0.0.15:5000/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
     return ""
 
 
-url = "https://edge2.pod.npr.org/anon.npr-mp3/npr/han/2023/03/20230327_han_f13cb0d3-30d5-4b99-9f3b-d56de09a651e.mp3/20230327_han_f13cb0d3-30d5-4b99-9f3b-d56de09a651e.mp3_ywr3ahjkcgo_a71dad59e711790c2d235d64391cb092_28858347.mp3?awCollectionId=510051&awEpisodeId=1166292893&orgId=1&d=1770&p=510051&story=1166292893&t=podcast&e=1166292893&size=28336005&ft=pod&f=510051&hash_redirect=1&x-total-bytes=28858347&x-ais-classified=unclassified&x-access-range=0-&listeningSessionID=0CD_382_86__558b10f0e6f194f787102271fbff74428ef25109"
+url = "http://10.0.0.15:5000/proxy/edge2.pod.npr.org/anon.npr-mp3/npr/han/2023/03/20230327_han_f13cb0d3-30d5-4b99-9f3b-d56de09a651e.mp3/20230327_han_f13cb0d3-30d5-4b99-9f3b-d56de09a651e.mp3_ywr3ahjkcgo_a71dad59e711790c2d235d64391cb092_28858347.mp3?awCollectionId=510051&awEpisodeId=1166292893&orgId=1&d=1770&p=510051&story=1166292893&t=podcast&e=1166292893&size=28336005&ft=pod&f=510051&hash_redirect=1&x-total-bytes=28858347&x-ais-classified=unclassified&x-access-range=0-&listeningSessionID=0CD_382_86__558b10f0e6f194f787102271fbff74428ef25109"
 
 # Preload the audio file and cache it
-preload_audio_file(url)
+# preload_audio_file(url)
 
 def main(page: ft.Page):
     def volume_down(_):
@@ -85,5 +85,5 @@ def main(page: ft.Page):
 # App version
 ft.app(target=main, port=8034)
 
-if __name__ == '__main__':
-    app.run(port=5001)
+# if __name__ == '__main__':
+#     app.run(port=5001)

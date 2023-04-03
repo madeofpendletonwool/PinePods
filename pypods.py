@@ -2327,7 +2327,7 @@ def main(page: ft.Page):
                 download_entry_artwork_url = ft.Image(src=download_artwork_url_parsed, width=150, height=150)
                 download_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
-                    icon_color="blue400",
+                    icon_color=active_user.accent_color,
                     icon_size=40,
                     tooltip="No Episodes Added Yet"
                 )
@@ -3638,6 +3638,6 @@ def main(page: ft.Page):
         go_homelogin(page)
 
 # Browser Version
-# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-ft.app(target=main, port=8034)
+# ft.app(target=main, port=8034)
