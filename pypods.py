@@ -1,7 +1,7 @@
 # Various flet imports
 import flet as ft
-from flet import *
-from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment
+# from flet import *
+from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
 import database_functions.functions
@@ -989,7 +989,7 @@ def main(page: ft.Page):
                     ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
                 ])
                 home_ep_row = ft.Container(content=home_ep_row_content)
-                home_ep_row.padding=padding.only(left=70, right=50)
+                home_ep_row.padding=ft.padding.only(left=70, right=50)
                 home_ep_rows.append(home_ep_row)
                 home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
                 home_pods_active = True
@@ -1259,59 +1259,59 @@ def main(page: ft.Page):
                     ],
                 )
             else:
-                login_startpage = Column(
+                login_startpage = ft.Column(
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    Card(
+                    ft.Card(
                         elevation=15,
-                        content=Container(
+                        content=ft.Container(
                             width=550,
                             height=580,
-                            padding=padding.all(30),
+                            padding=ft.padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
                             ),
-                            border_radius=border_radius.all(12),
-                            content=Column(
+                            border_radius=ft.border_radius.all(12),
+                            content=ft.Column(
                                 horizontal_alignment="center",
                                 alignment="start",
                                 controls=[
-                                    Text(
+                                    ft.Text(
                                         "PinePods",
                                         size=32,
                                         weight="w700",
                                         text_align="center",
                                     ),
-                                    Text(
+                                    ft.Text(
                                         "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
                                         size=22,
                                         weight="w700",
                                         text_align="center",
                                     ),
-                                    Text(
+                                    ft.Text(
                                         "Please login with your user account to start listening to podcasts. If you didn't set a default user up please check the docker logs for a default account and credentials",
                                         size=14,
                                         weight="w700",
                                         text_align="center",
                                         color="#64748b",
                                     ),
-                                    Container(
-                                        padding=padding.only(bottom=20)
+                                    ft.Container(
+                                        padding=ft.padding.only(bottom=20)
                                     ),
                                     login_username,
-                                    Container(
-                                        padding=padding.only(bottom=10)
+                                    ft.Container(
+                                        padding=ft.padding.only(bottom=10)
                                     ),
                                     login_password,
-                                    Container(
-                                        padding=padding.only(bottom=20)
+                                    ft.Container(
+                                        padding=ft.padding.only(bottom=20)
                                     ),
-                                    Row(
+                                    ft.Row(
                                         alignment="center",
                                         spacing=20,
                                         controls=[
-                                            FilledButton(
+                                            ft.FilledButton(
                                                 content=Text(
                                                     "Login",
                                                     weight="w700",
@@ -3242,7 +3242,7 @@ def main(page: ft.Page):
     modify_user = User(page)
 
     def GradientGenerator(start, end):
-        ColorGradient = LinearGradient(
+        ColorGradient = ft.LinearGradient(
             begin=alignment.bottom_left,
             end=alignment.top_right,
             colors=[
@@ -3253,14 +3253,14 @@ def main(page: ft.Page):
 
         return ColorGradient
     
-    login_username = TextField(
+    login_username = ft.TextField(
     label="Username",
     border="underline",
     width=320,
     text_size=14,
     )
 
-    login_password = TextField(
+    login_password = ft.TextField(
         label="Password",
         border="underline",
         width=320,
@@ -3294,7 +3294,7 @@ def main(page: ft.Page):
                 e.control.content.update()
 
         def ContainedIcon(self, tooltip, icon_name, text, destination):
-            return Container(
+            return ft.Container(
                 width=180,
                 height=45,
                 border_radius=10,
@@ -3302,7 +3302,7 @@ def main(page: ft.Page):
                 ink=True,
                 content=Row(
                     controls=[
-                        IconButton(
+                        ft.IconButton(
                             icon=icon_name,
                             icon_size=18,
                             icon_color=active_user.accent_color,
@@ -3311,12 +3311,12 @@ def main(page: ft.Page):
                             on_click=destination,
                             style=ButtonStyle(
                                 shape={
-                                    "": RoundedRectangleBorder(radius=7),
+                                    "": ft.RoundedRectangleBorder(radius=7),
                                 },
                                 overlay_color={"": "transparent"},
                             ),
                         ),
-                        Text(
+                        ft.Text(
                             value=text,
                             color="white54",
                             size=11,
@@ -3329,7 +3329,7 @@ def main(page: ft.Page):
 
         def create_navbar(self):
             active_user.get_initials()
-            return Container(
+            return ft.Container(
             width=62,
             # height=580,
             expand=True,
@@ -3346,8 +3346,8 @@ def main(page: ft.Page):
                         weight="bold",
                         color=active_user.accent_color
                     ),
-                Divider(color="white24", height=5),
-                Container(
+                ft.Divider(color="white24", height=5),
+                ft.Container(
                     width=42,
                     height=42,
                     border_radius=8,
@@ -3362,14 +3362,14 @@ def main(page: ft.Page):
                     on_hover=display_hello,
                     on_click=open_user_stats
                 ),
-                    Divider(height=5, color="transparent"),
+                    ft.Divider(height=5, color="transparent"),
                     self.ContainedIcon('Home', icons.HOME, "Home", go_home),
                     self.ContainedIcon('Queue', icons.QUEUE, "Queue", open_queue),
                     self.ContainedIcon('Saved Podcasts',icons.SAVE, "Saved Podcasts", open_saved_pods),
                     self.ContainedIcon('Downloaded',icons.DOWNLOAD, "Downloaded", open_downloads),
                     self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
                     self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
-                    Divider(color="white24", height=5),
+                    ft.Divider(color="white24", height=5),
                     self.ContainedIcon('Settings', icons.SETTINGS, "Settings", open_settings),
                     self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pinepods),
                 ],
@@ -3531,7 +3531,7 @@ def main(page: ft.Page):
     search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
     top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
     top_row_container = ft.Container(content=top_row, expand=True)
-    top_row_container.padding=padding.only(left=60)
+    top_row_container.padding=ft.padding.only(left=60)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
     test_text = Text('This is a test')
