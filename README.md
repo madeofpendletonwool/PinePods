@@ -88,15 +88,15 @@ Added in order they will be completed:
     - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
     - [x] Clicking play buttons on a podcast while another is loading currently breaks things
     - [x] Pausing audio changes font color
+    - [x] Login screen colors are wrong on first boot
+    - [ ] Starting a podcast results in audio bar being in phone mode on application version
     - [ ] Themeing currently wrong on audio interaction control
     - [ ] Adding a podcast with an emoji in the description currently appears to break it
-    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
-    - [ ] Login screen colors are wrong on first boot
     - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
     - [ ] Search disappears after changing routes in the web version
     - [ ] Fix any additional browser playback bugs
-    - [ ] Starting a podcast results in audio bar being in phone mode on application version
     - [ ] Double and triple check all interactions to verify functionality
+    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
@@ -133,8 +133,8 @@ Added in order they will be completed:
      - [ ] IOS App
   - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
-  - [ ] Ratings
-  - [ ] Sharing
+  - [ ] Rating System
+  - [ ] Sharing System
 
 
 ## Platform Availability
