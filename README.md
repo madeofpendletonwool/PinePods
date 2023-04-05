@@ -74,6 +74,10 @@ Added in order they will be completed:
  - [x] Finish Themes
  - [x] Remove Podcasts from search or just don't allow adding a second time (It throws a snackbar if you try and add one a second time)
  - [x] Removing a podcast currently doesn't display snackbar
+ - [x] Create Web App
+     - [x] More responsive layout 
+     - [x] Security and Logins
+     - [x] Database interaction for users and podcast data
 
  ### Needed pre-beta release
  - [ ] Implement sign in retention. Cookies sort of
@@ -102,10 +106,6 @@ Added in order they will be completed:
      - [ ] Pypods image in docker hub
      - [ ] Create Docker-Compose Code
      - [ ] Option to run your own local podcast index api connection
- - [x] Create Web App
-     - [x] More responsive layout 
-     - [x] Security and Logins
-     - [x] Database interaction for users and podcast data
 
 
  ### To be added after beta version
