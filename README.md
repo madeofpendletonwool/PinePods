@@ -69,26 +69,32 @@ Added in order they will be completed:
  - [x] User container click stats page
  - [x] Implement download episode checking throughout
  - [x] Implement saved episode checking throughout
+ - [x] Add loading wheels throughout
+ - [x] Add verification snack bars throughout
+ - [x] Finish Themes
+ - [x] Remove Podcasts from search or just don't allow adding a second time (It throws a snackbar if you try and add one a second time)
+ - [x] Removing a podcast currently doesn't display snackbar
 
  ### Needed pre-beta release
  - [ ] Implement sign in retention. Cookies sort of
- - [ ] Add loading wheels throughout
- - [ ] Add verification snack bars throughout
- - [ ] Audio volume interaction
- - [ ] Ability to skip to next episode in queue
- - [ ] Remove Podcasts from search or just don't allow adding a second time
+ - [ ] Audio volume interaction (implemented but layout is still wrong)
  - [ ] The math is currently wrong on the queued time
  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
- - [ ] Finish Themes
  - [ ] Bugs
-    - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
-    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
-    - [ ] Fix any additional browser playback bugs
-    - [ ] Links when searching an episode are blue (wrong color)
-    - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
+    - [x] Links when searching an episode are blue (wrong color)
+    - [x] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
     - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
+    - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
+    - [x] Clicking play buttons on a podcast while another is loading currently breaks things
     - [x] Pausing audio changes font color
+    - [ ] Themeing currently wrong on audio interaction control
+    - [ ] Adding a podcast with an emoji in the description currently appears to break it
+    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
+    - [ ] Login screen colors are wrong on first boot
+    - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
+    - [ ] Search disappears after changing routes in the web version
+    - [ ] Fix any additional browser playback bugs
     - [ ] Starting a podcast results in audio bar being in phone mode on application version
     - [ ] Double and triple check all interactions to verify functionality
  - [ ] Dockerize
@@ -96,23 +102,27 @@ Added in order they will be completed:
      - [ ] Pypods image in docker hub
      - [ ] Create Docker-Compose Code
      - [ ] Option to run your own local podcast index api connection
- - [ ] Create Web App
-     - [ ] More responsive layout 
+ - [x] Create Web App
+     - [x] More responsive layout 
      - [x] Security and Logins
-     - [ ] Database interaction for users and podcast data
-     - [ ] MFA Logins - Github integration and local MFA
+     - [x] Database interaction for users and podcast data
 
 
- ### To be added after version 1
+ ### To be added after beta version
 
  - [ ] Allow local downloads to just download the mp3 files direct
  - [ ] Second bar can sometimes lag a bit. Need to optimize
  - [ ] No retention on guest user. Once logged out it should delete everything
+ - [ ] Page refreshing to handle adding and removing of things better
+ - [ ] Find a better way to handle big lists. Opening podcasts with 1000+ episodes is chaos
+ - [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
  - [ ] Improve image caching
  - [ ] Reloaded not needed to add and remove episodes from pages
  - [ ] Customize login screen
  - [ ] Add highlight to indicate which page you're on
  - [ ] Add Itunes podcast API
+ - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
+ - [ ] MFA Logins - Github integration and local MFA (OAuth)
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App

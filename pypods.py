@@ -28,6 +28,7 @@ import threading
 from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
+import math
 
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
@@ -64,10 +65,23 @@ cnx = mysql.connector.connect(
 def main(page: ft.Page):
 
 #---Flet Various Functions---------------------------------------------------------------
-    def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website):
+    def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website, page):
+        pr = ft.ProgressRing()
+        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+        page.overlay.append(progress_stack)
+        page.update()
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
-        database_functions.functions.add_podcast(cnx, podcast_values, active_user.user_id)
+        return_value = database_functions.functions.add_podcast(cnx, podcast_values, active_user.user_id)
+        page.overlay.remove(progress_stack)
+        if return_value == True:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
+            page.snack_bar.open = True
+            page.update()
+        else:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Already Added!"))
+            page.snack_bar.open = True
+            page.update()
             
     def invalid_username():
         page.dialog = username_invalid_dlg
@@ -180,7 +194,7 @@ def main(page: ft.Page):
                 title=ft.Text(f"User Creation"),
                 content=ft.Column(controls=[
                         ft.Text("Self Service User Creation is disabled. If you'd like an account please contact the admin or have them enable self service.")
-                    ]),
+                    ], tight=True),
                 actions=[
                     ft.TextButton("Close", on_click=close_self_serv_dlg)
                     ],
@@ -205,7 +219,8 @@ def main(page: ft.Page):
                     self_service_email,
                     self_service_username,
                     self_service_password
-                ]),
+                ],
+                tight=True),
             actions=[
                 ft.TextButton("Create User", on_click=lambda x: (
                 new_user.set_username(self_service_username.value), 
@@ -218,7 +233,7 @@ def main(page: ft.Page):
                 close_self_serv_dlg(page)
                 )),
 
-                ft.TextButton("Cancel", on_click=close_self_serv_dlg)
+                ft.TextButton("Cancel", on_click=lambda x: close_self_serv_dlg(page))
                 ],
             actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
         )
@@ -247,6 +262,10 @@ def main(page: ft.Page):
                 self.seconds = 1
                 self.pod_loaded = False
                 self.last_listen_duration_update = datetime.datetime.now()
+                self.volume = 1
+                self.volume_timer = None
+                self.volume_changed = False
+                self.loading_audio = False
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -273,6 +292,10 @@ def main(page: ft.Page):
                 self.seconds = 1
                 self.pod_loaded = False
                 self.last_listen_duration_update = datetime.datetime.now()
+                self.volume = 1
+                self.volume_timer = None
+                self.volume_changed = False
+                self.loading_audio = False
                 # self.episode_name = self.name
                 self.queue = []
                 self.state = 'stopped'
@@ -285,76 +308,90 @@ def main(page: ft.Page):
                     database_functions.functions.increment_listen_time(cnx, active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
-            page.update()
-            # release audio_element if it exists
-            if self.audio_element:
-                self.audio_element.release()
+            if self.loading_audio == True:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Please wait until current podcast has finished loading before selecting a new one."))
+                page.snack_bar.open = True
+                page.update()
+            if self.loading_audio == False:
+                self.loading_audio = True
+                pr = ft.ProgressRing()
+                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+                page.overlay.append(progress_stack)
+                page.update()
+                # release audio_element if it exists
+                if self.audio_element:
+                    self.audio_element.release()
 
-            # Preload the audio file and cache it
-            preload_audio_file(self.url)
+                # Preload the audio file and cache it
+                preload_audio_file(self.url)
 
-            self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
-            page.overlay.append(self.audio_element)
-            # self.audio_element.play()
-            
-            # Set the playback position to the given listen duration
-            if listen_duration:
-                self.audio_element.seek(listen_duration)
-
-            self.audio_playing = True
-            page.update()
-            waittime = 1
-        
-            tries = 0
-            while True:
-                try:
-                    duration = self.audio_element.get_duration()
-                    time.sleep(.5)
-                    if duration > 0:
-                        media_length = duration
-                        break
-                except Exception as e:
-                    tries += 1
-                    if tries >= 5:
-                        print("Max retries exceeded, unable to load audio")
-                        return
-
-            self.record_history()
-            database_functions.functions.increment_played(cnx, active_user.user_id)
-
-            # convert milliseconds to a timedelta object
-            delta = datetime.timedelta(milliseconds=media_length)
-
-            # convert timedelta object to datetime object
-            datetime_obj = datetime.datetime(1, 1, 1) + delta
-
-            # format datetime object to hh:mm:ss format with two decimal places
-            total_length = datetime_obj.strftime('%H:%M:%S')
-            time.sleep(1)
-            self.length = total_length
-            self.toggle_current_status()
-
-            page.overlay.remove(progress_stack)
-            page.update()
-            
-            # convert milliseconds to seconds
-            total_seconds = media_length // 1000
-            self.seconds = total_seconds
-            audio_scrubber.max = self.seconds
-
-            threading.Thread(target=self.run_function_every_60_seconds, daemon=True).start()
-            for i in range(total_seconds):
-                self.current_progress = self.get_current_time()
-                self.toggle_second_status(self.audio_element.data)
-                time.sleep(1)
+                self.audio_element = ft.Audio(src=f'{self.url}', volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+                page.overlay.append(self.audio_element)
+                # self.audio_element.play()
                 
-                if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
-                    print(total_seconds)
-                    self.record_listen_duration()
-                    self.last_listen_duration_update = datetime.datetime.now()
+                # Set the playback position to the given listen duration
+
+                self.audio_playing = True
+                page.update()
+                waittime = 1
+            
+                tries = 0
+                while True:
+                    try:
+                        duration = self.audio_element.get_duration()
+                        print(listen_duration)
+                        self.audio_element.play()
+                        if listen_duration:
+                            print('listen true')
+                            self.audio_element.seek(listen_duration * 1000)
+                        time.sleep(.5)
+                        if duration > 0:
+                            media_length = duration
+                            break
+                    except Exception as e:
+                        tries += 1
+                        if tries >= 5:
+                            print("Max retries exceeded, unable to load audio")
+                            return
+
+                self.record_history()
+                database_functions.functions.increment_played(cnx, active_user.user_id)
+
+                # convert milliseconds to a timedelta object
+                delta = datetime.timedelta(milliseconds=media_length)
+
+                # convert timedelta object to datetime object
+                datetime_obj = datetime.datetime(1, 1, 1) + delta
+
+                # format datetime object to hh:mm:ss format with two decimal places
+                total_length = datetime_obj.strftime('%H:%M:%S')
+                time.sleep(1)
+                self.length = total_length
+                self.toggle_current_status()
+
+                page.overlay.remove(progress_stack)
+                page.update()
+                self.loading_audio = False
+                
+                # convert milliseconds to seconds
+                total_seconds = media_length // 1000
+                self.seconds = total_seconds
+                audio_scrubber.max = self.seconds
+
+                threading.Thread(target=self.run_function_every_60_seconds, daemon=True).start()
+                for i in range(total_seconds):
+                    self.current_progress = self.get_current_time()
+                    self.toggle_second_status(self.audio_element.data)
+                    time.sleep(1)
+                    
+                    if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
+                        print(total_seconds)
+                        self.record_listen_duration()
+                        self.last_listen_duration_update = datetime.datetime.now()
+
+        def skip_episode(self):
+            next_episode_url = self.queue.pop(0)
+            self.play_episode(next_episode_url)
 
         def on_state_changed(self, status):
             self.state = status
@@ -395,7 +432,12 @@ def main(page: ft.Page):
                 pause_button.visible = True
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
-                currently_playing.content = ft.Text(self.name, size=16)
+                if len(self.name) > 25:
+                    name_truncated = self.name[:45] + '...'
+                else:
+                    name_truncated = self.name
+
+                currently_playing.content = ft.Text(name_truncated, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_container_image_landing.src = self.artwork
@@ -407,6 +449,10 @@ def main(page: ft.Page):
                 audio_scrubber.active_color = active_user.nav_color2
                 audio_scrubber.inactive_color = active_user.nav_color2
                 audio_scrubber.thumb_color = active_user.accent_color
+                volume_container.bgcolor = active_user.main_color
+                volume_down_icon.icon_color = active_user.accent_color
+                volume_up_icon.icon_color = active_user.accent_color
+                volume_button.icon_color = active_user.accent_color
                 play_button.icon_color = active_user.accent_color
                 pause_button.icon_color = active_user.accent_color
                 seek_button.icon_color = active_user.accent_color
@@ -419,6 +465,38 @@ def main(page: ft.Page):
                 play_button.visible = True
                 currently_playing.content = ft.Text(self.name, color=active_user.font_color, size=16)
                 self.page.update()
+            
+        def volume_view(self):
+            if volume_container.visible:
+                volume_container.visible = False
+                volume_container.update()
+            else:
+                volume_container.visible = True
+                volume_container.update()
+                self.volume_timer = threading.Timer(10, self.hide_volume_container)
+                self.volume_timer.start()
+
+        def volume_adjust(self):
+            print(volume_slider.value)
+            print('audio')
+            self.audio_element.volume = volume_slider.value
+            self.audio_element.update()
+            self.volume_changed = True
+            if self.volume_timer:
+                self.volume_timer.cancel()
+            self.volume_timer = threading.Timer(5, self.hide_volume_container)
+            self.volume_timer.start()
+            
+        def hide_volume_container(self):
+            if not self.volume_changed:
+                volume_container.visible = False
+                volume_container.update()
+                self.volume_timer = None
+            else:
+                self.volume_changed = False
+
+
+
                 
         def toggle_second_status(self, status):
             if self.state == 'playing':
@@ -515,11 +593,12 @@ def main(page: ft.Page):
 
     def refresh_podcasts(e):
         pr = ft.ProgressRing()
-        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+        page.overlay.append(progress_stack)
         page.update()
         database_functions.functions.refresh_pods(cnx)
         print('refresh complete')
-        page.overlay.pop(2)
+        page.overlay.remove(progress_stack)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
         page.snack_bar.open = True
         page.update()
@@ -755,26 +834,6 @@ def main(page: ft.Page):
     ) 
     # username = 'placeholder'
 
-
-
-
-#---Code for Theme Change----------------------------------------------------------------
-
-
-    def change_theme(e):
-        """
-        When the button(to change theme) is clicked, the progress bar is made visible, the theme is changed,
-        the progress bar is made invisible, and the page is updated
-
-        :param e: The event that triggered the function
-        """
-        page.splash.visible = True
-        page.theme_mode = "light" if page.theme_mode == "dark" else "dark"
-        # page.splash.visible = False
-        theme_icon_button.selected = not theme_icon_button.selected
-        time.sleep(.3)
-        page.update()
-
 #--Defining Routes---------------------------------------------------
 
     def start_login(page):
@@ -787,13 +846,17 @@ def main(page: ft.Page):
 
     def open_search(e):
         pr = ft.ProgressRing()
-        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        global progress_stack
+        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+        page.overlay.append(progress_stack)
         page.update()
         page.go("/searchpod")
 
     def open_poddisplay(e):
         pr = ft.ProgressRing()
-        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+        global progress_stack
+        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+        page.overlay.append(progress_stack)
         page.update()
         page.go("/poddisplay")
 
@@ -821,8 +884,6 @@ def main(page: ft.Page):
         page.go("/episode_display")
 
     def open_pod_list(e):
-        pr = ft.ProgressRing()
-        page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
         page.update()
         page.go("/pod_list")
 
@@ -1361,7 +1422,7 @@ def main(page: ft.Page):
             podcast_value = search_pods.value
             search_results = internal_functions.functions.searchpod(podcast_value)
             return_results = search_results['feeds']
-            page.overlay.pop(2)
+            page.overlay.remove(progress_stack)
 
             # Get and format list
             pod_number = 1
@@ -1378,8 +1439,9 @@ def main(page: ft.Page):
                         pod_image = ft.Image(src=podimage_parsed, width=150, height=150)
                         
                         # Defining the attributes of each podcast that will be displayed on screen
+                        pod_title_button = ft.Text(d['title'], style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
                         pod_title = ft.TextButton(
-                            text=d['title'],
+                            content=pod_title_button,
                             on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
                         )
                         pod_desc = ft.Text(d['description'])
@@ -1392,7 +1454,7 @@ def main(page: ft.Page):
                             icon_color=active_user.accent_color,
                             icon_size=40,
                             tooltip="Add Podcast",
-                            on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'])
+                            on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'], page)
                         )
                         # Creating column and row for search layout
                         search_column = ft.Column(
@@ -1445,10 +1507,9 @@ def main(page: ft.Page):
                 ft.dropdown.Option("abyss"),
                 ft.dropdown.Option("dracula"),
                 ft.dropdown.Option("kimbie"),
-                ft.dropdown.Option("greenie meanie"),
                 ft.dropdown.Option("neon"),
                 ft.dropdown.Option("greenie meanie"),
-                ft.dropdown.Option("wilderberries"),
+                ft.dropdown.Option("wildberries"),
                 ft.dropdown.Option("hotdogstand - MY EYES"),
              ]
              )
@@ -1639,7 +1700,7 @@ def main(page: ft.Page):
                 icon_color=active_user.accent_color,
                 icon_size=40,
                 tooltip="Add Podcast",
-                on_click=lambda x: send_podcast(clicked_podcast.name, clicked_podcast.artwork, clicked_podcast.author, clicked_podcast.categories, clicked_podcast.description, clicked_podcast.episode_count, clicked_podcast.feedurl, clicked_podcast.website)
+                on_click=lambda x: send_podcast(clicked_podcast.name, clicked_podcast.artwork, clicked_podcast.author, clicked_podcast.categories, clicked_podcast.description, clicked_podcast.episode_count, clicked_podcast.feedurl, clicked_podcast.website, page)
             )
             pod_feed_remove_button = ft.IconButton(
                 icon=ft.icons.INDETERMINATE_CHECK_BOX,
@@ -1754,7 +1815,7 @@ def main(page: ft.Page):
                 pods_active = True
                 ep_number += 1
 
-            page.overlay.pop(2)
+            page.overlay.remove(progress_stack)
             # Create search view object
             pod_view = ft.View(
                     "/poddisplay",
@@ -1776,8 +1837,6 @@ def main(page: ft.Page):
 
             # Get Pod info
             pod_list_data = database_functions.functions.return_pods(cnx, active_user.user_id)
-
-            page.overlay.pop(2)
 
             # Get and format list
             pod_list_number = 1
@@ -1865,7 +1924,7 @@ def main(page: ft.Page):
                         icon_color="red400",
                         icon_size=40,
                         tooltip="Remove Podcast",
-                        on_click=lambda x, title=pod_list_title: database_functions.functions.remove_podcast(cnx, title, active_user.user_id)
+                        on_click=lambda x, title=pod_list_title: remove_selected_podcast(title)
                     )
 
                     # Creating column and row for search layout
@@ -1890,8 +1949,6 @@ def main(page: ft.Page):
             weight=ft.FontWeight.W_300,
         )
             pod_view_row = ft.Row(controls=[pod_view_title], alignment=ft.MainAxisAlignment.CENTER)
-
-
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                     [
@@ -1916,8 +1973,6 @@ def main(page: ft.Page):
             # Get Pod info
             hist_episodes = database_functions.functions.user_history(cnx, active_user.user_id)
             hist_episodes.reverse()
-
-            # page.overlay.pop(2)
 
             if hist_episodes is None:
                 hist_ep_number = 1
@@ -2108,8 +2163,6 @@ def main(page: ft.Page):
 
             # Get Pod info
             saved_episode_list = database_functions.functions.saved_episode_list(cnx, active_user.user_id)
-
-            # page.overlay.pop(2)
 
             if saved_episode_list is None:
                 saved_ep_number = 1
@@ -2305,8 +2358,6 @@ def main(page: ft.Page):
 
             # Get Pod info
             download_episode_list = database_functions.functions.download_episode_list(cnx, active_user.user_id)
-
-            # page.overlay.pop(2)
 
             if download_episode_list is None:
                 download_ep_number = 1
@@ -2761,9 +2812,6 @@ def main(page: ft.Page):
                 desc_row = ft.Container(content=pod_feed_desc)
                 desc_row.padding=padding.only(left=70, right=50)
 
-
-
-            # page.overlay.pop(2)
             # Create search view object
             pod_view = ft.View(
                     "/poddisplay",
@@ -2830,6 +2878,8 @@ def main(page: ft.Page):
             self.fullname = 'Login First'
             self.isadmin = None
             self.navbar_stack = None
+            self.new_user_valid = False
+            self.invalid_value = False
 
     # New User Stuff ----------------------------
 
@@ -2980,7 +3030,7 @@ def main(page: ft.Page):
                         user_modify_username,
                         user_modify_password,
                         user_modify_admin
-                    ]),
+                    ], tight=True),
                 actions=[
                     ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
                         modify_user.delete_user(user_id),
@@ -3039,12 +3089,6 @@ def main(page: ft.Page):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Changed! Leave the page and return to see changes."))
                 page.snack_bar.open = True
                 page.update()
-
-
-        # page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
-        # page.snack_bar.open = True
-        # page.overlay.pop(2)
-        # page.update()
 
         def delete_user(self, user_id):
             admin_check = database_functions.functions.final_admin(cnx, user_id)
@@ -3197,38 +3241,38 @@ def main(page: ft.Page):
                 page.window_bgcolor = '#3C4252'
             elif active_theme == 'neon':
                 page.theme_mode = "dark"
-                self.main_color = '#262626'
-                self.accent_color = '#5196B2'
+                self.main_color = '#161C26'
+                self.accent_color = '#7000FF'
                 self.tertiary_color = '#5196B2'
-                self.font_color = colors.WHITE
-                self.bonus_color = '#D5BC5C'
-                self.nav_color1 = '#D5BC5C'
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#282A36'
+                self.font_color = '#9F9DA1'
+                self.bonus_color = '##01FFF4'
+                self.nav_color1 = '#FF1178'
+                self.nav_color2 = '#3544BD'
+                self.bgcolor = '#120E16'
                 page.bgcolor = '#282A36'
                 page.window_bgcolor = '#3C4252'
             elif active_theme == 'wildberries':
                 page.theme_mode = "dark"
-                self.main_color = '#262626'
-                self.accent_color = '#5196B2'
+                self.main_color = '#19002E'
+                self.accent_color = '#F55385'
                 self.tertiary_color = '#5196B2'
-                self.font_color = colors.WHITE
-                self.bonus_color = '#D5BC5C'
-                self.nav_color1 = '#D5BC5C'
-                self.nav_color2 = colors.BLACK
+                self.font_color = '#CF8B3E'
+                self.bonus_color = '#C79BFF'
+                self.nav_color1 = '#00FFB7'
+                self.nav_color2 = '#44433A'
                 self.bgcolor = '#282A36'
-                page.bgcolor = '#282A36'
+                page.bgcolor = '#240041'
                 page.window_bgcolor = '#3C4252'
-            else:
-                page.theme_mode = "greenie meanie"
-                self.main_color = '#323542'
-                self.accent_color = colors.WHITE
-                self.tertiary_color = '#23282E'
-                self.font_color = colors.BLACK
-                self.bonus_color = colors.BLACK
-                self.nav_color1 = colors.BLACK
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#3C4252'
+            elif active_theme == 'greenie meanie':
+                page.theme_mode = "dark"
+                self.main_color = '#292A2E'
+                self.accent_color = '#737373'
+                self.tertiary_color = '#489D50'
+                self.font_color = '#489D50'
+                self.bonus_color = '#849CA0'
+                self.nav_color1 = '#446448'
+                self.nav_color2 = '#43603D'
+                self.bgcolor = '#1E1F21'
                 page.bgcolor = '#3C4252'
                 page.window_bgcolor = '#3C4252'
 
@@ -3384,12 +3428,6 @@ def main(page: ft.Page):
     page.title = "PinePods"
     page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True)
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
-    def progress_ring(e):
-        pr = ft.Column(
-            [ft.ProgressRing(), ft.Text("I'm going to run for ages...")],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        page.overlay.append(pr)
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
@@ -3471,21 +3509,23 @@ def main(page: ft.Page):
     audio_container_image.border_radius = ft.border_radius.all(25)
     currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
-    audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, controls=[scrub_bar_row, ep_audio_controls])
+    volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume", on_click=lambda x: current_episode.volume_view())
+    audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, controls=[scrub_bar_row, ep_audio_controls, volume_button])
     audio_container_row_landing = ft.Row(
                 vertical_alignment=ft.CrossAxisAlignment.END,  
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,          
                 controls=[currently_playing_container, audio_controls_row])
     audio_container_row = ft.Container(content=audio_container_row_landing)
     audio_container_row.padding=ft.padding.only(left=10)
+    audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing], alignment=ft.MainAxisAlignment.CENTER)
     def page_checksize(e):
-        if page.width <= 768:
+        if page.width <= 768 and page.width > 0:
             ep_height = 100
             ep_width = 4000
             audio_container.height = ep_height
             audio_container.content = ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
-                controls=[audio_container_image, currently_playing, audio_controls_row])
+                controls=[audio_container_pod_details, audio_controls_row])
             audio_container.update()
             page.update()
         else:
@@ -3518,10 +3558,25 @@ def main(page: ft.Page):
             padding=6,
             content=audio_container_row
         )
+    volume_slider = ft.Slider(value=1, rotate=ft.Rotate(angle=3*math.pi/2), on_change=lambda x: current_episode.volume_adjust())
+    volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
+    volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
+    volume_adjust_column = ft.Column(controls=[volume_up_icon, volume_slider, volume_down_icon], expand=True)
+    volume_container = ft.Container(
+            height=250,
+            width=30,
+            bgcolor=ft.colors.WHITE,
+            border_radius=45,
+            padding=6,
+            content=volume_adjust_column)
+    volume_container.adding=ft.padding.all(50)
+    volume_container.alignment = alignment.top_right
+    volume_container.visible = False
+
+    page.overlay.append(ft.Stack([volume_container], bottom=75, right=25, expand=True))
 
     page.on_resize = page_checksize
         
-    # page.overlay.append(audio_container)
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
     audio_container.visible = False
 
@@ -3559,14 +3614,15 @@ def main(page: ft.Page):
             page.update()
         else:
             pr = ft.ProgressRing()
-            page.overlay.append(ft.Stack([pr], bottom=25, right=30, left=20, expand=True))
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
             page.update()
             current_episode.url = url
             current_episode.title = title
             current_episode.download_pod()
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
             page.snack_bar.open = True
-            page.overlay.pop(2)
+            page.overlay.remove(progress_stack)
             page.update()
 
         
@@ -3617,9 +3673,15 @@ def main(page: ft.Page):
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from saved podcasts!"))
         page.snack_bar.open = True
         page.update()
-        
+
+    def remove_selected_podcast(title):
+        database_functions.functions.remove_podcast(cnx, title, active_user.user_id)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
+        page.snack_bar.open = True
+        page.update()        
 
 # Starting Page Layout
+    page.theme_mode = "dark"
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
@@ -3638,6 +3700,6 @@ def main(page: ft.Page):
         go_homelogin(page)
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)

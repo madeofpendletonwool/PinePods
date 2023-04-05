@@ -9,10 +9,22 @@ import time
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
 
-    add_podcast = ("INSERT INTO Podcasts "
-                "(PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, UserID) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
+    # check if the podcast already exists for the user
+    query = ("SELECT PodcastID FROM Podcasts "
+             "WHERE FeedURL = %s AND UserID = %s")
 
+    cursor.execute(query, (podcast_values[6], user_id))
+    result = cursor.fetchone()
+
+    if result is not None:
+        # podcast already exists for the user, return False
+        cursor.close()
+        return False
+
+    # insert the podcast into the database
+    add_podcast = ("INSERT INTO Podcasts "
+                   "(PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, UserID) "
+                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
     cursor.execute(add_podcast, podcast_values)
 
     # get the ID of the newly-inserted podcast
@@ -29,6 +41,10 @@ def add_podcast(cnx, podcast_values, user_id):
 
     # add episodes to database
     add_episodes(cnx, podcast_id, podcast_values[6], podcast_values[1])
+
+    # return True to indicate success
+    return True
+
 
 def add_user(cnx, user_values):
     cursor = cnx.cursor()
