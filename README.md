@@ -93,6 +93,7 @@ Added in order they will be completed:
     - [x] Clicking play buttons on a podcast while another is loading currently breaks things
     - [x] Pausing audio changes font color
     - [x] Login screen colors are wrong on first boot
+    - [ ] The queue works but currently does not remove podcasts after switching to a new one
     - [ ] Starting a podcast results in audio bar being in phone mode on application version
     - [ ] Themeing currently wrong on audio interaction control
     - [ ] Adding a podcast with an emoji in the description currently appears to break it
@@ -111,7 +112,7 @@ Added in order they will be completed:
  ### To be added after beta version
 
  - [ ] Allow local downloads to just download the mp3 files direct
- - [ ] Second bar can sometimes lag a bit. Need to optimize
+ - [ ] Optimize while podcast is playing
  - [ ] No retention on guest user. Once logged out it should delete everything
  - [ ] Page refreshing to handle adding and removing of things better
  - [ ] Find a better way to handle big lists. Opening podcasts with 1000+ episodes is chaos
