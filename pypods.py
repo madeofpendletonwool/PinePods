@@ -59,7 +59,8 @@ cnx = mysql.connector.connect(
     port="3306",
     user="root",
     password="password",
-    database="pypods_database"
+    database="pypods_database",
+    charset='utf8mb4'
 )
 
 def main(page: ft.Page):
@@ -303,7 +304,6 @@ def main(page: ft.Page):
         def run_function_every_60_seconds(self):
             while True:
                 time.sleep(60)
-                print('adding time entry')
                 if self.audio_playing:
                     database_functions.functions.increment_listen_time(cnx, active_user.user_id)
 
@@ -339,10 +339,8 @@ def main(page: ft.Page):
                 while True:
                     try:
                         duration = self.audio_element.get_duration()
-                        print(listen_duration)
                         self.audio_element.play()
                         if listen_duration:
-                            print('listen true')
                             self.audio_element.seek(listen_duration * 1000)
                         time.sleep(.5)
                         if duration > 0:
@@ -385,7 +383,6 @@ def main(page: ft.Page):
                     time.sleep(1)
                     
                     if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
-                        print(total_seconds)
                         self.record_listen_duration()
                         self.last_listen_duration_update = datetime.datetime.now()
 
@@ -453,6 +450,9 @@ def main(page: ft.Page):
                 volume_down_icon.icon_color = active_user.accent_color
                 volume_up_icon.icon_color = active_user.accent_color
                 volume_button.icon_color = active_user.accent_color
+                volume_slider.active_color = active_user.nav_color2
+                volume_slider.inactive_color = active_user.nav_color2
+                volume_slider.thumb_color = active_user.accent_color
                 play_button.icon_color = active_user.accent_color
                 pause_button.icon_color = active_user.accent_color
                 seek_button.icon_color = active_user.accent_color
@@ -3409,7 +3409,7 @@ def main(page: ft.Page):
                     ft.Divider(height=5, color="transparent"),
                     self.ContainedIcon('Home', icons.HOME, "Home", go_home),
                     self.ContainedIcon('Queue', icons.QUEUE, "Queue", open_queue),
-                    self.ContainedIcon('Saved Episodes',icons.SAVE, "Saved Podcasts", open_saved_pods),
+                    self.ContainedIcon('Saved Episodes',icons.SAVE, "Saved Epsiodes", open_saved_pods),
                     self.ContainedIcon('Downloaded',icons.DOWNLOAD, "Downloaded", open_downloads),
                     self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
                     self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
@@ -3519,7 +3519,7 @@ def main(page: ft.Page):
     audio_container_row.padding=ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing], alignment=ft.MainAxisAlignment.CENTER)
     def page_checksize(e):
-        if page.width <= 768 and page.width > 0:
+        if page.width <= 768:
             ep_height = 100
             ep_width = 4000
             audio_container.height = ep_height
@@ -3574,8 +3574,6 @@ def main(page: ft.Page):
     volume_container.visible = False
 
     page.overlay.append(ft.Stack([volume_container], bottom=75, right=25, expand=True))
-
-    page.on_resize = page_checksize
         
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
     audio_container.visible = False
@@ -3678,7 +3676,9 @@ def main(page: ft.Page):
         database_functions.functions.remove_podcast(cnx, title, active_user.user_id)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
         page.snack_bar.open = True
-        page.update()        
+        page.update()    
+
+    page.on_resize = page_checksize    
 
 # Starting Page Layout
     page.theme_mode = "dark"

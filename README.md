@@ -70,7 +70,7 @@ Added in order they will be completed:
  - [x] Implement download episode checking throughout
  - [x] Implement saved episode checking throughout
  - [x] Add loading wheels throughout
- - [x] Add verification snack bars throughout
+ - [x] Add verification snack bars throughout 
  - [x] Finish Themes
  - [x] Remove Podcasts from search or just don't allow adding a second time (It throws a snackbar if you try and add one a second time)
  - [x] Removing a podcast currently doesn't display snackbar
@@ -96,6 +96,9 @@ Added in order they will be completed:
     - [ ] The queue works but currently does not remove podcasts after switching to a new one
     - [ ] Starting a podcast results in audio bar being in phone mode on application version
     - [ ] Themeing currently wrong on audio interaction control
+    - [x] Themeing currently wrong on audio interaction control
+    - [x] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
+    - [ ] The queue works but currently does not remove podcasts after switching to a new one
     - [ ] Adding a podcast with an emoji in the description currently appears to break it
     - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
     - [ ] Search disappears after changing routes in the web version

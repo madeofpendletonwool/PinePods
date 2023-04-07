@@ -15,7 +15,9 @@ def main(page: ft.Page):
             content=volume_adjust_column)
     # volume_container.adding=ft.padding.all(50)
     volume_container.alignment = ft.alignment.top_right
-    page.add(volume_container)
+    markdown_desc = '# testing marks downs \U000023F0 \U0001F600, \U0001F602, \U0001F60D, \U0001F609,"\U0001F914"'
+    home_entry_description = ft.Markdown(markdown_desc)
+    page.add(volume_container, home_entry_description)
     # page.overlay.append(ft.Stack([volume_container], bottom=75, right=25, expand=True))
 
 
