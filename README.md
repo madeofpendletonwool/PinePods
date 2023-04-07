@@ -82,7 +82,6 @@ Added in order they will be completed:
  ### Needed pre-beta release
  - [ ] Implement sign in retention. Cookies sort of
  - [ ] Audio volume interaction (implemented but layout is still wrong)
- - [ ] The math is currently wrong on the queued time
  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
  - [ ] Bugs
@@ -93,18 +92,15 @@ Added in order they will be completed:
     - [x] Clicking play buttons on a podcast while another is loading currently breaks things
     - [x] Pausing audio changes font color
     - [x] Login screen colors are wrong on first boot
-    - [ ] The queue works but currently does not remove podcasts after switching to a new one
-    - [ ] Starting a podcast results in audio bar being in phone mode on application version
-    - [ ] Themeing currently wrong on audio interaction control
     - [x] Themeing currently wrong on audio interaction control
     - [x] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
+    - [x] Starting a podcast results in audio bar being in phone mode on application version
+    - [x] Adding a podcast with an emoji in the description currently appears to break it
     - [ ] The queue works but currently does not remove podcasts after switching to a new one
-    - [ ] Adding a podcast with an emoji in the description currently appears to break it
     - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
     - [ ] Search disappears after changing routes in the web version
     - [ ] Fix any additional browser playback bugs
     - [ ] Double and triple check all interactions to verify functionality
-    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
@@ -115,6 +111,7 @@ Added in order they will be completed:
  ### To be added after beta version
 
  - [ ] Allow local downloads to just download the mp3 files direct
+ - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
  - [ ] Optimize while podcast is playing
  - [ ] No retention on guest user. Once logged out it should delete everything
  - [ ] Page refreshing to handle adding and removing of things better
