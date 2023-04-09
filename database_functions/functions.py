@@ -1332,6 +1332,25 @@ def check_saved_session(cnx):
 
     return False
 
+
+def check_saved_web_session(cnx, session_value):
+    cursor = cnx.cursor()
+
+    # Get the session with the matching value and expiration time
+    cursor.execute("""
+    SELECT UserID, expire FROM Sessions WHERE value = %s;
+    """, (session_value,))
+
+    result = cursor.fetchone()
+
+    if result:
+        user_id, session_expire = result
+        current_time = datetime.datetime.now()
+        if current_time < session_expire:
+            return user_id
+
+    return False
+
 def create_session(cnx, user_id):
     import secrets
     # Generate a new session value
@@ -1340,6 +1359,18 @@ def create_session(cnx, user_id):
     # Save the session value to the local session.txt file
     save_session_to_file(session_value)
 
+    # Calculate the expiration date 30 days in the future
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    # Insert the new session into the Sessions table
+    cursor = cnx.cursor()
+    cursor.execute("""
+    INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
+    """, (user_id, session_value, expire_date))
+
+    cnx.commit()
+
+def create_web_session(cnx, user_id, session_value):
     # Calculate the expiration date 30 days in the future
     expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
 

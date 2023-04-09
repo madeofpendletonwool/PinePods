@@ -80,7 +80,7 @@ cnx = mysql.connector.connect(
 
 database_functions.functions.clean_expired_sessions(cnx)
 
-def main(page: ft.Page):
+def main(page: ft.Page, session_value=None):
     print(page.web)
 
 #---Flet Various Functions---------------------------------------------------------------
@@ -109,6 +109,9 @@ def main(page: ft.Page):
 
     def validate_user(input_username, input_pass):
         return Auth.Passfunctions.verify_password(cnx, input_username, input_pass) 
+
+    def generate_session_value():
+        return secrets.token_hex(32)
 
     def close_dlg(e):
         user_dlg.open = False
@@ -1261,6 +1264,8 @@ def main(page: ft.Page):
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
+            if page.web:
+                retain_session.visible = False
             if guest_enabled == True:
                 login_startpage = ft.Column(
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -3175,7 +3180,10 @@ def main(page: ft.Page):
                 self.email = login_details['Email']
                 if retain_session:
                     print('session retention ran')
-                    database_functions.functions.create_session(cnx, self.user_id)
+                    if page.web:
+                        print('testing')
+                    else:
+                        database_functions.functions.create_session(cnx, self.user_id)
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
@@ -3740,6 +3748,7 @@ def main(page: ft.Page):
     page.appbar.visible = False
 
     check_session = database_functions.functions.check_saved_session(cnx)
+
     
     if login_screen == True:
         if page.web:
@@ -3754,6 +3763,7 @@ def main(page: ft.Page):
         active_user.user_id = 1
         active_user.fullname = 'Guest User'
         go_homelogin(page)
+
 
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
