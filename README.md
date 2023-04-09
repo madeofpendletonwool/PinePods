@@ -81,7 +81,6 @@ Added in order they will be completed:
      - [x] Database interaction for users and podcast data
 
  ### Needed pre-beta release
- - [ ] Implement Browser edition sign in retention
  - [ ] Audio volume interaction (implemented but layout is still wrong)
  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
@@ -128,6 +127,7 @@ Added in order they will be completed:
  - [ ] Add Itunes podcast API
  - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
  - [ ] MFA Logins - Github integration and local MFA (OAuth)
+ - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider)
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
