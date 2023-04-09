@@ -1350,3 +1350,13 @@ def create_session(cnx, user_id):
     """, (user_id, session_value, expire_date))
 
     cnx.commit()
+
+def clean_expired_sessions(cnx):
+    current_time = datetime.datetime.now()
+    cursor = cnx.cursor()
+
+    cursor.execute("""
+    DELETE FROM Sessions WHERE expire < %s;
+    """, (current_time,))
+
+    cnx.commit()

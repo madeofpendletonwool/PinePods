@@ -74,13 +74,14 @@ Added in order they will be completed:
  - [x] Finish Themes
  - [x] Remove Podcasts from search or just don't allow adding a second time (It throws a snackbar if you try and add one a second time)
  - [x] Removing a podcast currently doesn't display snackbar
+ - [x] Implement sign in retention. Cookies sort of (App retention now workss. It creates session keys and stores them locally. Browser retention is next.)
  - [x] Create Web App
      - [x] More responsive layout 
      - [x] Security and Logins
      - [x] Database interaction for users and podcast data
 
  ### Needed pre-beta release
- - [ ] Implement sign in retention. Cookies sort of
+ - [ ] Implement Browser edition sign in retention
  - [ ] Audio volume interaction (implemented but layout is still wrong)
  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
@@ -96,11 +97,11 @@ Added in order they will be completed:
     - [x] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
     - [x] Starting a podcast results in audio bar being in phone mode on application version
     - [x] Adding a podcast with an emoji in the description currently appears to break it
+    - [x] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
     - [ ] Layout breaks when pausing for podcast names
     - [ ] The queue works but currently does not remove podcasts after switching to a new one
     - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
     - [ ] Search disappears after changing routes in the web version
-    - [ ] Fix any additional browser playback bugs
     - [ ] Double and triple check all interactions to verify functionality
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
@@ -111,6 +112,7 @@ Added in order they will be completed:
 
  ### To be added after beta version
 
+ - [ ] Encrypt the session keys stored for user login sesssions on app versions. 
  - [ ] New version of flet (0.5.0) breaks audio scrubbing. Some work will be needed to fix that
  - [ ] Allow local downloads to just download the mp3 files direct
  - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
@@ -132,8 +134,10 @@ Added in order they will be completed:
      - [x] Proper web layout
      - [ ] Windows App
      - [ ] Mac App
-     - [ ] Android App
-     - [ ] IOS App
+     - [ ] Mobile Apps
+       - [ ] Sign in retention for moble editions
+       - [ ] Android App
+       - [ ] IOS App
   - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
   - [ ] Rating System

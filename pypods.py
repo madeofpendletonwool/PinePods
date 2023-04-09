@@ -78,6 +78,8 @@ cnx = mysql.connector.connect(
     charset='utf8mb4'
 )
 
+database_functions.functions.clean_expired_sessions(cnx)
+
 def main(page: ft.Page):
     print(page.web)
 
