@@ -5,6 +5,7 @@ import os
 import requests
 import datetime
 import time
+import appdirs
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
@@ -490,6 +491,25 @@ def get_user_details(cnx, username):
     cursor = cnx.cursor()
     query = "SELECT * FROM Users WHERE Username = %s"
     cursor.execute(query, (username,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return {
+            'UserID': result[0],
+            'Fullname': result[1],
+            'Username': result[2],
+            'Email': result[3],
+            'Hashed_PW': result[4],
+            'Salt': result[5]
+        }
+    else:
+        return None
+
+def get_user_details_id(cnx, user_id):
+    cursor = cnx.cursor()
+    query = "SELECT * FROM Users WHERE UserID = %s"
+    cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
 
@@ -1266,3 +1286,67 @@ def check_podcast(cnx, user_id, podcast_name):
         if cursor:
             cursor.close()
         cnx.commit()
+
+def get_session_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "session.txt")
+    return session_file_path
+
+def save_session_to_file(session_id):
+    session_file_path = get_session_file_path()
+    with open(session_file_path, "w") as file:
+        file.write(session_id)
+
+def get_saved_session_from_file():
+    app_name = 'pinepods'
+    session_file_path = get_session_file_path()
+    try:
+        with open(session_file_path, "r") as file:
+            session_id = file.read()
+            return session_id
+    except FileNotFoundError:
+        return None
+
+def check_saved_session(cnx):
+    session_value = get_saved_session_from_file()
+
+    if not session_value:
+        return False
+
+    cursor = cnx.cursor()
+
+    # Get the session with the matching value and expiration time
+    cursor.execute("""
+    SELECT UserID, expire FROM Sessions WHERE value = %s;
+    """, (session_value,))
+
+    result = cursor.fetchone()
+
+    if result:
+        user_id, session_expire = result
+        current_time = datetime.datetime.now()
+        if current_time < session_expire:
+            return user_id
+
+    return False
+
+def create_session(cnx, user_id):
+    import secrets
+    # Generate a new session value
+    session_value = secrets.token_hex(32)
+
+    # Save the session value to the local session.txt file
+    save_session_to_file(session_value)
+
+    # Calculate the expiration date 30 days in the future
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    # Insert the new session into the Sessions table
+    cursor = cnx.cursor()
+    cursor.execute("""
+    INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
+    """, (user_id, session_value, expire_date))
+
+    cnx.commit()

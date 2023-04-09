@@ -96,6 +96,7 @@ Added in order they will be completed:
     - [x] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
     - [x] Starting a podcast results in audio bar being in phone mode on application version
     - [x] Adding a podcast with an emoji in the description currently appears to break it
+    - [ ] Layout breaks when pausing for podcast names
     - [ ] The queue works but currently does not remove podcasts after switching to a new one
     - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
     - [ ] Search disappears after changing routes in the web version
@@ -110,6 +111,7 @@ Added in order they will be completed:
 
  ### To be added after beta version
 
+ - [ ] New version of flet (0.5.0) breaks audio scrubbing. Some work will be needed to fix that
  - [ ] Allow local downloads to just download the mp3 files direct
  - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
  - [ ] Optimize while podcast is playing

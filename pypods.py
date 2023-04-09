@@ -29,6 +29,11 @@ from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
 import math
+import secrets
+import appdirs
+
+session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
+
 
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
@@ -36,11 +41,21 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 @app.route('/preload/<path:url>')
 def preload_audio_file(url):
     # Try to get the response from cache
-    response = requests.get('http://10.0.0.15:5000/proxy', params={'url': url})
+    response = requests.get('http://localhost:8000/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
     return ""
+
+@app.route('/cached_audio/<path:url>')
+def serve_cached_audio(url):
+    content = cache.get(url)
+
+    if content is not None:
+        response = Response(content, content_type='audio/mpeg')
+        return response
+    else:
+        return "", 404
 
 # Make login Screen start on boot
 login_screen = True
@@ -64,6 +79,7 @@ cnx = mysql.connector.connect(
 )
 
 def main(page: ft.Page):
+    print(page.web)
 
 #---Flet Various Functions---------------------------------------------------------------
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website, page):
@@ -96,6 +112,19 @@ def main(page: ft.Page):
         user_dlg.open = False
         page.update() 
         go_home 
+
+    def save_session_to_file(session_id):
+        with open("session.txt", "w") as file:
+            file.write(session_id)
+
+    def get_saved_session_from_file():
+        try:
+            with open("session.txt", "r") as file:
+                session_id = file.read()
+                return session_id
+        except FileNotFoundError:
+            return None
+
 
     def on_click_wronguser(page):
         page.snack_bar = ft.SnackBar(ft.Text(f"Wrong username or password. Please try again!"))
@@ -325,7 +354,9 @@ def main(page: ft.Page):
                 # Preload the audio file and cache it
                 preload_audio_file(self.url)
 
+                # self.audio_element = ft.Audio(src=f'{self.url}', volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 self.audio_element = ft.Audio(src=f'{self.url}', volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+
                 page.overlay.append(self.audio_element)
                 # self.audio_element.play()
                 
@@ -1227,6 +1258,7 @@ def main(page: ft.Page):
 
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
+            retain_session = ft.Switch(label="Stay Signed in", value=False)
             if guest_enabled == True:
                 login_startpage = ft.Column(
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -1236,7 +1268,7 @@ def main(page: ft.Page):
                             elevation=15,
                             content=ft.Container(
                                 width=550,
-                                height=580,
+                                height=620,
                                 padding=padding.all(30),
                                 gradient=GradientGenerator(
                                     "#2f2937", "#251867"
@@ -1276,6 +1308,7 @@ def main(page: ft.Page):
                                         ft.Container(
                                             padding=padding.only(bottom=20)
                                         ),
+                                        retain_session,
                                         ft.Row(
                                             alignment="center",
                                             spacing=20,
@@ -1288,7 +1321,7 @@ def main(page: ft.Page):
                                                     width=160,
                                                     height=40,
                                                     # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                    on_click=lambda e: active_user.login(login_username, login_password)
+                                                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
                                                     # on_click=lambda e: go_homelogin(e)
                                                 ),
                                                 ft.FilledButton(
@@ -1328,7 +1361,7 @@ def main(page: ft.Page):
                         elevation=15,
                         content=ft.Container(
                             width=550,
-                            height=580,
+                            height=620,
                             padding=ft.padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
@@ -1368,6 +1401,7 @@ def main(page: ft.Page):
                                     ft.Container(
                                         padding=ft.padding.only(bottom=20)
                                     ),
+                                    retain_session,
                                     ft.Row(
                                         alignment="center",
                                         spacing=20,
@@ -1380,7 +1414,7 @@ def main(page: ft.Page):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: active_user.login(login_username, login_password)
+                                                on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
@@ -3120,7 +3154,7 @@ def main(page: ft.Page):
             # return the initials as uppercase
             self.initials = initials_lower.upper()
 
-        def login(self, username_field, password_field):
+        def login(self, username_field, password_field, retain_session):
             username = username_field.value
             password = password_field.value
             username_field.value = ''
@@ -3137,9 +3171,20 @@ def main(page: ft.Page):
                 self.fullname = login_details['Fullname']
                 self.username = login_details['Username']
                 self.email = login_details['Email']
+                if retain_session:
+                    print('session retention ran')
+                    database_functions.functions.create_session(cnx, self.user_id)
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
+
+        def saved_login(self, user_id):
+            login_details = database_functions.functions.get_user_details_id(cnx, user_id)
+            self.user_id = login_details['UserID']
+            self.fullname = login_details['Fullname']
+            self.username = login_details['Username']
+            self.email = login_details['Email']
+            go_homelogin(page)
 
         def logout_pinepods(self, e):
             active_user = User(page)
@@ -3519,6 +3564,7 @@ def main(page: ft.Page):
     audio_container_row.padding=ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing], alignment=ft.MainAxisAlignment.CENTER)
     def page_checksize(e):
+        print(page.width)
         if page.width <= 768:
             ep_height = 100
             ep_width = 4000
@@ -3690,10 +3736,18 @@ def main(page: ft.Page):
     # page.appbar.visible = True
     # page.appbar.update()
     page.appbar.visible = False
+
+    check_session = database_functions.functions.check_saved_session(cnx)
     
     if login_screen == True:
-
-        start_login(page)
+        if page.web:
+            start_login(page)
+        else:
+            if check_session:
+                active_user.saved_login(check_session)
+            else:     
+                print('starting in app login')
+                start_login(page)
     else:
         active_user.user_id = 1
         active_user.fullname = 'Guest User'
