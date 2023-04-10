@@ -219,7 +219,7 @@ def main(page: ft.Page, session_value=None):
     def self_service_user(self):
         def close_self_serv_dlg(page):
             self_service_dlg.open = False
-            page.update()
+            self.page.update()
 
         self_service_status = database_functions.functions.self_service_status(cnx)
 
@@ -301,6 +301,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume_timer = None
                 self.volume_changed = False
                 self.loading_audio = False
+                self.name_truncated = 'placeholder'
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -331,6 +332,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume_timer = None
                 self.volume_changed = False
                 self.loading_audio = False
+                self.name_truncated = 'placeholder'
                 # self.episode_name = self.name
                 self.queue = []
                 self.state = 'stopped'
@@ -465,12 +467,25 @@ def main(page: ft.Page, session_value=None):
                 pause_button.visible = True
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
-                if len(self.name) > 25:
-                    name_truncated = self.name[:45] + '...'
-                else:
-                    name_truncated = self.name
+                print(self.name)
+                if int(page.width) >= 1300:
+                    self.name_truncated = self.name
+                    print('No limit')
+                elif int(page.width) < 1300 and int(page.width) > 1101:
+                    self.name_truncated = self.name[:80] + '...'
+                    print('1300 hit')
+                elif int(page.width) < 1100:
+                    self.name_truncated = self.name[:60] + '...'
+                    print('1100 hit')
+                elif int(page.width) < 900:
+                    self.name_truncated = self.name[:55] + '...'
+                    print('900 hit')
+                elif int(page.width) < 800:
+                    self.name_truncated = self.name[:40] + '...'
+                    print('800 hit')
+                print(int(page.width))
 
-                currently_playing.content = ft.Text(name_truncated, size=16)
+                currently_playing.content = ft.Text(self.name_truncated, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_container_image_landing.src = self.artwork
@@ -499,7 +514,7 @@ def main(page: ft.Page, session_value=None):
             else:
                 pause_button.visible = False
                 play_button.visible = True
-                currently_playing.content = ft.Text(self.name, color=active_user.font_color, size=16)
+                currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
             
         def volume_view(self):
@@ -1264,6 +1279,8 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/login" or page.route == "/login":
             guest_enabled = database_functions.functions.guest_status(cnx)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
+            retain_session_contained = ft.Container(content=retain_session)
+            retain_session_contained.padding = padding.only(left=70)
             if page.web:
                 retain_session.visible = False
             if guest_enabled == True:
@@ -1315,7 +1332,7 @@ def main(page: ft.Page, session_value=None):
                                         ft.Container(
                                             padding=padding.only(bottom=20)
                                         ),
-                                        retain_session,
+                                        retain_session_contained,
                                         ft.Row(
                                             alignment="center",
                                             spacing=20,
@@ -1408,7 +1425,7 @@ def main(page: ft.Page, session_value=None):
                                     ft.Container(
                                         padding=ft.padding.only(bottom=20)
                                     ),
-                                    retain_session,
+                                    retain_session_contained,
                                     ft.Row(
                                         alignment="center",
                                         spacing=20,
@@ -3575,6 +3592,24 @@ def main(page: ft.Page, session_value=None):
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing], alignment=ft.MainAxisAlignment.CENTER)
     def page_checksize(e):
         print(page.width)
+        print(current_episode.name_truncated)
+        print(current_episode.name)
+        if int(page.width) >= 1300:
+            current_episode.name_truncated = current_episode.name
+            print('No limit')
+        elif int(page.width) < 1300 and int(page.width) > 1101:
+            current_episode.name_truncated = current_episode.name[:80] + '...'
+            print('1300 hit')
+        elif int(page.width) < 1100:
+            current_episode.name_truncated = current_episode.name[:60] + '...'
+            print('1100 hit')
+        elif int(page.width) < 900:
+            current_episode.name_truncated = current_episode.name[:55] + '...'
+            print('900 hit')
+        elif int(page.width) < 800:
+            current_episode.name_truncated = current_episode.name[:40] + '...'
+            print('800 hit')
+        print(int(page.width))
         if page.width <= 768:
             ep_height = 100
             ep_width = 4000
@@ -3583,13 +3618,16 @@ def main(page: ft.Page, session_value=None):
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
                 controls=[audio_container_pod_details, audio_controls_row])
             audio_container.update()
+            currently_playing.update()
             page.update()
         else:
             ep_height = 50
             ep_width = 4000
             audio_container.height = ep_height
             audio_container.content = audio_container_row
+            currently_playing.update()
             audio_container.update()
+            page.update()
     if page.width <= 768:
         ep_height = 100
         ep_width = 4000
@@ -3614,13 +3652,13 @@ def main(page: ft.Page, session_value=None):
             padding=6,
             content=audio_container_row
         )
-    volume_slider = ft.Slider(value=1)
+    volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
     volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
     volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
     volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], expand=True)
     volume_container = ft.Container(
             height=35,
-            width=250,
+            width=275,
             bgcolor=ft.colors.WHITE,
             border_radius=45,
             padding=6,

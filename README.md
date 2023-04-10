@@ -18,7 +18,7 @@
 PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 
 ## Features
-N/A
+Pinepods is a complete podcasts management system and allows you to play, download, and keep track of podcasts you enjoy. It allows for searching new podcasts using The Podcast Index and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql database including user settings, podcasts and episodes. It's fully self-hosted, and I provide an option to use a hosted API or you can also get one from the podcast API and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install Pinepods on your own system. 
 
 ## Hosting
 N/A
@@ -75,13 +75,13 @@ Added in order they will be completed:
  - [x] Remove Podcasts from search or just don't allow adding a second time (It throws a snackbar if you try and add one a second time)
  - [x] Removing a podcast currently doesn't display snackbar
  - [x] Implement sign in retention. Cookies sort of (App retention now workss. It creates session keys and stores them locally. Browser retention is next.)
+ - [x] Audio volume interaction (implemented but layout is still wrong)
  - [x] Create Web App
      - [x] More responsive layout 
      - [x] Security and Logins
      - [x] Database interaction for users and podcast data
 
  ### Needed pre-beta release
- - [ ] Audio volume interaction (implemented but layout is still wrong)
  - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
  - [ ] Bugs
