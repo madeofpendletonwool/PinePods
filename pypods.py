@@ -130,6 +130,34 @@ def main(page: ft.Page, session_value=None):
         except FileNotFoundError:
             return None
 
+    def character_limit(screen_width):
+        if screen_width < 400:
+            return 40
+        elif screen_width < 768:
+            return 50
+        elif screen_width < 768:
+            return 60
+        elif screen_width < 800:
+            return 25
+        elif screen_width < 900:
+            return 35
+        elif screen_width < 1000:
+            return 40
+        elif screen_width < 1100:
+            return 45
+        elif screen_width < 1200:
+            return 55
+        elif screen_width < 1300:
+            return 70
+        else:
+            return None
+
+    def truncate_text(text, max_chars):
+        if max_chars and len(text) > max_chars:
+            return text[:max_chars] + '...'
+        else:
+            return text
+
 
     def on_click_wronguser(page):
         page.snack_bar = ft.SnackBar(ft.Text(f"Wrong username or password. Please try again!"))
@@ -431,12 +459,15 @@ def main(page: ft.Page, session_value=None):
         def on_state_changed(self, status):
             self.state = status
             if status == 'completed':
-                # If there are episodes in the queue, play the next episode
+                print("Episode completed. Current queue:", self.queue)
+
                 if len(self.queue) > 0:
                     next_episode_url = self.queue.pop(0)
+                    print("Playing next episode. Updated queue:", self.queue)
                     self.play_episode(next_episode_url)
+                    print(f'queue is {self.queue}')
                 else:
-                    # Stop playing when the queue is empty
+                    print("Queue is empty. Stopping playback.")
                     self.audio_element.release()
                     self.audio_playing = False
                     self.toggle_current_status()
@@ -468,23 +499,8 @@ def main(page: ft.Page, session_value=None):
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
                 print(self.name)
-                if int(page.width) >= 1300:
-                    self.name_truncated = self.name
-                    print('No limit')
-                elif int(page.width) < 1300 and int(page.width) > 1101:
-                    self.name_truncated = self.name[:80] + '...'
-                    print('1300 hit')
-                elif int(page.width) < 1100:
-                    self.name_truncated = self.name[:60] + '...'
-                    print('1100 hit')
-                elif int(page.width) < 900:
-                    self.name_truncated = self.name[:55] + '...'
-                    print('900 hit')
-                elif int(page.width) < 800:
-                    self.name_truncated = self.name[:40] + '...'
-                    print('800 hit')
-                print(int(page.width))
-
+                max_chars = character_limit(int(page.width))
+                self.name_truncated = truncate_text(self.name, max_chars)
                 currently_playing.content = ft.Text(self.name_truncated, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
@@ -3594,21 +3610,11 @@ def main(page: ft.Page, session_value=None):
         print(page.width)
         print(current_episode.name_truncated)
         print(current_episode.name)
-        if int(page.width) >= 1300:
-            current_episode.name_truncated = current_episode.name
-            print('No limit')
-        elif int(page.width) < 1300 and int(page.width) > 1101:
-            current_episode.name_truncated = current_episode.name[:80] + '...'
-            print('1300 hit')
-        elif int(page.width) < 1100:
-            current_episode.name_truncated = current_episode.name[:60] + '...'
-            print('1100 hit')
-        elif int(page.width) < 900:
-            current_episode.name_truncated = current_episode.name[:55] + '...'
-            print('900 hit')
-        elif int(page.width) < 800:
-            current_episode.name_truncated = current_episode.name[:40] + '...'
-            print('800 hit')
+        max_chars = character_limit(int(page.width))
+        current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
+        currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+
+
         print(int(page.width))
         if page.width <= 768:
             ep_height = 100
