@@ -96,14 +96,15 @@ Added in order they will be completed:
     - [x] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
     - [x] Starting a podcast results in audio bar being in phone mode on application version
     - [x] Adding a podcast with an emoji in the description currently appears to break it
-    - [x] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
     - [x] Layout breaks when pausing for podcast names
     - [x] The queue works but currently does not remove podcasts after switching to a new one
-    - [ ] Double check 2 users adding the same podcast
-    - [ ] Resume is currently broken (it now works but it double plays an episode before resuming for some reason)
+    - [x] Resume is currently broken (it now works but it double plays an episode before resuming for some reason. It still double plays and there's not a great way to fix it. Return later. Updates to flet are likely to help eventually)
+    - [x] Double check 2 users adding the same podcast (There was an issue with checking playback status that is now fixed)
+    - [x] After refresh auto update current route
     - [ ] Because of the playback bug when switching, make podcasts resume from where you were already when switching - Currently they just stop
     - [ ] Search disappears after changing routes in the web version
     - [ ] Double and triple check all interactions to verify functionality
+    - [ ] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub

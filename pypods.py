@@ -81,7 +81,6 @@ cnx = mysql.connector.connect(
 database_functions.functions.clean_expired_sessions(cnx)
 
 def main(page: ft.Page, session_value=None):
-    print(page.web)
 
 #---Flet Various Functions---------------------------------------------------------------
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website, page):
@@ -371,12 +370,12 @@ def main(page: ft.Page, session_value=None):
                 if self.audio_playing:
                     database_functions.functions.increment_listen_time(cnx, active_user.user_id)
 
-        def play_episode(self, e=None, listen_duration=None):
+        def play_episode(self, e=None, listen_duration=None):            
             if self.loading_audio == True:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Please wait until current podcast has finished loading before selecting a new one."))
                 page.snack_bar.open = True
-                page.update()
-            if self.loading_audio == False:
+                self.page.update()
+            else:
                 self.loading_audio = True
                 pr = ft.ProgressRing()
                 progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
@@ -389,34 +388,38 @@ def main(page: ft.Page, session_value=None):
                 # Preload the audio file and cache it
                 preload_audio_file(self.url)
 
-                # self.audio_element = ft.Audio(src=f'{self.url}', volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
-                self.audio_element = ft.Audio(src=f'{self.url}', volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
-
+                self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
                 # self.audio_element.play()
-                
-                # Set the playback position to the given listen duration
 
                 self.audio_playing = True
                 page.update()
-                waittime = 1
-            
+
+                max_retries = 20
+                sleep_time = 0.25
                 tries = 0
-                while True:
+
+                while tries < max_retries:
                     try:
                         duration = self.audio_element.get_duration()
-                        self.audio_element.play()
-                        if listen_duration:
-                            self.audio_element.seek(listen_duration * 1000)
-                        time.sleep(.5)
                         if duration > 0:
                             media_length = duration
                             break
                     except Exception as e:
-                        tries += 1
-                        if tries >= 5:
-                            print("Max retries exceeded, unable to load audio")
-                            return
+                        pass
+
+                    tries += 1
+                    time.sleep(sleep_time)
+
+                if tries == max_retries:
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"Unable to load episode. Perhaps it no longer exists?"))
+                    page.snack_bar.open = True
+                    self.page.update()
+                    return
+
+                if listen_duration:
+                    listen_math = listen_duration * 1000
+                    self.audio_element.seek(listen_math)
 
                 self.record_history()
                 database_functions.functions.increment_played(cnx, active_user.user_id)
@@ -443,6 +446,7 @@ def main(page: ft.Page, session_value=None):
                 audio_scrubber.max = self.seconds
 
                 threading.Thread(target=self.run_function_every_60_seconds, daemon=True).start()
+
                 for i in range(total_seconds):
                     self.current_progress = self.get_current_time()
                     self.toggle_second_status(self.audio_element.data)
@@ -459,15 +463,11 @@ def main(page: ft.Page, session_value=None):
         def on_state_changed(self, status):
             self.state = status
             if status == 'completed':
-                print("Episode completed. Current queue:", self.queue)
 
                 if len(self.queue) > 0:
                     next_episode_url = self.queue.pop(0)
-                    print("Playing next episode. Updated queue:", self.queue)
                     self.play_episode(next_episode_url)
-                    print(f'queue is {self.queue}')
                 else:
-                    print("Queue is empty. Stopping playback.")
                     self.audio_element.release()
                     self.audio_playing = False
                     self.toggle_current_status()
@@ -498,7 +498,6 @@ def main(page: ft.Page, session_value=None):
                 pause_button.visible = True
                 audio_container.bgcolor = active_user.main_color
                 audio_container.visible = True
-                print(self.name)
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
                 currently_playing.content = ft.Text(self.name_truncated, size=16)
@@ -544,8 +543,6 @@ def main(page: ft.Page, session_value=None):
                 self.volume_timer.start()
 
         def volume_adjust(self):
-            print(volume_slider.value)
-            print('audio')
             self.audio_element.volume = volume_slider.value
             self.audio_element.update()
             self.volume_changed = True
@@ -611,7 +608,9 @@ def main(page: ft.Page, session_value=None):
             try:
                 self.queue.remove(self.url)
             except ValueError:
-                print(f"Episode '{url}' not found in queue")
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: Episode not found in queue"))
+                page.snack_bar.open = True
+                self.page.update()
 
         def save_pod(self):
             database_functions.functions.save_episode(cnx, self.url, self.title, active_user.user_id)
@@ -664,7 +663,6 @@ def main(page: ft.Page, session_value=None):
         page.overlay.append(progress_stack)
         page.update()
         database_functions.functions.refresh_pods(cnx)
-        print('refresh complete')
         page.overlay.remove(progress_stack)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
         page.snack_bar.open = True
@@ -813,15 +811,17 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
                             ]) 
                     else:
+                        home_ep_dur = seconds_to_time(home_ep_duration)
+                        home_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
                             ])
                         else:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
                             ]) 
                     home_div_row = ft.Divider(color=active_user.accent_color)
                     home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
@@ -1219,15 +1219,17 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
                             ]) 
                     else:
+                        home_ep_dur = seconds_to_time(home_ep_duration)
+                        home_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
                             ])
                         else:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_dur_display ,ft.Row(controls=[home_ep_play_button, home_popup_button])]),
                             ]) 
                     home_div_row = ft.Divider(color=active_user.accent_color)
                     home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
@@ -2185,15 +2187,17 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, hist_entry_progress, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
                             ]) 
                     else:
+                        hist_ep_dur = seconds_to_time(home_ep_duration)
+                        hist_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             hist_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_seemore, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_seemore, hist_entry_listened, hist_dur_display, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
                             ])
                         else:
                             hist_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, hist_dur_display, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
                             ]) 
                     hist_div_row = ft.Divider(color=active_user.accent_color)
                     hist_ep_column = ft.Column(controls=[hist_ep_row_content, hist_div_row])
@@ -2379,15 +2383,17 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
                             ]) 
                     else:
+                        saved_ep_dur = seconds_to_time(home_ep_duration)
+                        saved_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             saved_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_seemore, saved_entry_released, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_seemore, saved_entry_released, saved_dur_display, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
                             ])
                         else:
                             saved_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_dur_display, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
                             ]) 
                     saved_div_row = ft.Divider(color=active_user.accent_color)
                     saved_ep_column = ft.Column(controls=[saved_ep_row_content, saved_div_row])
@@ -2575,15 +2581,17 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
                             ]) 
                     else:
+                        download_ep_dur = seconds_to_time(home_ep_duration)
+                        download_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             download_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
                             ])
                         else:
                             download_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
                             ]) 
                     download_div_row = ft.Divider(color=active_user.accent_color)
                     download_ep_column = ft.Column(controls=[download_ep_row_content, download_div_row])
@@ -2770,15 +2778,17 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_entry_progress, ft.Row(controls=[queue_ep_play_button, queue_ep_resume_button, queue_popup_button])]),
                             ]) 
                     else:
+                        queue_ep_dur = seconds_to_time(home_ep_duration)
+                        queue_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             queue_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_seemore, queue_entry_released, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_seemore, queue_entry_released, queue_dur_display, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
                             ])
                         else:
                             queue_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
+                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_dur_display, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
                             ]) 
                     queue_div_row = ft.Divider(color=active_user.accent_color)
                     queue_ep_column = ft.Column(controls=[queue_ep_row_content, queue_div_row])
@@ -2842,6 +2852,8 @@ def main(page: ft.Page, session_value=None):
             pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
             pod_feed_title = ft.Text(ep_title, color=active_user.font_color, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
             pod_feed_date = ft.Text(ep_pub_date, color=active_user.font_color)
+            pod_duration = seconds_to_time(ep_duration)
+            pod_dur_display = ft.Text(f'Episode Duration: {pod_duration}', color=active_user.font_color)
             podcast_feed_name = ft.Text(ep_pod_name, color=active_user.font_color, style=ft.TextThemeStyle.DISPLAY_MEDIUM)
             pod_feed_site = ft.ElevatedButton(text=ep_pod_site, on_click=launch_pod_site)
 
@@ -2863,7 +2875,7 @@ def main(page: ft.Page, session_value=None):
 
             feed_row_content = ft.ResponsiveRow([
             ft.Column(col={"md": 4}, controls=[pod_image]),
-            ft.Column(col={"md": 8}, controls=[pod_feed_title, pod_feed_date, ep_play_options]),
+            ft.Column(col={"md": 8}, controls=[pod_feed_title, pod_feed_date, pod_dur_display, ep_play_options]),
             ])
             podcast_row = ft.Container(content=podcast_feed_name)
             podcast_row.padding=padding.only(left=70, right=50)
@@ -3212,9 +3224,8 @@ def main(page: ft.Page, session_value=None):
                 self.username = login_details['Username']
                 self.email = login_details['Email']
                 if retain_session:
-                    print('session retention ran')
                     if page.web:
-                        print('testing')
+                        print('Web version currently doesnt retain sessions')
                     else:
                         database_functions.functions.create_session(cnx, self.user_id)
                 go_homelogin(page)
@@ -3607,15 +3618,9 @@ def main(page: ft.Page, session_value=None):
     audio_container_row.padding=ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing], alignment=ft.MainAxisAlignment.CENTER)
     def page_checksize(e):
-        print(page.width)
-        print(current_episode.name_truncated)
-        print(current_episode.name)
         max_chars = character_limit(int(page.width))
         current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
         currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
-
-
-        print(int(page.width))
         if page.width <= 768:
             ep_height = 100
             ep_width = 4000
@@ -3633,8 +3638,8 @@ def main(page: ft.Page, session_value=None):
             audio_container.content = audio_container_row
             currently_playing.update()
             audio_container.update()
-            page.update()
-    if page.width <= 768:
+            page.update() 
+    if page.width <= 768 and page.width != 0:
         ep_height = 100
         ep_width = 4000
         audio_container = ft.Container(
@@ -3776,9 +3781,9 @@ def main(page: ft.Page, session_value=None):
         database_functions.functions.remove_podcast(cnx, title, active_user.user_id)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
         page.snack_bar.open = True
-        page.update()    
+        page.update() 
 
-    page.on_resize = page_checksize    
+    page.on_resize = page_checksize
 
 # Starting Page Layout
     page.theme_mode = "dark"
@@ -3800,8 +3805,7 @@ def main(page: ft.Page, session_value=None):
         else:
             if check_session:
                 active_user.saved_login(check_session)
-            else:     
-                print('starting in app login')
+            else:
                 start_login(page)
     else:
         active_user.user_id = 1
