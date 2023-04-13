@@ -32,8 +32,19 @@ import math
 import secrets
 import appdirs
 
-session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
+# Database variables
+db_host = os.environ.get("DB_HOST", "127.0.0.1")
+db_port = os.environ.get("DB_PORT", "3306")
+db_user = os.environ.get("DB_USER", "root")
+db_password = os.environ.get("DB_PASSWORD", "password")
+db_name = os.environ.get("DB_NAME", "pypods_database")
 
+# Proxy variables
+proxy_host = os.environ.get("PROXY_HOST", "localhost")
+proxy_port = os.environ.get("PROXY_PORT", "8000")
+proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
+
+session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
@@ -41,7 +52,7 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 @app.route('/preload/<path:url>')
 def preload_audio_file(url):
     # Try to get the response from cache
-    response = requests.get('http://localhost:8000/proxy', params={'url': url})
+    response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
@@ -61,7 +72,7 @@ def serve_cached_audio(url):
 login_screen = True
 
 #Initial Vars needed to start and used throughout
-proxy_url = 'http://localhost:8000/proxy?url='
+proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -70,11 +81,11 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Create database connector
 cnx = mysql.connector.connect(
-    host="127.0.0.1",
-    port="3306",
-    user="root",
-    password="password",
-    database="pypods_database",
+    host=db_host,
+    port=db_port,
+    user=db_user,
+    password=db_password,
+    database=db_name,
     charset='utf8mb4'
 )
 
@@ -2637,9 +2648,6 @@ def main(page: ft.Page, session_value=None):
             current_queue_list = current_episode.get_queue()
             episode_queue_list = database_functions.functions.get_queue_list(cnx, current_queue_list)
 
-            # database_functions.functions.queue_episode_list(cnx, active_user.user_id)
-
-
             if episode_queue_list is None:
                 queue_ep_number = 1
                 queue_ep_rows = []
@@ -3243,6 +3251,8 @@ def main(page: ft.Page, session_value=None):
         def logout_pinepods(self, e):
             active_user = User(page)
             page.overlay.remove(self.navbar_stack)
+            login_username.visible = True
+            login_password.visible = True
             if login_screen == True:
 
                 start_login(page)

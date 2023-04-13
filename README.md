@@ -101,8 +101,6 @@ Added in order they will be completed:
     - [x] Resume is currently broken (it now works but it double plays an episode before resuming for some reason. It still double plays and there's not a great way to fix it. Return later. Updates to flet are likely to help eventually)
     - [x] Double check 2 users adding the same podcast (There was an issue with checking playback status that is now fixed)
     - [x] After refresh auto update current route
-    - [ ] Because of the playback bug when switching, make podcasts resume from where you were already when switching - Currently they just stop
-    - [ ] Search disappears after changing routes in the web version
     - [ ] Double and triple check all interactions to verify functionality
     - [ ] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
  - [ ] Dockerize
@@ -114,6 +112,7 @@ Added in order they will be completed:
 
  ### To be added after beta version
 
+ - [ ] Search disappears after changing routes in the web version (This is a flet bug)
  - [ ] Rotating currently playing
  - [ ] Encrypt the session keys stored for user login sesssions on app versions. 
  - [ ] New version of flet (0.5.0) breaks audio scrubbing. Some work will be needed to fix that
