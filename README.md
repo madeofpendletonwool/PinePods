@@ -18,7 +18,7 @@
 PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 
 ## Features
-N/A
+Pinepods is a complete podcasts management system and allows you to play, download, and keep track of podcasts you enjoy. It allows for searching new podcasts using The Podcast Index and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql database including user settings, podcasts and episodes. It's fully self-hosted, and I provide an option to use a hosted API or you can also get one from the podcast API and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install Pinepods on your own system. 
 
 ## Hosting
 N/A
@@ -69,60 +69,82 @@ Added in order they will be completed:
  - [x] User container click stats page
  - [x] Implement download episode checking throughout
  - [x] Implement saved episode checking throughout
+ - [x] Add loading wheels throughout
+ - [x] Add verification snack bars throughout 
+ - [x] Finish Themes
+ - [x] Remove Podcasts from search or just don't allow adding a second time (It throws a snackbar if you try and add one a second time)
+ - [x] Removing a podcast currently doesn't display snackbar
+ - [x] Implement sign in retention. Cookies sort of (App retention now workss. It creates session keys and stores them locally. Browser retention is next.)
+ - [x] Audio volume interaction (implemented but layout is still wrong)
+ - [x] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
+ - [x] Create Web App
+     - [x] More responsive layout 
+     - [x] Security and Logins
+     - [x] Database interaction for users and podcast data
 
  ### Needed pre-beta release
- - [ ] Implement sign in retention. Cookies sort of
- - [ ] Add loading wheels throughout
- - [ ] Add verification snack bars throughout
- - [ ] Audio volume interaction
- - [ ] Ability to skip to next episode in queue
- - [ ] Remove Podcasts from search or just don't allow adding a second time
- - [ ] The math is currently wrong on the queued time
- - [ ] Layout soundbar better (it adjusts for screensize but can overlap at times with the episode title)
  - [ ] Fully update Readme with updated info and docs including deployment guide
- - [ ] Finish Themes
  - [ ] Bugs
-    - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
-    - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a big with flet. Waiting for fix)
-    - [ ] Fix any additional browser playback bugs
-    - [ ] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
+    - [x] Links when searching an episode are blue (wrong color)
+    - [x] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
     - [x] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
-    - [ ] Pausing audio changes font color
+    - [x] Clicking podcast that's already been added displays add podcast view with no current way to play
+    - [x] Clicking play buttons on a podcast while another is loading currently breaks things
+    - [x] Pausing audio changes font color
+    - [x] Login screen colors are wrong on first boot
+    - [x] Themeing currently wrong on audio interaction control
+    - [x] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
+    - [x] Starting a podcast results in audio bar being in phone mode on application version
+    - [x] Adding a podcast with an emoji in the description currently appears to break it
+    - [x] Layout breaks when pausing for podcast names
+    - [x] The queue works but currently does not remove podcasts after switching to a new one
+    - [x] Resume is currently broken (it now works but it double plays an episode before resuming for some reason. It still double plays and there's not a great way to fix it. Return later. Updates to flet are likely to help eventually)
+    - [x] Double check 2 users adding the same podcast (There was an issue with checking playback status that is now fixed)
+    - [x] After refresh auto update current route
     - [ ] Double and triple check all interactions to verify functionality
+    - [ ] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
  - [ ] Dockerize
      - [ ] Package into Container/Dockerfile
      - [ ] Pypods image in docker hub
      - [ ] Create Docker-Compose Code
      - [ ] Option to run your own local podcast index api connection
- - [ ] Create Web App
-     - [ ] More responsive layout 
-     - [x] Security and Logins
-     - [ ] Database interaction for users and podcast data
-     - [ ] MFA Logins - Github integration and local MFA
 
 
- ### To be added after version 1
+ ### To be added after beta version
 
+ - [ ] Search disappears after changing routes in the web version (This is a flet bug)
+ - [ ] Rotating currently playing
+ - [ ] Encrypt the session keys stored for user login sesssions on app versions. 
+ - [ ] New version of flet (0.5.0) breaks audio scrubbing. Some work will be needed to fix that
  - [ ] Allow local downloads to just download the mp3 files direct
- - [ ] Second bar can sometimes lag a bit. Need to optimize
+ - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
+ - [ ] Optimize while podcast is playing
  - [ ] No retention on guest user. Once logged out it should delete everything
+ - [ ] Page refreshing to handle adding and removing of things better
+ - [ ] Find a better way to handle big lists. Opening podcasts with 1000+ episodes is chaos
+ - [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
  - [ ] Improve image caching
  - [ ] Reloaded not needed to add and remove episodes from pages
  - [ ] Customize login screen
  - [ ] Add highlight to indicate which page you're on
  - [ ] Add Itunes podcast API
+ - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
+ - [ ] MFA Logins - Github integration and local MFA (OAuth)
+ - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider)
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
      - [x] Proper web layout
      - [ ] Windows App
      - [ ] Mac App
-     - [ ] Android App
-     - [ ] IOS App
+     - [ ] Mobile Apps
+       - [ ] Sign in retention for moble editions
+       - [ ] Android App
+       - [ ] IOS App
   - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
-  - [ ] Ratings
-  - [ ] Sharing
+  - [ ] Rating System
+  - [ ] Sharing System
 
 
 ## Platform Availability

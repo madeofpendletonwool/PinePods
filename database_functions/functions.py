@@ -5,14 +5,27 @@ import os
 import requests
 import datetime
 import time
+import appdirs
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
 
-    add_podcast = ("INSERT INTO Podcasts "
-                "(PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, UserID) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
+    # check if the podcast already exists for the user
+    query = ("SELECT PodcastID FROM Podcasts "
+             "WHERE FeedURL = %s AND UserID = %s")
 
+    cursor.execute(query, (podcast_values[6], user_id))
+    result = cursor.fetchone()
+
+    if result is not None:
+        # podcast already exists for the user, return False
+        cursor.close()
+        return False
+
+    # insert the podcast into the database
+    add_podcast = ("INSERT INTO Podcasts "
+                   "(PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, UserID) "
+                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
     cursor.execute(add_podcast, podcast_values)
 
     # get the ID of the newly-inserted podcast
@@ -29,6 +42,10 @@ def add_podcast(cnx, podcast_values, user_id):
 
     # add episodes to database
     add_episodes(cnx, podcast_id, podcast_values[6], podcast_values[1])
+
+    # return True to indicate success
+    return True
+
 
 def add_user(cnx, user_values):
     cursor = cnx.cursor()
@@ -489,6 +506,25 @@ def get_user_details(cnx, username):
     else:
         return None
 
+def get_user_details_id(cnx, user_id):
+    cursor = cnx.cursor()
+    query = "SELECT * FROM Users WHERE UserID = %s"
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return {
+            'UserID': result[0],
+            'Fullname': result[1],
+            'Username': result[2],
+            'Email': result[3],
+            'Hashed_PW': result[4],
+            'Salt': result[5]
+        }
+    else:
+        return None
+
 def user_history(cnx, user_id):
     cursor = cnx.cursor()
     query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
@@ -766,8 +802,12 @@ def record_listen_duration(cnx, url, title, user_id, listen_duration):
     listen_date = datetime.datetime.now()
     cursor = cnx.cursor()
 
-    # Get EpisodeID from Episodes table
-    cursor.execute("SELECT EpisodeID FROM Episodes WHERE EpisodeURL=%s AND EpisodeTitle=%s", (url, title))
+    # Get EpisodeID from Episodes table by joining with Podcasts table
+    query = """SELECT e.EpisodeID
+               FROM Episodes e
+               JOIN Podcasts p ON e.PodcastID = p.PodcastID
+               WHERE e.EpisodeURL = %s AND e.EpisodeTitle = %s AND p.UserID = %s"""
+    cursor.execute(query, (url, title, user_id))
     result = cursor.fetchone()
     if result is None:
         # Episode not found in database, handle this case
@@ -801,8 +841,11 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
         cursor = cnx.cursor()
 
         # Get the EpisodeID from the Episodes table
-        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
-        cursor.execute(query, (episode_title, episode_url))
+        query = """SELECT e.EpisodeID 
+                   FROM Episodes e
+                   JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                   WHERE e.EpisodeTitle = %s AND e.EpisodeURL = %s AND p.UserID = %s"""
+        cursor.execute(query, (episode_title, episode_url, user_id))
         episode_id = cursor.fetchone()[0]
 
         # Check if the user has played the episode before
@@ -821,9 +864,6 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
         if cursor:
             cursor.close()
         cnx.commit()
-
-
-
 
 def get_episode_listen_time(cnx, user_id, title, url):
         cursor = None
@@ -1250,3 +1290,108 @@ def check_podcast(cnx, user_id, podcast_name):
         if cursor:
             cursor.close()
         cnx.commit()
+
+def get_session_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "session.txt")
+    return session_file_path
+
+def save_session_to_file(session_id):
+    session_file_path = get_session_file_path()
+    with open(session_file_path, "w") as file:
+        file.write(session_id)
+
+def get_saved_session_from_file():
+    app_name = 'pinepods'
+    session_file_path = get_session_file_path()
+    try:
+        with open(session_file_path, "r") as file:
+            session_id = file.read()
+            return session_id
+    except FileNotFoundError:
+        return None
+
+def check_saved_session(cnx):
+    session_value = get_saved_session_from_file()
+
+    if not session_value:
+        return False
+
+    cursor = cnx.cursor()
+
+    # Get the session with the matching value and expiration time
+    cursor.execute("""
+    SELECT UserID, expire FROM Sessions WHERE value = %s;
+    """, (session_value,))
+
+    result = cursor.fetchone()
+
+    if result:
+        user_id, session_expire = result
+        current_time = datetime.datetime.now()
+        if current_time < session_expire:
+            return user_id
+
+    return False
+
+
+def check_saved_web_session(cnx, session_value):
+    cursor = cnx.cursor()
+
+    # Get the session with the matching value and expiration time
+    cursor.execute("""
+    SELECT UserID, expire FROM Sessions WHERE value = %s;
+    """, (session_value,))
+
+    result = cursor.fetchone()
+
+    if result:
+        user_id, session_expire = result
+        current_time = datetime.datetime.now()
+        if current_time < session_expire:
+            return user_id
+
+    return False
+
+def create_session(cnx, user_id):
+    import secrets
+    # Generate a new session value
+    session_value = secrets.token_hex(32)
+
+    # Save the session value to the local session.txt file
+    save_session_to_file(session_value)
+
+    # Calculate the expiration date 30 days in the future
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    # Insert the new session into the Sessions table
+    cursor = cnx.cursor()
+    cursor.execute("""
+    INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
+    """, (user_id, session_value, expire_date))
+
+    cnx.commit()
+
+def create_web_session(cnx, user_id, session_value):
+    # Calculate the expiration date 30 days in the future
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    # Insert the new session into the Sessions table
+    cursor = cnx.cursor()
+    cursor.execute("""
+    INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
+    """, (user_id, session_value, expire_date))
+
+    cnx.commit()
+
+def clean_expired_sessions(cnx):
+    current_time = datetime.datetime.now()
+    cursor = cnx.cursor()
+
+    cursor.execute("""
+    DELETE FROM Sessions WHERE expire < %s;
+    """, (current_time,))
+
+    cnx.commit()

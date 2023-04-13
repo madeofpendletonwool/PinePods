@@ -37,7 +37,7 @@ def proxy():
                 # Cache the entire audio file content
                 cache.set(url, response.content)
         # Check if the URL is an image file
-        if url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+        elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
             # Try to get the response from cache
             response = cache.get(url)
             if response is None:

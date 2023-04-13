@@ -108,3 +108,11 @@ CREATE TABLE EpisodeQueue (
   FOREIGN KEY (UserID) REFERENCES Users(UserID),
   FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
 );
+
+CREATE TABLE Sessions (
+    SessionID INT AUTO_INCREMENT PRIMARY KEY,
+    UserID INT,
+    value TEXT,
+    expire DATETIME NOT NULL,
+    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
