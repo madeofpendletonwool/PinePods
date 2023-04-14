@@ -113,26 +113,18 @@ Added in order they will be completed:
  ### To be added after beta version
 
  - [ ] Implement Gravitar API for profile picture
- - [ ] Search disappears after changing routes in the web version (This is a flet bug)
  - [ ] Rotating currently playing
  - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
- - [ ] Encrypt the session keys stored for user login sesssions on app versions. 
- - [ ] New version of flet (0.5.0) breaks audio scrubbing. Some work will be needed to fix that
  - [ ] Allow local downloads to just download the mp3 files direct
- - [ ] Clicking new page while audio is playing restarts the podcast audio (This is confirmed a bug with flet. Waiting for fix)
- - [ ] Optimize while podcast is playing
- - [ ] No retention on guest user. Once logged out it should delete everything
  - [ ] Page refreshing to handle adding and removing of things better
- - [ ] Find a better way to handle big lists. Opening podcasts with 1000+ episodes is chaos
  - [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
- - [ ] Improve image caching
- - [ ] Reloaded not needed to add and remove episodes from pages
- - [ ] Customize login screen
+ - [ ] Reload not needed to add and remove episodes from pages
+ - [ ] Customizable login screen
  - [ ] Add highlight to indicate which page you're on
  - [ ] Add Itunes podcast API
  - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
  - [ ] MFA Logins - Github integration and local MFA (OAuth)
- - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider)
+ - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
  - [ ] GUI Wrapper for App
      - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
      - [ ] Linux App
@@ -143,7 +135,6 @@ Added in order they will be completed:
        - [ ] Sign in retention for moble editions
        - [ ] Android App
        - [ ] IOS App
-  - [ ] Fix local images on web edition
   - [ ] Add verification before deleting user
   - [ ] Rating System
   - [ ] Sharing System
