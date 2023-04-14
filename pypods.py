@@ -514,7 +514,11 @@ def main(page: ft.Page, session_value=None):
                 currently_playing.content = ft.Text(self.name_truncated, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
-                audio_container_image_landing.src = self.artwork
+                audio_con_artwork_no = random.randint(1, 12)
+                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
+                audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
+                audio_con_art_url_parsed = check_image(audio_con_art_url)
+                audio_container_image_landing.src = audio_con_art_url_parsed
                 audio_container_image_landing.width = 40
                 audio_container_image_landing.height = 40
                 audio_container_image_landing.border_radius = ft.border_radius.all(100)
@@ -3824,6 +3828,6 @@ def main(page: ft.Page, session_value=None):
 
 
 # Browser Version
-# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-ft.app(target=main, port=8034)
+# ft.app(target=main, port=8034)
