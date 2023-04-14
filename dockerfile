@@ -22,6 +22,6 @@ RUN git clone https://github.com/madeofpendletonwool/pypods.git /pinepods && \
     chmod -R 755 /pinepods
 
 # Begin pinepods Setup
-ADD startup.sh /
+ADD startup/startup.sh /
 RUN ls -al /
 ENTRYPOINT ["/startup.sh"]
