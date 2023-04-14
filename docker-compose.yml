@@ -14,12 +14,29 @@ services:
   pypods-imageproxy:
     image: madeofpendletonwool/pypods-imageproxy:latest
     ports:
-      - "8000:8000"
+      - "8033:8000"
     restart: always
-  # pypods:
-  #   image: madeofpendletonwool/pypods:latest
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     - db
-  #     - pypods-imageproxy
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # Default Admin User Information
+      USERNAME: pinepods
+      PASSWORD: password
+      FULLNAME: John Pinepods
+      EMAIL: john@pinepods.com
+      # Database Vars
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: pypods_database
+      # Image/Audio Proxy Vars
+      PROXY_HOST: pypods_imageproxy
+      PROXY_PORT: 8033
+      PROXY_PROTOCOL: https
+
+    depends_on:
+      - db
+      - pypods-imageproxy
