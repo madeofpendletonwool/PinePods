@@ -1,6 +1,6 @@
 mysql.connector
 mysql-connector-python
-flet
+flet==0.4.2
 requests
 python-dateutil
 feedparser

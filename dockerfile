@@ -1,26 +1,27 @@
-FROM ubuntu:latest
+FROM python:3.12.0a7-slim
 
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Create location where pypods code is stored
-# RUN mkdir /cecil
+# Create location where pinepods code is stored
+# RUN mkdir /pinepods
 # Make sure the package repository is up to date. Also install needed packages via apt
 RUN apt update && \
     apt -qy upgrade && \
-    apt -qy upgrade && \
-    apt install -qy python3 git software-properties-common python3-pip curl cron supervisor
+    apt install -qy git software-properties-common curl cron supervisor && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install needed python packages via pip
 ADD ./requirements.txt /
 RUN pip install -r ./requirements.txt
-# Put pypods Files in place
-# Create structure for pypods
-RUN git clone https://github.com/madeofpendletonwool/pypods.git /opt/ceciltemp && \
-    mkdir -p /opt/pypods/ && \
-    chmod -R 755 /opt
-# Begin cecil Setup
+
+# Put pinepods Files in place
+# Create structure for pinepods
+RUN git clone https://github.com/madeofpendletonwool/pypods.git /pinepods && \
+    chmod -R 755 /pinepods
+
+# Begin pinepods Setup
 ADD startup.sh /
 RUN ls -al /
-ENTRYPOINT ["/startup/startup.sh"]
- 
+ENTRYPOINT ["/startup.sh"]
