@@ -10,7 +10,7 @@
   - [Installing/Running](#installingrunning)
   - [ToDo](#todo)
     - [Needed pre-beta release](#needed-pre-beta-release)
-    - [To be added after version 1](#to-be-added-after-version-1)
+    - [To be added after beta version](#to-be-added-after-beta-version)
   - [Platform Availability](#platform-availability)
   - [API Notes](#api-notes)
   - [Screenshots](#screenshots)
@@ -102,18 +102,20 @@ Added in order they will be completed:
     - [x] Double check 2 users adding the same podcast (There was an issue with checking playback status that is now fixed)
     - [x] After refresh auto update current route
     - [ ] Double and triple check all interactions to verify functionality
-    - [ ] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
+    - [x] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
  - [ ] Dockerize
-     - [ ] Package into Container/Dockerfile
-     - [ ] Pypods image in docker hub
-     - [ ] Create Docker-Compose Code
+     - [x] Package into Container/Dockerfile
+     - [x] Pypods image in docker hub
+     - [x] Create Docker-Compose Code
      - [ ] Option to run your own local podcast index api connection
 
 
  ### To be added after beta version
 
+ - [ ] Implement Gravitar API for profile picture
  - [ ] Search disappears after changing routes in the web version (This is a flet bug)
  - [ ] Rotating currently playing
+ - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
  - [ ] Encrypt the session keys stored for user login sesssions on app versions. 
  - [ ] New version of flet (0.5.0) breaks audio scrubbing. Some work will be needed to fix that
  - [ ] Allow local downloads to just download the mp3 files direct
