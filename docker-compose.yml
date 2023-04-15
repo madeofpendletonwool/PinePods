@@ -19,7 +19,7 @@ services:
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
-      - "8080:8080"
+      - "8034:8034"
     environment:
       # Default Admin User Information
       USERNAME: pinepods
@@ -35,7 +35,7 @@ services:
       # Image/Audio Proxy Vars
       PROXY_HOST: pypods_imageproxy
       PROXY_PORT: 8033
-      PROXY_PROTOCOL: https
+      PROXY_PROTOCOL: http
 
     depends_on:
       - db
