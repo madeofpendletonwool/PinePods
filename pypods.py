@@ -31,6 +31,12 @@ from flask_caching import Cache
 import math
 import secrets
 import appdirs
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Use the logger in your application
+logging.error("Error message")
 
 # Database variables
 db_host = os.environ.get("DB_HOST", "127.0.0.1")

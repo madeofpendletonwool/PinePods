@@ -18,5 +18,6 @@ if __name__ == "__main__":
 	salt, hash_pw = Auth.Passfunctions.hash_password(password)
 	user_values = (fullname, username, email, hash_pw, salt)
 	cnx = mysql.connector.connect(user=database_user, password=database_pass, host=database_host, port=database_port, database=database_name)
+	print(f'Created Admin User = user={database_user}, password={database_pass}, database-host{database_host}, database-port={database_port}, database-name={database_name}')
 	database_functions.functions.add_admin_user(cnx, user_values)
 	cnx.close()
