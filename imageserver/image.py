@@ -1,5 +1,6 @@
 from flask import Flask, request, Response
 from flask_caching import Cache
+from flask_cors import CORS
 import requests
 import os
 from werkzeug.datastructures import Headers
@@ -16,6 +17,7 @@ def optimize_image(content):
             return output.getvalue()
 
 app = Flask(__name__)
+CORS(app)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 @app.route('/proxy')
@@ -45,7 +47,7 @@ def proxy():
                 # Optimize the image content
                 content = optimize_image(response.content)
                 # Cache the response for 300 seconds
-                cache.set(url, response, timeout=300)
+                cache.set(url, content, timeout=300)
         else:
             # For non-image files, make the request normally
             response = requests.get(url, headers=headers)

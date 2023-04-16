@@ -1,5 +1,6 @@
 requests
 flask
+Flask-CORS
 gunicorn
 werkzeug
 flask_caching
