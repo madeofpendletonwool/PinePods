@@ -13,6 +13,6 @@ export PASSWORD=$PASSWORD
 # Database Setup
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 # Create Admin User
-python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT $FULLNAME $USERNAME $EMAIL $PASSWORD
+python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
 # Start PinePods
 python3 /pinepods/pypods.py

@@ -10,10 +10,28 @@ if __name__ == "__main__":
 	database_host = sys.argv[3]
 	database_name = sys.argv[4]
 	database_port = sys.argv[5]
-	fullname = sys.argv[6]
-	username = sys.argv[7]
-	email = sys.argv[8]
-	password = sys.argv[9]
+
+    if len(sys.argv) > 6:
+        fullname = sys.argv[6]
+    else:
+        fullname = "Pinepods Admin"
+
+    if len(sys.argv) > 7:
+        username = sys.argv[7]
+    else:
+        username = "admin"
+
+    if len(sys.argv) > 8:
+        email = sys.argv[8]
+    else:
+        email = "admin@pinepods.online"
+
+    if len(sys.argv) > 9:
+        password = sys.argv[9]
+    else:
+        alphabet = string.ascii_letters + string.digits + string.punctuation
+        password = ''.join(secrets.choice(alphabet) for _ in range(15))
+
 
 	salt, hash_pw = Auth.Passfunctions.hash_password(password)
 	user_values = (fullname, username, email, hash_pw, salt)
