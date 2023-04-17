@@ -107,6 +107,7 @@ Added in order they will be completed:
      - [x] Package into Container/Dockerfile
      - [x] Pypods image in docker hub
      - [x] Create Docker-Compose Code
+     - [ ] Mixed content - Currently running http or https content can cause an error
      - [ ] Option to run your own local podcast index api connection
 
 
