@@ -53,7 +53,7 @@ def proxy():
             # For non-image files, make the request normally
             response = requests.get(url, headers=headers)
 
-        content = response.content
+        content = response  # Updated this line
         headers = response.headers
     else:
         # handle local file path

@@ -466,13 +466,18 @@ def main(page: ft.Page, session_value=None):
                 threading.Thread(target=self.run_function_every_60_seconds, daemon=True).start()
 
                 for i in range(total_seconds):
-                    self.current_progress = self.get_current_time()
+                    current_time = self.get_current_time()
+                    if current_time is None:
+                        continue
+                    self.current_progress = current_time
                     self.toggle_second_status(self.audio_element.data)
                     time.sleep(1)
-                    
+
                     if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
                         self.record_listen_duration()
                         self.last_listen_duration_update = datetime.datetime.now()
+
+
 
         def skip_episode(self):
             next_episode_url = self.queue.pop(0)
@@ -647,10 +652,13 @@ def main(page: ft.Page, session_value=None):
             try:
                 time = self.audio_element.get_current_position() // 1000  # convert milliseconds to seconds
             except Exception as e:
+                if "Timeout" in str(e):  # Check if the exception is related to a timeout
+                    return None
                 time = self.audio_element.get_current_position() // 1000
             hours, remainder = divmod(time, 3600)
             minutes, seconds = divmod(remainder, 60)
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
 
         def get_current_seconds(self):
             try:

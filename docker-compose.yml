@@ -11,8 +11,8 @@ services:
     ports:
       - "3306:3306"
     restart: always
-  pypods-imageproxy:
-    image: madeofpendletonwool/pypods-imageproxy:latest
+  pinepods-proxy:
+    image: madeofpendletonwool/pinepods-proxy:latest
     ports:
       - "8033:8000"
     restart: always
@@ -33,10 +33,10 @@ services:
       DB_PASSWORD: password
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: pypods_imageproxy
+      PROXY_HOST: pinepods_proxy
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
 
     depends_on:
       - db
-      - pypods-imageproxy
+      - pinepods-proxy
