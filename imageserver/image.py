@@ -10,11 +10,12 @@ import io
 def optimize_image(content):
     with io.BytesIO(content) as f:
         with Image.open(f) as image:
-            if image.mode == 'RGBA':
+            if image.mode == 'RGBA' or image.mode == 'P':
                 image = image.convert('RGB')
             output = io.BytesIO()
             image.save(output, format='JPEG', optimize=True, quality=50) # Compress and save the image
             return output.getvalue()
+
 
 app = Flask(__name__)
 CORS(app)

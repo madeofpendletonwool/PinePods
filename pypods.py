@@ -411,7 +411,7 @@ def main(page: ft.Page, session_value=None):
                 self.audio_playing = True
                 page.update()
 
-                max_retries = 20
+                max_retries = 50
                 sleep_time = 0.25
                 tries = 0
 
@@ -430,6 +430,8 @@ def main(page: ft.Page, session_value=None):
                 if tries == max_retries:
                     page.snack_bar = ft.SnackBar(content=ft.Text(f"Unable to load episode. Perhaps it no longer exists?"))
                     page.snack_bar.open = True
+                    page.overlay.remove(progress_stack)
+                    self.audio_element.release()
                     self.page.update()
                     return
 
