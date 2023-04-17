@@ -96,7 +96,6 @@ cnx = mysql.connector.connect(
 )
 
 database_functions.functions.clean_expired_sessions(cnx)
-
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
@@ -405,7 +404,7 @@ def main(page: ft.Page, session_value=None):
                 # Preload the audio file and cache it
                 preload_audio_file(self.url)
 
-                self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+                self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
                 # self.audio_element.play()
 
