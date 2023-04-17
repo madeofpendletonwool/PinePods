@@ -3,6 +3,7 @@ services:
   db:
     image: mariadb:latest
     environment:
+      MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: pypods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
@@ -33,7 +34,7 @@ services:
       DB_PASSWORD: password
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: pinepods_proxy
+      PROXY_HOST: pinepods-proxy
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
 
