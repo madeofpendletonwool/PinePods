@@ -79,10 +79,11 @@ def serve_cached_audio(url):
 login_screen = True
 
 #Initial Vars needed to start and used throughout
-if reverse_proxy == True:
+if reverse_proxy == "True":
     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+print(f'Proxy url is configured to {proxy_url}')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
