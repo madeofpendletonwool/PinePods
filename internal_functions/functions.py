@@ -1,9 +1,6 @@
 import requests
 
-def searchpod(podcast_value):
-    # Set the API endpoint URL
-    api_url = 'http://10.0.0.15:5000/api/search'
-
+def searchpod(podcast_value, api_url):
     # Set the query parameter
     params = {'query': f'{podcast_value}'}
 

@@ -49,6 +49,11 @@ db_name = os.environ.get("DB_NAME", "pypods_database")
 proxy_host = os.environ.get("PROXY_HOST", "localhost")
 proxy_port = os.environ.get("PROXY_PORT", "8000")
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
+reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
+
+# Podcast Index API url
+api_url = os.environ.get("API_URL", "http://10.0.0.15:5000/api/search")
+# api_url = 'http://10.0.0.15:5000/api/search'
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
@@ -78,7 +83,11 @@ def serve_cached_audio(url):
 login_screen = True
 
 #Initial Vars needed to start and used throughout
-proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+if reverse_proxy == "True":
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+else:
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+print(f'Proxy url is configured to {proxy_url}')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1526,7 +1535,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
             podcast_value = search_pods.value
-            search_results = internal_functions.functions.searchpod(podcast_value)
+            search_results = internal_functions.functions.searchpod(podcast_value, api_url)
             return_results = search_results['feeds']
             page.overlay.remove(progress_stack)
 

@@ -37,6 +37,9 @@ services:
       PROXY_HOST: pinepods-proxy
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
+      REVERSE_PROXY: "True"
+      #Podcast Index API
+      API_URL: 'http://10.0.0.15:5000/api/search'
 
     depends_on:
       - db

@@ -9,6 +9,8 @@ export FULLNAME=$FULLNAME
 export USERNAME=$USERNAME
 export EMAIL=$EMAIL
 export PASSWORD=$PASSWORD
+export REVERSE_PROXY=$REVERSE_PROXY
+export API_URL=$API_URL
 
 # Database Setup
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py

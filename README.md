@@ -2,7 +2,7 @@
   <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
-# PinePods
+# PinePods :evergreen_tree:
 
 - [PinePods](#pinepods)
   - [Features](#features)
@@ -22,7 +22,7 @@ Pinepods is a complete podcasts management system and allows you to play, downlo
 
 ## Testing
 
-I try and maintain an instance of Pinepods that's publicly accessible for testing over at [pinepods.online](https://pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server and so accounts will often be deleted from here.  
+I try and maintain an instance of Pinepods that's publicly accessible for testing over at [pinepods.online](https://pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.  
 
 ## Installing
 There's potentially a few steps to getting Pinepods fully installed as after you get your server up and running fully. You can also install the client editions of your choice. The server install of Pinepods runs a server and a browser client over a port of your choice in order to be accessible on the web. With the client installs you simply give your install a specific url to connect to the database and then sign in. 
@@ -72,6 +72,8 @@ services:
       PROXY_PORT: 8033
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
+      #Podcast Index API
+      API_URL: 'http://api.pinepods.online/api/search'
 
     depends_on:
       - db
@@ -100,7 +102,7 @@ First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details 
 #### Proxy Info
 Second, the PROXY_HOST, PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It uses a second container to accomplish this. That's the pinepods-proxy portion of the compose file. The application itself will then use this proxy to route media though. This proxy also be ran over a reverse proxy. Here's few examples
 
-**Recommended**
+**Recommended:**
 Routed through proxy, secure, with reverse proxy
 ```
       PROXY_HOST: proxy.pinepods.online
@@ -108,9 +110,9 @@ Routed through proxy, secure, with reverse proxy
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
 ```
-Note: With reverse proxies you create a second proxy host. So for example my Pinepods instance itself runs at port 8034 at pinpods.online so my reverse proxy reflects that and I have a dns record for the domain created for pinepods.online to point to my public ip. In addition, my proxy is ran at port 8033 over domain proxy.pinepods.online. I created a seperate dns record for this pointed to my public ip.
+*Note*: With reverse proxies you create a second proxy host. So for example my Pinepods instance itself runs at port 8034 at pinpods.online so my reverse proxy reflects that and I have a dns record for the domain created for pinepods.online to point to my public ip. In addition, my proxy is ran at port 8033 over domain proxy.pinepods.online. I created a seperate dns record for this pointed to my public ip.
 
-Also Note: If you run pinepods over reverse proxy to secure it you **must** run the proxy server over reverse proxy as well to prevent mixed content in the browser 
+*Also Note*: If you run pinepods over reverse proxy to secure it you **must** run the proxy server over reverse proxy as well to prevent mixed content in the browser 
 
 Direct to ip, insecure, and no reverse proxy
 ```
@@ -132,11 +134,33 @@ Note: Changing REVERSE_PROXY to False adjusts what the application uses for the 
 
 So REVERSE_PROXY "True"
 https://proxy.pinepods.online
+
 REVERSE_PROXY "False"
 https://proxy.pinepods.online:8033
 
 #### API Notes
-Coming Soon
+Let's talk API. The variable in the compose file
+```
+API_URL: 'http://api.pinepods.online/api/search'
+```
+
+This is an api that I maintain to send search queries to the podcast index which returns results based on the search term you passed to it. You can leave this variable default, and if you do you'll be using the api that I maintain for this. I do not guarantee 100% uptime on this api though it should be up most of the time bar a random internet or power outage here or there. A better idea though, and what I would honestly recommend is maintain your own api.
+
+Head over to the podcast index API website and sign up to get your very own api and key
+[Podcast Index API Website](https://api.podcastindex.org/)
+
+Once you have it. Use this docker compose file
+```
+version: '3'
+services:
+    pypods-backend:
+       image: madeofpendletonwool/pypods_backend:latest
+       container_name: pypods-be
+       ports:
+            - 5000:5000
+       restart: unless-stopped
+```
+
 
 #### Start it up!
 
