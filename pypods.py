@@ -49,6 +49,7 @@ db_name = os.environ.get("DB_NAME", "pypods_database")
 proxy_host = os.environ.get("PROXY_HOST", "localhost")
 proxy_port = os.environ.get("PROXY_PORT", "8000")
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
+reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
@@ -78,7 +79,10 @@ def serve_cached_audio(url):
 login_screen = True
 
 #Initial Vars needed to start and used throughout
-proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+if reverse_proxy == True:
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+else:
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
