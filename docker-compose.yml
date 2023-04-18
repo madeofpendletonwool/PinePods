@@ -37,6 +37,7 @@ services:
       PROXY_HOST: pinepods-proxy
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
+      REVERSE_PROXY: 'True'
 
     depends_on:
       - db
