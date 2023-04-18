@@ -39,7 +39,7 @@ services:
       PROXY_PROTOCOL: http
       REVERSE_PROXY: "True"
       #Podcast Index API
-      API_URL: 'http://10.0.0.15:5000/api/search'
+      API_URL: 'https://api.pinepods.online/api/search'
 
     depends_on:
       - db
