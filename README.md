@@ -24,10 +24,10 @@ Pinepods is a complete podcasts management system and allows you to play, downlo
 
 I try and maintain an instance of Pinepods that's publicly accessible for testing over at [pinepods.online](https://pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.  
 
-## Installing
+## Installing :runner:
 There's potentially a few steps to getting Pinepods fully installed as after you get your server up and running fully. You can also install the client editions of your choice. The server install of Pinepods runs a server and a browser client over a port of your choice in order to be accessible on the web. With the client installs you simply give your install a specific url to connect to the database and then sign in. 
 
-### Server Installation
+### Server Installation :floppy_disk:
 
 First, the server. It's hightly recommended you run the server using docker compose. Here's the docker compose yaml needed.
 #### Compose File
@@ -170,19 +170,19 @@ sudo docker-compose up
 ```
 command to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well.
 
-### Linux Client Install
+### Linux Client Install :computer:
 Coming Soon
 
-### Windows Client Install
+### Windows Client Install :computer:
 Coming Soon
 
-### Mac Client Install
+### Mac Client Install :computer:
 Coming Soon
 
-### Android Install
+### Android Install :iphone:
 Coming Soon
 
-### ios Install
+### ios Install :iphone:
 Coming Soon
 
 ## Platform Availability
@@ -280,7 +280,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [ ] Rating System
   - [ ] Sharing System
 
-## Screenshots
+## Screenshots :camera:
 
 <p align="center">
   <img src="./images/podlist.png">
