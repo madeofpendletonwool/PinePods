@@ -73,7 +73,7 @@ services:
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
       #Podcast Index API
-      API_URL: 'http://api.pinepods.online/api/search'
+      API_URL: 'https://api.pinepods.online/api/search'
 
     depends_on:
       - db
@@ -141,12 +141,12 @@ https://proxy.pinepods.online:8033
 #### API Notes
 Let's talk API. The variable in the compose file
 ```
-API_URL: 'http://api.pinepods.online/api/search'
+API_URL: 'https://api.pinepods.online/api/search'
 ```
 
-This is an api that I maintain to send search queries to the podcast index which returns results based on the search term you passed to it. You can leave this variable default, and if you do you'll be using the api that I maintain for this. I do not guarantee 100% uptime on this api though it should be up most of the time bar a random internet or power outage here or there. A better idea though, and what I would honestly recommend is maintain your own api.
+This is an api that I maintain to forward search queries to the podcast index which returns results based on the search term you passed to it. You can leave this variable default, and if you do you'll be using the api that I maintain for this. I do not guarantee 100% uptime on this api though, it should be up most of the time bar a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy
 
-Head over to the podcast index API website and sign up to get your very own api and key
+Head over to the podcast index API website and sign up to get your very own api and key. It's free and makes everything extra secure.
 [Podcast Index API Website](https://api.podcastindex.org/)
 
 Once you have it. Use this docker compose file
@@ -154,13 +154,23 @@ Once you have it. Use this docker compose file
 version: '3'
 services:
     pypods-backend:
-       image: madeofpendletonwool/pypods_backend:latest
+       image: madeofpendletonwool/pinepods_backend:latest
        container_name: pypods-be
+       environment:
+           - API_KEY=your_api_key
+           - API_SECRET=your_api_secret
        ports:
             - 5000:5000
        restart: unless-stopped
 ```
-
+Replace the variables with your own key and secret and start it up. Then, in the pinepods compose file update the api_url.
+```
+API_URL: 'http://<YOUR_IP>/api/search'
+```
+Or, even better, stick this behind a reverse proxy with your own domain as well.
+```
+API_URL: 'https://<YOUR_DOMAIN>/api/search'
+```
 
 #### Start it up!
 
