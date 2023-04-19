@@ -41,6 +41,7 @@ services:
       #Podcast Index API
       API_URL: 'https://api.pinepods.online/api/search'
 
+
     depends_on:
       - db
       - pinepods-proxy

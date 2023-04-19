@@ -55,6 +55,7 @@ reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 api_url = os.environ.get("API_URL", "http://10.0.0.15:5000/api/search")
 # api_url = 'http://10.0.0.15:5000/api/search'
 
+
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
 app = Flask(__name__)
