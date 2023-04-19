@@ -15,6 +15,7 @@ def searchpod(podcast_value, api_url):
         return search_results
 
 if __name__ == '__main__':
+    api_url = 'https://api.pinepods.online/api/search'
     podcast_value = 'my brother my brother and me'
     results = searchpod(podcast_value)
     print(results)

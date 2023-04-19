@@ -181,15 +181,19 @@ services:
     pypods-backend:
        image: madeofpendletonwool/pinepods_backend:latest
        container_name: pypods-be
-       environment:
-           - API_KEY=your_api_key
-           - API_SECRET=your_api_secret
+       env_file: env_file
        ports:
             - 5000:5000
        restart: unless-stopped
 ```
+You also need to create the env file. It should contain your api key and secret NOTE: You MUST use the env file. Docker compose will not interpret certain characters if not in an env file. Don't smash your face against that issue for hours like I did
+env_file
+```
+API_KEY=your_api_key
+API_SECRET=your_api_secret
+```
 
-Replace the variables with your own key and secret and start it up. Then, in the pinepods compose file update the api_url.
+Now go ahead and ```sudo docker-compose up``` your file. Then, in the pinepods compose file update the api_url.
 
 ```
 API_URL: 'http://<YOUR_IP>/api/search'
@@ -209,7 +213,7 @@ Either way, once you have everything all setup and your compose file created go 
 sudo docker-compose up
 ```
 
-command to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well.
+command on the main pinepods app to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well.
 
 ### Linux Client Install :computer:
 
