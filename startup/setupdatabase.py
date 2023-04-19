@@ -25,7 +25,7 @@ cursor = cnx.cursor()
 cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     UserID INT AUTO_INCREMENT PRIMARY KEY,
                     Fullname TEXT,
-                    Username TEXT,
+                    Username TEXT UNIQUE,
                     Email VARCHAR(255),
                     Hashed_PW CHAR(60),
                     Salt CHAR(60),
@@ -52,9 +52,9 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS AppSettings (
 cursor.execute("""INSERT INTO AppSettings (SelfServiceUser)
                   SELECT 0 FROM DUAL WHERE NOT EXISTS (SELECT * FROM AppSettings)""")
 
-cursor.execute("""INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
-                    VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)
-                    ON DUPLICATE KEY UPDATE UserID=UserID""")
+cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
+                VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
+
 
 cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (1)""")
 
