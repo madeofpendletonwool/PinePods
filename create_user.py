@@ -3,8 +3,18 @@ import mysql.connector
 import database_functions.functions
 import Auth.Passfunctions
 
+def user_exists(cnx, username):
+    cursor = cnx.cursor()
+    query = "SELECT COUNT(*) FROM Users WHERE Username = %s"
+    cursor.execute(query, (username,))
+    count = cursor.fetchone()[0]
+    cursor.close()
+    return count > 0
 
 if __name__ == "__main__":
+
+
+
 	database_user = sys.argv[1] 
 	database_pass = sys.argv[2]
 	database_host = sys.argv[3]
@@ -35,7 +45,15 @@ if __name__ == "__main__":
 
 	salt, hash_pw = Auth.Passfunctions.hash_password(password)
 	user_values = (fullname, username, email, hash_pw, salt)
+
 	cnx = mysql.connector.connect(user=database_user, password=database_pass, host=database_host, port=database_port, database=database_name)
-	print(f'Created Admin User = fullname={fullname}, username={username}, email={email}, password={password}')
-	database_functions.functions.add_admin_user(cnx, user_values)
+
+	if not database_functions.functions.user_exists(cnx, username):
+		salt, hash_pw = Auth.Passfunctions.hash_password(password)
+		user_values = (fullname, username, email, hash_pw, salt)
+		print(f'Created Admin User = fullname={fullname}, username={username}, email={email}, password={password}')
+		database_functions.functions.add_admin_user(cnx, user_values)
+	else:
+		print(f'Admin user "{username}" already exists.')
+
 	cnx.close()
