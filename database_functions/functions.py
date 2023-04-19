@@ -1395,3 +1395,11 @@ def clean_expired_sessions(cnx):
     """, (current_time,))
 
     cnx.commit()
+
+def user_exists(cnx, username):
+    cursor = cnx.cursor()
+    query = "SELECT COUNT(*) FROM Users WHERE Username = %s"
+    cursor.execute(query, (username,))
+    count = cursor.fetchone()[0]
+    cursor.close()
+    return count > 0

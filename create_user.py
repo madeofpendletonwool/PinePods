@@ -3,14 +3,6 @@ import mysql.connector
 import database_functions.functions
 import Auth.Passfunctions
 
-def user_exists(cnx, username):
-    cursor = cnx.cursor()
-    query = "SELECT COUNT(*) FROM Users WHERE Username = %s"
-    cursor.execute(query, (username,))
-    count = cursor.fetchone()[0]
-    cursor.close()
-    return count > 0
-
 if __name__ == "__main__":
 
 
