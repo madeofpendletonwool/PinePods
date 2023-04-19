@@ -52,8 +52,7 @@ proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
-api_url = os.environ.get("API_URL", "http://api.pinepods.online/api/search")
-# api_url = 'http://10.0.0.15:5000/api/search'
+api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
@@ -64,7 +63,11 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 @app.route('/preload/<path:url>')
 def preload_audio_file(url):
     # Try to get the response from cache
-    response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+    if reverse_proxy == "True":
+        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
+    else:
+        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+    # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
