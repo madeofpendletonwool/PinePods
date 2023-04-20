@@ -186,6 +186,25 @@ def main(page: ft.Page, session_value=None):
         else:
             return text
 
+    def open_edit_api(api_id, page):
+        def close_api_dlg(e):
+            modify_user_dlg.open = False
+            page.update()
+
+        def delete_api()
+
+        modify_api_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"Would you like to delete api {api_id}?"),
+        actions=[
+        ft.TextButton("Delete API", on_click=delete_api)
+        ft.TextButton("Cancel", on_click=close_modify_dlg)
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+        )
+        self.page.dialog = modify_user_dlg
+        modify_user_dlg.open = True
+        self.page.update()
 
     def on_click_wronguser(page):
         page.snack_bar = ft.SnackBar(ft.Text(f"Wrong username or password. Please try again!"))
@@ -1767,6 +1786,61 @@ def main(page: ft.Page, session_value=None):
             self_service_info_col = ft.Column(controls=[self_service_text, self_service_notify, self_service_button])
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
+
+            ### API Key Settings
+
+            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color)
+
+            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            api_information = database_functions.functions.get_api_info(cnx)
+            api_table_rows = []
+
+            for entry in api_information:
+                api_id = entry['ApiKeyID']
+                api_key = entry['LastFourDigits']
+                username = entry['Username']
+                api_created = entry['Created']
+                
+                # Create a new data row with the user information
+                row = ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(api_id)),
+                        ft.DataCell(ft.Text(api_key)),
+                        ft.DataCell(ft.Text(username)),
+                        ft.DataCell(ft.Text(api_created))
+                    ],
+                    on_select_changed=(lambda api_id_copy: 
+                        lambda x: open_edit_api(api_id_copy, page)
+                    )(api_id)
+                )
+                
+                # Append the row to the list of data rows
+                api_table_rows.append(row)
+
+            api_table = ft.DataTable(
+                bgcolor=active_user.main_color, 
+                border=ft.border.all(2, active_user.main_color),
+                border_radius=10,
+                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                heading_row_color=active_user.nav_color1,
+                heading_row_height=100,
+                data_row_color={"hovered": active_user.font_color},
+                # show_checkbox_column=True,
+                columns=[
+                ft.DataColumn(ft.Text("API ID"), numeric=True),
+                ft.DataColumn(ft.Text("API Last Four Digits")),
+                ft.DataColumn(ft.Text("User Who Created")),
+                ft.DataColumn(ft.Text("Created At")),
+            ],
+                rows=api_table_rows
+                )
+            api_edit_column = ft.Column(controls=[edit_api_text, api_table])
+            api_edit_container = ft.Container(content=api_edit_column)
+            api_edit_container.padding=padding.only(left=70, right=50)
+
+
 
             # Check if admin settings should be displayed 
             user_is_admin = database_functions.functions.user_admin_check(cnx, int(active_user.user_id))

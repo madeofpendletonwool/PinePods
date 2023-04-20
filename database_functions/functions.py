@@ -938,6 +938,26 @@ def get_user_info(cnx):
 
     return rows
 
+def get_api_info(cnx):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT ApiKeys.ApiKeyID, ApiKeys.UserID, Users.Username, "
+             f"RIGHT(ApiKeys.ApiKey, 4) as LastFourDigits, "
+             f"ApiKeys.Created "
+             f"FROM ApiKeys "
+             f"JOIN Users ON ApiKeys.UserID = Users.UserID ")
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
+
 def set_username(cnx, user_id, new_username):
     cursor = cnx.cursor()
     query = "UPDATE Users SET Username = %s WHERE UserID = %s"
