@@ -12,3 +12,6 @@ html2text
 bcrypt
 flask_caching
 appdirs
+passlib
+uvicorn
+fastapi

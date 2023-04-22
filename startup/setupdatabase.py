@@ -32,6 +32,14 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     IsAdmin TINYINT(1)
                 )""")
 
+cursor.execute("""CREATE TABLE APIKeys (
+                    APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    APIKey TEXT,
+                    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )""")
+
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                     UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
                     UserID INT,

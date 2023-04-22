@@ -941,11 +941,11 @@ def get_user_info(cnx):
 def get_api_info(cnx):
     cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT ApiKeys.ApiKeyID, ApiKeys.UserID, Users.Username, "
-             f"RIGHT(ApiKeys.ApiKey, 4) as LastFourDigits, "
-             f"ApiKeys.Created "
-             f"FROM ApiKeys "
-             f"JOIN Users ON ApiKeys.UserID = Users.UserID ")
+    query = (f"SELECT APIKeys.APIKeyID, APIKeys.UserID, Users.Username, "
+             f"RIGHT(APIKeys.APIKey, 4) as LastFourDigits, "
+             f"APIKeys.Created "
+             f"FROM APIKeys "
+             f"JOIN Users ON APIKeys.UserID = Users.UserID ")
 
     cursor.execute(query)
     rows = cursor.fetchall()
@@ -953,9 +953,31 @@ def get_api_info(cnx):
     cursor.close()
 
     if not rows:
-        return None
+        return []
 
     return rows
+
+def create_api_key(cnx, user_id):
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits
+    api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
+
+    cursor = cnx.cursor()
+    query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
+    cursor.execute(query, (user_id, api_key))
+    cnx.commit()
+    cursor.close()
+
+    return api_key
+
+def delete_api(cnx, api_id):
+    cursor = cnx.cursor()
+    query = "DELETE FROM APIKeys WHERE APIKeyID = %s"
+    cursor.execute(query, (api_id,))
+    cnx.commit()
+    cursor.close()
+
 
 
 def set_username(cnx, user_id, new_username):

@@ -36,7 +36,7 @@ import logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Use the logger in your application
-logging.error("Error message")
+logging.error("Test Logging - It works!")
 
 # Database variables
 db_host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -185,26 +185,6 @@ def main(page: ft.Page, session_value=None):
             return text[:max_chars] + '...'
         else:
             return text
-
-    def open_edit_api(api_id, page):
-        def close_api_dlg(e):
-            modify_user_dlg.open = False
-            page.update()
-
-        def delete_api()
-
-        modify_api_dlg = ft.AlertDialog(
-        modal=True,
-        title=ft.Text(f"Would you like to delete api {api_id}?"),
-        actions=[
-        ft.TextButton("Delete API", on_click=delete_api)
-        ft.TextButton("Cancel", on_click=close_modify_dlg)
-        ],
-        actions_alignment=ft.MainAxisAlignment.END
-        )
-        self.page.dialog = modify_user_dlg
-        modify_user_dlg.open = True
-        self.page.update()
 
     def on_click_wronguser(page):
         page.snack_bar = ft.SnackBar(ft.Text(f"Wrong username or password. Please try again!"))
@@ -1636,7 +1616,7 @@ def main(page: ft.Page, session_value=None):
             user_setting_text.padding=padding.only(left=70, right=50)
 
             # Theme Select Elements
-            theme_text = ft.Text('Select Custom Theme:', color=active_user.font_color)
+            theme_text = ft.Text('Select Theme:', color=active_user.font_color, size=22)
             theme_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
              options=[
                 ft.dropdown.Option("light"),
@@ -1673,7 +1653,7 @@ def main(page: ft.Page, session_value=None):
 
             # New User Creation Elements
             new_user = User(page)
-            user_text = Text('Enter New User Information:', color=active_user.font_color)
+            user_text = Text('Create New User:', color=active_user.font_color, size=22)
             user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
@@ -1697,7 +1677,7 @@ def main(page: ft.Page, session_value=None):
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color)
+            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
 
             user_information = database_functions.functions.get_user_info(cnx)
             user_table_rows = []
@@ -1759,7 +1739,7 @@ def main(page: ft.Page, session_value=None):
                 guest_status = 'enabled'
             else:
                 guest_status = 'disabled'
-            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color)
+            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
             disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
             if guest_status_bool == True:
                 guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1776,7 +1756,7 @@ def main(page: ft.Page, session_value=None):
                 self_service_status = 'enabled'
             else:
                 self_service_status = 'disabled'
-            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color)
+            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
             self_service_notify = ft.Text(f'Self Service user creation is currently {self_service_status}')
             if self_service_bool == True:
                 self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1789,16 +1769,67 @@ def main(page: ft.Page, session_value=None):
 
             ### API Key Settings
 
-            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color)
+            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=22)
 
-            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+            def create_api(e):
+                def close_api_dlg(e):
+                    create_api_dlg.open = False
+                    page.update()
+
+                new_key = database_functions.functions.create_api_key(cnx, active_user.user_id)
+
+                create_api_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"New API key listed below"),
+                content=ft.Column(controls=[
+                ft.Text("Be sure to copy your key. There's no way to ever see it again (You can always create a new one if you forget)"),
+                ft.Text(f'Api key: {new_key}', selectable=True),
+                    ], tight=True),
+                actions=[
+                ft.TextButton("Close", on_click=close_api_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+                page.dialog = create_api_dlg
+                create_api_dlg.open = True
+                page.update()
+
+            def open_edit_api(e):
+                def close_api_dlg(e):
+                    modify_api_dlg.open = False
+                    page.update()
+
+                def delete_api(e):
+                    print(active_user.api_id)
+                    database_functions.functions.delete_api(cnx, active_user.api_id)
+                    modify_api_dlg.open = False
+                    page.update()
+
+                modify_api_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Would you like to delete api {active_user.api_id}?"),
+                actions=[
+                ft.TextButton(content=ft.Text("Delete API", color=ft.colors.RED_400), on_click=delete_api),
+                ft.TextButton("Cancel", on_click=close_api_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+
+                page.dialog = modify_api_dlg
+                modify_api_dlg.open = True
+                page.update()
+
+            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
             api_information = database_functions.functions.get_api_info(cnx)
             api_table_rows = []
+            def create_on_select_changed_lambda(api_id, pages):
+                return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
+
 
             for entry in api_information:
-                api_id = entry['ApiKeyID']
-                api_key = entry['LastFourDigits']
+                api_id = entry['APIKeyID']
+                api_key = '...' + entry['LastFourDigits']
                 username = entry['Username']
                 api_created = entry['Created']
                 
@@ -1810,9 +1841,7 @@ def main(page: ft.Page, session_value=None):
                         ft.DataCell(ft.Text(username)),
                         ft.DataCell(ft.Text(api_created))
                     ],
-                    on_select_changed=(lambda api_id_copy: 
-                        lambda x: open_edit_api(api_id_copy, page)
-                    )(api_id)
+                    on_select_changed=create_on_select_changed_lambda(api_id, page)
                 )
                 
                 # Append the row to the list of data rows
@@ -1836,7 +1865,7 @@ def main(page: ft.Page, session_value=None):
             ],
                 rows=api_table_rows
                 )
-            api_edit_column = ft.Column(controls=[edit_api_text, api_table])
+            api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
             api_edit_container = ft.Container(content=api_edit_column)
             api_edit_container.padding=padding.only(left=70, right=50)
 
@@ -1852,6 +1881,7 @@ def main(page: ft.Page, session_value=None):
                 user_edit_container.visible = False
                 guest_info.visible = False
                 self_service_info.visible = False
+                api_edit_container.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
@@ -1863,7 +1893,8 @@ def main(page: ft.Page, session_value=None):
                         user_row_container,
                         user_edit_container,
                         guest_info,
-                        self_service_info
+                        self_service_info,
+                        api_edit_container
                     ]
                     
                 )
@@ -3080,6 +3111,7 @@ def main(page: ft.Page, session_value=None):
             self.navbar_stack = None
             self.new_user_valid = False
             self.invalid_value = False
+            self.api_id = 0
 
     # New User Stuff ----------------------------
 

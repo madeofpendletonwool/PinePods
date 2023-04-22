@@ -946,6 +946,9 @@ def main(page: ft.Page, session_value=None):
 
 #--Defining Routes---------------------------------------------------
 
+    def start_config(page):
+        page.go("/server_config")
+
     def start_login(page):
         page.go("/login")
 
@@ -1732,7 +1735,7 @@ def main(page: ft.Page, session_value=None):
             user_setting_text.padding=padding.only(left=70, right=50)
 
             # Theme Select Elements
-            theme_text = ft.Text('Select Custom Theme:', color=active_user.font_color)
+            theme_text = ft.Text('Select Theme:', color=active_user.font_color, size=22)
             theme_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
              options=[
                 ft.dropdown.Option("light"),
@@ -1769,7 +1772,7 @@ def main(page: ft.Page, session_value=None):
 
             # New User Creation Elements
             new_user = User(page)
-            user_text = Text('Enter New User Information:', color=active_user.font_color)
+            user_text = Text('Create New User:', color=active_user.font_color, size=22)
             user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
@@ -1793,7 +1796,7 @@ def main(page: ft.Page, session_value=None):
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color)
+            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
 
             user_information = database_functions.functions.get_user_info(cnx)
             user_table_rows = []
@@ -1855,7 +1858,7 @@ def main(page: ft.Page, session_value=None):
                 guest_status = 'enabled'
             else:
                 guest_status = 'disabled'
-            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color)
+            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
             disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
             if guest_status_bool == True:
                 guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1872,7 +1875,7 @@ def main(page: ft.Page, session_value=None):
                 self_service_status = 'enabled'
             else:
                 self_service_status = 'disabled'
-            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color)
+            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
             self_service_notify = ft.Text(f'Self Service user creation is currently {self_service_status}')
             if self_service_bool == True:
                 self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1882,6 +1885,7 @@ def main(page: ft.Page, session_value=None):
             self_service_info_col = ft.Column(controls=[self_service_text, self_service_notify, self_service_button])
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
+
 
             # Check if admin settings should be displayed 
             user_is_admin = database_functions.functions.user_admin_check(cnx, int(active_user.user_id))
@@ -3971,6 +3975,6 @@ def main(page: ft.Page, session_value=None):
 
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8034)
