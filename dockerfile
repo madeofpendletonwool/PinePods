@@ -21,7 +21,7 @@ RUN chmod +x /wait-for-it.sh
 
 # Put pinepods Files in place
 # Create structure for pinepods
-RUN git clone https://github.com/madeofpendletonwool/pypods.git /pinepods && \
+RUN git clone -b linux_client https://github.com/madeofpendletonwool/pypods.git /pinepods && \
     chmod -R 755 /pinepods
 
 # Begin pinepods Setup

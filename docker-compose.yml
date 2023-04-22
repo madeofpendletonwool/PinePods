@@ -21,6 +21,7 @@ services:
     image: madeofpendletonwool/pinepods:latest
     ports:
       - "8034:8034"
+      - "8032:8032"
     environment:
       # Default Admin User Information
       USERNAME: pinepods
