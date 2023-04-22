@@ -6,6 +6,8 @@ import os
 
 from database_functions import functions
 
+print('Client API Server is Starting!')
+
 app = FastAPI()
 
 API_KEY_NAME = "pinepods_api"
