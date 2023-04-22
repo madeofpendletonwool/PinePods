@@ -32,6 +32,7 @@ import math
 import secrets
 import appdirs
 import logging
+import hashlib
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -215,7 +216,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def display_hello(e):
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Hello {active_user.fullname}! Click name for information"))
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Hello {active_user.fullname}! Click profile icon for stats!"))
         page.snack_bar.open = True
         page.update()
 
@@ -3619,7 +3620,29 @@ def main(page: ft.Page, session_value=None):
             )
 
         def create_navbar(self):
+            def get_gravatar_url(email, size=42, default='mp'):
+                email_hash = hashlib.md5(email.lower().encode('utf-8')).hexdigest()
+                gravatar_url = f'https://www.gravatar.com/avatar/{email_hash}?s={size}&d={default}'
+                profile_url = f'https://www.gravatar.com/{email_hash}.json'
+                
+                try:
+                    response = requests.get(profile_url)
+                    response.raise_for_status()
+                except requests.exceptions.RequestException:
+                    return None
+                
+                return gravatar_url
+
+            gravatar_url = get_gravatar_url(active_user.email)
             active_user.get_initials()
+            
+            user_content = ft.Image(src=gravatar_url, width=42, height=45, border_radius=8) if gravatar_url else Text(
+                value=active_user.initials,
+                color=active_user.nav_color2,
+                size=20,
+                weight="bold"
+            )
+
             return ft.Container(
             width=62,
             # height=580,
@@ -3640,16 +3663,11 @@ def main(page: ft.Page, session_value=None):
                 ft.Divider(color="white24", height=5),
                 ft.Container(
                     width=42,
-                    height=42,
+                    height=40,
                     border_radius=8,
                     bgcolor=active_user.tertiary_color,
                     alignment=alignment.center,
-                    content=Text(
-                        value=active_user.initials,
-                        color=active_user.nav_color2,
-                        size=20,
-                        weight="bold"
-                    ),
+                    content=user_content,
                     on_hover=display_hello,
                     on_click=open_user_stats
                 ),

@@ -303,7 +303,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### To be added after beta version
 
-- [ ] Implement Gravitar API for profile picture
+- [x] Implement Gravitar API for profile picture
 - [ ] Rotating currently playing
 - [ ] Implement smoother scrolling with big list loading
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
