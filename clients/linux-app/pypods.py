@@ -7,7 +7,6 @@ import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
 import Auth.Passfunctions
-import Audio.functions
 # Others
 import time
 import mysql.connector
@@ -97,18 +96,6 @@ active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-
-# Create database connector
-cnx = mysql.connector.connect(
-    host=db_host,
-    port=db_port,
-    user=db_user,
-    password=db_password,
-    database=db_name,
-    charset='utf8mb4'
-)
-
-database_functions.functions.clean_expired_sessions(cnx)
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
@@ -950,7 +937,7 @@ def main(page: ft.Page, session_value=None):
         page.go("/server_config")
 
     def start_login(page):
-        page.go("/login")
+        page.go("/server_config")
 
     def view_pop(e):
         page.views.pop()
@@ -1341,8 +1328,7 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/server_config" or page.route == "/server_config":
-            guest_enabled = database_functions.functions.guest_status(cnx)
-            retain_session = ft.Switch(label="Stay Signed in", value=False)
+            retain_session = ft.Switch(label="Save API Key", value=False)
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
 
@@ -1354,7 +1340,7 @@ def main(page: ft.Page, session_value=None):
                         elevation=15,
                         content=ft.Container(
                             width=550,
-                            height=620,
+                            height=550,
                             padding=padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
@@ -1377,7 +1363,7 @@ def main(page: ft.Page, session_value=None):
                                         text_align="center",
                                     ),
                                     ft.Text(
-                                        "Welcome to PinePods. Let's begin by connecting your server. Please enter your server name below",
+                                        "Welcome to PinePods. Let's begin by connecting to your server. Please enter your server name and API Key below",
                                         size=14,
                                         weight="w700",
                                         text_align="center",
@@ -1386,13 +1372,13 @@ def main(page: ft.Page, session_value=None):
                                     ft.Container(
                                         padding=padding.only(bottom=20)
                                     ),
-                                    login_username,
+                                    server_name,
                                     ft.Container(
                                         padding=padding.only(bottom=10)
                                     ),
-                                    login_password,
+                                    api_key,
                                     ft.Container(
-                                        padding=padding.only(bottom=20)
+                                        padding=padding.only(bottom=10)
                                     ),
                                     retain_session_contained,
                                     ft.Row(
@@ -1410,28 +1396,8 @@ def main(page: ft.Page, session_value=None):
                                                 on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
-                                            ft.FilledButton(
-                                                content=ft.Text(
-                                                    "Guest Login",
-                                                    weight="w700",
-                                                ),
-                                                width=160,
-                                                height=40,
-                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click = lambda e: go_homelogin_guest(page)
-                                                # on_click=lambda e: go_homelogin(e)
-                                            ),
                                         ],
                                     ),
-                                    ft.Row(
-                                        alignment="center",
-                                        spacing=20,
-                                        controls=[
-                                            ft.Text("Haven't created a user yet?"),
-                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user)
-                                        ]
-
-                                    )
                                 ],
                             ),
                         ),
@@ -3573,6 +3539,24 @@ def main(page: ft.Page, session_value=None):
         can_reveal_password=True,
     )
 
+    server_name = ft.TextField(
+        label="Server Name",
+        border="underline",
+        hint_text="ex. https://api.pinepods.online",
+        width=320,
+        text_size=14,
+    )
+
+    api_key = ft.TextField(
+        label="API Key",
+        border="underline",
+        width=320,
+        text_size=14,
+        hint_text='Generate this from settings in PinePods',
+        password=True,
+        can_reveal_password=True,
+    )
+
     active_user = User(page)
 
 # Create Sidebar------------------------------------------------------
@@ -3957,24 +3941,32 @@ def main(page: ft.Page, session_value=None):
     # page.appbar.update()
     page.appbar.visible = False
 
-    check_session = database_functions.functions.check_saved_session(cnx)
+    def create_connector():
+        # Create database connector
+        cnx = mysql.connector.connect(
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            password=db_password,
+            database=db_name,
+            charset='utf8mb4'
+        )
 
-    
-    if login_screen == True:
-        if page.web:
-            start_login(page)
-        else:
+        database_functions.functions.clean_expired_sessions(cnx)
+        check_session = database_functions.functions.check_saved_session(cnx)
+        if login_screen == True:
             if check_session:
                 active_user.saved_login(check_session)
             else:
                 start_login(page)
-    else:
-        active_user.user_id = 1
-        active_user.fullname = 'Guest User'
-        go_homelogin(page)
+        else:
+            active_user.user_id = 1
+            active_user.fullname = 'Guest User'
+            go_homelogin(page)
 
+    start_config(page)
 
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-ft.app(target=main, port=8034)
+ft.app(target=main, port=8035)
