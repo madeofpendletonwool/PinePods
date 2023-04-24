@@ -2,10 +2,14 @@ import sys
 import mysql.connector
 import database_functions.functions
 import Auth.Passfunctions
+import time
+import string
+import secrets
 
 if __name__ == "__main__":
 
 
+	time.sleep(2)
 
 	database_user = sys.argv[1] 
 	database_pass = sys.argv[2]
@@ -38,14 +42,21 @@ if __name__ == "__main__":
 	salt, hash_pw = Auth.Passfunctions.hash_password(password)
 	user_values = (fullname, username, email, hash_pw, salt)
 
-	cnx = mysql.connector.connect(user=database_user, password=database_pass, host=database_host, port=database_port, database=database_name)
+    config = {
+        'user': database_user,
+        'password': database_pass,
+        'host': database_host,
+        'port': database_port,
+        'database': database_name
+    }
+    cnx = mysql.connector.connect(**config)
 
-	if not database_functions.functions.user_exists(cnx, username):
-		salt, hash_pw = Auth.Passfunctions.hash_password(password)
-		user_values = (fullname, username, email, hash_pw, salt)
-		print(f'Created Admin User = fullname={fullname}, username={username}, email={email}, password={password}')
-		database_functions.functions.add_admin_user(cnx, user_values)
-	else:
-		print(f'Admin user "{username}" already exists.')
+    if not database_functions.functions.user_exists(cnx, username):
+        salt, hash_pw = Auth.Passfunctions.hash_password(password)
+        user_values = (fullname, username, email, hash_pw, salt)
+        print(f'Created Admin User = fullname={fullname}, username={username}, email={email}, password={password}')
+        database_functions.functions.add_admin_user(cnx, user_values)
+    else:
+        print(f'Admin user "{username}" already exists.')
 
-	cnx.close()
+    cnx.close()
