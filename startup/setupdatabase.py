@@ -136,6 +136,7 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
                 )""")
 
 cursor.execute("""INSERT INTO UserSettings (UserID, Theme) VALUES ('1', 'nordic')""")
+cursor.execute("""INSERT INTO UserSettings (UserID, Theme) VALUES ('2', 'nordic')""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserEpisodeHistory (
                     UserEpisodeHistoryID INT AUTO_INCREMENT PRIMARY KEY,
