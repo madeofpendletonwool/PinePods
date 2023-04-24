@@ -1,5 +1,6 @@
 import mysql.connector
 import os
+import Auth.Passfunctions
 
 # Database variables
 db_host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -62,6 +63,25 @@ cursor.execute("""INSERT INTO AppSettings (SelfServiceUser)
 
 cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
                 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
+
+# Your admin user variables
+admin_fullname = os.environ.get("FULLNAME", "Admin User")
+admin_username = os.environ.get("USERNAME", "admin")
+admin_email = os.environ.get("EMAIL", "admin@pinepods.online")
+
+alphabet = string.ascii_letters + string.digits + string.punctuation
+fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
+
+admin_pw = os.environ.get("PASSWORD", fallback_password)
+
+salt, hash_pw = Auth.Passfunctions.hash_password(admin_pw)
+
+# Parameterized INSERT statement for the admin user
+admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, hash_pw, salt, IsAdmin)
+                        VALUES (%s, %s, %s, %s, %s, 1)"""
+
+# Execute the INSERT statement with the admin user variables
+cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hash_pw, salt, 1))
 
 
 cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (1)""")
