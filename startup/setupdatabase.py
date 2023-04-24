@@ -3,6 +3,7 @@ import os
 # import Auth.Passfunctions
 import string
 import secrets
+import bcrypt
 
 
 def hash_password(password: str):
