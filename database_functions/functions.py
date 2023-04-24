@@ -104,7 +104,6 @@ def add_admin_user(cnx, user_values):
     cnx.commit()
     
     cursor.close()
-    cnx.close()
 
 def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
