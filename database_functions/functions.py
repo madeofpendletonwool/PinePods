@@ -39,11 +39,11 @@ def add_podcast(cnx, podcast_values, user_id):
 
     cnx.commit()
 
-    cursor.close()
-    cnx.close()
-
     # add episodes to database
     add_episodes(cnx, podcast_id, podcast_values[6], podcast_values[1])
+
+    cursor.close()
+    cnx.close()
 
     # return True to indicate success
     return True
@@ -197,7 +197,6 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 
     finally:
         cursor.close()
-        cnx.close()
 
 def remove_podcast(cnx, podcast_name, user_id):
     cursor = cnx.cursor()
