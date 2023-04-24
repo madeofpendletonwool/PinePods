@@ -2,6 +2,7 @@ import mysql.connector
 import os
 # import Auth.Passfunctions
 import string
+import secrets
 
 
 def hash_password(password: str):
