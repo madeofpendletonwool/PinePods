@@ -92,11 +92,12 @@ admin_pw = os.environ.get("PASSWORD", fallback_password)
 salt, hash_pw = hash_password(admin_pw)
 
 # Parameterized INSERT statement for the admin user
-admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, hash_pw, salt, IsAdmin)
-                        VALUES (%s, %s, %s, %s, %s, 1)"""
+admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
+                        VALUES (%s, %s, %s, %s, %s, %s)"""
 
 # Execute the INSERT statement with the admin user variables
 cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hash_pw, salt, 1))
+
 
 
 cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (1)""")
