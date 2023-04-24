@@ -1,6 +1,18 @@
 import mysql.connector
 import os
-import Auth.Passfunctions
+# import Auth.Passfunctions
+
+
+def hash_password(password: str):
+    # Generate a random salt
+    salt = bcrypt.gensalt()
+
+    # Hash the password with the salt
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
+
+    # Return the salt and the hashed password
+    return salt, hashed_password
+
 
 # Database variables
 db_host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -74,7 +86,7 @@ fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
 
 admin_pw = os.environ.get("PASSWORD", fallback_password)
 
-salt, hash_pw = Auth.Passfunctions.hash_password(admin_pw)
+salt, hash_pw = hash_password(admin_pw)
 
 # Parameterized INSERT statement for the admin user
 admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, hash_pw, salt, IsAdmin)
