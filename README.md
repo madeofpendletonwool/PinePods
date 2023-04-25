@@ -57,6 +57,8 @@ services:
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
+    volumes:
+      - /home/user/pinepods/sql:/var/lib/mysql
     ports:
       - "3306:3306"
     restart: always
@@ -83,16 +85,18 @@ services:
       DB_PASSWORD: password
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: proxy.pinepods.online
+      PROXY_HOST: pinepods-proxy
       PROXY_PORT: 8033
-      PROXY_PROTOCOL: https
+      PROXY_PROTOCOL: http
       REVERSE_PROXY: "True"
       #Podcast Index API
       API_URL: 'https://api.pinepods.online/api/search'
 
+
     depends_on:
       - db
       - pinepods-proxy
+
 
 ```
 
@@ -109,6 +113,7 @@ Make sure you change these variables to variables specific to yourself.
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
       REVERSE_PROXY: "True"
+      API_URL: 'https://api.pinepods.online/api/search'
 ```
 
 Most of those are pretty obvious, but let's break a couple of them down.
