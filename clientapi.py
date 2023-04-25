@@ -2,7 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 from passlib.context import CryptContext
 import mysql.connector
+from mysql.connector import pooling
 import os
+from fastapi.middleware.gzip import GZipMiddleware
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 
 from database_functions import functions
 
@@ -15,22 +20,31 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def get_database_connection():
 
-    # Database variables
+
+def get_database_connection():
+    return connection_pool.get_connection()
+
+
+def setup_connection_pool():
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = os.environ.get("DB_PORT", "3306")
     db_user = os.environ.get("DB_USER", "root")
     db_password = os.environ.get("DB_PASSWORD", "password")
     db_name = os.environ.get("DB_NAME", "pypods_database")
-    # Use your actual database connection parameters here
-    return mysql.connector.connect(
+
+    return pooling.MySQLConnectionPool(
+        pool_name="pinepods_api_pool",
+        pool_size=5,  # Adjust the pool size according to your needs
+        pool_reset_session=True,
         host=db_host,
         port=db_port,
         user=db_user,
         password=db_password,
-        database=db_name
+        database=db_name,
     )
+
+connection_pool = setup_connection_pool()
 
 def get_api_keys(cnx):
     cursor = cnx.cursor(dictionary=True)
