@@ -6,14 +6,13 @@ from mysql.connector import pooling
 import os
 from fastapi.middleware.gzip import GZipMiddleware
 
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
 
 from database_functions import functions
 
 print('Client API Server is Starting!')
 
 app = FastAPI()
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 API_KEY_NAME = "pinepods_api"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
