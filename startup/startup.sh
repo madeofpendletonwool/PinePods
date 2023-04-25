@@ -12,7 +12,41 @@ export PASSWORD=$PASSWORD
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
 
+cat << "EOF"
+         A
+        d$b
+      .d\$$b.
+    .d$i$$\$$b.
+       d$$@b
+      d\$$$ib
+    .d$$$\$$$b
+  .d$$@$$$$\$$ib.
+      d$$i$$b
+     d\$$$$@$b
+  .d$@$$\$$$$$@b.
+.d$$$$i$$$\$$$$$$b.
+        ###
+        ###
+        ###
 
+
+ _______   __                                                __           
+/       \ /  |                                              /  |          
+$$$$$$$  |$$/  _______    ______    ______    ______    ____$$ |  _______ 
+$$ |__$$ |/  |/       \  /      \  /      \  /      \  /    $$ | /       |
+$$    $$/ $$ |$$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$$ |/$$$$$$$/ 
+$$$$$$$/  $$ |$$ |  $$ |$$    $$ |$$ |  $$ |$$ |  $$ |$$ |  $$ |$$      \ 
+$$ |      $$ |$$ |  $$ |$$$$$$$$/ $$ |__$$ |$$ \__$$ |$$ \__$$ | $$$$$$  |
+$$ |      $$ |$$ |  $$ |$$       |$$    $$/ $$    $$/ $$    $$ |/     $$/ 
+$$/       $$/ $$/   $$/  $$$$$$$/ $$$$$$$/   $$$$$$/   $$$$$$$/ $$$$$$$/  
+                                  $$ |                                    
+                                  $$ |                                    
+                                  $$/                                     
+A project created and written by Collin Pendleton
+collinp@gooseberrydevelopment.com
+
+
+EOF
 # Database Setup
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 # Create Admin User
