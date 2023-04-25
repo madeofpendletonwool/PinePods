@@ -80,4 +80,4 @@ async def get_data(client_id: str = Depends(get_api_key)):
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run("clientapi:app", host="0.0.0.0", port=8032, reload=True)
+    uvicorn.run("clientapi:app", host="0.0.0.0", port=8032)
