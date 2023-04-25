@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
@@ -7,6 +7,9 @@ import os
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
+import requests
+import database_functions.functions
+from pydantic import BaseModel
 
 secret_key_middle = secrets.token_hex(32)
 
@@ -93,6 +96,21 @@ async def get_data(client_id: str = Depends(get_api_key)):
 @app.get('/api/pinepods_check')
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
+
+@app.post("/clean_expired_sessions/")
+async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    database_functions.functions.clean_expired_sessions(cnx)
+    return {"status": "success"}
+
+@app.get("/check_saved_session/", response_model=int)
+async def api_check_saved_session(api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    result = database_functions.functions.check_saved_session(cnx)
+    if result:
+        return result
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
 
 
 

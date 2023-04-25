@@ -4171,8 +4171,10 @@ def main(page: ft.Page, session_value=None):
             charset='utf8mb4'
         )
 
-        database_functions.functions.clean_expired_sessions(cnx)
-        check_session = database_functions.functions.check_saved_session(cnx)
+        # Call the functions
+        api_functions.functions.call_clean_expired_sessions(app_api.url)
+        api_functions.functions.call_check_saved_session(app_api.url)
+
         if login_screen == True:
             if check_session:
                 active_user.saved_login(check_session)
