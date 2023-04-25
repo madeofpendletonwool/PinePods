@@ -1,5 +1,6 @@
 import mysql.connector
 from mysql.connector import errorcode
+import mysql.connector.pooling
 import sys
 import os
 import requests
@@ -38,10 +39,11 @@ def add_podcast(cnx, podcast_values, user_id):
 
     cnx.commit()
 
-    cursor.close()
-
     # add episodes to database
     add_episodes(cnx, podcast_id, podcast_values[6], podcast_values[1])
+
+    cursor.close()
+    cnx.close()
 
     # return True to indicate success
     return True
@@ -73,6 +75,7 @@ def add_user(cnx, user_values):
     cnx.commit()
     
     cursor.close()
+    cnx.close()
 
 
 def add_admin_user(cnx, user_values):
@@ -235,6 +238,7 @@ def remove_podcast(cnx, podcast_name, user_id):
     cnx.commit()
 
     cursor.close()
+    cnx.close()
 
 
 
@@ -256,6 +260,7 @@ def return_episodes(cnx, user_id):
     rows = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
 
     if not rows:
         return None
@@ -275,6 +280,7 @@ def return_selected_episode(cnx, user_id, title, url):
     result = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
 
     episodes = []
     for row in result:
@@ -306,6 +312,7 @@ def return_pods(cnx, user_id):
     rows = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
 
     if not rows:
         return None
@@ -332,6 +339,7 @@ def refresh_pods(cnx):
         add_episodes(cnx, podcast_id, feed_url, artwork_url)
 
     cursor.close()
+    cnx.close()
 
 def remove_unavailable_episodes(cnx):
     cursor = cnx.cursor()
@@ -360,6 +368,7 @@ def remove_unavailable_episodes(cnx):
             print(f"Error checking episode {episode_id}: {e}")
 
     cursor.close()
+    cnx.close()
 
 
 
@@ -375,6 +384,9 @@ def get_podcast_id_by_title(cnx, podcast_title):
         return result[0]
     else:
         return None
+
+    cursor.close()
+    cnx.close()
 
 
 def refresh_podcast_by_title(cnx, podcast_title):
@@ -428,6 +440,7 @@ def refresh_single_pod(cnx, podcast_id):
     cnx.commit()
 
     cursor.close()
+    cnx.close()
 
 def record_podcast_history(cnx, episode_title, user_id, episode_pos):
     from datetime import datetime
@@ -473,6 +486,7 @@ def record_podcast_history(cnx, episode_title, user_id, episode_pos):
         cnx.commit()
 
     cursor.close()
+    cnx.close()
 
 
 def get_user_id(cnx, username):
@@ -481,6 +495,7 @@ def get_user_id(cnx, username):
     cursor.execute(query, (username,))
     result = cursor.fetchone()
     cursor.close()
+    cnx.close()
 
     if result:
         return result[0]
@@ -493,6 +508,7 @@ def get_user_details(cnx, username):
     cursor.execute(query, (username,))
     result = cursor.fetchone()
     cursor.close()
+    cnx.close()
 
     if result:
         return {
@@ -512,6 +528,7 @@ def get_user_details_id(cnx, user_id):
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
+    cnx.close()
 
     if result:
         return {
@@ -541,6 +558,7 @@ def user_history(cnx, user_id):
     results = [dict(zip([column[0] for column in cursor.description], row)) for row in cursor.fetchall()]
 
     cursor.close()
+    cnx.close()
     return results
 
 
@@ -598,6 +616,10 @@ def download_podcast(cnx, url, title, user_id):
 
     cnx.commit()
 
+    if cursor:
+        cursor.close()
+        cnx.close()
+
     return True
 
 def check_downloaded(cnx, user_id, title, url):
@@ -625,7 +647,7 @@ def check_downloaded(cnx, user_id, title, url):
     finally:
         if cursor:
             cursor.close()
-        cnx.commit()
+            cnx.close()
 
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
@@ -643,6 +665,7 @@ def download_episode_list(cnx, user_id):
     rows = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
 
     if not rows:
         return None
@@ -684,6 +707,7 @@ def delete_podcast(cnx, url, title, user_id):
     cursor.execute(query, (user_id,))
     
     cursor.close()
+    cnx.close()
 
 def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     cursor = cnx.cursor()
@@ -706,6 +730,7 @@ def get_episode_id(cnx, podcast_id, episode_title, episode_url):
 
     cnx.commit()
     cursor.close()
+    cnx.close()
 
     return episode_id
 
@@ -737,6 +762,7 @@ def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
             cnx.commit()
 
         cursor.close()
+        cnx.close()
 
         return True
     else:
@@ -759,11 +785,13 @@ def episode_remove_queue(cnx, user_id, url, title):
         cnx.commit()
 
         cursor.close()
+        cnx.close()
 
         return True
     else:
         # Episode not found in the database
         cursor.close()
+        cnx.close()
         return False
 
 
@@ -788,6 +816,7 @@ def get_queue_list(cnx, queue_urls):
 
     episode_list = cursor.fetchall()
     cursor.close()
+    cnx.close()
     return episode_list
 
 def check_usernames(cnx, username):
@@ -796,6 +825,7 @@ def check_usernames(cnx, username):
     cursor.execute(query, (username,))
     count = cursor.fetchone()[0]
     cursor.close()
+    cnx.close()
     return count > 0
 
 def record_listen_duration(cnx, url, title, user_id, listen_duration):
@@ -834,6 +864,7 @@ def record_listen_duration(cnx, url, title, user_id, listen_duration):
 
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 def check_episode_playback(cnx, user_id, episode_title, episode_url):
     cursor = None
@@ -863,7 +894,8 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
     finally:
         if cursor:
             cursor.close()
-        cnx.commit()
+        if cnx:
+            cnx.close()
 
 def get_episode_listen_time(cnx, user_id, title, url):
         cursor = None
@@ -888,6 +920,7 @@ def get_episode_listen_time(cnx, user_id, title, url):
         finally:
             if cursor:
                 cursor.close()
+                cnx.close()
 
 def get_theme(cnx, user_id):
     print(user_id)
@@ -905,6 +938,7 @@ def get_theme(cnx, user_id):
     finally:
         if cursor:
             cursor.close()
+            cnx.close()
 
 def set_theme(cnx, user_id, theme):
     cursor = None
@@ -919,6 +953,7 @@ def set_theme(cnx, user_id, theme):
     finally:
         if cursor:
             cursor.close()
+            cnx.close()
 
 def get_user_info(cnx):
     cursor = cnx.cursor(dictionary=True)
@@ -932,6 +967,7 @@ def get_user_info(cnx):
     rows = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
 
     if not rows:
         return None
@@ -951,6 +987,7 @@ def get_api_info(cnx):
     rows = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
 
     if not rows:
         return []
@@ -968,6 +1005,7 @@ def create_api_key(cnx, user_id):
     cursor.execute(query, (user_id, api_key))
     cnx.commit()
     cursor.close()
+    cnx.close()
 
     return api_key
 
@@ -977,6 +1015,7 @@ def delete_api(cnx, api_id):
     cursor.execute(query, (api_id,))
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 
 
@@ -986,6 +1025,7 @@ def set_username(cnx, user_id, new_username):
     cursor.execute(query, (new_username, user_id))
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 def set_password(cnx, user_id, salt, hash_pw):
     cursor = cnx.cursor()
@@ -993,6 +1033,7 @@ def set_password(cnx, user_id, salt, hash_pw):
     cursor.execute(update_query, (salt, hash_pw, user_id))
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 
 def set_email(cnx, user_id, new_email):
@@ -1001,6 +1042,7 @@ def set_email(cnx, user_id, new_email):
     cursor.execute(query, (new_email, user_id))
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 def set_fullname(cnx, user_id, new_name):
     cursor = cnx.cursor()
@@ -1008,6 +1050,7 @@ def set_fullname(cnx, user_id, new_name):
     cursor.execute(query, (new_name, user_id))
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 def set_isadmin(cnx, user_id, isadmin):
     cursor = cnx.cursor()
@@ -1021,6 +1064,8 @@ def set_isadmin(cnx, user_id, isadmin):
     cnx.commit()
     
     cursor.close()
+    cnx.close()
+
 
 def delete_user(cnx, user_id):
     cursor = cnx.cursor()
@@ -1073,6 +1118,8 @@ def delete_user(cnx, user_id):
     cnx.commit()
 
     cursor.close()
+    cnx.close()
+
 
 
 def user_admin_check(cnx, user_id):
@@ -1081,6 +1128,8 @@ def user_admin_check(cnx, user_id):
     cursor.execute(query)
     result = cursor.fetchone()
     cursor.close()
+    cnx.close()
+
     
     if result is None:
         return False
@@ -1103,6 +1152,8 @@ def final_admin(cnx, user_id):
             return True
 
     cursor.close()
+    cnx.close()
+
     return False
 
 def guest_status(cnx):
@@ -1111,6 +1162,8 @@ def guest_status(cnx):
     cursor.execute(query)
     result = cursor.fetchone()
     cursor.close()
+    cnx.close()
+
     if result:
         return True
     else:
@@ -1122,6 +1175,8 @@ def enable_disable_guest(cnx):
     cursor.execute(query)
     cnx.commit()
     cursor.close()
+    cnx.close()
+
 
 def self_service_status(cnx):
     cursor = cnx.cursor()
@@ -1129,6 +1184,8 @@ def self_service_status(cnx):
     cursor.execute(query)
     result = cursor.fetchone()
     cursor.close()
+    cnx.close()
+
     if result:
         return True
     else:
@@ -1140,6 +1197,8 @@ def enable_disable_self_service(cnx):
     cursor.execute(query)
     cnx.commit()
     cursor.close()
+    cnx.close()
+
 
 def get_stats(cnx, user_id):
     cursor = cnx.cursor()
@@ -1161,6 +1220,8 @@ def get_stats(cnx, user_id):
     }
     
     cursor.close()
+    cnx.close()
+
     
     return stats
 
@@ -1180,6 +1241,8 @@ def saved_episode_list(cnx, user_id):
     rows = cursor.fetchall()
 
     cursor.close()
+    cnx.close()
+
 
     if not rows:
         return None
@@ -1215,6 +1278,8 @@ def save_episode(cnx, url, title, user_id):
     cursor.execute(query, (user_id,))
 
     cnx.commit()
+    cursor.close()
+    cnx.close()
 
     return True
 
@@ -1243,6 +1308,8 @@ def check_saved(cnx, user_id, title, url):
     finally:
         if cursor:
             cursor.close()
+            cnx.close()
+
 
 
 def remove_saved_episode(cnx, url, title, user_id):
@@ -1275,6 +1342,8 @@ def remove_saved_episode(cnx, url, title, user_id):
     print(f"Removed {cursor.rowcount} entry from the SavedEpisodes table.")
     
     cursor.close()
+    cnx.close()
+
 
 def increment_played(cnx, user_id):
     cursor = cnx.cursor()
@@ -1286,6 +1355,8 @@ def increment_played(cnx, user_id):
     cnx.commit()
     
     cursor.close()
+    cnx.close()
+
 
 def increment_listen_time(cnx, user_id):
     cursor = cnx.cursor()
@@ -1297,6 +1368,8 @@ def increment_listen_time(cnx, user_id):
     cnx.commit()
     
     cursor.close()
+    cnx.close()
+
 
 def get_user_episode_count(cnx, user_id):
     cursor = cnx.cursor()
@@ -1311,7 +1384,8 @@ def get_user_episode_count(cnx, user_id):
     episode_count = cursor.fetchone()[0]
     
     cursor.close()
-    
+    cnx.close()
+
     return episode_count
 
 def check_podcast(cnx, user_id, podcast_name):
@@ -1332,6 +1406,9 @@ def check_podcast(cnx, user_id, podcast_name):
         if cursor:
             cursor.close()
         cnx.commit()
+    cursor.close()
+    cnx.close()
+
 
 def get_session_file_path():
     app_name = 'pinepods'
@@ -1377,6 +1454,8 @@ def check_saved_session(cnx):
             return user_id
 
     return False
+    cursor.close()
+    cnx.close()
 
 
 def check_saved_web_session(cnx, session_value):
@@ -1396,6 +1475,9 @@ def check_saved_web_session(cnx, session_value):
             return user_id
 
     return False
+    cursor.close()
+    cnx.close()
+
 
 def create_session(cnx, user_id):
     import secrets
@@ -1415,6 +1497,9 @@ def create_session(cnx, user_id):
     """, (user_id, session_value, expire_date))
 
     cnx.commit()
+    cursor.close()
+    cnx.close()
+
 
 def create_web_session(cnx, user_id, session_value):
     # Calculate the expiration date 30 days in the future
@@ -1427,6 +1512,8 @@ def create_web_session(cnx, user_id, session_value):
     """, (user_id, session_value, expire_date))
 
     cnx.commit()
+    cursor.close()
+    cnx.close()
 
 def clean_expired_sessions(cnx):
     current_time = datetime.datetime.now()
@@ -1437,6 +1524,9 @@ def clean_expired_sessions(cnx):
     """, (current_time,))
 
     cnx.commit()
+    cursor.close()
+    cnx.close()
+
 
 def user_exists(cnx, username):
     cursor = cnx.cursor()
@@ -1444,4 +1534,5 @@ def user_exists(cnx, username):
     cursor.execute(query, (username,))
     count = cursor.fetchone()[0]
     cursor.close()
+    cnx.close()
     return count > 0

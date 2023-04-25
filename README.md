@@ -69,6 +69,7 @@ services:
     image: madeofpendletonwool/pinepods:latest
     ports:
       - "8034:8034"
+      - "8032:8032"
     environment:
       # Default Admin User Information
       USERNAME: pinepods
@@ -273,7 +274,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### Needed pre-beta release
 
-- [ ] Fully update Readme with updated info and docs including deployment guide
+- [x] Fully update Readme with updated info and docs including deployment guide
 - [X] Bugs
   - [X] Links when searching an episode are blue (wrong color)
   - [X] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
@@ -293,16 +294,16 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [X] After refresh auto update current route
   - [X] Double and triple check all interactions to verify functionality
   - [X] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
-- [ ] Dockerize
+- [x] Dockerize
   - [X] Package into Container/Dockerfile
   - [X] Pypods image in docker hub
   - [X] Create Docker-Compose Code
   - [X] Mixed content - Currently running http or https content can cause an error
-  - [ ] Option to run your own local podcast index api connection
+  - [x] Option to run your own local podcast index api connection
 
 ### To be added after beta version
 
-- [ ] Implement Gravitar API for profile picture
+- [x] Implement Gravitar API for profile picture
 - [ ] Rotating currently playing
 - [ ] Implement smoother scrolling with big list loading
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
