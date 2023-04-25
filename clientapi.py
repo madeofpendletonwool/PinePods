@@ -62,10 +62,10 @@ def get_api_key(api_key: str = Depends(api_key_header)):
     cnx.close()
 
     for api_key_entry in api_keys:
-        hashed_key = api_key_entry["APIKey"]
+        stored_key = api_key_entry["APIKey"]
         client_id = api_key_entry["APIKeyID"]
 
-        if pwd_context.verify(api_key, hashed_key):
+        if api_key == stored_key:  # Direct comparison instead of using Passlib
             return client_id
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")

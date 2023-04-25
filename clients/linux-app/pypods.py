@@ -176,7 +176,7 @@ def main(page: ft.Page, session_value=None):
             else:
                 if response.status_code == 200:
                     data = response.json()
-                    print("Request successful")
+                    self.show_error_snackbar(f"Connected to {proxy_host}!")
                     print(data)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
