@@ -3,10 +3,10 @@ import flet as ft
 # from flet import *
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
-import internal_functions.functions
+# import internal_functions.functions
 import database_functions.functions
-import app_functions.functions
-import Auth.Passfunctions
+# import app_functions.functions
+# import Auth.Passfunctions
 import api_functions.functions
 # Others
 import time
@@ -155,12 +155,16 @@ def main(page: ft.Page, session_value=None):
                 check_response = requests.get(check_url, timeout=10)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.overlay.remove(progress_stack)
+                    self.page.update()
                     return
 
                 check_data = check_response.json()
 
                 if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.overlay.remove(progress_stack)
+                    self.page.update()
                     return
 
                 response = requests.get(url, headers=headers, timeout=10)
@@ -4190,4 +4194,4 @@ def main(page: ft.Page, session_value=None):
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-ft.app(target=main, port=8035)
+ft.app(target=main, port=8036)
