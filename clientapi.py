@@ -77,6 +77,12 @@ async def get_data(client_id: str = Depends(get_api_key)):
 
     return {"status": "success", "data": "Your data"}
 
+@app.get('/api/pinepods_check')
+async def pinepods_check():
+    return {"status_code": 200, "pinepods_instance": True}
+
+
+
 
 if __name__ == '__main__':
     import uvicorn
