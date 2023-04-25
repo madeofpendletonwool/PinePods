@@ -15,3 +15,5 @@ appdirs
 passlib
 uvicorn
 fastapi
+itsdangerous
+aiofiles

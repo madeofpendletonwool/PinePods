@@ -5,6 +5,11 @@ import mysql.connector
 from mysql.connector import pooling
 import os
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+import secrets
+
+secret_key_middle = secrets.token_hex(32)
+
 
 
 from database_functions import functions
@@ -13,6 +18,7 @@ print('Client API Server is Starting!')
 
 app = FastAPI()
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(SessionMiddleware, secret_key=secret_key_middle)
 
 API_KEY_NAME = "pinepods_api"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -53,7 +59,7 @@ def get_api_keys(cnx):
     cursor.close()
     return rows
 
-def get_api_key(api_key: str = Depends(api_key_header)):
+def get_api_key(request: Request, api_key: str = Depends(api_key_header)):
     if api_key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key is missing")
 
@@ -66,9 +72,16 @@ def get_api_key(api_key: str = Depends(api_key_header)):
         client_id = api_key_entry["APIKeyID"]
 
         if api_key == stored_key:  # Direct comparison instead of using Passlib
+            request.session["api_key"] = api_key  # Store the API key in the session
             return client_id
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+def get_api_key_from_session(request: Request):
+    api_key = request.session.get("api_key")
+    if not api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return api_key
 
 @app.get('/api/data')
 async def get_data(client_id: str = Depends(get_api_key)):
