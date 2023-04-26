@@ -179,6 +179,18 @@ def main(page: ft.Page, session_value=None):
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     api_functions.functions.call_clean_expired_sessions(app_api.url)
                     api_functions.functions.call_check_saved_session(app_api.url)
+                    if login_screen == True:
+                        if page.web:
+                            start_login(page)
+                        else:
+                            if check_session:
+                                active_user.saved_login(check_session)
+                            else:
+                                start_login(page)
+                    else:
+                        active_user.user_id = 1
+                        active_user.fullname = 'Guest User'
+                        go_homelogin(page)
                     print(data)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
