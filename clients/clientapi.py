@@ -82,8 +82,7 @@ def get_api_key(request: Request, api_key: str = Depends(api_key_header)):
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
-def get_api_key_from_session(request: Request):
-    api_key = request.session.get("api_key")
+def get_api_key_from_header(api_key: str = Header(None)):
     if not api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return api_key
@@ -100,13 +99,13 @@ async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
 @app.post("/clean_expired_sessions/")
-async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_session)):
+async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     database_functions.functions.clean_expired_sessions(cnx)
     return {"status": "success"}
 
 @app.get("/check_saved_session/", response_model=int)
-async def api_check_saved_session(api_key: str = Depends(get_api_key_from_session)):
+async def api_check_saved_session(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.check_saved_session(cnx)
     if result:
@@ -115,13 +114,13 @@ async def api_check_saved_session(api_key: str = Depends(get_api_key_from_sessio
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
 
 @app.get("/guest_status", response_model=bool)
-async def api_guest_status(api_key: str = Depends(get_api_key_from_session)):
+async def api_guest_status(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.guest_status(cnx)
     return result
 
 @app.get("/user_details/{username}")
-async def api_get_user_details(username: str, api_key: str = Depends(get_api_key_from_session)):
+async def api_get_user_details(username: str, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.get_user_details(cnx, username)
     if result:
@@ -140,14 +139,16 @@ class VerifyPasswordInput(BaseModel):
     password: str
 
 @app.post("/verify_password/")
-async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_session)):
+async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_header)):
+    print("Inside api_verify_password")  # Add this line
     cnx = get_database_connection()
     is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
     return {"is_password_valid": is_password_valid}
 
 
+
 @app.get("/return_episodes/{user_id}")
-async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     episodes = database_functions.functions.return_episodes(cnx, user_id)
     if episodes:
@@ -160,8 +161,7 @@ async def api_check_episode_playback(
     user_id: int,
     episode_title: str,
     episode_url: str,
-    api_key: str = Depends(get_api_key_from_session)
-):
+    api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
         cnx, user_id, episode_title, episode_url
@@ -172,7 +172,7 @@ async def api_check_episode_playback(
         return {"has_playback": False, "listen_duration": 0}
 
 @app.get("/user_details_id/{user_id}")
-async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.get_user_details_id(cnx, user_id)
     if result:
@@ -181,7 +181,7 @@ async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_k
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 @app.get("/get_theme/{user_id}")
-async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     theme = database_functions.functions.get_theme(cnx, user_id)
     return {"theme": theme}
