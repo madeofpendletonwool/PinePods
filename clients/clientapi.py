@@ -101,6 +101,7 @@ async def pinepods_check():
 
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_header)):
+    print(f'in clean expired post {api_key}')
     cnx = get_database_connection()
     database_functions.functions.clean_expired_sessions(cnx)
     return {"status": "success"}

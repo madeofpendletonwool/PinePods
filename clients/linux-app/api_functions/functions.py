@@ -1,6 +1,7 @@
 import requests
 
 def call_clean_expired_sessions(url, headers):
+    print(f'in clean expired call {headers}')
     response = requests.post(url + "/clean_expired_sessions/", headers=headers)
     if response.status_code == 200:
         print(response.json())
