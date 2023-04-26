@@ -25,7 +25,7 @@ def call_guest_status(url, headers):
         print("Error fetching guest status:", response.status_code)
 
 def call_get_user_details(url, headers, username):
-    response = requests.get(url + f"/user_details/{username}")
+    response = requests.get(url + f"/user_details/{username}", headers=headers)
     if response.status_code == 200:
         user_details = response.json()
         print("User details:", user_details)
@@ -33,7 +33,7 @@ def call_get_user_details(url, headers, username):
         print("Error fetching user details:", response.status_code)
 
 def call_get_user_details_id(url, headers, user_id):
-    response = requests.get(url + f"/user_details_id/{user_id}")
+    response = requests.get(url + f"/user_details_id/{user_id}", headers=headers)
     if response.status_code == 200:
         user_details = response.json()
         print("User details:", user_details)
@@ -42,14 +42,14 @@ def call_get_user_details_id(url, headers, user_id):
 
 
 def call_create_session(url, headers, user_id):
-    response = requests.post(url + f"/create_session/{user_id}")
+    response = requests.post(url + f"/create_session/{user_id}", headers=headers)
     if response.status_code == 200:
         print("Session created successfully")
     else:
         print("Error creating session:", response.status_code)
 
 def call_verify_password(url, headers, username, password):
-    response = requests.post(url + "/verify_password/", json={"username": username, "password": password})
+    response = requests.post(url + "/verify_password/", json={"username": username, "password": password}, headers=headers)
     if response.status_code == 200:
         is_password_valid = response.json()["is_password_valid"]
         print("Is password valid:", is_password_valid)
@@ -57,7 +57,7 @@ def call_verify_password(url, headers, username, password):
         print("Error verifying password:", response.status_code)
 
 def call_return_episodes(url, headers, user_id):
-    response = requests.get(url + f"/return_episodes/{user_id}")
+    response = requests.get(url + f"/return_episodes/{user_id}", headers=headers)
     if response.status_code == 200:
         episodes = response.json()["episodes"]
         print("Episodes:", episodes)
@@ -70,7 +70,7 @@ def call_check_episode_playback(url, headers, user_id, episode_title, episode_ur
         "episode_title": episode_title,
         "episode_url": episode_url
     }
-    response = requests.post(url + "/check_episode_playback", json=payload)
+    response = requests.post(url + "/check_episode_playback", json=payload, headers=headers)
     if response.status_code == 200:
         playback_data = response.json()
         print("Playback data:", playback_data)
@@ -78,7 +78,7 @@ def call_check_episode_playback(url, headers, user_id, episode_title, episode_ur
         print("Error checking episode playback:", response.status_code)
 
 def call_get_user_details_id(url, headers, user_id):
-    response = requests.get(url + f"/user_details_id/{user_id}")
+    response = requests.get(url + f"/user_details_id/{user_id}", headers=headers)
     if response.status_code == 200:
         user_details = response.json()
         print("User details:", user_details)
@@ -86,7 +86,7 @@ def call_get_user_details_id(url, headers, user_id):
         print("Error fetching user details:", response.status_code)
 
 def call_get_theme(url, headers, user_id):
-    response = requests.get(url + f"/get_theme/{user_id}")
+    response = requests.get(url + f"/get_theme/{user_id}", headers=headers)
     if response.status_code == 200:
         theme = response.json()
         print("Theme:", theme)
