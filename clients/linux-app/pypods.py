@@ -180,6 +180,7 @@ def main(page: ft.Page, session_value=None):
                     data = response.json()
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
+                    print(self.headers)
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers)
                     if login_screen == True:
                         if page.web:
