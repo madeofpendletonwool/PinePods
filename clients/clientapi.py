@@ -98,13 +98,13 @@ async def get_data(client_id: str = Depends(get_api_key)):
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
-@app.post("/clean_expired_sessions/")
+@app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     database_functions.functions.clean_expired_sessions(cnx)
     return {"status": "success"}
 
-@app.get("/check_saved_session/", response_model=int)
+@app.get("/api/data/check_saved_session/", response_model=int)
 async def api_check_saved_session(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.check_saved_session(cnx)
@@ -113,13 +113,13 @@ async def api_check_saved_session(api_key: str = Depends(get_api_key_from_header
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
 
-@app.get("/guest_status", response_model=bool)
+@app.get("/api/data/guest_status", response_model=bool)
 async def api_guest_status(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.guest_status(cnx)
     return result
 
-@app.get("/user_details/{username}")
+@app.get("/api/data/user_details/{username}")
 async def api_get_user_details(username: str, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.get_user_details(cnx, username)
@@ -128,7 +128,7 @@ async def api_get_user_details(username: str, api_key: str = Depends(get_api_key
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-@app.post("/create_session/{user_id}")
+@app.post("/api/data/create_session/{user_id}")
 async def api_create_session(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     database_functions.functions.create_session(cnx, user_id)
@@ -138,7 +138,7 @@ class VerifyPasswordInput(BaseModel):
     username: str
     password: str
 
-@app.post("/verify_password/")
+@app.post("/api/data/verify_password/")
 async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_header)):
     print("Inside api_verify_password")  # Add this line
     cnx = get_database_connection()
@@ -147,7 +147,7 @@ async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(
 
 
 
-@app.get("/return_episodes/{user_id}")
+@app.get("/api/data/return_episodes/{user_id}")
 async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     episodes = database_functions.functions.return_episodes(cnx, user_id)
@@ -156,7 +156,7 @@ async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_f
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No episodes found")
 
-@app.post("/check_episode_playback")
+@app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
     user_id: int,
     episode_title: str,
@@ -171,7 +171,7 @@ async def api_check_episode_playback(
     else:
         return {"has_playback": False, "listen_duration": 0}
 
-@app.get("/user_details_id/{user_id}")
+@app.get("/api/data/user_details_id/{user_id}")
 async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     result = database_functions.functions.get_user_details_id(cnx, user_id)
@@ -180,7 +180,7 @@ async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_k
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-@app.get("/get_theme/{user_id}")
+@app.get("/api/data/get_theme/{user_id}")
 async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     theme = database_functions.functions.get_theme(cnx, user_id)
