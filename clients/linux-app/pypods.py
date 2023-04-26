@@ -141,7 +141,7 @@ def main(page: ft.Page, session_value=None):
             check_url = server_name + "/api/pinepods_check"
             self.url = url
             self.api_value = api_value
-            self.headers = {"api_key": self.api_value}
+            self.headers = {"Api_Key": self.api_value}
             print(self.url)
             print(self.api_value)
 

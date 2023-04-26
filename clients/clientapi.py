@@ -82,7 +82,7 @@ def get_api_key(request: Request, api_key: str = Depends(api_key_header)):
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
-def get_api_key_from_header(api_key: str = Header(None)):
+def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
     print("Received API Key:", api_key)  # Debugging 
     if not api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
