@@ -4,11 +4,13 @@ from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
 import os
+from datetime import datetime
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
 import requests
 import database_functions.functions
+import Auth.Passfunctions
 from pydantic import BaseModel
 
 secret_key_middle = secrets.token_hex(32)
@@ -111,6 +113,78 @@ async def api_check_saved_session(api_key: str = Depends(get_api_key_from_sessio
         return result
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
+
+@app.get("/guest_status", response_model=bool)
+async def api_guest_status(api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    result = database_functions.functions.guest_status(cnx)
+    return result
+
+@app.get("/user_details/{username}")
+async def api_get_user_details(username: str, api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    result = database_functions.functions.get_user_details(cnx, username)
+    if result:
+        return result
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+@app.post("/create_session/{user_id}")
+async def api_create_session(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    database_functions.functions.create_session(cnx, user_id)
+    return {"status": "success"}
+
+class VerifyPasswordInput(BaseModel):
+    username: str
+    password: str
+
+@app.post("/verify_password/")
+async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
+    return {"is_password_valid": is_password_valid}
+
+
+@app.get("/return_episodes/{user_id}")
+async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    episodes = database_functions.functions.return_episodes(cnx, user_id)
+    if episodes:
+        return {"episodes": episodes}
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No episodes found")
+
+@app.post("/check_episode_playback")
+async def api_check_episode_playback(
+    user_id: int,
+    episode_title: str,
+    episode_url: str,
+    api_key: str = Depends(get_api_key_from_session)
+):
+    cnx = get_database_connection()
+    has_playback, listen_duration = database_functions.functions.check_episode_playback(
+        cnx, user_id, episode_title, episode_url
+    )
+    if has_playback:
+        return {"has_playback": True, "listen_duration": listen_duration}
+    else:
+        return {"has_playback": False, "listen_duration": 0}
+
+@app.get("/user_details_id/{user_id}")
+async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    result = database_functions.functions.get_user_details_id(cnx, user_id)
+    if result:
+        return result
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+@app.get("/get_theme/{user_id}")
+async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+    cnx = get_database_connection()
+    theme = database_functions.functions.get_theme(cnx, user_id)
+    return {"theme": theme}
 
 
 

@@ -121,10 +121,6 @@ cnxpool = mysql.connector.pooling.MySQLConnectionPool(
 def get_database_connection():
     return cnxpool.get_connection()
 
-# cnx = get_database_connection()
-
-database_functions.functions.clean_expired_sessions(get_database_connection())
-
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
@@ -181,6 +177,8 @@ def main(page: ft.Page, session_value=None):
                 if response.status_code == 200:
                     data = response.json()
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    api_functions.functions.call_clean_expired_sessions(app_api.url)
+                    api_functions.functions.call_check_saved_session(app_api.url)
                     print(data)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
@@ -802,7 +800,7 @@ def main(page: ft.Page, session_value=None):
 
             # Home Screen Podcast Layout (Episodes in Newest order)
 
-            home_episodes = database_functions.functions.return_episodes(get_database_connection(), active_user.user_id)
+            home_episodes = api_functions.functions.call_return_episodes(app_api.url, active_user.user_id)
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -895,7 +893,7 @@ def main(page: ft.Page, session_value=None):
                             home_entry_description = ft.Text(home_ep_desc)
 
                     home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, home_ep_title, home_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, active_user.user_id, home_ep_title, home_ep_url)
                     home_entry_released = ft.Text(f'Released on: {home_pub_date}', color=active_user.font_color)
 
                     home_art_no = random.randint(1, 12)
@@ -1213,7 +1211,7 @@ def main(page: ft.Page, session_value=None):
 
             # Home Screen Podcast Layout (Episodes in Newest order)
 
-            home_episodes = database_functions.functions.return_episodes(get_database_connection(), active_user.user_id)
+            home_episodes = api_functions.functions.call_return_episodes(app_api.url, active_user.user_id)
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -1306,7 +1304,7 @@ def main(page: ft.Page, session_value=None):
                             home_entry_description = ft.Text(home_ep_desc)
 
                     home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, home_ep_title, home_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, active_user.user_id, home_ep_title, home_ep_url)
                     home_entry_released = ft.Text(f'Released on: {home_pub_date}', color=active_user.font_color)
 
                     home_art_no = random.randint(1, 12)
@@ -1522,7 +1520,7 @@ def main(page: ft.Page, session_value=None):
             ) 
 
         if page.route == "/login" or page.route == "/login":
-            guest_enabled = database_functions.functions.guest_status(get_database_connection())
+            guest_enabled = api_functions.functions.call_guest_status(app_api.url)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
@@ -3547,9 +3545,9 @@ def main(page: ft.Page, session_value=None):
             if not username or not password:
                 on_click_novalues(page)
                 return
-            pass_correct = Auth.Passfunctions.verify_password(get_database_connection(), username, password)
+            pass_correct = api_functions.functions.call_verify_password(app_api.url, username, password)
             if pass_correct == True:
-                login_details = database_functions.functions.get_user_details(get_database_connection(), username)
+                login_details = api_functions.functions.call_get_user_details(app_api.url, username)
                 self.user_id = login_details['UserID']
                 self.fullname = login_details['Fullname']
                 self.username = login_details['Username']
@@ -3558,13 +3556,13 @@ def main(page: ft.Page, session_value=None):
                     if page.web:
                         print('Web version currently doesnt retain sessions')
                     else:
-                        database_functions.functions.create_session(get_database_connection(), self.user_id)
+                        api_functions.functions.call_create_session(app_api.url, self.user_id)
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
 
         def saved_login(self, user_id):
-            login_details = database_functions.functions.get_user_details_id(get_database_connection(), user_id)
+            login_details = api_functions.functions.call_get_user_details_id(app_api.url, user_id)
             self.user_id = login_details['UserID']
             self.fullname = login_details['Fullname']
             self.username = login_details['Username']
@@ -3586,7 +3584,7 @@ def main(page: ft.Page, session_value=None):
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
-            active_theme = database_functions.functions.get_theme(get_database_connection(), self.user_id)
+            active_theme = api_functions.functions.call_get_theme(app_api.url, self.user_id)
             if active_theme == 'light':
                 page.theme_mode = "light"
                 self.main_color = '#E1E1E1'
@@ -4164,30 +4162,30 @@ def main(page: ft.Page, session_value=None):
     # page.appbar.update()
     page.appbar.visible = False
 
-    def create_connector():
-        # Create database connector
-        cnx = mysql.connector.connect(
-            host=db_host,
-            port=db_port,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-            charset='utf8mb4'
-        )
+    # def create_connector():
+    #     # Create database connector
+    #     cnx = mysql.connector.connect(
+    #         host=db_host,
+    #         port=db_port,
+    #         user=db_user,
+    #         password=db_password,
+    #         database=db_name,
+    #         charset='utf8mb4'
+    #     )
 
-        # Call the functions
-        api_functions.functions.call_clean_expired_sessions(app_api.url)
-        api_functions.functions.call_check_saved_session(app_api.url)
+    #     # Call the functions
+    #     api_functions.functions.call_clean_expired_sessions(app_api.url)
+    #     api_functions.functions.call_check_saved_session(app_api.url)
 
-        if login_screen == True:
-            if check_session:
-                active_user.saved_login(check_session)
-            else:
-                start_login(page)
-        else:
-            active_user.user_id = 1
-            active_user.fullname = 'Guest User'
-            go_homelogin(page)
+    #     if login_screen == True:
+    #         if check_session:
+    #             active_user.saved_login(check_session)
+    #         else:
+    #             start_login(page)
+    #     else:
+    #         active_user.user_id = 1
+    #         active_user.fullname = 'Guest User'
+    #         go_homelogin(page)
 
     start_config(page)
 
