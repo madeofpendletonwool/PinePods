@@ -48,7 +48,7 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     IsAdmin TINYINT(1)
                 )""")
 
-cursor.execute("""CREATE TABLE APIKeys (
+cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                     APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
                     UserID INT,
                     APIKey TEXT,
