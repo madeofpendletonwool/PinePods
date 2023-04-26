@@ -129,7 +129,7 @@ async def api_get_user_details(username: str, api_key: str = Depends(get_api_key
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 @app.post("/create_session/{user_id}")
-async def api_create_session(user_id: int, api_key: str = Depends(get_api_key_from_session)):
+async def api_create_session(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     database_functions.functions.create_session(cnx, user_id)
     return {"status": "success"}
