@@ -731,6 +731,7 @@ def main(page: ft.Page, session_value=None):
             # Home Screen Podcast Layout (Episodes in Newest order)
 
             home_episodes = database_functions.functions.return_episodes(get_database_connection(), active_user.user_id)
+            print(home_episodes)
 
             if home_episodes is None:
                 home_ep_number = 1

@@ -74,6 +74,7 @@ def call_return_episodes(url, headers, user_id):
             print("Episodes:", episodes)
         else:
             print("No episodes found.")
+            return None
         return episodes
     else:
         print("Error fetching episodes:", response.status_code)
