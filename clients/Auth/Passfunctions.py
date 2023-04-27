@@ -40,4 +40,5 @@ def verify_password(cnx, username: str, password: str) -> bool:
     print(f"Generated password_hash: {password_hash}")
 
     # Compare the hashed password with the stored hash
+    print(password_hash == hashed_password)
     return password_hash == hashed_password
