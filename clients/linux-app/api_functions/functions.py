@@ -70,11 +70,15 @@ def call_return_episodes(url, headers, user_id):
     response = requests.get(url + f"/return_episodes/{user_id}", headers=headers)
     if response.status_code == 200:
         episodes = response.json()["episodes"]
-        print("Episodes:", episodes)
+        if episodes:
+            print("Episodes:", episodes)
+        else:
+            print("No episodes found.")
         return episodes
     else:
         print("Error fetching episodes:", response.status_code)
         return None
+
 
 def call_check_episode_playback(url, headers, user_id, episode_title, episode_url):
     payload = {

@@ -153,10 +153,10 @@ async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(
 async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     episodes = database_functions.functions.return_episodes(cnx, user_id)
-    if episodes:
-        return {"episodes": episodes}
-    else:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No episodes found")
+    if episodes is None:
+        episodes = []  # Return an empty list instead of raising an exception
+    return {"episodes": episodes}
+
 
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
