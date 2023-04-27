@@ -1405,7 +1405,6 @@ def check_podcast(cnx, user_id, podcast_name):
         if cursor:
             cursor.close()
         cnx.commit()
-    cursor.close()
     cnx.close()
 
 

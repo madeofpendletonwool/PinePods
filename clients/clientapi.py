@@ -12,6 +12,7 @@ import requests
 import database_functions.functions
 import Auth.Passfunctions
 from pydantic import BaseModel
+from typing import Dict
 
 secret_key_middle = secrets.token_hex(32)
 
@@ -146,9 +147,6 @@ async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(
     is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
     return {"is_password_valid": is_password_valid}
 
-
-
-
 @app.get("/api/data/return_episodes/{user_id}")
 async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
@@ -187,6 +185,154 @@ async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_he
     cnx = get_database_connection()
     theme = database_functions.functions.get_theme(cnx, user_id)
     return {"theme": theme}
+
+@app.post("/api/data/add_podcast")
+async def api_add_podcast(podcast_values: List[str], user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    result = database_functions.functions.add_podcast(cnx, podcast_values, user_id)
+    if result:
+        return {"success": True}
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Podcast already exists for the user")
+
+@app.post("/api/data/enable_disable_guest")
+async def api_enable_disable_guest(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.enable_disable_guest(cnx)
+    return {"success": True}
+
+@app.post("/api/data/enable_disable_self_service")
+async def api_enable_disable_self_service(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.enable_disable_self_service(cnx)
+    return {"success": True}
+
+@app.get("/api/data/self_service_status")
+async def api_self_service_status(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    status = database_functions.functions.self_service_status(cnx)
+    return {"status": status}
+
+@app.put("/api/data/increment_listen_time/{user_id}")
+async def api_increment_listen_time(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.increment_listen_time(cnx, user_id)
+    return {"detail": "Listen time incremented."}
+
+@app.put("/api/data/increment_played/{user_id}")
+async def api_increment_played(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.increment_played(cnx, user_id)
+    return {"detail": "Played count incremented."}
+
+
+class RecordHistoryData(BaseModel):
+    episode_title: str
+    user_id: int
+    episode_pos: float
+
+@app.post("/api/data/record_podcast_history")
+async def api_record_podcast_history(data: RecordHistoryData, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.record_podcast_history(cnx, data.episode_title, data.user_id, data.episode_pos)
+    return {"detail": "Podcast history recorded."}
+
+class DownloadPodcastData(BaseModel):
+    episode_url: str
+    title: str
+    user_id: int
+
+@app.post("/api/data/download_podcast")
+async def api_download_podcast(data: DownloadPodcastData, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    result = database_functions.functions.download_podcast(cnx, data.episode_url, data.title, data.user_id)
+    if result:
+        return {"detail": "Podcast downloaded."}
+    else:
+        raise HTTPException(status_code=400, detail="Error downloading podcast.")
+
+class DeletePodcastData(BaseModel):
+    episode_url: str
+    title: str
+    user_id: int
+
+@app.post("/api/data/delete_podcast")
+async def api_delete_podcast(data: DeletePodcastData, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.delete_podcast(cnx, data.episode_url, data.title, data.user_id)
+    return {"detail": "Podcast deleted."}
+
+class SaveEpisodeData(BaseModel):
+    episode_url: str
+    title: str
+    user_id: int
+
+@app.post("/api/data/save_episode")
+async def api_save_episode(data: SaveEpisodeData, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    success = database_functions.functions.save_episode(cnx, data.episode_url, data.title, data.user_id)
+    if success:
+        return {"detail": "Episode saved."}
+    else:
+        raise HTTPException(status_code=400, detail="Error saving episode.")
+
+class RemoveSavedEpisodeData(BaseModel):
+    episode_url: str
+    title: str
+    user_id: int
+
+@app.post("/api/data/remove_saved_episode")
+async def api_remove_saved_episode(data: RemoveSavedEpisodeData, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.remove_saved_episode(cnx, data.episode_url, data.title, data.user_id)
+    return {"detail": "Saved episode removed."}
+
+class RecordListenDurationData(BaseModel):
+    episode_url: str
+    title: str
+    user_id: int
+    listen_duration: float
+
+@app.post("/api/data/record_listen_duration")
+async def api_record_listen_duration(data: RecordListenDurationData, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.record_listen_duration(cnx, data.episode_url, data.title, data.user_id, data.listen_duration)
+    return {"detail": "Listen duration recorded."}
+
+@app.get("/api/data/refresh_pods")
+async def api_refresh_pods(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.refresh_pods(cnx)
+    return {"detail": "Podcasts refreshed."}
+
+@app.get("/api/data/get_stats")
+async def api_get_stats(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    stats = database_functions.functions.get_stats(cnx, user_id)
+    return stats
+
+@app.get("/api/data/get_user_episode_count")
+async def api_get_user_episode_count(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    episode_count = database_functions.functions.get_user_episode_count(cnx, user_id)
+    return episode_count
+
+@app.get("/api/data/get_user_info")
+async def api_get_user_info(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    user_info = database_functions.functions.get_user_info(cnx)
+    return user_info
+
+class CheckPodcastData(BaseModel):
+    user_id: int
+    podcast_name: str
+
+@app.post("/api/data/check_podcast", response_model=Dict[str, bool])
+async def api_check_podcast(api_key: str = Depends(get_api_key_from_header), data: CheckPodcastData = Depends()):
+    cnx = get_database_connection()
+    exists = database_functions.functions.check_podcast(cnx, data.user_id, data.podcast_name)
+    return {"exists": exists}
+
 
 
 

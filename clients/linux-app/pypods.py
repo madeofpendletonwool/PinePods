@@ -219,7 +219,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
-        return_value = database_functions.functions.add_podcast(get_database_connection(), podcast_values, active_user.user_id)
+        return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values, active_user.user_id)
         page.overlay.remove(progress_stack)
         if return_value == True:
             page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
@@ -303,13 +303,13 @@ def main(page: ft.Page, session_value=None):
         page.launch_url(clicked_podcast.website)
 
     def guest_user_change(e):
-        database_functions.functions.enable_disable_guest(get_database_connection())
+        api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
         page.snack_bar.open = True
         page.update()
 
     def self_service_change(e):
-        database_functions.functions.enable_disable_self_service(get_database_connection())
+        api_functions.functions.call_enable_disable_self_service(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
         page.snack_bar.open = True
         page.update()
@@ -376,9 +376,9 @@ def main(page: ft.Page, session_value=None):
             self_service_dlg.open = False
             self.page.update()
 
-        self_service_status = database_functions.functions.self_service_status(get_database_connection())
+        self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
 
-        if self_service_status == 0:
+        if not self_service_status:
             self_service_dlg = ft.AlertDialog(
                 modal=True,
                 title=ft.Text(f"User Creation"),
@@ -394,7 +394,7 @@ def main(page: ft.Page, session_value=None):
             self_service_dlg.open = True
             self.page.update()
 
-        elif self_service_status == 1:
+        elif self_service_status:
             new_user = User(page)
 
             self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
@@ -496,7 +496,8 @@ def main(page: ft.Page, session_value=None):
             while True:
                 time.sleep(60)
                 if self.audio_playing:
-                    database_functions.functions.increment_listen_time(get_database_connection(), active_user.user_id)
+                    api_functions.functions.call_increment_listen_time(app_api.url, app_api.headers, active_user.user_id)
+
 
         def play_episode(self, e=None, listen_duration=None):            
             if self.loading_audio == True:
@@ -552,7 +553,8 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.seek(listen_math)
 
                 self.record_history()
-                database_functions.functions.increment_played(get_database_connection(), active_user.user_id)
+                api_functions.functions.call_increment_played(app_api.url, app_api.headers, active_user.user_id)
+
 
                 # convert milliseconds to a timedelta object
                 delta = datetime.timedelta(milliseconds=media_length)
@@ -731,13 +733,13 @@ def main(page: ft.Page, session_value=None):
             self.audio_element.seek(time_ms)
 
         def record_history(self):
-            database_functions.functions.record_podcast_history(get_database_connection(), self.name, active_user.user_id, 0)
+            api_functions.functions.call_record_podcast_history(app_api.url, app_api.headers, self.name, active_user.user_id, 0)
 
         def download_pod(self):
-            database_functions.functions.download_podcast(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_download_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def delete_pod(self):
-            database_functions.functions.delete_podcast(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
 
         def queue_pod(self, url):
@@ -752,10 +754,10 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
         def save_pod(self):
-            database_functions.functions.save_episode(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_save_episode(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def remove_saved_pod(self):
-            database_functions.functions.remove_saved_episode(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_remove_saved_episode(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def get_queue(self):
             return self.queue
@@ -790,7 +792,7 @@ def main(page: ft.Page, session_value=None):
 
         def record_listen_duration(self):
             listen_duration = self.get_current_seconds()
-            database_functions.functions.record_listen_duration(get_database_connection(), self.url, self.name, active_user.user_id, listen_duration)
+            api_functions.functions.call_record_listen_duration(app_api.url, app_api.headers, self.url, self.name, active_user.user_id, listen_duration)
 
         def seek_to_second(self, second):
             """
@@ -804,7 +806,7 @@ def main(page: ft.Page, session_value=None):
         progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
         page.overlay.append(progress_stack)
         page.update()
-        database_functions.functions.refresh_pods(get_database_connection())
+        api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
         page.overlay.remove(progress_stack)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
         page.snack_bar.open = True
@@ -1404,7 +1406,8 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/userstats" or page.route == "/userstats":
 
-            user_stats = database_functions.functions.get_stats(get_database_connection(), active_user.user_id)
+            user_stats = api_functions.functions.call_get_stats(app_api.url, app_api.headers, active_user.user_id)
+
 
             stats_created_date = user_stats['UserCreated']
             stats_pods_played = user_stats['PodcastsPlayed']
@@ -1413,7 +1416,7 @@ def main(page: ft.Page, session_value=None):
             stats_eps_saved = user_stats['EpisodesSaved']
             stats_eps_downloaded = user_stats['EpisodesDownloaded']
 
-            user_ep_count = database_functions.functions.get_user_episode_count(get_database_connection(), active_user.user_id)
+            user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers, active_user.user_id)
 
             user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
             date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
@@ -1881,7 +1884,7 @@ def main(page: ft.Page, session_value=None):
             #User Table Setup - Admin only
             edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
 
-            user_information = database_functions.functions.get_user_info(get_database_connection())
+            user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
 
             for entry in user_information:
@@ -1936,7 +1939,7 @@ def main(page: ft.Page, session_value=None):
             user_edit_container.padding=padding.only(left=70, right=50)
 
             # Guest User Settings 
-            guest_status_bool = database_functions.functions.guest_status(get_database_connection())
+            guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             if guest_status_bool == True:
                 guest_status = 'enabled'
             else:
@@ -1953,7 +1956,7 @@ def main(page: ft.Page, session_value=None):
             guest_info.padding=padding.only(left=70, right=50)
 
             # User Self Service Creation
-            self_service_bool = database_functions.functions.self_service_status(get_database_connection())
+            self_service_bool = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
             if self_service_bool == True:
                 self_service_status = 'enabled'
             else:
@@ -1969,109 +1972,6 @@ def main(page: ft.Page, session_value=None):
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
 
-            ### API Key Settings
-
-            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=22)
-
-            def create_api(e):
-                def close_api_dlg(e):
-                    create_api_dlg.open = False
-                    page.update()
-
-                new_key = database_functions.functions.create_api_key(get_database_connection(), active_user.user_id)
-
-                create_api_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"New API key listed below"),
-                content=ft.Column(controls=[
-                ft.Text("Be sure to copy your key. There's no way to ever see it again (You can always create a new one if you forget)"),
-                ft.Text(f'Api key: {new_key}', selectable=True),
-                    ], tight=True),
-                actions=[
-                ft.TextButton("Close", on_click=close_api_dlg)
-                ],
-                actions_alignment=ft.MainAxisAlignment.END
-                )
-                page.dialog = create_api_dlg
-                create_api_dlg.open = True
-                page.update()
-
-            def open_edit_api(e):
-                def close_api_dlg(e):
-                    modify_api_dlg.open = False
-                    page.update()
-
-                def delete_api(e):
-                    print(active_user.api_id)
-                    database_functions.functions.delete_api(get_database_connection(), active_user.api_id)
-                    modify_api_dlg.open = False
-                    page.update()
-
-                modify_api_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"Would you like to delete api {active_user.api_id}?"),
-                actions=[
-                ft.TextButton(content=ft.Text("Delete API", color=ft.colors.RED_400), on_click=delete_api),
-                ft.TextButton("Cancel", on_click=close_api_dlg)
-                ],
-                actions_alignment=ft.MainAxisAlignment.END
-                )
-
-                page.dialog = modify_api_dlg
-                modify_api_dlg.open = True
-                page.update()
-
-            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
-
-            api_information = database_functions.functions.get_api_info(get_database_connection())
-            api_table_rows = []
-            def create_on_select_changed_lambda(api_id, pages):
-                return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
-
-
-            for entry in api_information:
-                api_id = entry['APIKeyID']
-                api_key = '...' + entry['LastFourDigits']
-                username = entry['Username']
-                api_created = entry['Created']
-                
-                # Create a new data row with the user information
-                row = ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(api_id)),
-                        ft.DataCell(ft.Text(api_key)),
-                        ft.DataCell(ft.Text(username)),
-                        ft.DataCell(ft.Text(api_created))
-                    ],
-                    on_select_changed=create_on_select_changed_lambda(api_id, page)
-                )
-                
-                # Append the row to the list of data rows
-                api_table_rows.append(row)
-
-            api_table = ft.DataTable(
-                bgcolor=active_user.main_color, 
-                border=ft.border.all(2, active_user.main_color),
-                border_radius=10,
-                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                heading_row_color=active_user.nav_color1,
-                heading_row_height=100,
-                data_row_color={"hovered": active_user.font_color},
-                # show_checkbox_column=True,
-                columns=[
-                ft.DataColumn(ft.Text("API ID"), numeric=True),
-                ft.DataColumn(ft.Text("API Last Four Digits")),
-                ft.DataColumn(ft.Text("User Who Created")),
-                ft.DataColumn(ft.Text("Created At")),
-            ],
-                rows=api_table_rows
-                )
-            api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
-            api_edit_container = ft.Container(content=api_edit_column)
-            api_edit_container.padding=padding.only(left=70, right=50)
-
-
 
             # Check if admin settings should be displayed 
             user_is_admin = database_functions.functions.user_admin_check(get_database_connection(), int(active_user.user_id))
@@ -2083,7 +1983,6 @@ def main(page: ft.Page, session_value=None):
                 user_edit_container.visible = False
                 guest_info.visible = False
                 self_service_info.visible = False
-                api_edit_container.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
@@ -2095,8 +1994,7 @@ def main(page: ft.Page, session_value=None):
                         user_row_container,
                         user_edit_container,
                         guest_info,
-                        self_service_info,
-                        api_edit_container
+                        self_service_info
                     ]
                     
                 )
@@ -2110,7 +2008,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
             # Check if podcast is already in database for user
-            podcast_status = database_functions.functions.check_podcast(get_database_connection(), active_user.user_id, clicked_podcast.name)
+            podcast_status = api_functions.functions.call_check_podcast(app_api.url, app_api.headers, active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
             # First Podcast Info
             display_pod_art_no = random.randint(1, 12)
