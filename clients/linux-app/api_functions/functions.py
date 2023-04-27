@@ -49,14 +49,14 @@ def call_create_session(url, headers, user_id):
         print("Error creating session:", response.status_code)
 
 def call_verify_password(url, headers, username, password):
-    print(f"Username: {username}")
-    print(f"Password: {password}")
     response = requests.post(url + "/verify_password/", json={"username": username, "password": password}, headers=headers)
     if response.status_code == 200:
         is_password_valid = response.json()["is_password_valid"]
         print("Is password valid:", is_password_valid)
+        return is_password_valid  # Add this line
     else:
         print("Error verifying password:", response.status_code)
+        return None  # Add this line
 
 
 def call_return_episodes(url, headers, user_id):
