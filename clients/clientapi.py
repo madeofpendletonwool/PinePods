@@ -142,10 +142,13 @@ class VerifyPasswordInput(BaseModel):
 
 @app.post("/api/data/verify_password/")
 async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_header)):
-    print("Inside api_verify_password")  # Add this line
+    print("Inside api_verify_password")
+    print(f"Username: {data.username}")
+    print(f"Password: {data.password}")
     cnx = get_database_connection()
     is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
     return {"is_password_valid": is_password_valid}
+
 
 
 
