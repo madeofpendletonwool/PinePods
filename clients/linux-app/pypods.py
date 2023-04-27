@@ -3561,7 +3561,6 @@ def main(page: ft.Page, session_value=None):
                 on_click_novalues(page)
                 return
             pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
-            print(f'pass correct {pass_correct}')
             if pass_correct == True:
                 login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
                 self.user_id = login_details['UserID']
