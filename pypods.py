@@ -3116,6 +3116,7 @@ def main(page: ft.Page, session_value=None):
             self.password = None
             self.email = None
             self.main_color = 'colors.BLUE_GREY'
+            self.bgcolor = 'colors.BLUE_GREY'
             self.accent_color = 'colors.BLUE_GREY'
             self.tertiary_color = 'colors.BLUE_GREY'
             self.font_color = 'colors.BLUE_GREY'

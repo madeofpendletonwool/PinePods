@@ -45,7 +45,7 @@ def setup_connection_pool():
 
     return pooling.MySQLConnectionPool(
         pool_name="pinepods_api_pool",
-        pool_size=5,  # Adjust the pool size according to your needs
+        pool_size=25,  # Adjust the pool size according to your needs
         pool_reset_session=True,
         host=db_host,
         port=db_port,
@@ -142,9 +142,6 @@ class VerifyPasswordInput(BaseModel):
 
 @app.post("/api/data/verify_password/")
 async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_header)):
-    print("Inside api_verify_password")
-    print(f"Username: {data.username}")
-    print(f"Password: {data.password}")
     cnx = get_database_connection()
     is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
     return {"is_password_valid": is_password_valid}
