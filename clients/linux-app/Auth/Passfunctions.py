@@ -20,6 +20,8 @@ def hash_password(password: str):
 #     return password_hash == hashed_password
 
 def verify_password(cnx, username: str, password: str) -> bool:
+    print(username)
+    print(password)
     print('checking pw')
     cursor = cnx.cursor()
     cursor.execute("SELECT Hashed_PW, Salt FROM Users WHERE Username = %s", (username,))
