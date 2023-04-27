@@ -109,7 +109,7 @@ def call_get_user_details_id(url, headers, user_id):
 def call_get_theme(url, headers, user_id):
     response = requests.get(url + f"/get_theme/{user_id}", headers=headers)
     if response.status_code == 200:
-        theme = response.json()
+        theme = response.json()["theme"]
         print("Theme:", theme)
         return theme
     else:

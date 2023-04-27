@@ -816,7 +816,6 @@ def main(page: ft.Page, session_value=None):
             # Home Screen Podcast Layout (Episodes in Newest order)
 
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers, active_user.user_id)
-            print(home_episodes)
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -1139,6 +1138,9 @@ def main(page: ft.Page, session_value=None):
     def go_homelogin(page):
         # navbar.visible = True
         active_user.theme_select()
+        print(active_user.username)
+        print(active_user.main_color)
+        print(active_user.bgcolor)
         # Theme user elements
         pypods_appbar.bgcolor = active_user.main_color
         pypods_appbar.color = active_user.accent_color
@@ -1228,6 +1230,7 @@ def main(page: ft.Page, session_value=None):
             # Home Screen Podcast Layout (Episodes in Newest order)
 
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers, active_user.user_id)
+            print(f'home eps {home_episodes}')
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -3602,6 +3605,7 @@ def main(page: ft.Page, session_value=None):
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
             active_theme = api_functions.functions.call_get_theme(app_api.url, app_api.headers, self.user_id)
+            print(active_theme)
             if active_theme == 'light':
                 page.theme_mode = "light"
                 self.main_color = '#E1E1E1'
