@@ -299,8 +299,6 @@ def return_selected_episode(cnx, user_id, title, url):
     return episodes
 
 
-
-
 def return_pods(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
@@ -1016,8 +1014,6 @@ def delete_api(cnx, api_id):
     cnx.commit()
     cursor.close()
     cnx.close()
-
-
 
 def set_username(cnx, user_id, new_username):
     cursor = cnx.cursor()

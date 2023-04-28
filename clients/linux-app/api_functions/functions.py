@@ -300,3 +300,115 @@ def call_check_podcast(url, headers, user_id, podcast_name):
         print("Error checking podcast:", response.status_code)
         return False
 
+def call_user_admin_check(url, headers, user_id):
+    response = requests.get(url + f"/api/user_admin_check/{user_id}", headers=headers)
+    if response.status_code == 200:
+        return response.json()["is_admin"]
+    else:
+        print("Error fetching user admin status:", response.status_code)
+        return False
+
+def call_remove_podcast(url, headers, podcast_name, user_id):
+    data = {"podcast_name": podcast_name, "user_id": user_id}
+    response = requests.post(url + "/api/remove_podcast", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error removing podcast:", response.status_code)
+        return False
+
+def call_return_pods(url, headers, user_id):
+    response = requests.get(url + f"/api/return_pods/{user_id}", headers=headers)
+    if response.status_code == 200:
+        return response.json()["pods"]
+    else:
+        print("Error fetching podcasts:", response.status_code)
+        return None
+
+def call_user_history(url, headers, user_id):
+    response = requests.get(url + f"/api/user_history/{user_id}", headers=headers)
+    if response.status_code == 200:
+        return response.json()["history"]
+    else:
+        print("Error fetching user history:", response.status_code)
+        return None
+
+def call_saved_episode_list(url, headers, user_id):
+    response = requests.get(url + f"/api/saved_episode_list/{user_id}", headers=headers)
+    if response.status_code == 200:
+        return response.json()["saved_episodes"]
+    else:
+        print("Error fetching saved episode list:", response.status_code)
+        return None
+
+def call_download_episode_list(url, headers, user_id):
+    data = {"user_id": user_id}
+    response = requests.post(url + "/api/download_episode_list", headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["downloaded_episodes"]
+    else:
+        print("Error fetching downloaded episodes:", response.status_code)
+        return None
+
+def call_get_queue_list(url, headers, queue_urls):
+    data = {"queue_urls": queue_urls}
+    response = requests.post(url + "/api/get_queue_list", headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["queue_list"]
+    else:
+        print("Error fetching queue list:", response.status_code)
+        return None
+
+def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
+    data = {"user_id": user_id, "title": title, "url": episode_url}
+    response = requests.post(api_url + "/api/return_selected_episode", headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["episode_info"]
+    else:
+        print("Error fetching selected episode:", response.status_code)
+        return None
+
+def call_check_usernames(url, headers, username):
+    data = {"username": username}
+    response = requests.post(url + "/api/check_usernames", headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["username_exists"]
+    else:
+        print("Error checking usernames:", response.status_code)
+        return False
+
+def call_add_user(url, headers, user_values):
+    data = {"user_values": user_values}
+    response = requests.post(url + "/api/add_user", headers=headers, json=data)
+    if response.status_code == 200:
+        print("User added successfully.")
+    else:
+        print("Error adding user:", response.status_code)
+
+def call_set_fullname(url, headers, user_id, new_name):
+    data = {"new_name": new_name}
+    response = requests.put(url + f"/api/set_fullname/{user_id}", headers=headers, json=data)
+    if response.status_code == 200:
+        print("Fullname updated successfully.")
+    else:
+        print("Error updating fullname:", response.status_code)
+
+def call_set_password(url, headers, user_id, salt, hash_pw):
+    data = {"salt": salt, "hash_pw": hash_pw}
+    response = requests.put(url + f"/api/set_password/{user_id}", headers=headers, json=data)
+    if response.status_code == 200:
+        print("Password updated successfully.")
+    else:
+        print("Error updating password:", response.status_code)
+
+def call_set_email(url, headers, user_id, email):
+    data = {"user_id": self.user_id, "new_email": self.email}
+    response = requests.put(app_api.url + "/api/user/set_email", headers=app_api.headers, json=data)
+    if response.status_code != 200:
+        print("Error updating email:", response.status_code)
+
+def call_set_username(url, headers, user_id, new_username):
+    data = {"user_id": user_id, "new_username": new_username}
+    response = requests.put(url + "/api/user/set_username", headers=headers, json=data)
+    if response.status_code != 200:
+        print("Error updating username:", response.status_code)

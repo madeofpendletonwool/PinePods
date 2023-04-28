@@ -333,8 +333,89 @@ async def api_check_podcast(api_key: str = Depends(get_api_key_from_header), dat
     exists = database_functions.functions.check_podcast(cnx, data.user_id, data.podcast_name)
     return {"exists": exists}
 
+@app.get("/api/user_admin_check/{user_id}")
+async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    is_admin = database_functions.functions.user_admin_check(cnx, user_id)
+    return {"is_admin": is_admin}
 
+@app.post("/api/remove_podcast")
+async def api_remove_podcast_route(podcast_name: str, user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.remove_podcast(cnx, podcast_name, user_id)
+    return {"status": "Podcast removed"}
 
+@app.get("/api/return_pods/{user_id}")
+async def api_return_pods(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    pods = database_functions.functions.return_pods(cnx, user_id)
+    return {"pods": pods}
+
+@app.get("/api/user_history/{user_id}")
+async def api_user_history(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    history = database_functions.functions.user_history(cnx, user_id)
+    return {"history": history}
+
+@app.get("/api/saved_episode_list/{user_id}")
+async def api_saved_episode_list(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    saved_episodes = database_functions.functions.saved_episode_list(cnx, user_id)
+    return {"saved_episodes": saved_episodes}
+
+@app.post("/api/download_episode_list")
+async def api_download_episode_list(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...)):
+    cnx = get_database_connection()
+    downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
+    return {"downloaded_episodes": downloaded_episodes}
+
+@app.post("/api/get_queue_list")
+async def api_get_queue_list(api_key: str = Depends(get_api_key_from_header), queue_urls: List[str] = Body(...)):
+    cnx = get_database_connection()
+    queue_list = database_functions.functions.get_queue_list(cnx, queue_urls)
+    return {"queue_list": queue_list}
+
+@app.post("/api/return_selected_episode")
+async def api_return_selected_episode(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), title: str = Body(...), url: str = Body(...)):
+    cnx = get_database_connection()
+    episode_info = database_functions.functions.return_selected_episode(cnx, user_id, title, url)
+    return {"episode_info": episode_info}
+
+@app.post("/api/check_usernames")
+async def api_check_usernames(api_key: str = Depends(get_api_key_from_header), username: str = Body(...)):
+    cnx = get_database_connection()
+    result = database_functions.functions.check_usernames(cnx, username)
+    return {"username_exists": result}
+
+@app.post("/api/add_user")
+async def api_add_user(api_key: str = Depends(get_api_key_from_header), user_values: List[str] = Body(...)):
+    cnx = get_database_connection()
+    database_functions.functions.add_user(cnx, tuple(user_values))
+    return {"detail": "User added."}
+
+@app.put("/api/set_fullname/{user_id}")
+async def api_set_fullname(user_id: int, new_name: str = Body(...), api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.set_fullname(cnx, user_id, new_name)
+    return {"detail": "Fullname updated."}
+
+@app.put("/api/set_password/{user_id}")
+async def api_set_password(user_id: int, salt: str = Body(...), hash_pw: str = Body(...), api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.set_password(cnx, user_id, salt, hash_pw)
+    return {"detail": "Password updated."}
+
+@app.put("/api/user/set_email")
+async def api_set_email(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), new_email: str = Body(...)):
+    cnx = get_database_connection()
+    database_functions.functions.set_email(cnx, user_id, new_email)
+    return {"detail": "Email updated."}
+
+@app.put("/api/user/set_username")
+async def api_set_username(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), new_username: str = Body(...)):
+    cnx = get_database_connection()
+    database_functions.functions.set_username(cnx, user_id, new_username)
+    return {"detail": "Username updated."}
 
 
 if __name__ == '__main__':

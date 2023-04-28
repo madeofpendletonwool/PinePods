@@ -3304,7 +3304,7 @@ def main(page: ft.Page, session_value=None):
 
         def change_user_attributes(self):
             if self.fullname is not None:
-                database_functions.functions.fullname(get_database_connection(), self.user_id, self.fullname)
+                database_functions.functions.set_fullname(get_database_connection(), self.user_id, self.fullname)
                 
             if self.password is not None:
                 if len(self.password) < 8 or not any(c.isupper() for c in self.password) or not any(c.isdigit() for c in self.password):

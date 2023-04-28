@@ -1974,7 +1974,7 @@ def main(page: ft.Page, session_value=None):
 
 
             # Check if admin settings should be displayed 
-            user_is_admin = database_functions.functions.user_admin_check(get_database_connection(), int(active_user.user_id))
+            user_is_admin = api_functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
             if user_is_admin == True:
                 pass
             else:
@@ -2031,7 +2031,7 @@ def main(page: ft.Page, session_value=None):
                 icon_color="red400",
                 icon_size=40,
                 tooltip="Remove Podcast",
-                on_click=lambda x, title=clicked_podcast.name: database_functions.functions.remove_podcast(get_database_connection(), title, active_user.user_id)
+                on_click=lambda x, title=clicked_podcast.name: api_functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
             )
             if podcast_status == True:
                 feed_row_content = ft.ResponsiveRow([
@@ -2160,7 +2160,8 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/pod_list" or page.route == "/pod_list":
 
             # Get Pod info
-            pod_list_data = database_functions.functions.return_pods(get_database_connection(), active_user.user_id)
+            pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
+
 
             # Get and format list
             pod_list_number = 1
@@ -2295,7 +2296,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/history" or page.route == "/history":
 
             # Get Pod info
-            hist_episodes = database_functions.functions.user_history(get_database_connection(), active_user.user_id)
+            hist_episodes = api_functions.functions.call_user_history(app_api.url, app_api.headers, active_user.user_id)
             hist_episodes.reverse()
 
             if hist_episodes is None:
@@ -2390,7 +2391,7 @@ def main(page: ft.Page, session_value=None):
                             hist_entry_description = ft.Text(hist_ep_desc)
 
                     hist_entry_audio_url = ft.Text(hist_ep_url)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, hist_ep_title, hist_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, hist_ep_title, hist_ep_url)
                     hist_art_no = random.randint(1, 12)
                     hist_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{hist_art_no}.jpeg")
                     hist_art_url = hist_ep_artwork if hist_ep_artwork else hist_art_fallback
@@ -2488,7 +2489,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/saved" or page.route == "/saved":
 
             # Get Pod info
-            saved_episode_list = database_functions.functions.saved_episode_list(get_database_connection(), active_user.user_id)
+            saved_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers, active_user.user_id)
 
             if saved_episode_list is None:
                 saved_ep_number = 1
@@ -2585,7 +2586,7 @@ def main(page: ft.Page, session_value=None):
                             markdown_desc = saved_ep_desc
                             saved_entry_description = ft.Text(saved_ep_desc)
                     saved_entry_audio_url = ft.Text(saved_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, saved_ep_title, saved_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, saved_ep_title, saved_ep_url)
                     saved_entry_released = ft.Text(f'Released on: {saved_pub_date}', color=active_user.font_color)
 
 
@@ -2685,7 +2686,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/downloads" or page.route == "/downloads":
 
             # Get Pod info
-            download_episode_list = database_functions.functions.download_episode_list(get_database_connection(), active_user.user_id)
+            download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
 
             if download_episode_list is None:
                 download_ep_number = 1
@@ -2783,7 +2784,7 @@ def main(page: ft.Page, session_value=None):
                             markdown_desc = download_ep_desc
                             download_entry_description = ft.Text(download_ep_desc)
                     download_entry_audio_url = ft.Text(download_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, download_ep_title, download_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, download_ep_title, download_ep_url)
                     download_entry_released = ft.Text(f'Released on: {download_pub_date}', color=active_user.font_color)
 
 
@@ -2883,7 +2884,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/queue" or page.route == "/queue":
 
             current_queue_list = current_episode.get_queue()
-            episode_queue_list = database_functions.functions.get_queue_list(get_database_connection(), current_queue_list)
+            episode_queue_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers, current_queue_list)
 
             if episode_queue_list is None:
                 queue_ep_number = 1
@@ -2977,7 +2978,7 @@ def main(page: ft.Page, session_value=None):
                             markdown_desc = queue_ep_desc
                             queue_entry_description = ft.Text(queue_ep_desc)
                     queue_entry_audio_url = ft.Text(queue_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, queue_ep_title, queue_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, queue_ep_title, queue_ep_url)
                     queue_entry_released = ft.Text(queue_pub_date, color=active_user.font_color)
 
                     queue_art_no = random.randint(1, 12)
@@ -3077,7 +3078,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/episode_display" or page.route == "/episode_display":
             # Creating attributes for page layout
-            episode_info = database_functions.functions.return_selected_episode(get_database_connection(), active_user.user_id, current_episode.title, current_episode.url)
+            episode_info = api_functions.functions.call_return_selected_episode(app_api.url, app_api.headers, active_user.user_id, current_episode.title, current_episode.url)
             
             for entry in episode_info:
                 ep_title = entry['EpisodeTitle']
@@ -3264,7 +3265,7 @@ def main(page: ft.Page, session_value=None):
                 email_invalid_dlg.open = True
                 self.page.update()
                 invalid_value = True
-            elif database_functions.functions.check_usernames(get_database_connection(), self.username):
+            elif api_functions.functions.call_check_usernames(app_api.url, app_api.headers, self.username):
                 self.page.dialog = username_exists_dlg
                 username_exists_dlg.open = True
                 self.page.update()
@@ -3292,7 +3293,7 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 self.page.update()
                 self.invalid_value = True
-            elif database_functions.functions.check_usernames(get_database_connection(), self.username):
+            elif api_functions.functions.call_check_usernames(app_api.url, app_api.headers, self.username):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"This username appears to be already taken"))
                 page.snack_bar.open = True
                 self.page.update()
@@ -3322,7 +3323,8 @@ def main(page: ft.Page, session_value=None):
             if self.new_user_valid == True:
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
-                database_functions.functions.add_user(get_database_connection(), user_values)
+                api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
+
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
@@ -3388,7 +3390,7 @@ def main(page: ft.Page, session_value=None):
 
         def change_user_attributes(self):
             if self.fullname is not None:
-                database_functions.functions.fullname(get_database_connection(), self.user_id, self.fullname)
+                api_functions.functions.call_set_fullname(app_api.url, app_api.headers, self.user_id, self.fullname)
                 
             if self.password is not None:
                 if len(self.password) < 8 or not any(c.isupper() for c in self.password) or not any(c.isdigit() for c in self.password):
@@ -3397,7 +3399,8 @@ def main(page: ft.Page, session_value=None):
                     page.update()
                 else:
                     salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
-                    database_functions.functions.set_password(get_database_connection(), self.user_id, salt, hash_pw)
+                    api_functions.functions.call_set_password(app_api.url, app_api.headers, self.user_id, salt, hash_pw)
+
 
             if self.email is not None:
                 if not re.match(self.email_regex, self.email):
@@ -3405,7 +3408,7 @@ def main(page: ft.Page, session_value=None):
                     page.snack_bar.open = True
                     page.update()
                 else:
-                    database_functions.functions.set_email(get_database_connection(), self.user_id, self.email)
+                    api_functions.functions.call_set_email(app_api.url, app_api.headers, self.user_id, self.email)
 
             if self.username is not None:
                 if len(self.username) < 6:
@@ -3413,7 +3416,7 @@ def main(page: ft.Page, session_value=None):
                     page.snack_bar.open = True
                     page.update()
                 else:
-                    database_functions.functions.set_username(get_database_connection(), self.user_id, self.username)
+                    api_functions.functions.call_set_username(app_api.url, app_api.headers, self.user_id, self.username)
 
             database_functions.functions.set_isadmin(get_database_connection(), self.user_id, self.isadmin)
             user_changed = True
@@ -4063,7 +4066,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def remove_selected_podcast(title):
-        database_functions.functions.remove_podcast(get_database_connection(), title, active_user.user_id)
+        api_functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
         page.snack_bar.open = True
         page.update() 
