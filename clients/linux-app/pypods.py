@@ -39,60 +39,82 @@ import hashlib
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 # logging.error("Test Logging - It works!")
 
-# Database variables
-db_host = os.environ.get("DB_HOST", "127.0.0.1")
-db_port = os.environ.get("DB_PORT", "3306")
-db_user = os.environ.get("DB_USER", "root")
-db_password = os.environ.get("DB_PASSWORD", "password")
-db_name = os.environ.get("DB_NAME", "pypods_database")
+# # Database variables
+# db_host = os.environ.get("DB_HOST", "127.0.0.1")
+# db_port = os.environ.get("DB_PORT", "3306")
+# db_user = os.environ.get("DB_USER", "root")
+# db_password = os.environ.get("DB_PASSWORD", "password")
+# db_name = os.environ.get("DB_NAME", "pypods_database")
 
-# Proxy variables
-proxy_host = os.environ.get("PROXY_HOST", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
-proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
-reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
+# # Proxy variables
+# proxy_host = os.environ.get("PROXY_HOST", "localhost")
+# proxy_port = os.environ.get("PROXY_PORT", "8000")
+# proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
+# reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
-# Podcast Index API url
-api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
+# # Podcast Index API url
+# api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
 app = Flask(__name__)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+# cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-@app.route('/preload/<path:url>')
-def preload_audio_file(url):
-    # Try to get the response from cache
-    if reverse_proxy == "True":
-        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-    else:
-        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-    # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-    if response.status_code == 200:
-        # Cache the file content
-        cache.set(url, response.content)
-    return ""
+# @app.route('/preload/<path:url>')
+# def preload_audio_file(url):
+#     # Try to get the response from cache
+#     if reverse_proxy == "True":
+#         response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
+#     else:
+#         response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+#     # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+#     if response.status_code == 200:
+#         # Cache the file content
+#         cache.set(url, response.content)
+#     return ""
 
-@app.route('/cached_audio/<path:url>')
-def serve_cached_audio(url):
-    content = cache.get(url)
+# @app.route('/cached_audio/<path:url>')
+# def serve_cached_audio(url):
+#     content = cache.get(url)
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+#     if content is not None:
+#         response = Response(content, content_type='audio/mpeg')
+#         return response
+#     else:
+#         return "", 404
+
+def initialize_audio_routes(app, proxy_url):
+    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+
+    @app.route('/preload/<path:url>')
+    def preload_audio_file(url):
+        response = requests.get(proxy_url, params={'url': url})
+        if response.status_code == 200:
+            # Cache the file content
+            cache.set(url, response.content)
+        return ""
+
+    @app.route('/cached_audio/<path:url>')
+    def serve_cached_audio(url):
+        content = cache.get(url)
+
+        if content is not None:
+            response = Response(content, content_type='audio/mpeg')
+            return response
+        else:
+            return "", 404
+
 
 # Make login Screen start on boot
 login_screen = True
 
-#Initial Vars needed to start and used throughout
-if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-print(f'Proxy url is configured to {proxy_url}')
+# #Initial Vars needed to start and used throughout
+# if reverse_proxy == "True":
+#     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+# else:
+#     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+# print(f'Proxy url is configured to {proxy_url}')
 
 audio_playing = False
 active_pod = 'Set at start'
@@ -186,7 +208,8 @@ def main(page: ft.Page, session_value=None):
                     print(f'proxy url {proxy_url}')
                     global api_url
                     global proxy_url
-                    # Cache information
+                    # Initialize the audio routes
+                    initialize_audio_routes(app, proxy_url)
 
                     if login_screen == True:
                         if page.web:
