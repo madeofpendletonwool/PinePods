@@ -418,6 +418,40 @@ async def api_set_username(api_key: str = Depends(get_api_key_from_header), user
     database_functions.functions.set_username(cnx, user_id, new_username)
     return {"detail": "Username updated."}
 
+@app.put("/api/user/set_isadmin")
+async def api_set_isadmin(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), isadmin: bool = Body(...)):
+    cnx = get_database_connection()
+    database_functions.functions.set_isadmin(cnx, user_id, isadmin)
+    return {"detail": "IsAdmin status updated."}
+
+@app.get("/api/user/final_admin/{user_id}")
+async def api_final_admin(api_key: str = Depends(get_api_key_from_header), user_id: int = Path(...)):
+    cnx = get_database_connection()
+    is_final_admin = database_functions.functions.final_admin(cnx, user_id)
+    return {"final_admin": is_final_admin}
+
+@app.delete("/api/user/delete/{user_id}")
+async def api_delete_user(api_key: str = Depends(get_api_key_from_header), user_id: int = Path(...)):
+    cnx = get_database_connection()
+    database_functions.functions.delete_user(cnx, user_id)
+    return {"status": "User deleted"}
+
+@app.put("/api/user/set_theme")
+async def api_set_theme(user_id: int, new_theme: str, cnx=Depends(get_database_connection)):
+    database_functions.functions.set_theme(cnx, user_id, new_theme)
+    return {"message": "Theme updated successfully"}
+
+@app.get("/api/user/check_downloaded")
+async def api_check_downloaded(user_id: int, title: str, url: str, cnx=Depends(get_database_connection)):
+    is_downloaded = database_functions.functions.check_downloaded(cnx, user_id, title, url)
+    return {"is_downloaded": is_downloaded}
+
+@app.get("/api/user/check_saved")
+async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_database_connection)):
+    is_saved = database_functions.functions.check_saved(cnx, user_id, title, url)
+    return {"is_saved": is_saved}
+
+
 
 if __name__ == '__main__':
     import uvicorn

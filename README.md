@@ -326,6 +326,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] GUI Wrapper for App
   - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
   - [ ] Linux App
+    - [ ] Flatpak
+    - [ ] Snap
+    - [ ] PyPi
   - [X] Proper web layout
   - [ ] Windows App
   - [ ] Mac App

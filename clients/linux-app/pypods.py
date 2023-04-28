@@ -3418,7 +3418,8 @@ def main(page: ft.Page, session_value=None):
                 else:
                     api_functions.functions.call_set_username(app_api.url, app_api.headers, self.user_id, self.username)
 
-            database_functions.functions.set_isadmin(get_database_connection(), self.user_id, self.isadmin)
+            api_functions.functions.call_set_isadmin(app_api.url, app_api.headers, self.user_id, self.isadmin)
+
             user_changed = True
 
             if user_changed == True:
@@ -3427,7 +3428,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
 
         def delete_user(self, user_id):
-            admin_check = database_functions.functions.final_admin(get_database_connection(), user_id)
+            admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
             if user_id == active_user.user_id:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
                 page.snack_bar.open = True
@@ -3437,7 +3438,7 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.update()
             else:
-                database_functions.functions.delete_user(get_database_connection(), user_id)
+                api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
                 page.snack_bar.open = True
                 page.update()
@@ -3629,7 +3630,7 @@ def main(page: ft.Page, session_value=None):
                 page.window_bgcolor = '#3C4252'
 
         def set_theme(self, theme):
-            database_functions.functions.set_theme(get_database_connection(), self.user_id, theme)
+            api_functions.functions.call_set_theme(app_api.url, app_api.headers, self.user_id, theme)
             self.theme_select
             go_theme_rebuild(self.page)
             self.page.update()
@@ -3998,7 +3999,7 @@ def main(page: ft.Page, session_value=None):
 
 
     def download_selected_episode(url, title, page):
-        check_downloads = database_functions.functions.check_downloaded(get_database_connection(), active_user.user_id, title, url)
+        check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers, active_user.user_id, title, url)
         if check_downloads:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
             page.snack_bar.open = True
@@ -4044,7 +4045,8 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def save_selected_episode(url, title, page):
-        check_saved = database_functions.functions.check_saved(get_database_connection(), active_user.user_id, title, url)
+        check_saved = api_functions.functions.call_check_saved(app_api.url, app_api.headers, active_user.user_id, title, url)
+
         if check_saved:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already saved!"))
             page.snack_bar.open = True
