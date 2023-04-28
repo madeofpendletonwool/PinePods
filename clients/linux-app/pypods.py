@@ -37,9 +37,7 @@ import logging
 import hashlib
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Use the logger in your application
-logging.error("Test Logging - It works!")
+# logging.error("Test Logging - It works!")
 
 # Database variables
 db_host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -95,31 +93,32 @@ if reverse_proxy == "True":
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
+
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 
-# Create database connector
-dbconfig = {
-    "host": db_host,
-    "port": db_port,
-    "user": db_user,
-    "password": db_password,
-    "database": db_name,
-    "charset": "utf8mb4",
-}
+# # Create database connector
+# dbconfig = {
+#     "host": db_host,
+#     "port": db_port,
+#     "user": db_user,
+#     "password": db_password,
+#     "database": db_name,
+#     "charset": "utf8mb4",
+# }
 
-pool_name = "pinepods_pool"
-pool_size = 10
+# pool_name = "pinepods_pool"
+# pool_size = 10
 
-cnxpool = mysql.connector.pooling.MySQLConnectionPool(
-    pool_name=pool_name, pool_size=pool_size, **dbconfig
-)
+# cnxpool = mysql.connector.pooling.MySQLConnectionPool(
+#     pool_name=pool_name, pool_size=pool_size, **dbconfig
+# )
 
-def get_database_connection():
-    return cnxpool.get_connection()
+# def get_database_connection():
+#     return cnxpool.get_connection()
 
 def main(page: ft.Page, session_value=None):
 
@@ -182,6 +181,13 @@ def main(page: ft.Page, session_value=None):
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
                     print(self.headers)
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers)
+                    api_url, proxy_url = api_functions.call_api_config(app_api.url, app_api.headers)
+                    print(f'api url {api_url}')
+                    print(f'proxy url {proxy_url}')
+                    global api_url
+                    global proxy_url
+                    # Cache information
+
                     if login_screen == True:
                         if page.web:
                             start_login(page)

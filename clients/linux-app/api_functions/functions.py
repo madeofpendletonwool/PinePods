@@ -458,3 +458,12 @@ def call_check_saved(url, headers, user_id, title, url):
     else:
         print("Error checking saved status:", response.status_code)
         return False
+
+def call_api_config(url, headers):
+    response = requests.get(url + "/api/config", headers=headers)
+    if response.status_code == 200:
+        config_data = response.json()
+        return config_data["api_url"], config_data["proxy_url"]
+    else:
+        print("Error getting API configuration:", response.status_code)
+        return None
