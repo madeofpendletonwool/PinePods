@@ -203,11 +203,11 @@ def main(page: ft.Page, session_value=None):
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
                     print(self.headers)
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers)
+                    global api_url
+                    global proxy_url
                     api_url, proxy_url = api_functions.call_api_config(app_api.url, app_api.headers)
                     print(f'api url {api_url}')
                     print(f'proxy url {proxy_url}')
-                    global api_url
-                    global proxy_url
                     # Initialize the audio routes
                     initialize_audio_routes(app, proxy_url)
 

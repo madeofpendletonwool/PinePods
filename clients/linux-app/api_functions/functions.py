@@ -441,8 +441,8 @@ def call_set_theme(url, headers, user_id, theme):
     if response.status_code != 200:
         print("Error updating theme:", response.status_code)
 
-def call_check_downloaded(url, headers, user_id, title, url):
-    params = {"user_id": user_id, "title": title, "url": url}
+def call_check_downloaded(url, headers, user_id, title, ep_url):
+    params = {"user_id": user_id, "title": title, "url": ep_url}
     response = requests.get(url + "/api/user/check_downloaded", headers=headers, params=params)
     if response.status_code == 200:
         return response.json()["is_downloaded"]
@@ -450,8 +450,8 @@ def call_check_downloaded(url, headers, user_id, title, url):
         print("Error checking downloaded status:", response.status_code)
         return False
 
-def call_check_saved(url, headers, user_id, title, url):
-    params = {"user_id": user_id, "title": title, "url": url}
+def call_check_saved(url, headers, user_id, title, ep_url):
+    params = {"user_id": user_id, "title": title, "url": ep_url}
     response = requests.get(url + "/api/user/check_saved", headers=headers, params=params)
     if response.status_code == 200:
         return response.json()["is_saved"]
