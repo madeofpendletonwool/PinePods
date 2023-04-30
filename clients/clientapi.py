@@ -465,10 +465,11 @@ async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_da
     is_saved = database_functions.functions.check_saved(cnx, user_id, title, url)
     return {"is_saved": is_saved}
 
-@app.get("/api/config/{api_key}")
+@app.get("/api/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
     global api_url, proxy_url
     return {"api_url": api_url, "proxy_url": proxy_url}
+
 
 
 if __name__ == '__main__':
