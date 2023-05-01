@@ -199,15 +199,19 @@ def main(page: ft.Page, session_value=None):
             else:
                 if response.status_code == 200:
                     data = response.json()
-                    self.show_error_snackbar(f"Connected to {proxy_host}!")
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
                     print(self.headers)
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers)
                     global api_url
                     global proxy_url
-                    api_url, proxy_url = api_functions.call_api_config(app_api.url, app_api.headers)
+                    global proxy_host
+                    global proxy_port
+                    global proxy_protocol
+                    global reverse_proxy
+                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = api_functions.call_api_config(app_api.url, app_api.headers)
                     print(f'api url {api_url}')
                     print(f'proxy url {proxy_url}')
+                    self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     initialize_audio_routes(app, proxy_url)
 

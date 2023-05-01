@@ -467,8 +467,16 @@ async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_da
 
 @app.get("/api/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
-    global api_url, proxy_url
-    return {"api_url": api_url, "proxy_url": proxy_url}
+    global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
+    return {
+        "api_url": api_url,
+        "proxy_url": proxy_url,
+        "proxy_host": proxy_host,
+        "proxy_port": proxy_port,
+        "proxy_protocol": proxy_protocol,
+        "reverse_proxy": reverse_proxy,
+    }
+
 
 
 
