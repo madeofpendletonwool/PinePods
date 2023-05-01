@@ -132,7 +132,7 @@ async def api_check_saved_session(api_key: str = Depends(get_api_key_from_header
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
 
 
-@app.get("/api/config")
+@app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
     global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
     return {
