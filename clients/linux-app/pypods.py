@@ -208,7 +208,7 @@ def main(page: ft.Page, session_value=None):
                     global proxy_port
                     global proxy_protocol
                     global reverse_proxy
-                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = api_functions.call_api_config(app_api.url, app_api.headers)
+                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = api_functions.call_api_config(self.url, self.headers)
                     print(f'api url {api_url}')
                     print(f'proxy url {proxy_url}')
                     self.show_error_snackbar(f"Connected to {proxy_host}!")

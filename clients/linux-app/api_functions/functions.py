@@ -17,6 +17,22 @@ def call_check_saved_session(url, headers):
     else:
         print("No saved session found")
 
+def call_api_config(url, headers):
+    response = requests.get(url + "/api/config", headers=headers)
+    if response.status_code == 200:
+        config_data = response.json()
+        return (
+            config_data["api_url"],
+            config_data["proxy_url"],
+            config_data["proxy_host"],
+            config_data["proxy_port"],
+            config_data["proxy_protocol"],
+            config_data["reverse_proxy"],
+        )
+    else:
+        print("Error getting API configuration:", response.status_code)
+        return None
+
 def call_guest_status(url, headers):
     response = requests.get(url + "/guest_status", headers=headers)
     if response.status_code == 200:
@@ -458,19 +474,3 @@ def call_check_saved(url, headers, user_id, title, ep_url):
     else:
         print("Error checking saved status:", response.status_code)
         return False
-
-def call_api_config(url, headers):
-    response = requests.get(url + "/api/config", headers=headers)
-    if response.status_code == 200:
-        config_data = response.json()
-        return (
-            config_data["api_url"],
-            config_data["proxy_url"],
-            config_data["proxy_host"],
-            config_data["proxy_port"],
-            config_data["proxy_protocol"],
-            config_data["reverse_proxy"],
-        )
-    else:
-        print("Error getting API configuration:", response.status_code)
-        return None

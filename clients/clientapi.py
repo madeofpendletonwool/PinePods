@@ -131,6 +131,19 @@ async def api_check_saved_session(api_key: str = Depends(get_api_key_from_header
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
 
+
+@app.get("/api/config")
+async def api_config(api_key: str = Depends(get_api_key_from_header)):
+    global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
+    return {
+        "api_url": api_url,
+        "proxy_url": proxy_url,
+        "proxy_host": proxy_host,
+        "proxy_port": proxy_port,
+        "proxy_protocol": proxy_protocol,
+        "reverse_proxy": reverse_proxy,
+    }
+
 @app.get("/api/data/guest_status", response_model=bool)
 async def api_guest_status(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
@@ -464,18 +477,6 @@ async def api_check_downloaded(user_id: int, title: str, url: str, cnx=Depends(g
 async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_database_connection)):
     is_saved = database_functions.functions.check_saved(cnx, user_id, title, url)
     return {"is_saved": is_saved}
-
-@app.get("/api/config")
-async def api_config(api_key: str = Depends(get_api_key_from_header)):
-    global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
-    return {
-        "api_url": api_url,
-        "proxy_url": proxy_url,
-        "proxy_host": proxy_host,
-        "proxy_port": proxy_port,
-        "proxy_protocol": proxy_protocol,
-        "reverse_proxy": reverse_proxy,
-    }
 
 
 
