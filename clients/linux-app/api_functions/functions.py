@@ -18,7 +18,7 @@ def call_check_saved_session(url, headers):
         print("No saved session found")
 
 def call_api_config(url, headers):
-    response = requests.get(url + "/api/config", headers=headers)
+    response = requests.get(url + "/config", headers=headers)
     if response.status_code == 200:
         config_data = response.json()
         return (
