@@ -25,6 +25,7 @@ import requests
 import tempfile
 import time
 import random
+import string
 import datetime
 import html2text
 import threading
@@ -36,30 +37,141 @@ import secrets
 import appdirs
 import logging
 import hashlib
+import keyring
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import base64
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
-# logging.error("Test Logging - It works!")
 
-# # Database variables
-# db_host = os.environ.get("DB_HOST", "127.0.0.1")
-# db_port = os.environ.get("DB_PORT", "3306")
-# db_user = os.environ.get("DB_USER", "root")
-# db_password = os.environ.get("DB_PASSWORD", "password")
-# db_name = os.environ.get("DB_NAME", "pypods_database")
+#--- Encryption functions and file retrieval for saved sessions/api keys-------------------------
 
-# # Proxy variables
-# proxy_host = os.environ.get("PROXY_HOST", "localhost")
-# proxy_port = os.environ.get("PROXY_PORT", "8000")
-# proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
-# reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
+def set_encryption_password(password):
+    keyring.set_password("pinepods", "encryption_key", password)
 
-# # Podcast Index API url
-# api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
+def get_encryption_password():
+    return keyring.get_password("pinepods", "encryption_key")
 
+def get_key(password, salt):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(password))
+    return key
+
+def encrypt_data(data, key):
+    f = Fernet(key)
+    encrypted_data = f.encrypt(data.encode())
+    return encrypted_data
+
+def decrypt_data(encrypted_data, key):
+    f = Fernet(key)
+    data = f.decrypt(encrypted_data).decode()
+    return data
+
+password = get_encryption_password()
+if password is None:
+    password = "".join(random.choices(string.ascii_letters + string.digits, k=32))
+    set_encryption_password(password)
+
+def get_salt_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    salt_file_path = os.path.join(data_dir, "salt.txt")
+    return salt_file_path
+
+def save_salt(salt):
+    salt_file_path = get_salt_file_path()
+    with open(salt_file_path, "wb") as file:
+        file.write(salt)
+
+def get_saved_salt():
+    salt_file_path = get_salt_file_path()
+    try:
+        with open(salt_file_path, "rb") as file:
+            salt = file.read()
+            return salt
+    except FileNotFoundError:
+        return None
+
+salt = get_saved_salt()
+if salt is None:
+    salt = os.urandom(16)
+    save_salt(salt)
+key = get_key(password.encode(), salt)
+
+def get_session_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "session.txt")
+    return session_file_path
+
+def get_api_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "api_config.txt")
+    return session_file_path
+
+def save_server_vals(api_key, server_name):
+    session_file_path = get_api_file_path()
+    data = f"{api_key}\n{server_name}\n"
+    encrypted_data = encrypt_data(data, key)
+    with open(session_file_path, "wb") as file:
+        file.write(encrypted_data)
+
+def save_session_id_to_file(session_id):
+    session_file_path = get_session_file_path()
+    encrypted_data = encrypt_data(session_id, key)
+    with open(session_file_path, "wb") as file:
+        file.write(encrypted_data)
+
+def get_server_vals():
+    session_file_path = get_api_file_path()
+    try:
+        with open(session_file_path, "rb") as file:
+            encrypted_data = file.read()
+            data = decrypt_data(encrypted_data, key)
+            api_key, server_name, _ = data.split("\n")
+            return api_key, server_name
+    except FileNotFoundError:
+        return None, None
+
+def get_saved_session_id_from_file():
+    session_file_path = get_session_file_path()
+    try:
+        with open(session_file_path, "rb") as file:
+            encrypted_data = file.read()
+            session_id = decrypt_data(encrypted_data, key)
+            return session_id
+    except FileNotFoundError:
+        return None
+
+def check_saved_server_vals():
+    api_key, server_name = get_server_vals()
+    if api_key and server_name:
+        return api_key, server_name
+    else:
+        return None, None
+
+def check_saved_session():
+    _, api_key, server_name = get_saved_session_id_from_file()
+    if api_key and server_name:
+        return api_key, server_name
+    else:
+        return None, None
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
+# --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
+
 # cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # @app.route('/preload/<path:url>')
@@ -110,38 +222,9 @@ def initialize_audio_routes(app, proxy_url):
 # Make login Screen start on boot
 login_screen = True
 
-# #Initial Vars needed to start and used throughout
-# if reverse_proxy == "True":
-#     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-# else:
-#     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-# print(f'Proxy url is configured to {proxy_url}')
-
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-
-
-# # Create database connector
-# dbconfig = {
-#     "host": db_host,
-#     "port": db_port,
-#     "user": db_user,
-#     "password": db_password,
-#     "database": db_name,
-#     "charset": "utf8mb4",
-# }
-
-# pool_name = "pinepods_pool"
-# pool_size = 10
-
-# cnxpool = mysql.connector.pooling.MySQLConnectionPool(
-#     pool_name=pool_name, pool_size=pool_size, **dbconfig
-# )
-
-# def get_database_connection():
-#     return cnxpool.get_connection()
 
 def main(page: ft.Page, session_value=None):
 
@@ -154,7 +237,8 @@ def main(page: ft.Page, session_value=None):
             self.headers = None
             self.page = page
 
-        def api_verify(self, server_name, api_value):
+        def api_verify(self, server_name, api_value, retain_session=False):
+            print(retain_session)
             pr = ft.ProgressRing()
             progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
             self.page.overlay.append(progress_stack)
@@ -215,6 +299,9 @@ def main(page: ft.Page, session_value=None):
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     initialize_audio_routes(app, proxy_url)
+
+                    if retain_session == True:
+                        save_server_vals(self.api_value, server_name)
 
                     if login_screen == True:
                         if page.web:
@@ -1547,7 +1634,7 @@ def main(page: ft.Page, session_value=None):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: app_api.api_verify(server_name.value, app_api_key.value)
+                                                on_click=lambda e: app_api.api_verify(server_name.value, app_api_key.value, retain_session.value)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
@@ -4144,8 +4231,12 @@ def main(page: ft.Page, session_value=None):
     #         active_user.user_id = 1
     #         active_user.fullname = 'Guest User'
     #         go_homelogin(page)
-
-    start_config(page)
+    saved_app_api_key, saved_app_server_name = check_saved_server_vals()
+    if saved_app_api_key and saved_app_server_name:
+        print(f'key and name {saved_app_api_key, saved_app_server_name}')
+        app_api.api_verify(saved_app_server_name, saved_app_api_key)
+    else:
+        start_config(page)
 
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)

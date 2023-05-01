@@ -17,3 +17,5 @@ uvicorn
 fastapi
 itsdangerous
 aiofiles
+keyring
+cryptography
