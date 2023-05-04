@@ -102,6 +102,8 @@ cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email,
 
 cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (1)""")
 
+cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (2)""")
+
 cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                     PodcastID INT AUTO_INCREMENT PRIMARY KEY,
                     PodcastName TEXT,

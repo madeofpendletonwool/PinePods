@@ -1529,7 +1529,6 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/userstats" or page.route == "/userstats":
-
             user_stats = api_functions.functions.call_get_stats(app_api.url, app_api.headers, active_user.user_id)
 
 
