@@ -1473,14 +1473,7 @@ def check_saved_web_session(cnx, session_value):
     cnx.close()
 
 
-def create_session(cnx, user_id):
-    import secrets
-    # Generate a new session value
-    session_value = secrets.token_hex(32)
-
-    # Save the session value to the local session.txt file
-    save_session_to_file(session_value)
-
+def create_session(cnx, user_id, session_value):
     # Calculate the expiration date 30 days in the future
     expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
 

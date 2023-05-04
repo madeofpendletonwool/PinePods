@@ -283,6 +283,7 @@ def main(page: ft.Page, session_value=None):
                 self.show_error_snackbar("Request timed out. Please check your URL.")
             except RequestException as e:
                 self.show_error_snackbar(f"Request failed: {e}")
+                start_config(page)
 
             else:
                 if response.status_code == 200:
@@ -314,11 +315,15 @@ def main(page: ft.Page, session_value=None):
                                 active_user.saved_login(check_session)
                             else:
                                 start_login(page)
+
                     else:
                         active_user.user_id = 1
                         active_user.fullname = 'Guest User'
                         go_homelogin(page)
                     print(data)
+                elif response.status_code == 401:
+                    print('running')
+                    start_config(self.page)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
             self.page.overlay.remove(progress_stack)
