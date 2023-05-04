@@ -167,6 +167,9 @@ def check_saved_session():
     else:
         return None, None
 
+def generate_session_token():
+    return secrets.token_hex(32)
+
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
 # --- Create Flask app for caching ------------------------------------------------
@@ -3599,7 +3602,10 @@ def main(page: ft.Page, session_value=None):
                     if page.web:
                         print('Web version currently doesnt retain sessions')
                     else:
-                        api_functions.functions.call_create_session(app_api.url, self.user_id)
+                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                        if session_token:
+                            save_session_id_to_file(session_token)
+
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)

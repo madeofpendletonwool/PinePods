@@ -1,4 +1,8 @@
 import requests
+import secrets
+
+def generate_session_token():
+    return secrets.token_hex(32)
 
 def call_clean_expired_sessions(url, headers):
     print(f'in clean expired call {headers}')
@@ -65,11 +69,14 @@ def call_get_user_details_id(url, headers, user_id):
 
 
 def call_create_session(url, headers, user_id):
-    response = requests.post(url + f"/create_session/{user_id}", headers=headers)
+    session_token = generate_session_token()
+    response = requests.post(url + f"/create_session/{user_id}", headers=headers, json={"session_token": session_token})
     if response.status_code == 200:
         print("Session created successfully")
+        return session_token
     else:
         print("Error creating session:", response.status_code)
+        return None
 
 def call_verify_password(url, headers, username, password):
     response = requests.post(url + "/verify_password/", json={"username": username, "password": password}, headers=headers)

@@ -159,10 +159,13 @@ async def api_get_user_details(username: str, api_key: str = Depends(get_api_key
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+class SessionData(BaseModel):
+    session_token: str
+
 @app.post("/api/data/create_session/{user_id}")
-async def api_create_session(user_id: int, api_key: str = Depends(get_api_key_from_header)):
+async def api_create_session(user_id: int, session_data: SessionData, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
-    database_functions.functions.create_session(cnx, user_id)
+    database_functions.functions.create_session(cnx, user_id, session_data.session_token)
     return {"status": "success"}
 
 class VerifyPasswordInput(BaseModel):
