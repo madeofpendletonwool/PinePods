@@ -122,10 +122,10 @@ async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_hea
     database_functions.functions.clean_expired_sessions(cnx)
     return {"status": "success"}
 
-@app.get("/api/data/check_saved_session/", response_model=int)
-async def api_check_saved_session(api_key: str = Depends(get_api_key_from_header)):
+@app.get("/api/data/check_saved_session/{session_value}", response_model=int)
+async def api_check_saved_session(session_value: str, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
-    result = database_functions.functions.check_saved_session(cnx)
+    result = database_functions.functions.check_saved_session(cnx, session_value)
     if result:
         return result
     else:

@@ -4,7 +4,7 @@ import flet as ft
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 # import internal_functions.functions
-import database_functions.functions
+# import database_functions.functions
 # import app_functions.functions
 # import Auth.Passfunctions
 import api_functions.functions
@@ -153,15 +153,16 @@ def get_saved_session_id_from_file():
     except FileNotFoundError:
         return None
 
+def check_saved_session():
+    session_id = get_saved_session_id_from_file()
+    if session_id:
+        return session_id
+    else:
+        return None
+
+
 def check_saved_server_vals():
     api_key, server_name = get_server_vals()
-    if api_key and server_name:
-        return api_key, server_name
-    else:
-        return None, None
-
-def check_saved_session():
-    _, api_key, server_name = get_saved_session_id_from_file()
     if api_key and server_name:
         return api_key, server_name
     else:
@@ -290,7 +291,8 @@ def main(page: ft.Page, session_value=None):
                     data = response.json()
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
                     print(self.headers)
-                    check_session = api_functions.functions.call_check_saved_session(self.url, self.headers)
+                    saved_session_value = get_saved_session_id_from_file()
+                    check_session = api_functions.functions.call_check_saved_session(self.url, self.headers, saved_session_value)
                     global api_url
                     global proxy_url
                     global proxy_host

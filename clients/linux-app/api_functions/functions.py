@@ -12,8 +12,8 @@ def call_clean_expired_sessions(url, headers):
     else:
         print("Error calling clean_expired_sessions:", response.status_code)
 
-def call_check_saved_session(url, headers):
-    response = requests.get(url + "/check_saved_session/", headers=headers)
+def call_check_saved_session(url, headers, session_value):
+    response = requests.get(url + f"/check_saved_session/{session_value}", headers=headers)
     if response.status_code == 200:
         user_id = response.json()
         print("User ID:", user_id)

@@ -1426,12 +1426,7 @@ def get_saved_session_from_file():
     except FileNotFoundError:
         return None
 
-def check_saved_session(cnx):
-    session_value = get_saved_session_from_file()
-
-    if not session_value:
-        return False
-
+def check_saved_session(cnx, session_value):
     cursor = cnx.cursor()
 
     # Get the session with the matching value and expiration time
