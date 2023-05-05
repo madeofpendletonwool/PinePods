@@ -47,6 +47,14 @@ def call_guest_status(url, headers):
         print("Error fetching guest status:", response.status_code)
         return None
 
+def call_user_admin_check(url, headers, user_id):
+    response = requests.get(url + f"/user_admin_check/{user_id}", headers=headers)
+    if response.status_code == 200:
+        return response.json()["is_admin"]
+    else:
+        print("Error fetching user admin status:", response.status_code)
+        return False
+
 def call_get_user_details(url, headers, username):
     response = requests.get(url + f"/user_details/{username}", headers=headers)
     if response.status_code == 200:
@@ -321,14 +329,6 @@ def call_check_podcast(url, headers, user_id, podcast_name):
         return response.json()["exists"]
     else:
         print("Error checking podcast:", response.status_code)
-        return False
-
-def call_user_admin_check(url, headers, user_id):
-    response = requests.get(url + f"/api/user_admin_check/{user_id}", headers=headers)
-    if response.status_code == 200:
-        return response.json()["is_admin"]
-    else:
-        print("Error fetching user admin status:", response.status_code)
         return False
 
 def call_remove_podcast(url, headers, podcast_name, user_id):

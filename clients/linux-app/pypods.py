@@ -2104,7 +2104,7 @@ def main(page: ft.Page, session_value=None):
 
 
             # Check if admin settings should be displayed 
-            user_is_admin = api_functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
+            user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
             if user_is_admin == True:
                 pass
             else:
@@ -2161,7 +2161,7 @@ def main(page: ft.Page, session_value=None):
                 icon_color="red400",
                 icon_size=40,
                 tooltip="Remove Podcast",
-                on_click=lambda x, title=clicked_podcast.name: api_functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
+                on_click=lambda x, title=clicked_podcast.name: api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
             )
             if podcast_status == True:
                 feed_row_content = ft.ResponsiveRow([
@@ -4201,7 +4201,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def remove_selected_podcast(title):
-        api_functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
+        api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
         page.snack_bar.open = True
         page.update() 
