@@ -103,11 +103,10 @@ def call_return_episodes(url, headers, user_id):
     if response.status_code == 200:
         episodes = response.json()["episodes"]
         if episodes:
-            print("Episodes:", episodes)
+            return episodes
         else:
             print("No episodes found.")
             return None
-        return episodes
     else:
         print("Error fetching episodes:", response.status_code)
         return None
@@ -338,7 +337,7 @@ def call_check_podcast(url, headers, user_id, podcast_name):
 
 def call_remove_podcast(url, headers, podcast_name, user_id):
     data = {"podcast_name": podcast_name, "user_id": user_id}
-    response = requests.post(url + "/api/remove_podcast", headers=headers, json=data)
+    response = requests.post(url + "/remove_podcast", headers=headers, json=data)
     if response.status_code == 200:
         return True
     else:
@@ -346,7 +345,7 @@ def call_remove_podcast(url, headers, podcast_name, user_id):
         return False
 
 def call_return_pods(url, headers, user_id):
-    response = requests.get(url + f"/api/return_pods/{user_id}", headers=headers)
+    response = requests.get(url + f"/return_pods/{user_id}", headers=headers)
     if response.status_code == 200:
         return response.json()["pods"]
     else:
@@ -354,7 +353,7 @@ def call_return_pods(url, headers, user_id):
         return None
 
 def call_user_history(url, headers, user_id):
-    response = requests.get(url + f"/api/user_history/{user_id}", headers=headers)
+    response = requests.get(url + f"/user_history/{user_id}", headers=headers)
     if response.status_code == 200:
         return response.json()["history"]
     else:
@@ -362,7 +361,7 @@ def call_user_history(url, headers, user_id):
         return None
 
 def call_saved_episode_list(url, headers, user_id):
-    response = requests.get(url + f"/api/saved_episode_list/{user_id}", headers=headers)
+    response = requests.get(url + f"/saved_episode_list/{user_id}", headers=headers)
     if response.status_code == 200:
         return response.json()["saved_episodes"]
     else:
@@ -371,7 +370,7 @@ def call_saved_episode_list(url, headers, user_id):
 
 def call_download_episode_list(url, headers, user_id):
     data = {"user_id": user_id}
-    response = requests.post(url + "/api/download_episode_list", headers=headers, json=data)
+    response = requests.post(url + "/download_episode_list", headers=headers, json=data)
     if response.status_code == 200:
         return response.json()["downloaded_episodes"]
     else:
@@ -380,7 +379,7 @@ def call_download_episode_list(url, headers, user_id):
 
 def call_get_queue_list(url, headers, queue_urls):
     data = {"queue_urls": queue_urls}
-    response = requests.post(url + "/api/get_queue_list", headers=headers, json=data)
+    response = requests.post(url + "/get_queue_list", headers=headers, json=data)
     if response.status_code == 200:
         return response.json()["queue_list"]
     else:
@@ -389,7 +388,7 @@ def call_get_queue_list(url, headers, queue_urls):
 
 def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
     data = {"user_id": user_id, "title": title, "url": episode_url}
-    response = requests.post(api_url + "/api/return_selected_episode", headers=headers, json=data)
+    response = requests.post(api_url + "/return_selected_episode", headers=headers, json=data)
     if response.status_code == 200:
         return response.json()["episode_info"]
     else:
@@ -398,7 +397,7 @@ def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
 
 def call_check_usernames(url, headers, username):
     data = {"username": username}
-    response = requests.post(url + "/api/check_usernames", headers=headers, json=data)
+    response = requests.post(url + "/check_usernames", headers=headers, json=data)
     if response.status_code == 200:
         return response.json()["username_exists"]
     else:
@@ -407,7 +406,7 @@ def call_check_usernames(url, headers, username):
 
 def call_add_user(url, headers, user_values):
     data = {"user_values": user_values}
-    response = requests.post(url + "/api/add_user", headers=headers, json=data)
+    response = requests.post(url + "/add_user", headers=headers, json=data)
     if response.status_code == 200:
         print("User added successfully.")
     else:
@@ -415,7 +414,7 @@ def call_add_user(url, headers, user_values):
 
 def call_set_fullname(url, headers, user_id, new_name):
     data = {"new_name": new_name}
-    response = requests.put(url + f"/api/set_fullname/{user_id}", headers=headers, json=data)
+    response = requests.put(url + f"/set_fullname/{user_id}", headers=headers, json=data)
     if response.status_code == 200:
         print("Fullname updated successfully.")
     else:
@@ -423,7 +422,7 @@ def call_set_fullname(url, headers, user_id, new_name):
 
 def call_set_password(url, headers, user_id, salt, hash_pw):
     data = {"salt": salt, "hash_pw": hash_pw}
-    response = requests.put(url + f"/api/set_password/{user_id}", headers=headers, json=data)
+    response = requests.put(url + f"/set_password/{user_id}", headers=headers, json=data)
     if response.status_code == 200:
         print("Password updated successfully.")
     else:
@@ -431,24 +430,24 @@ def call_set_password(url, headers, user_id, salt, hash_pw):
 
 def call_set_email(url, headers, user_id, email):
     data = {"user_id": self.user_id, "new_email": self.email}
-    response = requests.put(app_api.url + "/api/user/set_email", headers=app_api.headers, json=data)
+    response = requests.put(app_api.url + "/user/set_email", headers=app_api.headers, json=data)
     if response.status_code != 200:
         print("Error updating email:", response.status_code)
 
 def call_set_username(url, headers, user_id, new_username):
     data = {"user_id": user_id, "new_username": new_username}
-    response = requests.put(url + "/api/user/set_username", headers=headers, json=data)
+    response = requests.put(url + "/user/set_username", headers=headers, json=data)
     if response.status_code != 200:
         print("Error updating username:", response.status_code)
 
 def call_set_isadmin(url, headers, user_id, isadmin):
     data = {"user_id": user_id, "isadmin": isadmin}
-    response = requests.put(url + "/api/user/set_isadmin", headers=headers, json=data)
+    response = requests.put(url + "/user/set_isadmin", headers=headers, json=data)
     if response.status_code != 200:
         print("Error updating IsAdmin status:", response.status_code)
 
 def call_final_admin(url, headers, user_id):
-    response = requests.get(url + f"/api/user/final_admin/{user_id}", headers=headers)
+    response = requests.get(url + f"/user/final_admin/{user_id}", headers=headers)
     if response.status_code == 200:
         final_admin_data = response.json()
         return final_admin_data["final_admin"]
@@ -457,7 +456,7 @@ def call_final_admin(url, headers, user_id):
         return False
 
 def call_delete_user(url, headers, user_id):
-    response = requests.delete(url + f"/api/user/delete/{user_id}", headers=headers)
+    response = requests.delete(url + f"/user/delete/{user_id}", headers=headers)
     if response.status_code == 200:
         print("User deleted")
     else:
@@ -465,13 +464,13 @@ def call_delete_user(url, headers, user_id):
 
 def call_set_theme(url, headers, user_id, theme):
     data = {"user_id": user_id, "new_theme": theme}
-    response = requests.put(url + "/api/user/set_theme", headers=headers, json=data)
+    response = requests.put(url + "/user/set_theme", headers=headers, json=data)
     if response.status_code != 200:
         print("Error updating theme:", response.status_code)
 
 def call_check_downloaded(url, headers, user_id, title, ep_url):
     params = {"user_id": user_id, "title": title, "url": ep_url}
-    response = requests.get(url + "/api/user/check_downloaded", headers=headers, params=params)
+    response = requests.get(url + "/user/check_downloaded", headers=headers, params=params)
     if response.status_code == 200:
         return response.json()["is_downloaded"]
     else:
@@ -480,7 +479,7 @@ def call_check_downloaded(url, headers, user_id, title, ep_url):
 
 def call_check_saved(url, headers, user_id, title, ep_url):
     params = {"user_id": user_id, "title": title, "url": ep_url}
-    response = requests.get(url + "/api/user/check_saved", headers=headers, params=params)
+    response = requests.get(url + "/user/check_saved", headers=headers, params=params)
     if response.status_code == 200:
         return response.json()["is_saved"]
     else:

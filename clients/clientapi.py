@@ -99,8 +99,7 @@ def get_api_key(request: Request, api_key: str = Depends(api_key_header)):
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
-def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
-    print("Received API Key:", api_key)  # Debugging 
+def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")): 
     if not api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return api_key
@@ -118,7 +117,6 @@ async def pinepods_check():
 
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_header)):
-    print(f'in clean expired post {api_key}')
     cnx = get_database_connection()
     database_functions.functions.clean_expired_sessions(cnx)
     return {"status": "success"}
@@ -198,10 +196,8 @@ async def api_check_episode_playback(
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
         cnx, user_id, episode_title, episode_url
     )
-    if has_playback:
-        return {"has_playback": True, "listen_duration": listen_duration}
-    else:
-        return {"has_playback": False, "listen_duration": 0}
+    return {"has_playback": has_playback, "listen_duration": listen_duration}
+
 
 @app.get("/api/data/user_details_id/{user_id}")
 async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_key_from_header)):
