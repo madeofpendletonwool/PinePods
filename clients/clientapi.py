@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form, File, UploadFile
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from passlib.context import CryptContext
 import mysql.connector

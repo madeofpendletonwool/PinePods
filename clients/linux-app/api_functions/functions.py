@@ -1,5 +1,6 @@
 import requests
 import secrets
+import json
 
 def generate_session_token():
     return secrets.token_hex(32)
@@ -148,8 +149,11 @@ def call_get_theme(url, headers, user_id):
         return None
 
 def call_add_podcast(url, headers, podcast_values, user_id):
-    data = {"podcast_values": podcast_values, "user_id": user_id}
-    response = requests.post(url + "/add_podcast", headers=headers, data=data)
+    data = {
+        "podcast_values": json.dumps(podcast_values),
+        "user_id": str(user_id)
+    }
+    response = requests.post(url + "/api/data/add_podcast", headers=headers, data=data)
     if response.status_code == 200:
         success = response.json()["success"]
         if success:

@@ -19,3 +19,5 @@ itsdangerous
 aiofiles
 keyring
 cryptography
+python-multipart
+json
