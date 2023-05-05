@@ -1205,21 +1205,26 @@ def get_stats(cnx, user_id):
     
     cursor.execute(query, (user_id,))
     
-    result = cursor.fetchone()
-    stats = {
-        "UserCreated": result[0],
-        "PodcastsPlayed": result[1],
-        "TimeListened": result[2],
-        "PodcastsAdded": result[3],
-        "EpisodesSaved": result[4],
-        "EpisodesDownloaded": result[5]
-    }
+    results = cursor.fetchall()
+    result = results[0] if results else None
+
+    if result:
+        stats = {
+            "UserCreated": result[0],
+            "PodcastsPlayed": result[1],
+            "TimeListened": result[2],
+            "PodcastsAdded": result[3],
+            "EpisodesSaved": result[4],
+            "EpisodesDownloaded": result[5]
+        }
+    else:
+        stats = None
     
     cursor.close()
     cnx.close()
-
     
     return stats
+
 
 def saved_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
