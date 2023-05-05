@@ -221,7 +221,7 @@ async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_he
 @app.post("/api/data/add_podcast")
 async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(...)):
     podcast_values = json.loads(podcast_values)
-    cnx = database_functions.functions.connect_to_database()
+    cnx = get_database_connection()
     result = database_functions.functions.add_podcast(cnx, podcast_values, user_id)
     if result:
         return {"success": True}
