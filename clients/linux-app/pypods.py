@@ -350,6 +350,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
+        print(podcast_values)
         return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values, active_user.user_id)
         page.overlay.remove(progress_stack)
         if return_value == True:

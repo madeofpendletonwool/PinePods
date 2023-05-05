@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from passlib.context import CryptContext
 import mysql.connector
@@ -218,9 +218,9 @@ async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_he
     return {"theme": theme}
 
 @app.post("/api/data/add_podcast")
-async def api_add_podcast(podcast_values: List[str], user_id: int, api_key: str = Depends(get_api_key_from_header)):
+async def api_add_podcast(podcast_values: List[str] = Form(...), user_id: int = Form(...), api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
-    result = database_functions.functions.add_podcast(cnx, podcast_values[:-1], user_id)
+    result = database_functions.functions.add_podcast(cnx, podcast_values, user_id)
     if result:
         return {"success": True}
     else:
