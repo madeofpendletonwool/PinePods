@@ -153,7 +153,7 @@ def call_add_podcast(url, headers, podcast_values, user_id):
         "podcast_values": json.dumps(podcast_values),
         "user_id": str(user_id)
     }
-    response = requests.post(url + "/api/data/add_podcast", headers=headers, data=data)
+    response = requests.post(url + "/add_podcast", headers=headers, data=data)
     if response.status_code == 200:
         success = response.json()["success"]
         if success:
