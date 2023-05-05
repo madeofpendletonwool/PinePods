@@ -14,6 +14,7 @@ import Auth.Passfunctions
 from pydantic import BaseModel
 from typing import Dict
 from typing import List
+from typing import Optional
 import json
 
 secret_key_middle = secrets.token_hex(32)
@@ -185,12 +186,11 @@ async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_f
         episodes = []  # Return an empty list instead of raising an exception
     return {"episodes": episodes}
 
-
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
     user_id: int,
-    episode_title: str,
-    episode_url: str,
+    episode_title: Optional[str] = None,
+    episode_url: Optional[str] = None,
     api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
@@ -199,7 +199,8 @@ async def api_check_episode_playback(
     if has_playback:
         return {"has_playback": True, "listen_duration": listen_duration}
     else:
-        return {"has_playback": False, "listen_duration": 0}, 200
+        return {"has_playback": False, "listen_duration": 0}
+
 
 
 @app.get("/api/data/user_details_id/{user_id}")
