@@ -218,13 +218,14 @@ async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_he
     return {"theme": theme}
 
 @app.post("/api/data/add_podcast")
-async def api_add_podcast(podcast_values: List[str] = Form(...), user_id: int = Form(...), api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(...)):
+    podcast_values = json.loads(podcast_values)
+    cnx = database_functions.functions.connect_to_database()
     result = database_functions.functions.add_podcast(cnx, podcast_values, user_id)
     if result:
         return {"success": True}
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Podcast already exists for the user")
+        return {"success": False}
 
 @app.post("/api/data/enable_disable_guest")
 async def api_enable_disable_guest(api_key: str = Depends(get_api_key_from_header)):
