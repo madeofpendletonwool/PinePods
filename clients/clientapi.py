@@ -196,7 +196,10 @@ async def api_check_episode_playback(
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
         cnx, user_id, episode_title, episode_url
     )
-    return {"has_playback": has_playback, "listen_duration": listen_duration}
+    if has_playback:
+        return {"has_playback": True, "listen_duration": listen_duration}
+    else:
+        return {"has_playback": False, "listen_duration": 0}, 200
 
 
 @app.get("/api/data/user_details_id/{user_id}")
