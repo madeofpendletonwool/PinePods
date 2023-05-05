@@ -3,7 +3,7 @@ import flet as ft
 # from flet import *
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
-# import internal_functions.functions
+import internal_functions.functions
 # import database_functions.functions
 # import app_functions.functions
 # import Auth.Passfunctions
