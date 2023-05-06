@@ -201,15 +201,18 @@ app = Flask(__name__)
 #     else:
 #         return "", 404
 
+def preload_audio_file(url, proxy_url, cache):
+    response = requests.get(proxy_url, params={'url': url})
+    if response.status_code == 200:
+        # Cache the file content
+        cache.set(url, response.content)
+
 def initialize_audio_routes(app, proxy_url):
     cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
     @app.route('/preload/<path:url>')
-    def preload_audio_file(url):
-        response = requests.get(proxy_url, params={'url': url})
-        if response.status_code == 200:
-            # Cache the file content
-            cache.set(url, response.content)
+    def route_preload_audio_file(url):
+        preload_audio_file(url, proxy_url, cache)
         return ""
 
     @app.route('/cached_audio/<path:url>')
@@ -221,6 +224,8 @@ def initialize_audio_routes(app, proxy_url):
             return response
         else:
             return "", 404
+
+    return cache
 
 
 # Make login Screen start on boot
@@ -299,12 +304,13 @@ def main(page: ft.Page, session_value=None):
                     global proxy_port
                     global proxy_protocol
                     global reverse_proxy
+                    global cache
                     api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
                     print(f'api url {api_url}')
                     print(f'proxy url {proxy_url}')
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
-                    initialize_audio_routes(app, proxy_url)
+                    cache = initialize_audio_routes(app, proxy_url)
 
                     if retain_session == True:
                         save_server_vals(self.api_value, server_name)
@@ -647,7 +653,8 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.release()
 
                 # Preload the audio file and cache it
-                preload_audio_file(self.url)
+                global cache
+                preload_audio_file(self.url, proxy_url, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
