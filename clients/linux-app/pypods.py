@@ -1078,6 +1078,8 @@ def main(page: ft.Page, session_value=None):
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
+                    print(check_episode_playback)
+                    print(listen_duration)
                     if check_episode_playback == True:
                         listen_prog = seconds_to_time(listen_duration)
                         home_ep_prog = seconds_to_time(home_ep_duration)
@@ -1489,6 +1491,8 @@ def main(page: ft.Page, session_value=None):
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
+                    print(check_episode_playback)
+                    print(listen_duration)
                     if check_episode_playback == True:
                         listen_prog = seconds_to_time(listen_duration)
                         home_ep_prog = seconds_to_time(home_ep_duration)
