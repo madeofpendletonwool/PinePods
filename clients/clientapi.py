@@ -190,9 +190,9 @@ async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_f
 
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
-    user_id: Any,
-    episode_title: Any = None,
-    episode_url: Any = None,
+    user_id: int = Form(...),
+    episode_title: Optional[str] = Form(None),
+    episode_url: Optional[str] = Form(None),
     api_key: str = Depends(get_api_key_from_header)):
     
     logging.info(f"Received: user_id={user_id}, episode_title={episode_title}, episode_url={episode_url}")
@@ -207,6 +207,7 @@ async def api_check_episode_playback(
     else:
         logging.info("No playback found")
         return {"has_playback": False, "listen_duration": 0}
+
 
 
 
