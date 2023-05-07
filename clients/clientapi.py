@@ -190,13 +190,13 @@ async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_f
 
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
-    user_id: int,
-    episode_title: Optional[str] = None,
-    episode_url: Optional[str] = None,
+    user_id: Any,
+    episode_title: Any = None,
+    episode_url: Any = None,
     api_key: str = Depends(get_api_key_from_header)):
     
     logging.info(f"Received: user_id={user_id}, episode_title={episode_title}, episode_url={episode_url}")
-    
+
     cnx = get_database_connection()
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
         cnx, user_id, episode_title, episode_url
