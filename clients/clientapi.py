@@ -22,6 +22,7 @@ from typing import Any
 secret_key_middle = secrets.token_hex(32)
 
 
+logging.basicConfig(level=logging.INFO)
 
 from database_functions import functions
 
