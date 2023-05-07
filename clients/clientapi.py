@@ -16,6 +16,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 import json
+import logging
 
 secret_key_middle = secrets.token_hex(32)
 
@@ -192,13 +193,18 @@ async def api_check_episode_playback(
     episode_title: Optional[str] = None,
     episode_url: Optional[str] = None,
     api_key: str = Depends(get_api_key_from_header)):
+    
+    logging.info(f"Received: user_id={user_id}, episode_title={episode_title}, episode_url={episode_url}")
+    
     cnx = get_database_connection()
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
         cnx, user_id, episode_title, episode_url
     )
     if has_playback:
+        logging.info("Playback found, listen_duration={}".format(listen_duration))
         return {"has_playback": True, "listen_duration": listen_duration}
     else:
+        logging.info("No playback found")
         return {"has_playback": False, "listen_duration": 0}
 
 
