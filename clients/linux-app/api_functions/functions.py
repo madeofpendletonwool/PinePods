@@ -368,16 +368,15 @@ def call_saved_episode_list(url, headers, user_id):
         return None
 
 def call_download_episode_list(url, headers, user_id):
-    print(user_id)
-    print(type(user_id))
-    data = {"user_id": int(user_id)}
-    response = requests.post(url + "/download_episode_list", headers=headers, json=data)
+    data = {"user_id": user_id}
+    response = requests.post(url + "/download_episode_list", headers=headers, data=data)
     if response.status_code == 200:
         return response.json()["downloaded_episodes"]
     else:
         print("Error fetching downloaded episodes:", response.status_code)
         print("Error message:", response.text)
         return None
+
 
 
 
