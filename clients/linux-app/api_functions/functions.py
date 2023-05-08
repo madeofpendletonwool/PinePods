@@ -374,7 +374,9 @@ def call_download_episode_list(url, headers, user_id):
         return response.json()["downloaded_episodes"]
     else:
         print("Error fetching downloaded episodes:", response.status_code)
+        print("Error message:", response.text)  # Add this line
         return None
+
 
 def call_get_queue_list(url, headers, queue_urls):
     data = {"queue_urls": queue_urls}
