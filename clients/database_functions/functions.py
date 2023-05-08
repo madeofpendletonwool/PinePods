@@ -595,6 +595,8 @@ def download_podcast(cnx, url, title, user_id):
     file_path = os.path.join(download_location, filename)
     print(file_path)
 
+    dir_path = os.path.dirname(file_path)
+    os.makedirs(dir_path, exist_ok=True)
     # Write the file to disk
     with open(file_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
