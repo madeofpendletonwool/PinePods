@@ -407,9 +407,12 @@ async def api_saved_episode_list(user_id: int, api_key: str = Depends(get_api_ke
 
 @app.post("/api/data/download_episode_list")
 async def api_download_episode_list(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...)):
+    print("Received user_id:", user_id)
+    print("Type of user_id:", type(user_id))
     cnx = get_database_connection()
     downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
     return {"downloaded_episodes": downloaded_episodes}
+
 
 @app.post("/api/data/get_queue_list")
 async def api_get_queue_list(api_key: str = Depends(get_api_key_from_header), queue_urls: List[str] = Body(...)):
