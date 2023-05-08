@@ -305,10 +305,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [X] Create Docker-Compose Code
   - [X] Mixed content - Currently running http or https content can cause an error
   - [x] Option to run your own local podcast index api connection
+- [x] Implement Gravitar API for profile picture
+- [ ] Make web version utilize API Routes instead of database connections directly
+- [ ] Implement cache clearing for saved credentials in settings
+- [ ] Update flet dependancy to v6 (This fixes audio routing)
 
 ### To be added after beta version
 
-- [x] Implement Gravitar API for profile picture
 - [ ] Rotating currently playing
 - [ ] Implement smoother scrolling with big list loading
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
@@ -324,8 +327,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] MFA Logins - Github integration and local MFA (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
 - [ ] GUI Wrapper for App
-  - [ ] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
-  - [ ] Linux App
+  - [x] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
+  - [x] Options to create API keys on the web client as well as ability to remove them
+  - [ ] Linux App    
     - [ ] Flatpak
     - [ ] Snap
     - [ ] PyPi

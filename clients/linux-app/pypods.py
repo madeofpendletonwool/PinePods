@@ -1,7 +1,7 @@
 # Various flet imports
 import flet as ft
 # from flet import *
-from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
 # import database_functions.functions
@@ -1109,7 +1109,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1238,15 +1237,13 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR:
     """, color=active_user.main_color
         )
         page.banner.actions = [
@@ -1272,15 +1269,13 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR:
     """, color=active_user.main_color
         )
         page.banner.actions = [
@@ -1306,8 +1301,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1520,7 +1513,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1550,8 +1542,8 @@ def main(page: ft.Page, session_value=None):
             time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
             pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
             eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database')
-            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcast episodes currently saved')
-            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcast episodes currently downloaded')
+            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved')
+            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded')
             stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_added_display, eps_saved_display, eps_downloaded_display])
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
@@ -1559,7 +1551,6 @@ def main(page: ft.Page, session_value=None):
 
             stats_view = ft.View("/userstats",
                     [
-                        pypods_appbar,
                         stats_container
                     ]
                     
@@ -1921,7 +1912,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             search_view = ft.View("/searchpod",
                     [
-                        pypods_appbar,
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
                     ]
                     
@@ -2113,7 +2103,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             settings_view = ft.View("/settings",
                     [
-                        pypods_appbar,
                         user_setting_text,
                         theme_row_container,
                         admin_setting_text,
@@ -2270,7 +2259,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         feed_row,
                         *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
@@ -2403,7 +2391,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                     [
-                        pypods_appbar,
                         top_bar,
                         pod_view_row,
                         *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
@@ -2596,7 +2583,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_hist_view = ft.View("/history",
                     [
-                        pypods_appbar,
                         top_bar,
                         history_title_row,
                         *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
@@ -2793,7 +2779,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_saved_view = ft.View("/saved",
                     [
-                        pypods_appbar,
                         top_bar,
                         saved_title_row,
                         *[saved_ep_row_dict.get(f'search_row{i+1}') for i in range(len(saved_ep_rows))]
@@ -2991,7 +2976,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_download_view = ft.View("/downloads",
                     [
-                        pypods_appbar,
                         top_bar,
                         download_title_row,
                         *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
@@ -3185,7 +3169,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_queue_view = ft.View("/queue",
                     [
-                        pypods_appbar,
                         top_bar,
                         queue_title_row,
                         *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
@@ -3274,7 +3257,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         top_bar,
                         podcast_row,
                         feed_row,
@@ -3942,7 +3924,6 @@ def main(page: ft.Page, session_value=None):
 
 
     page.title = "PinePods"
-    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True)
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
@@ -4207,12 +4188,6 @@ def main(page: ft.Page, session_value=None):
     page.theme_mode = "dark"
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
-
-    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color)
-    page.add(pypods_appbar)
-    # page.appbar.visible = True
-    # page.appbar.update()
-    page.appbar.visible = False
 
     # def create_connector():
     #     # Create database connector
