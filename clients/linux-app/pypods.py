@@ -247,7 +247,6 @@ def main(page: ft.Page, session_value=None):
             self.page = page
 
         def api_verify(self, server_name, api_value, retain_session=False):
-            print(retain_session)
             pr = ft.ProgressRing()
             progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
             self.page.overlay.append(progress_stack)
@@ -257,8 +256,6 @@ def main(page: ft.Page, session_value=None):
             self.url = url
             self.api_value = api_value
             self.headers = {"Api-Key": self.api_value}
-            print(self.url)
-            print(self.api_value)
 
             headers = {
                 "pinepods_api": api_value,
@@ -295,7 +292,6 @@ def main(page: ft.Page, session_value=None):
                 if response.status_code == 200:
                     data = response.json()
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
-                    print(self.headers)
                     saved_session_value = get_saved_session_id_from_file()
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers, saved_session_value)
                     global api_url
@@ -306,8 +302,6 @@ def main(page: ft.Page, session_value=None):
                     global reverse_proxy
                     global cache
                     api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
-                    print(f'api url {api_url}')
-                    print(f'proxy url {proxy_url}')
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     cache = initialize_audio_routes(app, proxy_url)
@@ -328,9 +322,7 @@ def main(page: ft.Page, session_value=None):
                         active_user.user_id = 1
                         active_user.fullname = 'Guest User'
                         go_homelogin(page)
-                    print(data)
                 elif response.status_code == 401:
-                    print('running')
                     start_config(self.page)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
@@ -356,7 +348,6 @@ def main(page: ft.Page, session_value=None):
         page.update()
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
-        print(podcast_values)
         return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values, active_user.user_id)
         page.overlay.remove(progress_stack)
         if return_value == True:
@@ -1078,8 +1069,6 @@ def main(page: ft.Page, session_value=None):
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
-                    print(check_episode_playback)
-                    print(listen_duration)
                     if check_episode_playback == True:
                         listen_prog = seconds_to_time(listen_duration)
                         home_ep_prog = seconds_to_time(home_ep_duration)
@@ -3646,7 +3635,6 @@ def main(page: ft.Page, session_value=None):
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
             active_theme = api_functions.functions.call_get_theme(app_api.url, app_api.headers, self.user_id)
-            print(active_theme)
             if active_theme == 'light':
                 page.theme_mode = "light"
                 self.main_color = '#E1E1E1'
@@ -4251,7 +4239,6 @@ def main(page: ft.Page, session_value=None):
     #         go_homelogin(page)
     saved_app_api_key, saved_app_server_name = check_saved_server_vals()
     if saved_app_api_key and saved_app_server_name:
-        print(f'key and name {saved_app_api_key, saved_app_server_name}')
         app_api.api_verify(saved_app_server_name, saved_app_api_key)
     else:
         start_config(page)

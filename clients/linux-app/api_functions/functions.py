@@ -6,10 +6,11 @@ def generate_session_token():
     return secrets.token_hex(32)
 
 def call_clean_expired_sessions(url, headers):
-    print(f'in clean expired call {headers}')
+    # print(f'in clean expired call {headers}')
     response = requests.post(url + "/clean_expired_sessions/", headers=headers)
     if response.status_code == 200:
-        print(response.json())
+        print('Response good!')
+        # print(response.json())
     else:
         print("Error calling clean_expired_sessions:", response.status_code)
 
@@ -17,7 +18,6 @@ def call_check_saved_session(url, headers, session_value):
     response = requests.get(url + f"/check_saved_session/{session_value}", headers=headers)
     if response.status_code == 200:
         user_id = response.json()
-        print("User ID:", user_id)
         return user_id
     else:
         print("No saved session found")
@@ -121,7 +121,6 @@ def call_check_episode_playback(url, headers, user_id, episode_title, episode_ur
     response = requests.post(url + "/check_episode_playback", data=payload, headers=headers)
     if response.status_code == 200:
         playback_data = response.json()
-        print("Playback data:", playback_data)
         return playback_data['has_playback'], playback_data['listen_duration']
     else:
         return None, None
@@ -130,7 +129,6 @@ def call_get_user_details_id(url, headers, user_id):
     response = requests.get(url + f"/user_details_id/{user_id}", headers=headers)
     if response.status_code == 200:
         user_details = response.json()
-        print("User details:", user_details)
         return user_details
     else:
         print("Error fetching user details:", response.status_code)
@@ -140,7 +138,6 @@ def call_get_theme(url, headers, user_id):
     response = requests.get(url + f"/get_theme/{user_id}", headers=headers)
     if response.status_code == 200:
         theme = response.json()["theme"]
-        print("Theme:", theme)
         return theme
     else:
         print("Error fetching theme:", response.status_code)

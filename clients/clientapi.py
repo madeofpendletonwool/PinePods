@@ -479,7 +479,7 @@ async def api_delete_user(api_key: str = Depends(get_api_key_from_header), user_
     return {"status": "User deleted"}
 
 @app.put("/api/data/user/set_theme")
-async def api_set_theme(user_id: int, new_theme: str, cnx=Depends(get_database_connection)):
+async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cnx=Depends(get_database_connection)):
     database_functions.functions.set_theme(cnx, user_id, new_theme)
     return {"message": "Theme updated successfully"}
 
