@@ -122,11 +122,9 @@ def call_check_episode_playback(url, headers, user_id, episode_title, episode_ur
     if response.status_code == 200:
         playback_data = response.json()
         print("Playback data:", playback_data)
-        return playback_data
+        return playback_data['has_playback'], playback_data['listen_duration']
     else:
         return None, None
-
-
 
 def call_get_user_details_id(url, headers, user_id):
     response = requests.get(url + f"/user_details_id/{user_id}", headers=headers)

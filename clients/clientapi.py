@@ -202,8 +202,6 @@ async def api_check_episode_playback(
     has_playback, listen_duration = database_functions.functions.check_episode_playback(
         cnx, user_id, episode_title, episode_url
     )
-    print(has_playback)
-    print(listen_duration)
     if has_playback:
         logging.info("Playback found, listen_duration={}".format(listen_duration))
         return {"has_playback": True, "listen_duration": listen_duration}
