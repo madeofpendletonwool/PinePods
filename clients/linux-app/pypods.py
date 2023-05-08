@@ -7,6 +7,7 @@ import internal_functions.functions
 # import database_functions.functions
 # import app_functions.functions
 # import Auth.Passfunctions
+import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
 # Others

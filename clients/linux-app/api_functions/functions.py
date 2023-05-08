@@ -396,29 +396,35 @@ def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
         return None
 
 def call_check_usernames(url, headers, username):
+    print("call_check_usernames - URL:", url)
+    print("call_check_usernames - Headers:", headers)
+    print("call_check_usernames - Username:", username)
+
     data = {"username": username}
-    response = requests.post(url + "/check_usernames", headers=headers, json=data)
+    response = requests.post(url + "/check_usernames", headers=headers, json=username)  # Send the username directly as a string
     if response.status_code == 200:
         return response.json()["username_exists"]
     else:
         print("Error checking usernames:", response.status_code)
+        print("Error message:", response.text)
         return False
 
+
 def call_add_user(url, headers, user_values):
-    data = {"user_values": user_values}
-    response = requests.post(url + "/add_user", headers=headers, json=data)
+    response = requests.post(url + "/add_user", headers=headers, json=user_values)  # Send user_values directly
     if response.status_code == 200:
         print("User added successfully.")
     else:
         print("Error adding user:", response.status_code)
 
 def call_set_fullname(url, headers, user_id, new_name):
-    data = {"new_name": new_name}
-    response = requests.put(url + f"/set_fullname/{user_id}", headers=headers, json=data)
+    params = {"new_name": new_name}
+    response = requests.put(url + f"/set_fullname/{user_id}", headers=headers, params=params)
     if response.status_code == 200:
         print("Fullname updated successfully.")
     else:
         print("Error updating fullname:", response.status_code)
+
 
 def call_set_password(url, headers, user_id, salt, hash_pw):
     data = {"salt": salt, "hash_pw": hash_pw}

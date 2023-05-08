@@ -437,10 +437,11 @@ async def api_add_user(api_key: str = Depends(get_api_key_from_header), user_val
     return {"detail": "User added."}
 
 @app.put("/api/data/set_fullname/{user_id}")
-async def api_set_fullname(user_id: int, new_name: str = Body(...), api_key: str = Depends(get_api_key_from_header)):
+async def api_set_fullname(user_id: int, new_name: str = Query(...), api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     database_functions.functions.set_fullname(cnx, user_id, new_name)
     return {"detail": "Fullname updated."}
+
 
 @app.put("/api/data/set_password/{user_id}")
 async def api_set_password(user_id: int, salt: str = Body(...), hash_pw: str = Body(...), api_key: str = Depends(get_api_key_from_header)):
