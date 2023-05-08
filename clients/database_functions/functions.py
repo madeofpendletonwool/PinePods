@@ -650,7 +650,7 @@ def check_downloaded(cnx, user_id, title, url):
             cnx.close()
 
 def download_episode_list(cnx, user_id):
-    cursor = cnx.cursor()
+    cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
