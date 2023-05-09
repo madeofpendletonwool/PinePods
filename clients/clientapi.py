@@ -494,6 +494,23 @@ async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_da
     is_saved = database_functions.functions.check_saved(cnx, user_id, title, url)
     return {"is_saved": is_saved}
 
+@app.post("/api/data/create_api_key")
+async def api_create_api_key(api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...)):
+    cnx = get_database_connection()
+    new_api_key = database_functions.functions.create_api_key(cnx, user_id)
+    return {"api_key": new_api_key}
+
+@app.delete("/api/data/delete_api_key/{api_id}")
+async def api_delete_api_key(api_id: int, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.delete_api(cnx, api_id)
+    return {"detail": "API key deleted."}
+
+@app.get("/api/data/get_api_info")
+async def api_get_api_info(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    api_information = database_functions.functions.get_api_info(cnx)
+    return {"api_info": api_information}
 
 
 
