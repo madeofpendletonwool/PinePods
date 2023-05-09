@@ -48,7 +48,7 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     IsAdmin TINYINT(1)
                 )""")
 
-cursor.execute("""CREATE TABLE APIKeys (
+cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                     APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
                     UserID INT,
                     APIKey TEXT,
@@ -102,6 +102,8 @@ cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email,
 
 cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (1)""")
 
+cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (2)""")
+
 cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                     PodcastID INT AUTO_INCREMENT PRIMARY KEY,
                     PodcastName TEXT,
@@ -130,13 +132,13 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
                     UserSettingID INT AUTO_INCREMENT PRIMARY KEY,
-                    UserID INT,
+                    UserID INT UNIQUE,
                     Theme VARCHAR(255) DEFAULT 'nordic',
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")
 
-cursor.execute("""INSERT INTO UserSettings (UserID, Theme) VALUES ('1', 'nordic')""")
-cursor.execute("""INSERT INTO UserSettings (UserID, Theme) VALUES ('2', 'nordic')""")
+cursor.execute("""INSERT IGNORE INTO UserSettings (UserID, Theme) VALUES ('1', 'nordic')""")
+cursor.execute("""INSERT IGNORE INTO UserSettings (UserID, Theme) VALUES ('2', 'nordic')""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserEpisodeHistory (
                     UserEpisodeHistoryID INT AUTO_INCREMENT PRIMARY KEY,

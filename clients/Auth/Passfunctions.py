@@ -31,8 +31,14 @@ def verify_password(cnx, username: str, password: str) -> bool:
     hashed_password = result[0].encode('utf-8')
     salt = result[1].encode('utf-8')
 
+    print(f"Stored hashed_password: {hashed_password}")
+    print(f"Stored salt: {salt}")
+
     # Hash the password with the stored salt
     password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
 
+    print(f"Generated password_hash: {password_hash}")
+
     # Compare the hashed password with the stored hash
+    print(password_hash == hashed_password)
     return password_hash == hashed_password

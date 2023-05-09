@@ -9,6 +9,8 @@ services:
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
+    volumes:
+      - /home/user/pinepods/sql:/var/lib/mysql
     ports:
       - "3306:3306"
     restart: always
