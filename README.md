@@ -312,6 +312,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### To be added after beta version
 
+- [ ] Ability to disable downloads (for public servers)
 - [ ] Rotating currently playing
 - [ ] Implement smoother scrolling with big list loading
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added

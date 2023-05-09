@@ -1,5 +1,6 @@
 import mysql.connector
 import os
+import database_functions.functions
 # import Auth.Passfunctions
 import string
 import secrets
@@ -55,6 +56,34 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                     Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )""")
+
+def create_api_key(cnx, user_id=0):
+    cursor = cnx.cursor()
+
+    # Check if API key exists for user_id
+    query = "SELECT APIKey FROM APIKeys WHERE UserID = %s"
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+
+    if result:
+        api_key = result[0]
+    else:
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
+
+        query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
+        cursor.execute(query, (user_id, api_key))
+        cnx.commit()
+
+    cursor.close()
+    cnx.close()
+    return api_key
+
+web_api_key = create_api_key(cnx)
+
+os.environ["WEB_API_KEY"] = web_api_key
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                     UserStatsID INT AUTO_INCREMENT PRIMARY KEY,

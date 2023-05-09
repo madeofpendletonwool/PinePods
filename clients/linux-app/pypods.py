@@ -177,31 +177,6 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
 
-# cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-
-# @app.route('/preload/<path:url>')
-# def preload_audio_file(url):
-#     # Try to get the response from cache
-#     if reverse_proxy == "True":
-#         response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-#     else:
-#         response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-#     # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-#     if response.status_code == 200:
-#         # Cache the file content
-#         cache.set(url, response.content)
-#     return ""
-
-# @app.route('/cached_audio/<path:url>')
-# def serve_cached_audio(url):
-#     content = cache.get(url)
-
-#     if content is not None:
-#         response = Response(content, content_type='audio/mpeg')
-#         return response
-#     else:
-#         return "", 404
-
 def preload_audio_file(url, proxy_url, cache):
     response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
@@ -4189,30 +4164,6 @@ def main(page: ft.Page, session_value=None):
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
-    # def create_connector():
-    #     # Create database connector
-    #     cnx = mysql.connector.connect(
-    #         host=db_host,
-    #         port=db_port,
-    #         user=db_user,
-    #         password=db_password,
-    #         database=db_name,
-    #         charset='utf8mb4'
-    #     )
-
-    #     # Call the functions
-    #     api_functions.functions.call_clean_expired_sessions(app_api.url)
-    #     api_functions.functions.call_check_saved_session(app_api.url)
-
-    #     if login_screen == True:
-    #         if check_session:
-    #             active_user.saved_login(check_session)
-    #         else:
-    #             start_login(page)
-    #     else:
-    #         active_user.user_id = 1
-    #         active_user.fullname = 'Guest User'
-    #         go_homelogin(page)
     saved_app_api_key, saved_app_server_name = check_saved_server_vals()
     if saved_app_api_key and saved_app_server_name:
         app_api.api_verify(saved_app_server_name, saved_app_api_key)

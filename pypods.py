@@ -37,15 +37,12 @@ import hashlib
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Use the logger in your application
-logging.error("Test Logging - It works!")
-
 # Database variables
-db_host = os.environ.get("DB_HOST", "127.0.0.1")
-db_port = os.environ.get("DB_PORT", "3306")
-db_user = os.environ.get("DB_USER", "root")
-db_password = os.environ.get("DB_PASSWORD", "password")
-db_name = os.environ.get("DB_NAME", "pypods_database")
+# db_host = os.environ.get("DB_HOST", "127.0.0.1")
+# db_port = os.environ.get("DB_PORT", "3306")
+# db_user = os.environ.get("DB_USER", "root")
+# db_password = os.environ.get("DB_PASSWORD", "password")
+# db_name = os.environ.get("DB_NAME", "pypods_database")
 
 # Proxy variables
 proxy_host = os.environ.get("PROXY_HOST", "localhost")
@@ -55,6 +52,9 @@ reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
 api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
+
+# API Setup for FastAPI interactions with the database
+web_api_key = os.environ.get("WEB_API_KEY")
 
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
@@ -100,33 +100,115 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 
-# Create database connector
-dbconfig = {
-    "host": db_host,
-    "port": db_port,
-    "user": db_user,
-    "password": db_password,
-    "database": db_name,
-    "charset": "utf8mb4",
-}
+# # Create database connector
+# dbconfig = {
+#     "host": db_host,
+#     "port": db_port,
+#     "user": db_user,
+#     "password": db_password,
+#     "database": db_name,
+#     "charset": "utf8mb4",
+# }
 
-pool_name = "pinepods_pool"
-pool_size = 10
+# pool_name = "pinepods_pool"
+# pool_size = 10
 
-cnxpool = mysql.connector.pooling.MySQLConnectionPool(
-    pool_name=pool_name, pool_size=pool_size, **dbconfig
-)
+# cnxpool = mysql.connector.pooling.MySQLConnectionPool(
+#     pool_name=pool_name, pool_size=pool_size, **dbconfig
+# )
 
-def get_database_connection():
-    return cnxpool.get_connection()
+# def get_database_connection():
+#     return cnxpool.get_connection()
 
-# cnx = get_database_connection()
+# # cnx = get_database_connection()
 
-database_functions.functions.clean_expired_sessions(get_database_connection())
+# database_functions.functions.clean_expired_sessions(get_database_connection())
 
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
+
+    class API:
+        def __init__(self, page):
+            self.server_name = 'http://localhost:8032'
+            self.url = 'http://localhost:8032/api/data'
+            self.api_value = web_api_key
+            self.headers = None
+            self.page = page
+            self.headers = {"Api-Key": self.api_value}
+
+        def api_verify(self, retain_session=False):
+            check_url = self.server_name + "/api/pinepods_check"
+
+            headers = {
+                "pinepods_api": self.api_value,
+            }
+
+            try:
+                check_response = requests.get(check_url, timeout=10)
+                if check_response.status_code != 200:
+                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.update()
+                    return
+
+                check_data = check_response.json()
+
+                if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
+                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.update()
+                    return
+
+                response = requests.get(url, headers=headers, timeout=10)
+                response.raise_for_status()
+
+            except MissingSchema:
+                self.show_error_snackbar("This doesn't appear to be a proper URL.")
+            except requests.exceptions.Timeout:
+                self.show_error_snackbar("Request timed out. Please check your URL.")
+            except RequestException as e:
+                self.show_error_snackbar(f"Request failed: {e}")
+
+            else:
+                if response.status_code == 200:
+                    data = response.json()
+                    self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    # Initialize the audio routes
+                    # cache = initialize_audio_routes(app, proxy_url)
+
+                    if retain_session == True:
+                        save_server_vals(self.api_value, server_name)
+
+                    if login_screen == True:
+                        if page.web:
+                            start_login(page)
+                        else:
+                            if check_session:
+                                active_user.saved_login(check_session)
+                            else:
+                                start_login(page)
+
+                    else:
+                        active_user.user_id = 1
+                        active_user.fullname = 'Guest User'
+                        go_homelogin(page)
+                elif response.status_code == 401:
+                    start_config(self.page)
+                else:
+                    self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
+            self.page.update()
+
+        def show_error_snackbar(self, message):
+            self.page.snack_bar = ft.SnackBar(ft.Text(message))
+            self.page.snack_bar.open = True
+            self.page.update()
+
+        def on_click_snacks(self):
+            self.page.snack_bar = ft.SnackBar(ft.Text(f"Here's a snack"))
+            self.page.snack_bar.open = True
+            self.page.update()
+
+    app_api = API(page)
+
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website, page):
         pr = ft.ProgressRing()
         progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
@@ -3978,21 +4060,7 @@ def main(page: ft.Page, session_value=None):
     # page.appbar.update()
     page.appbar.visible = False
 
-    check_session = database_functions.functions.check_saved_session(get_database_connection())
-
-    
-    if login_screen == True:
-        if page.web:
-            start_login(page)
-        else:
-            if check_session:
-                active_user.saved_login(check_session)
-            else:
-                start_login(page)
-    else:
-        active_user.user_id = 1
-        active_user.fullname = 'Guest User'
-        go_homelogin(page)
+    app_api.api_verify()
 
 
 # Browser Version
