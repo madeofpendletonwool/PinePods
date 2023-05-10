@@ -1,5 +1,8 @@
 import mysql.connector
 import os
+
+sys.path.append('/pinepods')
+
 import database_functions.functions
 # import Auth.Passfunctions
 import string
