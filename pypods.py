@@ -37,6 +37,9 @@ import appdirs
 import logging
 import hashlib
 
+# Wait for Client API Server to start
+time.sleep(5)
+
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Database variables
@@ -58,6 +61,7 @@ api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 # API Setup for FastAPI interactions with the database
 web_api_key = os.environ.get("WEB_API_KEY")
 print(web_api_key)
+print("Ensure this prints")
 
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
