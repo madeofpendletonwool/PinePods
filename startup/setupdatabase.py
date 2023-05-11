@@ -85,7 +85,7 @@ cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW
                 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
 
 # Create the web API Key
-def create_api_key(cnx, user_id=0):
+def create_api_key(cnx, user_id=1):
     cursor = cnx.cursor()
 
     # Check if API key exists for user_id
