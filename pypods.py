@@ -133,14 +133,17 @@ def main(page: ft.Page, session_value=None):
     class API:
         def __init__(self, page):
             self.server_name = 'http://localhost:8032'
-            self.url = 'http://localhost:8032/api/data'
+            print(f"Server name: {self.server_name}")  # Add this line
             self.api_value = web_api_key
             self.headers = None
             self.page = page
             self.headers = {"Api-Key": self.api_value}
 
         def api_verify(self, retain_session=False):
+            url = self.server_name + "/api/data"
             check_url = self.server_name + "/api/pinepods_check"
+            print(f"url: {url}")  # Add this line
+            print(f"check_url: {check_url}")  # Add this line
 
             headers = {
                 "pinepods_api": self.api_value,
