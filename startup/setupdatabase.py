@@ -106,7 +106,6 @@ def create_api_key(cnx, user_id=1):
         cnx.commit()
 
     cursor.close()
-    cnx.close()
     return api_key
 
 web_api_key = create_api_key(cnx)
