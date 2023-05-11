@@ -61,6 +61,30 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )""")
 
+cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
+                    UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PodcastsPlayed INT DEFAULT 0,
+                    TimeListened INT DEFAULT 0,
+                    PodcastsAdded INT DEFAULT 0,
+                    EpisodesSaved INT DEFAULT 0,
+                    EpisodesDownloaded INT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                )""")
+
+cursor.execute("""CREATE TABLE IF NOT EXISTS AppSettings (
+                    AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+                    SelfServiceUser TINYINT(1) DEFAULT 0
+                )""")
+
+cursor.execute("""INSERT INTO AppSettings (SelfServiceUser)
+                  SELECT 0 FROM DUAL WHERE NOT EXISTS (SELECT * FROM AppSettings)""")
+
+cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
+                VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
+
+# Create the web API Key
 def create_api_key(cnx, user_id=0):
     cursor = cnx.cursor()
 
@@ -88,29 +112,6 @@ def create_api_key(cnx, user_id=0):
 web_api_key = create_api_key(cnx)
 
 os.environ["WEB_API_KEY"] = web_api_key
-
-cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
-                    UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
-                    UserID INT,
-                    UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PodcastsPlayed INT DEFAULT 0,
-                    TimeListened INT DEFAULT 0,
-                    PodcastsAdded INT DEFAULT 0,
-                    EpisodesSaved INT DEFAULT 0,
-                    EpisodesDownloaded INT DEFAULT 0,
-                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
-                )""")
-
-cursor.execute("""CREATE TABLE IF NOT EXISTS AppSettings (
-                    AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
-                    SelfServiceUser TINYINT(1) DEFAULT 0
-                )""")
-
-cursor.execute("""INSERT INTO AppSettings (SelfServiceUser)
-                  SELECT 0 FROM DUAL WHERE NOT EXISTS (SELECT * FROM AppSettings)""")
-
-cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
-                VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
 
 # Your admin user variables
 admin_fullname = os.environ.get("FULLNAME", "Admin User")
