@@ -57,6 +57,7 @@ api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 
 # API Setup for FastAPI interactions with the database
 web_api_key = os.environ.get("WEB_API_KEY")
+print(web_api_key)
 
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
