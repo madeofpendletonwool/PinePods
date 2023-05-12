@@ -19,6 +19,9 @@ RUN pip install -r ./requirements.txt
 COPY wait-for-it/wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
+# Add a cache-busting build argument
+ARG CACHEBUST=1
+
 # Put pinepods Files in place
 # Create structure for pinepods
 RUN git clone -b web-api https://github.com/madeofpendletonwool/pypods.git /pinepods && \

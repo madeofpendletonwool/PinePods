@@ -1449,6 +1449,8 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/login" or page.route == "/login":
+            print(app_api.url)
+            print(app_api.headers)
             guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
