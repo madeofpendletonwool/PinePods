@@ -110,7 +110,8 @@ def create_api_key(cnx, user_id=1):
 
 web_api_key = create_api_key(cnx)
 
-os.environ["WEB_API_KEY"] = web_api_key
+with open("/tmp/web_api_key.txt", "w") as f:
+    f.write(web_api_key)
 
 # Your admin user variables
 admin_fullname = os.environ.get("FULLNAME", "Admin User")
