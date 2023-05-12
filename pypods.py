@@ -101,6 +101,7 @@ if reverse_proxy == "True":
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
+print('Checking statement')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
