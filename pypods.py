@@ -154,9 +154,7 @@ def main(page: ft.Page, session_value=None):
             print(f"url: {self.url}")  # Add this line
             print(f"check_url: {check_url}")  # Add this line
 
-            self.headers = {
-                "pinepods_api": self.api_value,
-            }
+            self.headers = {"Api-Key": self.api_value}
 
             try:
                 check_response = requests.get(check_url, timeout=10)
