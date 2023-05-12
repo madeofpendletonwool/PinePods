@@ -38,16 +38,9 @@ import logging
 import hashlib
 
 # Wait for Client API Server to start
-time.sleep(5)
+time.sleep(3)
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Database variables
-# db_host = os.environ.get("DB_HOST", "127.0.0.1")
-# db_port = os.environ.get("DB_PORT", "3306")
-# db_user = os.environ.get("DB_USER", "root")
-# db_password = os.environ.get("DB_PASSWORD", "password")
-# db_name = os.environ.get("DB_NAME", "pypods_database")
 
 # Proxy variables
 proxy_host = os.environ.get("PROXY_HOST", "localhost")
@@ -61,11 +54,6 @@ api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 # API Setup for FastAPI interactions with the database
 with open("/tmp/web_api_key.txt", "r") as f:
     web_api_key = f.read().strip()
-
-print(web_api_key)
-print("Ensure this prints")
-
-
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
@@ -104,36 +92,9 @@ if reverse_proxy == "True":
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
-print('Checking statement')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-
-
-# # Create database connector
-# dbconfig = {
-#     "host": db_host,
-#     "port": db_port,
-#     "user": db_user,
-#     "password": db_password,
-#     "database": db_name,
-#     "charset": "utf8mb4",
-# }
-
-# pool_name = "pinepods_pool"
-# pool_size = 10
-
-# cnxpool = mysql.connector.pooling.MySQLConnectionPool(
-#     pool_name=pool_name, pool_size=pool_size, **dbconfig
-# )
-
-# def get_database_connection():
-#     return cnxpool.get_connection()
-
-# # cnx = get_database_connection()
-
-# database_functions.functions.clean_expired_sessions(get_database_connection())
 
 def main(page: ft.Page, session_value=None):
 
@@ -142,7 +103,6 @@ def main(page: ft.Page, session_value=None):
     class API:
         def __init__(self, page):
             self.server_name = 'http://localhost:8032'
-            print(f"Server name: {self.server_name}")  # Add this line
             self.api_value = web_api_key
             self.headers = None
             self.page = page
@@ -151,8 +111,6 @@ def main(page: ft.Page, session_value=None):
         def api_verify(self, retain_session=False):
             self.url = self.server_name + "/api/data"
             check_url = self.server_name + "/api/pinepods_check"
-            print(f"url: {self.url}")  # Add this line
-            print(f"check_url: {check_url}")  # Add this line
             self.headers = {"Api-Key": self.api_value}
 
             initial_headers = {
@@ -828,7 +786,6 @@ def main(page: ft.Page, session_value=None):
             # Home Screen Podcast Layout (Episodes in Newest order)
 
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers, active_user.user_id)
-            print(home_episodes)
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -1450,8 +1407,6 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/login" or page.route == "/login":
-            print(app_api.url)
-            print(app_api.headers)
             guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
