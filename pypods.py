@@ -1,3 +1,5 @@
+print('testing before anything')
+
 # Various flet imports
 import flet as ft
 # from flet import *
@@ -36,6 +38,8 @@ import secrets
 import appdirs
 import logging
 import hashlib
+
+print('testing prints')
 
 # Wait for Client API Server to start
 time.sleep(5)
