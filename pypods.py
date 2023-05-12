@@ -42,6 +42,10 @@ time.sleep(5)
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
+# Use the logger in your application
+logging.error("Test Logging - It works!")
+
 # Database variables
 # db_host = os.environ.get("DB_HOST", "127.0.0.1")
 # db_port = os.environ.get("DB_PORT", "3306")
@@ -4077,6 +4081,6 @@ def main(page: ft.Page, session_value=None):
 
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+ft.app(target=main, view=ft.WEB_BROWSER, port=8035)
 # App version
 # ft.app(target=main, port=8034)
