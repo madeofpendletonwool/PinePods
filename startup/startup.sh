@@ -54,4 +54,4 @@ EOF
 # Start the FastAPI client api
 python3 /pinepods/clients/clientapi.py &
 # Start PinePods
-python3 /pinepods/pypods.py
+python3 -u /pinepods/pypods.py
