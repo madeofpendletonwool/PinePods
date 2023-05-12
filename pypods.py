@@ -149,12 +149,12 @@ def main(page: ft.Page, session_value=None):
             self.headers = {"Api-Key": self.api_value}
 
         def api_verify(self, retain_session=False):
-            url = self.server_name + "/api/data"
+            self.url = self.server_name + "/api/data"
             check_url = self.server_name + "/api/pinepods_check"
-            print(f"url: {url}")  # Add this line
+            print(f"url: {self.url}")  # Add this line
             print(f"check_url: {check_url}")  # Add this line
 
-            headers = {
+            self.headers = {
                 "pinepods_api": self.api_value,
             }
 
@@ -172,7 +172,7 @@ def main(page: ft.Page, session_value=None):
                     self.page.update()
                     return
 
-                response = requests.get(url, headers=headers, timeout=10)
+                response = requests.get(self.url, headers=self.headers, timeout=10)
                 response.raise_for_status()
 
             except MissingSchema:
