@@ -66,6 +66,7 @@ def preload_audio_file(url):
     if reverse_proxy == "True":
         response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
     else:
+        print(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy')
         response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
     # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
     if response.status_code == 200:
@@ -1897,7 +1898,7 @@ def main(page: ft.Page, session_value=None):
 
             # Skip the first entry in api_information
             api_information = api_information[1:]
-            
+
             api_table_rows = []
             def create_on_select_changed_lambda(api_id, pages):
                 return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
