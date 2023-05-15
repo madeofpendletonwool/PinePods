@@ -79,11 +79,11 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 #     content = cache.get(url)
 
 
+# --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
 
 def preload_audio_file(url, proxy_url, cache):
-    print(proxy_url + url)
-    response = requests.get(proxy_url + url)
+    response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
