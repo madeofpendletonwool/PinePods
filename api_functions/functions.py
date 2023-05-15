@@ -491,10 +491,10 @@ def call_check_saved(url, headers, user_id, title, ep_url):
         return False
 
 def call_create_api_key(url, headers, user_id):
-    data = {"user_id": user_id}
+    data = {"user_id": user_id, "api_key": headers['Api-Key']}
     print(data)
     print(type(data["user_id"]))
-    response = requests.post(url + "/create_api_key", headers=headers, json=data)
+    response = requests.post(url + "/create_api_key", json=data)
     
     if response.status_code == 200:
         return response.json()["api_key"]
@@ -502,6 +502,7 @@ def call_create_api_key(url, headers, user_id):
         print("Error creating API key:", response.status_code)
         print("Error message:", response.text)
         return None
+
 
 def call_delete_api_key(url, headers, api_id):
     response = requests.delete(url + f"/delete_api_key/{api_id}", headers=headers)

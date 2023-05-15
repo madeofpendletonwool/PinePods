@@ -500,6 +500,7 @@ async def api_create_api_key(user_id: int = Body(...), api_key: str = Depends(ge
     new_api_key = database_functions.functions.create_api_key(cnx, user_id)
     return {"api_key": new_api_key}
 
+
 @app.delete("/api/data/delete_api_key/{api_id}")
 async def api_delete_api_key(api_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
