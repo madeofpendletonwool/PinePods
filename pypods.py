@@ -57,26 +57,57 @@ with open("/tmp/web_api_key.txt", "r") as f:
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
-app = Flask(__name__)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+# app = Flask(__name__)
+# cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-@app.route('/preload/<path:url>')
-def preload_audio_file(url):
-    # Try to get the response from cache
-    if reverse_proxy == "True":
-        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-    else:
-        print(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy')
-        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-    # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+# @app.route('/preload/<path:url>')
+# def preload_audio_file(url):
+#     # Try to get the response from cache
+#     if reverse_proxy == "True":
+#         response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
+#     else:
+#         print(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy')
+#         response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+#     # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+#     if response.status_code == 200:
+#         # Cache the file content
+#         cache.set(url, response.content)
+#     return ""
+
+# @app.route('/cached_audio/<path:url>')
+# def serve_cached_audio(url):
+#     content = cache.get(url)
+
+
+app = Flask(__name__)
+
+def preload_audio_file(url, proxy_url, cache):
+    response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
-    return ""
 
-@app.route('/cached_audio/<path:url>')
-def serve_cached_audio(url):
-    content = cache.get(url)
+def initialize_audio_routes(app, proxy_url):
+    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+
+    @app.route('/preload/<path:url>')
+    def route_preload_audio_file(url):
+        preload_audio_file(url, proxy_url, cache)
+        return ""
+
+    @app.route('/cached_audio/<path:url>')
+    def serve_cached_audio(url):
+        content = cache.get(url)
+
+        if content is not None:
+            response = Response(content, content_type='audio/mpeg')
+            return response
+        else:
+            return "", 404
+
+    return cache
+
+    
 
     if content is not None:
         response = Response(content, content_type='audio/mpeg')
@@ -485,7 +516,8 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.release()
 
                 # Preload the audio file and cache it
-                preload_audio_file(self.url)
+                global cache
+                preload_audio_file(self.url, proxy_url, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)

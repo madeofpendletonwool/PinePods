@@ -279,6 +279,7 @@ def main(page: ft.Page, session_value=None):
                     global cache
                     api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    print(proxy_url)
                     # Initialize the audio routes
                     cache = initialize_audio_routes(app, proxy_url)
 
