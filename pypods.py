@@ -107,7 +107,7 @@ def initialize_audio_routes(app, proxy_url):
 
     return cache
 
-    
+
 
     if content is not None:
         response = Response(content, content_type='audio/mpeg')
@@ -127,6 +127,8 @@ print(f'Proxy url is configured to {proxy_url}')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
+
+cache = initialize_audio_routes(app, proxy_url)
 
 def main(page: ft.Page, session_value=None):
 
