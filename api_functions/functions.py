@@ -492,6 +492,8 @@ def call_check_saved(url, headers, user_id, title, ep_url):
 
 def call_create_api_key(url, headers, user_id):
     data = {"user_id": user_id}
+    print(data)
+    print(type(data["user_id"]))
     response = requests.post(url + "/create_api_key", headers=headers, json=data)
     
     if response.status_code == 200:

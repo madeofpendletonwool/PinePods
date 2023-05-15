@@ -1846,6 +1846,8 @@ def main(page: ft.Page, session_value=None):
                     create_api_dlg.open = False
                     page.update()
 
+                print(active_user.user_id)
+                print(type(active_user.user_id))
                 new_key = api_functions.functions.call_create_api_key(app_api.url, app_api.headers, active_user.user_id)
 
                 create_api_dlg = ft.AlertDialog(
