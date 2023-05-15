@@ -495,10 +495,11 @@ async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_da
     return {"is_saved": is_saved}
 
 @app.post("/api/data/create_api_key")
-async def api_create_api_key(user_id: int = Body(...), api_key: str = Depends(get_api_key_from_header)):
+async def api_create_api_key(user_id: int = Body(..., embed=True), api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     new_api_key = database_functions.functions.create_api_key(cnx, user_id)
     return {"api_key": new_api_key}
+
 
 
 @app.delete("/api/data/delete_api_key/{api_id}")
