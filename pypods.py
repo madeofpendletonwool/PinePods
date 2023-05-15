@@ -1894,6 +1894,10 @@ def main(page: ft.Page, session_value=None):
             create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
             api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers)
+
+            # Skip the first entry in api_information
+            api_information = api_information[1:]
+            
             api_table_rows = []
             def create_on_select_changed_lambda(api_id, pages):
                 return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
