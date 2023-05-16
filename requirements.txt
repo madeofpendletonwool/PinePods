@@ -19,3 +19,6 @@ aiofiles
 keyring
 cryptography
 python-multipart
+gunicorn
+werkzeug
+pillow

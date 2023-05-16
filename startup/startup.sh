@@ -51,6 +51,8 @@ EOF
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
+# Start the proxy server
+nohup gunicorn --bind 0.0.0.0:8000 --timeout 120 pinepods.imageserver.wsgi:app &
 # Start the FastAPI client api
 python3 /pinepods/clients/clientapi.py &
 # Start PinePods
