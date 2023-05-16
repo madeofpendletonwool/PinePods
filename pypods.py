@@ -78,6 +78,13 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 # def serve_cached_audio(url):
 #     content = cache.get(url)
 
+#Initial Vars needed to start and used throughout
+if reverse_proxy == "True":
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+else:
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+print(f'Proxy url is configured to {proxy_url}')
+
 
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
@@ -120,12 +127,6 @@ def initialize_audio_routes(app, proxy_url):
 # Make login Screen start on boot
 login_screen = True
 
-#Initial Vars needed to start and used throughout
-if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-print(f'Proxy url is configured to {proxy_url}')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -183,6 +184,14 @@ def main(page: ft.Page, session_value=None):
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     # cache = initialize_audio_routes(app, proxy_url)
+                    global api_url
+                    global proxy_url
+                    global proxy_host
+                    global proxy_port
+                    global proxy_protocol
+                    global reverse_proxy
+                    global cache
+                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
 
                     if retain_session == True:
                         save_server_vals(self.api_value, server_name)
