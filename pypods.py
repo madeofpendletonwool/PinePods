@@ -43,8 +43,10 @@ time.sleep(3)
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Proxy variables
-proxy_host = os.environ.get("PROXY_HOST", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
+# proxy_host = os.environ.get("PROXY_HOST", "localhost")
+proxy_host = "pinepods-proxy"
+# proxy_port = os.environ.get("PROXY_PORT", "8000")
+proxy_port = "8000"
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
