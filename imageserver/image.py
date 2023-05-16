@@ -1,4 +1,4 @@
-from flask import Flask, request, Response, make_response
+from flask import Flask, request, Response
 from flask_caching import Cache
 from flask_cors import CORS
 import requests
@@ -17,6 +17,10 @@ def optimize_image(content):
             return output.getvalue()
 
 
+app = Flask(__name__)
+CORS(app)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+
 @app.route('/proxy')
 def proxy():
     url = request.args.get('url')
@@ -25,9 +29,18 @@ def proxy():
         headers = {}
         if 'Range' in request.headers:
             headers['Range'] = request.headers['Range']
-
+        
+       
+        # Check if the URL is an audio or image file
+        if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
+            # Try to get the response from cache
+            response = cache.get(url)
+            if response is None:
+                response = requests.get(url, headers=headers)
+                # Cache the entire audio file content
+                cache.set(url, response.content)
         # Check if the URL is an image file
-        if url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+        elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
             # Try to get the response from cache
             response = cache.get(url)
             if response is None:
@@ -50,15 +63,7 @@ def proxy():
             content = f.read()
         headers = {}
 
-    flask_response = make_response(content)
-
-    # Preserve important headers from the original response
-    for header in ['Content-Type', 'Content-Length', 'Last-Modified']:
-        if header in headers:
-            flask_response.headers[header] = headers[header]
-
-    # Add your custom headers
-    flask_response.headers.extend({
+    headers = Headers({
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Authorization',
@@ -66,8 +71,7 @@ def proxy():
         'Access-Control-Allow-Credentials': 'true'
     })
 
-    return flask_response
-
+    return Response(content, status=206 if 'Range' in request.headers else 200, headers=headers)
 
 if __name__ == '__main__':
     app.run()

@@ -88,33 +88,30 @@ print(f'Proxy url is configured to {proxy_url}')
 
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-def preload_audio_file(url, proxy_url, cache):
-    print(proxy_url)
-    response = requests.get(proxy_url, params={'url': url})
+@app.route('/preload/<path:url>')
+def preload_audio_file(url):
+    # Try to get the response from cache
+    if reverse_proxy == "True":
+        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
+    else:
+        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+    # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
+    return ""
 
-def initialize_audio_routes(app, proxy_url):
-    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+@app.route('/cached_audio/<path:url>')
+def serve_cached_audio(url):
+    content = cache.get(url)
 
-    @app.route('/preload/<path:url>')
-    def route_preload_audio_file(url):
-        preload_audio_file(url, proxy_url, cache)
-        return ""
-
-    @app.route('/cached_audio/<path:url>')
-    def serve_cached_audio(url):
-        content = cache.get(url)
-
-        if content is not None:
-            response = Response(content, content_type='audio/mpeg')
-            return response
-        else:
-            return "", 404
-
-    return cache
+    if content is not None:
+        response = Response(content, content_type='audio/mpeg')
+        return response
+    else:
+        return "", 404
 
 
 
@@ -189,13 +186,11 @@ def main(page: ft.Page, session_value=None):
                     # global proxy_port
                     # global proxy_protocol
                     # global reverse_proxy
-                    global cache
+                    # global cache
                     # api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
 
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     print(proxy_url)
-                    # Initialize the audio routes
-                    cache = initialize_audio_routes(app, proxy_url)
 
                     if retain_session == True:
                         save_server_vals(self.api_value, server_name)
