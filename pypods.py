@@ -82,7 +82,7 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 if reverse_proxy == "True":
     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
 else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:8000/proxy?url='
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
 
 
