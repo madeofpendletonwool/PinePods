@@ -532,7 +532,7 @@ def main(page: ft.Page, session_value=None):
                 print(self.url)
                 print(proxy_url)
                 print(cache)
-                preload_audio_file(self.url, proxy_url, cache)
+                preload_audio_file(self.url)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
