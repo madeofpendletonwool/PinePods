@@ -1,4 +1,4 @@
-from flask import Flask, request, Response, make_response
+from flask import Flask, request, Response
 from flask_caching import Cache
 from flask_cors import CORS
 import requests
@@ -16,6 +16,10 @@ def optimize_image(content):
             image.save(output, format='JPEG', optimize=True, quality=50) # Compress and save the image
             return output.getvalue()
 
+
+app = Flask(__name__)
+CORS(app)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 @app.route('/proxy')
 def proxy():
@@ -59,10 +63,7 @@ def proxy():
             content = f.read()
         headers = {}
 
-    flask_response = make_response(content)
-
-    # Add your custom headers
-    flask_response.headers.extend({
+    headers = Headers({
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Authorization',
@@ -70,8 +71,7 @@ def proxy():
         'Access-Control-Allow-Credentials': 'true'
     })
 
-    # Return the flask response object instead
-    return flask_response
+    return Response(content, status=206 if 'Range' in request.headers else 200, headers=headers)
 
 if __name__ == '__main__':
     app.run()
