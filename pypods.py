@@ -78,12 +78,12 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 # def serve_cached_audio(url):
 #     content = cache.get(url)
 
-#Initial Vars needed to start and used throughout
-# if reverse_proxy == "True":
-#     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-# else:
-#     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-# print(f'Proxy url is configured to {proxy_url}')
+Initial Vars needed to start and used throughout
+if reverse_proxy == "True":
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+else:
+    proxy_url = f'{proxy_protocol}://{proxy_host}:8000/proxy?url='
+print(f'Proxy url is configured to {proxy_url}')
 
 
 # --- Create Flask app for caching ------------------------------------------------
@@ -183,14 +183,14 @@ def main(page: ft.Page, session_value=None):
                     data = response.json()
                     # Initialize the audio routes
                     # cache = initialize_audio_routes(app, proxy_url)
-                    global api_url
-                    global proxy_url
-                    global proxy_host
-                    global proxy_port
-                    global proxy_protocol
-                    global reverse_proxy
-                    global cache
-                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
+                    # global api_url
+                    # global proxy_url
+                    # global proxy_host
+                    # global proxy_port
+                    # global proxy_protocol
+                    # global reverse_proxy
+                    # global cache
+                    # api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
 
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
                     print(proxy_url)
