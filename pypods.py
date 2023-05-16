@@ -43,10 +43,10 @@ time.sleep(3)
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Proxy variables
-proxy_host = os.environ.get("PROXY_HOST", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
-proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
-reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
+# proxy_host = os.environ.get("PROXY_HOST", "localhost")
+# proxy_port = os.environ.get("PROXY_PORT", "8000")
+# proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
+# reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
 api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
@@ -79,11 +79,11 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 #     content = cache.get(url)
 
 #Initial Vars needed to start and used throughout
-if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-print(f'Proxy url is configured to {proxy_url}')
+# if reverse_proxy == "True":
+#     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+# else:
+#     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+# print(f'Proxy url is configured to {proxy_url}')
 
 
 # --- Create Flask app for caching ------------------------------------------------
