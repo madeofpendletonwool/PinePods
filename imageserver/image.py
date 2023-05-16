@@ -25,18 +25,9 @@ def proxy():
         headers = {}
         if 'Range' in request.headers:
             headers['Range'] = request.headers['Range']
-        
-       
-        # Check if the URL is an audio or image file
-        if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
-            # Try to get the response from cache
-            response = cache.get(url)
-            if response is None:
-                response = requests.get(url, headers=headers)
-                # Cache the entire audio file content
-                cache.set(url, response.content)
+
         # Check if the URL is an image file
-        elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+        if url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
             # Try to get the response from cache
             response = cache.get(url)
             if response is None:
@@ -61,6 +52,11 @@ def proxy():
 
     flask_response = make_response(content)
 
+    # Preserve important headers from the original response
+    for header in ['Content-Type', 'Content-Length', 'Last-Modified']:
+        if header in headers:
+            flask_response.headers[header] = headers[header]
+
     # Add your custom headers
     flask_response.headers.extend({
         'Access-Control-Allow-Origin': '*',
@@ -70,8 +66,8 @@ def proxy():
         'Access-Control-Allow-Credentials': 'true'
     })
 
-    # Return the flask response object instead
     return flask_response
+
 
 if __name__ == '__main__':
     app.run()
