@@ -83,6 +83,7 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 app = Flask(__name__)
 
 def preload_audio_file(url, proxy_url, cache):
+    print(proxy_url)
     response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
@@ -520,6 +521,9 @@ def main(page: ft.Page, session_value=None):
 
                 # Preload the audio file and cache it
                 global cache
+                print(self.url)
+                print(proxy_url)
+                print(cache)
                 preload_audio_file(self.url, proxy_url, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
