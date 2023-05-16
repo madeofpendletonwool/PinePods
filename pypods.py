@@ -9,7 +9,6 @@ import app_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
-import Audio.functions
 # Others
 import time
 import mysql.connector
@@ -606,14 +605,6 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.release()
                     self.audio_playing = False
                     self.toggle_current_status()
-
-        def _monitor_audio(self):
-            while True:
-                state = self.player.get_state()
-                if state == vlc.State.Ended:
-                    self.thread = None
-                    break
-                time.sleep(1)
 
         def pause_episode(self, e=None):
             self.audio_element.pause()
