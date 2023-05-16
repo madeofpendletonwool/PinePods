@@ -59,27 +59,6 @@ with open("/tmp/web_api_key.txt", "r") as f:
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
-# app = Flask(__name__)
-# cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-
-# @app.route('/preload/<path:url>')
-# def preload_audio_file(url):
-#     # Try to get the response from cache
-#     if reverse_proxy == "True":
-#         response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-#     else:
-#         print(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy')
-#         response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-#     # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-#     if response.status_code == 200:
-#         # Cache the file content
-#         cache.set(url, response.content)
-#     return ""
-
-# @app.route('/cached_audio/<path:url>')
-# def serve_cached_audio(url):
-#     content = cache.get(url)
-
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='

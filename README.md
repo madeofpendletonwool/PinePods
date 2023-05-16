@@ -306,9 +306,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [X] Mixed content - Currently running http or https content can cause an error
   - [x] Option to run your own local podcast index api connection
 - [x] Implement Gravitar API for profile picture
-- [ ] Make web version utilize API Routes instead of database connections directly
+- [x] Make web version utilize API Routes instead of database connections directly
 - [ ] Implement cache clearing for saved credentials in settings
-- [ ] Update flet dependancy to v6 (This fixes audio routing)
+- [x] Update flet dependancy to v6 (This fixes audio routing)
 
 ### To be added after beta version
 
