@@ -353,6 +353,7 @@ def main(page: ft.Page, session_value=None):
     def check_image(artwork_path):
         if artwork_path.startswith('http'):
             # It's a URL, so return the path with the proxy URL appended
+            print(f"{proxy_url}{artwork_path}")
             return f"{proxy_url}{artwork_path}"
         else:
             # It's a local file path, so return the path as is
