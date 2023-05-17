@@ -18,6 +18,7 @@ from typing import Optional
 import json
 import logging
 from typing import Any
+import argparse
 
 secret_key_middle = secrets.token_hex(32)
 
@@ -517,5 +518,9 @@ async def api_get_api_info(api_key: str = Depends(get_api_key_from_header)):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
+    args = parser.parse_args()
+
     import uvicorn
-    uvicorn.run("clientapi:app", host="0.0.0.0", port=8032)
+    uvicorn.run("clientapi:app", host="0.0.0.0", port=args.port)
