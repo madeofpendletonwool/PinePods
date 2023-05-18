@@ -1154,6 +1154,19 @@ def final_admin(cnx, user_id):
 
     return False
 
+def download_status(cnx):
+    cursor = cnx.cursor()
+    query = "SELECT DownloadEnabled FROM AppSettings"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+    cnx.close()
+
+    if result and result[0] == 1:
+        return True
+    else:
+        return False
+
 def guest_status(cnx):
     cursor = cnx.cursor()
     query = "SELECT Email FROM Users WHERE Email = 'active'"
@@ -1175,6 +1188,13 @@ def enable_disable_guest(cnx):
     cursor.close()
     cnx.close()
 
+def enable_disable_downloads(cnx):
+    cursor = cnx.cursor()
+    query = "UPDATE AppSettings SET DownloadEnabled = CASE WHEN DownloadEnabled = 1 THEN 0 ELSE 1 END"
+    cursor.execute(query)
+    cnx.commit()
+    cursor.close()
+    cnx.close()
 
 def self_service_status(cnx):
     cursor = cnx.cursor()

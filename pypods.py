@@ -281,7 +281,13 @@ def main(page: ft.Page, session_value=None):
 
     def guest_user_change(e):
         api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest User Modified!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def download_option_change(e):
+        api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
         page.snack_bar.open = True
         page.update()
 
@@ -1802,6 +1808,23 @@ def main(page: ft.Page, session_value=None):
             user_edit_column = ft.Column(controls=[edit_user_text, user_table])
             user_edit_container = ft.Container(content=user_edit_column)
             user_edit_container.padding=padding.only(left=70, right=50)
+
+            # Download Enable/Disable
+            download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+            if download_status_bool == True:
+                download_status = 'enabled'
+            else:
+                download_status = 'disabled'
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=22)
+            disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
+            if download_status_bool == True:
+                download_info_button = ft.ElevatedButton(f'Disable Download User', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                download_info_button = ft.ElevatedButton(f'Enable Download User', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            download_info_col = ft.Column(controls=[disable_download_text, disable_download_notify, download_info_button])
+            download_info = ft.Container(content=download_info_col)
+            download_info.padding=padding.only(left=70, right=50)
 
             # Guest User Settings 
             guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
