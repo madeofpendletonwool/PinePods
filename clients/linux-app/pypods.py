@@ -178,7 +178,6 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 app = Flask(__name__)
 
 def preload_audio_file(url, proxy_url, cache):
-    print(proxy_url)
     response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
@@ -280,7 +279,6 @@ def main(page: ft.Page, session_value=None):
                     global cache
                     api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
-                    print(proxy_url)
                     # Initialize the audio routes
                     cache = initialize_audio_routes(app, proxy_url)
 
@@ -623,9 +621,6 @@ def main(page: ft.Page, session_value=None):
 
                 # Preload the audio file and cache it
                 global cache
-                print(self.url)
-                print(proxy_url)
-                print(cache)
                 preload_audio_file(self.url, proxy_url, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
@@ -3563,12 +3558,9 @@ def main(page: ft.Page, session_value=None):
                 self.username = login_details['Username']
                 self.email = login_details['Email']
                 if retain_session:
-                    if page.web:
-                        print('Web version currently doesnt retain sessions')
-                    else:
-                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
-                        if session_token:
-                            save_session_id_to_file(session_token)
+                    session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                    if session_token:
+                        save_session_id_to_file(session_token)
 
                 go_homelogin(page)
             else:

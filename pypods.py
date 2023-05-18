@@ -42,10 +42,8 @@ time.sleep(3)
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Proxy variables
-# proxy_host = os.environ.get("PROXY_HOST", "localhost")
-proxy_host = "localhost"
-# proxy_port = os.environ.get("PROXY_PORT", "8000")
-proxy_port = "8000"
+proxy_host = os.environ.get("PROXY_HOST", "localhost")
+proxy_port = os.environ.get("PROXY_PORT", "8000")
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
@@ -63,7 +61,6 @@ if reverse_proxy == "True":
     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-print(f'Proxy url is configured to {proxy_url}')
 
 
 # --- Create Flask app for caching ------------------------------------------------
@@ -77,7 +74,6 @@ def preload_audio_file(url):
         response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
     else:
         response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
-    # response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
@@ -107,8 +103,6 @@ login_screen = True
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# cache = initialize_audio_routes(app, proxy_url)
 
 def main(page: ft.Page, session_value=None):
 
@@ -158,19 +152,8 @@ def main(page: ft.Page, session_value=None):
             else:
                 if response.status_code == 200:
                     data = response.json()
-                    # Initialize the audio routes
-                    # cache = initialize_audio_routes(app, proxy_url)
-                    # global api_url
-                    # global proxy_url
-                    # global proxy_host
-                    # global proxy_port
-                    # global proxy_protocol
-                    # global reverse_proxy
-                    # global cache
-                    # api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
 
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
-                    print(proxy_url)
 
                     if retain_session == True:
                         save_server_vals(self.api_value, server_name)
@@ -331,7 +314,6 @@ def main(page: ft.Page, session_value=None):
     def check_image(artwork_path):
         if artwork_path.startswith('http'):
             # It's a URL, so return the path with the proxy URL appended
-            print(f"{proxy_url}{artwork_path}")
             return f"{proxy_url}{artwork_path}"
         else:
             # It's a local file path, so return the path as is
@@ -510,9 +492,6 @@ def main(page: ft.Page, session_value=None):
 
                 # Preload the audio file and cache it
                 global cache
-                print(self.url)
-                print(proxy_url)
-                print(cache)
                 preload_audio_file(self.url)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
@@ -1867,8 +1846,6 @@ def main(page: ft.Page, session_value=None):
                     create_api_dlg.open = False
                     page.update()
 
-                print(active_user.user_id)
-                print(type(active_user.user_id))
                 new_key = api_functions.functions.call_create_api_key(app_api.url, app_api.headers, active_user.user_id)
 
                 create_api_dlg = ft.AlertDialog(
@@ -1893,7 +1870,6 @@ def main(page: ft.Page, session_value=None):
                     page.update()
 
                 def delete_api(e):
-                    print(active_user.api_id)
                     api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id)
                     modify_api_dlg.open = False
                     page.update()
@@ -2201,9 +2177,6 @@ def main(page: ft.Page, session_value=None):
                 pod_list_column = ft.Column(
                     controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
                 )
-                # pod_list_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
                 pod_list_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
                     ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
@@ -2514,10 +2487,6 @@ def main(page: ft.Page, session_value=None):
                 saved_ep_column = ft.Column(
                     controls=[saved_entry_title, saved_entry_description, saved_entry_released]
                 )
-                # saved_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[saved_entry_artwork_url, saved_ep_column, saved_ep_play_button]
-                # )
                 saved_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[saved_ep_column, saved_ep_play_button]),
@@ -2711,10 +2680,6 @@ def main(page: ft.Page, session_value=None):
                 download_ep_column = ft.Column(
                     controls=[download_entry_title, download_entry_description, download_entry_released]
                 )
-                # download_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[download_entry_artwork_url, download_ep_column, download_ep_play_button]
-                # )
                 download_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[download_ep_column, download_ep_play_button]),
@@ -4057,8 +4022,6 @@ def main(page: ft.Page, session_value=None):
 
     pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color)
     page.add(pypods_appbar)
-    # page.appbar.visible = True
-    # page.appbar.update()
     page.appbar.visible = False
 
     app_api.api_verify()

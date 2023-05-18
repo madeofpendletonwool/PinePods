@@ -341,6 +341,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
     - [ ] Sign in retention for moble editions
     - [ ] Android App
     - [ ] IOS App
+- [ ] Option to run the client app with local config. Not connected to a server
 - [ ] Add verification before deleting user
 - [ ] Rating System
 - [ ] Sharing System
