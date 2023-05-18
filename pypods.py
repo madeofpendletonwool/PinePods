@@ -7,7 +7,8 @@ import internal_functions.functions
 import database_functions.functions
 import app_functions.functions
 import Auth.Passfunctions
-import Audio.functions
+import api_functions.functions
+from api_functions.functions import call_api_config
 # Others
 import time
 import mysql.connector
@@ -35,30 +36,37 @@ import appdirs
 import logging
 import hashlib
 
+# Wait for Client API Server to start
+time.sleep(3)
+
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Use the logger in your application
-logging.error("Test Logging - It works!")
-
-# Database variables
-db_host = os.environ.get("DB_HOST", "127.0.0.1")
-db_port = os.environ.get("DB_PORT", "3306")
-db_user = os.environ.get("DB_USER", "root")
-db_password = os.environ.get("DB_PASSWORD", "password")
-db_name = os.environ.get("DB_NAME", "pypods_database")
-
 # Proxy variables
-proxy_host = os.environ.get("PROXY_HOST", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
+# proxy_host = os.environ.get("PROXY_HOST", "localhost")
+proxy_host = "localhost"
+# proxy_port = os.environ.get("PROXY_PORT", "8000")
+proxy_port = "8000"
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
 api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 
+# API Setup for FastAPI interactions with the database
+with open("/tmp/web_api_key.txt", "r") as f:
+    web_api_key = f.read().strip()
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
+# Initial Vars needed to start and used throughout
+if reverse_proxy == "True":
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+else:
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+print(f'Proxy url is configured to {proxy_url}')
+
+
+# --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
@@ -85,48 +93,119 @@ def serve_cached_audio(url):
     else:
         return "", 404
 
+
+
+    if content is not None:
+        response = Response(content, content_type='audio/mpeg')
+        return response
+    else:
+        return "", 404
+
 # Make login Screen start on boot
 login_screen = True
 
-#Initial Vars needed to start and used throughout
-if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-print(f'Proxy url is configured to {proxy_url}')
 audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-
-
-# Create database connector
-dbconfig = {
-    "host": db_host,
-    "port": db_port,
-    "user": db_user,
-    "password": db_password,
-    "database": db_name,
-    "charset": "utf8mb4",
-}
-
-pool_name = "pinepods_pool"
-pool_size = 10
-
-cnxpool = mysql.connector.pooling.MySQLConnectionPool(
-    pool_name=pool_name, pool_size=pool_size, **dbconfig
-)
-
-def get_database_connection():
-    return cnxpool.get_connection()
-
-# cnx = get_database_connection()
-
-database_functions.functions.clean_expired_sessions(get_database_connection())
+# cache = initialize_audio_routes(app, proxy_url)
 
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
+
+    class API:
+        def __init__(self, page):
+            self.server_name = 'http://localhost:8032'
+            self.api_value = web_api_key
+            self.headers = None
+            self.page = page
+            self.headers = {"Api-Key": self.api_value}
+
+        def api_verify(self, retain_session=False):
+            self.url = self.server_name + "/api/data"
+            check_url = self.server_name + "/api/pinepods_check"
+            self.headers = {"Api-Key": self.api_value}
+
+            initial_headers = {
+                "pinepods_api": self.api_value,
+            }
+
+            try:
+                check_response = requests.get(check_url, timeout=10)
+                if check_response.status_code != 200:
+                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.update()
+                    return
+
+                check_data = check_response.json()
+
+                if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
+                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.update()
+                    return
+
+                response = requests.get(self.url, headers=initial_headers, timeout=10)
+                response.raise_for_status()
+
+            except MissingSchema:
+                self.show_error_snackbar("This doesn't appear to be a proper URL.")
+            except requests.exceptions.Timeout:
+                self.show_error_snackbar("Request timed out. Please check your URL.")
+            except RequestException as e:
+                self.show_error_snackbar(f"Request failed: {e}")
+
+            else:
+                if response.status_code == 200:
+                    data = response.json()
+                    # Initialize the audio routes
+                    # cache = initialize_audio_routes(app, proxy_url)
+                    # global api_url
+                    # global proxy_url
+                    # global proxy_host
+                    # global proxy_port
+                    # global proxy_protocol
+                    # global reverse_proxy
+                    # global cache
+                    # api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
+
+                    self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    print(proxy_url)
+
+                    if retain_session == True:
+                        save_server_vals(self.api_value, server_name)
+
+                    if login_screen == True:
+                        if page.web:
+                            start_login(page)
+                        else:
+                            if check_session:
+                                active_user.saved_login(check_session)
+                            else:
+                                start_login(page)
+
+                    else:
+                        active_user.user_id = 1
+                        active_user.fullname = 'Guest User'
+                        go_homelogin(page)
+                elif response.status_code == 401:
+                    start_config(self.page)
+                else:
+                    self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
+            self.page.update()
+
+        def show_error_snackbar(self, message):
+            self.page.snack_bar = ft.SnackBar(ft.Text(message))
+            self.page.snack_bar.open = True
+            self.page.update()
+
+        def on_click_snacks(self):
+            self.page.snack_bar = ft.SnackBar(ft.Text(f"Here's a snack"))
+            self.page.snack_bar.open = True
+            self.page.update()
+
+    app_api = API(page)
+
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website, page):
         pr = ft.ProgressRing()
         progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
@@ -134,7 +213,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
-        return_value = database_functions.functions.add_podcast(get_database_connection(), podcast_values, active_user.user_id)
+        return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values, active_user.user_id)
         page.overlay.remove(progress_stack)
         if return_value == True:
             page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
@@ -218,13 +297,13 @@ def main(page: ft.Page, session_value=None):
         page.launch_url(clicked_podcast.website)
 
     def guest_user_change(e):
-        database_functions.functions.enable_disable_guest(get_database_connection())
+        api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
         page.snack_bar.open = True
         page.update()
 
     def self_service_change(e):
-        database_functions.functions.enable_disable_self_service(get_database_connection())
+        api_functions.functions.call_enable_disable_self_service(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
         page.snack_bar.open = True
         page.update()
@@ -252,6 +331,7 @@ def main(page: ft.Page, session_value=None):
     def check_image(artwork_path):
         if artwork_path.startswith('http'):
             # It's a URL, so return the path with the proxy URL appended
+            print(f"{proxy_url}{artwork_path}")
             return f"{proxy_url}{artwork_path}"
         else:
             # It's a local file path, so return the path as is
@@ -291,7 +371,7 @@ def main(page: ft.Page, session_value=None):
             self_service_dlg.open = False
             self.page.update()
 
-        self_service_status = database_functions.functions.self_service_status(get_database_connection())
+        self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
 
         if self_service_status == 0:
             self_service_dlg = ft.AlertDialog(
@@ -411,7 +491,7 @@ def main(page: ft.Page, session_value=None):
             while True:
                 time.sleep(60)
                 if self.audio_playing:
-                    database_functions.functions.increment_listen_time(get_database_connection(), active_user.user_id)
+                    api_functions.functions.call_increment_listen_time(app_api.url, app_api.headers, active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):            
             if self.loading_audio == True:
@@ -429,6 +509,10 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.release()
 
                 # Preload the audio file and cache it
+                global cache
+                print(self.url)
+                print(proxy_url)
+                print(cache)
                 preload_audio_file(self.url)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
@@ -467,7 +551,7 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.seek(listen_math)
 
                 self.record_history()
-                database_functions.functions.increment_played(get_database_connection(), active_user.user_id)
+                api_functions.functions.call_increment_played(app_api.url, app_api.headers, active_user.user_id)
 
                 # convert milliseconds to a timedelta object
                 delta = datetime.timedelta(milliseconds=media_length)
@@ -521,14 +605,6 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.release()
                     self.audio_playing = False
                     self.toggle_current_status()
-
-        def _monitor_audio(self):
-            while True:
-                state = self.player.get_state()
-                if state == vlc.State.Ended:
-                    self.thread = None
-                    break
-                time.sleep(1)
 
         def pause_episode(self, e=None):
             self.audio_element.pause()
@@ -646,13 +722,13 @@ def main(page: ft.Page, session_value=None):
             self.audio_element.seek(time_ms)
 
         def record_history(self):
-            database_functions.functions.record_podcast_history(get_database_connection(), self.name, active_user.user_id, 0)
+            api_functions.functions.call_record_podcast_history(app_api.url, app_api.headers, self.name, active_user.user_id, 0)
 
         def download_pod(self):
-            database_functions.functions.download_podcast(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_download_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def delete_pod(self):
-            database_functions.functions.delete_podcast(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
 
         def queue_pod(self, url):
@@ -667,10 +743,10 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
         def save_pod(self):
-            database_functions.functions.save_episode(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_save_episode(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def remove_saved_pod(self):
-            database_functions.functions.remove_saved_episode(get_database_connection(), self.url, self.title, active_user.user_id)
+            api_functions.functions.call_remove_saved_episode(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def get_queue(self):
             return self.queue
@@ -705,7 +781,7 @@ def main(page: ft.Page, session_value=None):
 
         def record_listen_duration(self):
             listen_duration = self.get_current_seconds()
-            database_functions.functions.record_listen_duration(get_database_connection(), self.url, self.name, active_user.user_id, listen_duration)
+            api_functions.functions.call_record_listen_duration(app_api.url, app_api.headers, self.url, self.name, active_user.user_id, listen_duration)
 
         def seek_to_second(self, second):
             """
@@ -719,7 +795,7 @@ def main(page: ft.Page, session_value=None):
         progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
         page.overlay.append(progress_stack)
         page.update()
-        database_functions.functions.refresh_pods(get_database_connection())
+        api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
         page.overlay.remove(progress_stack)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
         page.snack_bar.open = True
@@ -730,8 +806,7 @@ def main(page: ft.Page, session_value=None):
 
             # Home Screen Podcast Layout (Episodes in Newest order)
 
-            home_episodes = database_functions.functions.return_episodes(get_database_connection(), active_user.user_id)
-            print(home_episodes)
+            home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers, active_user.user_id)
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -824,7 +899,7 @@ def main(page: ft.Page, session_value=None):
                             home_entry_description = ft.Text(home_ep_desc)
 
                     home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, home_ep_title, home_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, home_ep_title, home_ep_url)
                     home_entry_released = ft.Text(f'Released on: {home_pub_date}', color=active_user.font_color)
 
                     home_art_no = random.randint(1, 12)
@@ -1139,7 +1214,7 @@ def main(page: ft.Page, session_value=None):
 
             # Home Screen Podcast Layout (Episodes in Newest order)
 
-            home_episodes = database_functions.functions.return_episodes(get_database_connection(), active_user.user_id)
+            home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers, active_user.user_id)
 
             if home_episodes is None:
                 home_ep_number = 1
@@ -1232,7 +1307,7 @@ def main(page: ft.Page, session_value=None):
                             home_entry_description = ft.Text(home_ep_desc)
 
                     home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, home_ep_title, home_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, home_ep_title, home_ep_url)
                     home_entry_released = ft.Text(f'Released on: {home_pub_date}', color=active_user.font_color)
 
                     home_art_no = random.randint(1, 12)
@@ -1313,7 +1388,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/userstats" or page.route == "/userstats":
 
-            user_stats = database_functions.functions.get_stats(get_database_connection(), active_user.user_id)
+            user_stats = api_functions.functions.call_get_stats(app_api.url, app_api.headers, active_user.user_id)
 
             stats_created_date = user_stats['UserCreated']
             stats_pods_played = user_stats['PodcastsPlayed']
@@ -1322,7 +1397,7 @@ def main(page: ft.Page, session_value=None):
             stats_eps_saved = user_stats['EpisodesSaved']
             stats_eps_downloaded = user_stats['EpisodesDownloaded']
 
-            user_ep_count = database_functions.functions.get_user_episode_count(get_database_connection(), active_user.user_id)
+            user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers, active_user.user_id)
 
             user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
             date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
@@ -1353,7 +1428,7 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/login" or page.route == "/login":
-            guest_enabled = database_functions.functions.guest_status(get_database_connection())
+            guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
@@ -1695,7 +1770,7 @@ def main(page: ft.Page, session_value=None):
             #User Table Setup - Admin only
             edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
 
-            user_information = database_functions.functions.get_user_info(get_database_connection())
+            user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
 
             for entry in user_information:
@@ -1750,7 +1825,7 @@ def main(page: ft.Page, session_value=None):
             user_edit_container.padding=padding.only(left=70, right=50)
 
             # Guest User Settings 
-            guest_status_bool = database_functions.functions.guest_status(get_database_connection())
+            guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             if guest_status_bool == True:
                 guest_status = 'enabled'
             else:
@@ -1767,7 +1842,7 @@ def main(page: ft.Page, session_value=None):
             guest_info.padding=padding.only(left=70, right=50)
 
             # User Self Service Creation
-            self_service_bool = database_functions.functions.self_service_status(get_database_connection())
+            self_service_bool = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
             if self_service_bool == True:
                 self_service_status = 'enabled'
             else:
@@ -1792,7 +1867,9 @@ def main(page: ft.Page, session_value=None):
                     create_api_dlg.open = False
                     page.update()
 
-                new_key = database_functions.functions.create_api_key(get_database_connection(), active_user.user_id)
+                print(active_user.user_id)
+                print(type(active_user.user_id))
+                new_key = api_functions.functions.call_create_api_key(app_api.url, app_api.headers, active_user.user_id)
 
                 create_api_dlg = ft.AlertDialog(
                 modal=True,
@@ -1817,7 +1894,7 @@ def main(page: ft.Page, session_value=None):
 
                 def delete_api(e):
                     print(active_user.api_id)
-                    database_functions.functions.delete_api(get_database_connection(), active_user.api_id)
+                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id)
                     modify_api_dlg.open = False
                     page.update()
 
@@ -1837,7 +1914,11 @@ def main(page: ft.Page, session_value=None):
 
             create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
-            api_information = database_functions.functions.get_api_info(get_database_connection())
+            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers)
+
+            # Skip the first entry in api_information
+            api_information = api_information[1:]
+
             api_table_rows = []
             def create_on_select_changed_lambda(api_id, pages):
                 return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
@@ -1888,7 +1969,7 @@ def main(page: ft.Page, session_value=None):
 
 
             # Check if admin settings should be displayed 
-            user_is_admin = database_functions.functions.user_admin_check(get_database_connection(), int(active_user.user_id))
+            user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
             if user_is_admin == True:
                 pass
             else:
@@ -1924,7 +2005,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
             # Check if podcast is already in database for user
-            podcast_status = database_functions.functions.check_podcast(get_database_connection(), active_user.user_id, clicked_podcast.name)
+            podcast_status = api_functions.functions.call_check_podcast(app_api.url, app_api.headers, active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
             # First Podcast Info
             display_pod_art_no = random.randint(1, 12)
@@ -1947,7 +2028,7 @@ def main(page: ft.Page, session_value=None):
                 icon_color="red400",
                 icon_size=40,
                 tooltip="Remove Podcast",
-                on_click=lambda x, title=clicked_podcast.name: database_functions.functions.remove_podcast(get_database_connection(), title, active_user.user_id)
+                on_click=lambda x, title=clicked_podcast.name: api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
             )
             if podcast_status == True:
                 feed_row_content = ft.ResponsiveRow([
@@ -2076,7 +2157,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/pod_list" or page.route == "/pod_list":
 
             # Get Pod info
-            pod_list_data = database_functions.functions.return_pods(get_database_connection(), active_user.user_id)
+            pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
 
             # Get and format list
             pod_list_number = 1
@@ -2211,7 +2292,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/history" or page.route == "/history":
 
             # Get Pod info
-            hist_episodes = database_functions.functions.user_history(get_database_connection(), active_user.user_id)
+            hist_episodes = api_functions.functions.call_user_history(app_api.url, app_api.headers, active_user.user_id)
             hist_episodes.reverse()
 
             if hist_episodes is None:
@@ -2306,7 +2387,7 @@ def main(page: ft.Page, session_value=None):
                             hist_entry_description = ft.Text(hist_ep_desc)
 
                     hist_entry_audio_url = ft.Text(hist_ep_url)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, hist_ep_title, hist_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, hist_ep_title, hist_ep_url)
                     hist_art_no = random.randint(1, 12)
                     hist_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{hist_art_no}.jpeg")
                     hist_art_url = hist_ep_artwork if hist_ep_artwork else hist_art_fallback
@@ -2404,7 +2485,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/saved" or page.route == "/saved":
 
             # Get Pod info
-            saved_episode_list = database_functions.functions.saved_episode_list(get_database_connection(), active_user.user_id)
+            saved_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers, active_user.user_id)
 
             if saved_episode_list is None:
                 saved_ep_number = 1
@@ -2501,7 +2582,7 @@ def main(page: ft.Page, session_value=None):
                             markdown_desc = saved_ep_desc
                             saved_entry_description = ft.Text(saved_ep_desc)
                     saved_entry_audio_url = ft.Text(saved_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, saved_ep_title, saved_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, saved_ep_title, saved_ep_url)
                     saved_entry_released = ft.Text(f'Released on: {saved_pub_date}', color=active_user.font_color)
 
 
@@ -2601,7 +2682,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/downloads" or page.route == "/downloads":
 
             # Get Pod info
-            download_episode_list = database_functions.functions.download_episode_list(get_database_connection(), active_user.user_id)
+            download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
 
             if download_episode_list is None:
                 download_ep_number = 1
@@ -2699,7 +2780,7 @@ def main(page: ft.Page, session_value=None):
                             markdown_desc = download_ep_desc
                             download_entry_description = ft.Text(download_ep_desc)
                     download_entry_audio_url = ft.Text(download_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, download_ep_title, download_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, download_ep_title, download_ep_url)
                     download_entry_released = ft.Text(f'Released on: {download_pub_date}', color=active_user.font_color)
 
 
@@ -2799,7 +2880,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/queue" or page.route == "/queue":
 
             current_queue_list = current_episode.get_queue()
-            episode_queue_list = database_functions.functions.get_queue_list(get_database_connection(), current_queue_list)
+            episode_queue_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers, current_queue_list)
 
             if episode_queue_list is None:
                 queue_ep_number = 1
@@ -2893,7 +2974,7 @@ def main(page: ft.Page, session_value=None):
                             markdown_desc = queue_ep_desc
                             queue_entry_description = ft.Text(queue_ep_desc)
                     queue_entry_audio_url = ft.Text(queue_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = database_functions.functions.check_episode_playback(get_database_connection(), active_user.user_id, queue_ep_title, queue_ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, queue_ep_title, queue_ep_url)
                     queue_entry_released = ft.Text(queue_pub_date, color=active_user.font_color)
 
                     queue_art_no = random.randint(1, 12)
@@ -2993,7 +3074,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/episode_display" or page.route == "/episode_display":
             # Creating attributes for page layout
-            episode_info = database_functions.functions.return_selected_episode(get_database_connection(), active_user.user_id, current_episode.title, current_episode.url)
+            episode_info = api_functions.functions.call_return_selected_episode(app_api.url, app_api.headers, active_user.user_id, current_episode.title, current_episode.url)
             
             for entry in episode_info:
                 ep_title = entry['EpisodeTitle']
@@ -3180,7 +3261,7 @@ def main(page: ft.Page, session_value=None):
                 email_invalid_dlg.open = True
                 self.page.update()
                 invalid_value = True
-            elif database_functions.functions.check_usernames(get_database_connection(), self.username):
+            elif api_functions.functions.call_check_usernames(app_api.url, app_api.headers, self.username):
                 self.page.dialog = username_exists_dlg
                 username_exists_dlg.open = True
                 self.page.update()
@@ -3208,7 +3289,7 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 self.page.update()
                 self.invalid_value = True
-            elif database_functions.functions.check_usernames(get_database_connection(), self.username):
+            elif api_functions.functions.call_check_usernames(app_api.url, app_api.headers, self.username):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"This username appears to be already taken"))
                 page.snack_bar.open = True
                 self.page.update()
@@ -3238,7 +3319,7 @@ def main(page: ft.Page, session_value=None):
             if self.new_user_valid == True:
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
-                database_functions.functions.add_user(get_database_connection(), user_values)
+                api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
@@ -3304,7 +3385,7 @@ def main(page: ft.Page, session_value=None):
 
         def change_user_attributes(self):
             if self.fullname is not None:
-                database_functions.functions.set_fullname(get_database_connection(), self.user_id, self.fullname)
+                api_functions.functions.call_set_fullname(app_api.url, app_api.headers, self.user_id, self.fullname)
                 
             if self.password is not None:
                 if len(self.password) < 8 or not any(c.isupper() for c in self.password) or not any(c.isdigit() for c in self.password):
@@ -3313,7 +3394,7 @@ def main(page: ft.Page, session_value=None):
                     page.update()
                 else:
                     salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
-                    database_functions.functions.set_password(get_database_connection(), self.user_id, salt, hash_pw)
+                    api_functions.functions.call_set_password(app_api.url, app_api.headers, self.user_id, salt, hash_pw)
 
             if self.email is not None:
                 if not re.match(self.email_regex, self.email):
@@ -3321,7 +3402,7 @@ def main(page: ft.Page, session_value=None):
                     page.snack_bar.open = True
                     page.update()
                 else:
-                    database_functions.functions.set_email(get_database_connection(), self.user_id, self.email)
+                    api_functions.functions.call_set_email(app_api.url, app_api.headers, self.user_id, self.email)
 
             if self.username is not None:
                 if len(self.username) < 6:
@@ -3329,9 +3410,9 @@ def main(page: ft.Page, session_value=None):
                     page.snack_bar.open = True
                     page.update()
                 else:
-                    database_functions.functions.set_username(get_database_connection(), self.user_id, self.username)
+                    api_functions.functions.call_set_username(app_api.url, app_api.headers, self.user_id, self.username)
 
-            database_functions.functions.set_isadmin(get_database_connection(), self.user_id, self.isadmin)
+            api_functions.functions.call_set_isadmin(app_api.url, app_api.headers, self.user_id, self.isadmin)
             user_changed = True
 
             if user_changed == True:
@@ -3340,7 +3421,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
 
         def delete_user(self, user_id):
-            admin_check = database_functions.functions.final_admin(get_database_connection(), user_id)
+            admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
             if user_id == active_user.user_id:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
                 page.snack_bar.open = True
@@ -3350,7 +3431,7 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.update()
             else:
-                database_functions.functions.delete_user(get_database_connection(), user_id)
+                api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
                 page.snack_bar.open = True
                 page.update()
@@ -3379,9 +3460,9 @@ def main(page: ft.Page, session_value=None):
             if not username or not password:
                 on_click_novalues(page)
                 return
-            pass_correct = Auth.Passfunctions.verify_password(get_database_connection(), username, password)
+            pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
             if pass_correct == True:
-                login_details = database_functions.functions.get_user_details(get_database_connection(), username)
+                login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
                 self.user_id = login_details['UserID']
                 self.fullname = login_details['Fullname']
                 self.username = login_details['Username']
@@ -3390,13 +3471,15 @@ def main(page: ft.Page, session_value=None):
                     if page.web:
                         print('Web version currently doesnt retain sessions')
                     else:
-                        database_functions.functions.create_session(get_database_connection(), self.user_id)
+                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                        if session_token:
+                            save_session_id_to_file(session_token)
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
 
         def saved_login(self, user_id):
-            login_details = database_functions.functions.get_user_details_id(get_database_connection(), user_id)
+            login_details = api_functions.functions.call_get_user_details_id(app_api.url, app_api.headers, user_id)
             self.user_id = login_details['UserID']
             self.fullname = login_details['Fullname']
             self.username = login_details['Username']
@@ -3418,7 +3501,7 @@ def main(page: ft.Page, session_value=None):
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
-            active_theme = database_functions.functions.get_theme(get_database_connection(), self.user_id)
+            active_theme = api_functions.functions.call_get_theme(app_api.url, app_api.headers, self.user_id)
             if active_theme == 'light':
                 page.theme_mode = "light"
                 self.main_color = '#E1E1E1'
@@ -3541,7 +3624,7 @@ def main(page: ft.Page, session_value=None):
                 page.window_bgcolor = '#3C4252'
 
         def set_theme(self, theme):
-            database_functions.functions.set_theme(get_database_connection(), self.user_id, theme)
+            api_functions.functions.call_set_theme(app_api.url, app_api.headers, self.user_id, theme)
             self.theme_select
             go_theme_rebuild(self.page)
             self.page.update()
@@ -3892,7 +3975,7 @@ def main(page: ft.Page, session_value=None):
 
 
     def download_selected_episode(url, title, page):
-        check_downloads = database_functions.functions.check_downloaded(get_database_connection(), active_user.user_id, title, url)
+        check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers, active_user.user_id, title, url)
         if check_downloads:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
             page.snack_bar.open = True
@@ -3938,7 +4021,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def save_selected_episode(url, title, page):
-        check_saved = database_functions.functions.check_saved(get_database_connection(), active_user.user_id, title, url)
+        check_saved = api_functions.functions.call_check_saved(app_api.url, app_api.headers, active_user.user_id, title, url)
         if check_saved:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already saved!"))
             page.snack_bar.open = True
@@ -3960,7 +4043,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def remove_selected_podcast(title):
-        database_functions.functions.remove_podcast(get_database_connection(), title, active_user.user_id)
+        api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
         page.snack_bar.open = True
         page.update() 
@@ -3978,21 +4061,7 @@ def main(page: ft.Page, session_value=None):
     # page.appbar.update()
     page.appbar.visible = False
 
-    check_session = database_functions.functions.check_saved_session(get_database_connection())
-
-    
-    if login_screen == True:
-        if page.web:
-            start_login(page)
-        else:
-            if check_session:
-                active_user.saved_login(check_session)
-            else:
-                start_login(page)
-    else:
-        active_user.user_id = 1
-        active_user.fullname = 'Guest User'
-        go_homelogin(page)
+    app_api.api_verify()
 
 
 # Browser Version

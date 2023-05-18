@@ -14,16 +14,20 @@ services:
     ports:
       - "3306:3306"
     restart: always
-  pinepods-proxy:
-    image: madeofpendletonwool/pinepods-proxy:latest
-    ports:
-      - "8033:8000"
-    restart: always
+  # pinepods-proxy:
+  #   image: madeofpendletonwool/pinepods-proxy:latest
+  #   ports:
+  #     - "8033:8000"
+  #   restart: always
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
+      # The port that the Pinepods UI will be hosted at. Open a browser and access at http://localhost:8034 for example
       - "8034:8034"
+      # This is the port the API server is hosted at. You can also change this but the API Server Port var below must also equal this.
       - "8032:8032"
+      # Port for proxy host. Whatever this is set to the PROXY_HOST var must also match
+      - "8000:8000"
     environment:
       # Default Admin User Information
       USERNAME: pinepods
@@ -37,12 +41,14 @@ services:
       DB_PASSWORD: password
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: pinepods-proxy
-      PROXY_PORT: 8033
+      PROXY_HOST: localhost
+      PROXY_PORT: 8000
       PROXY_PROTOCOL: http
       REVERSE_PROXY: "True"
-      #Podcast Index API
+      # Search Index API Vars
       API_URL: 'https://api.pinepods.online/api/search'
+      # Client API Server Vars
+      API_SERVER_PORT: 8032
 
 
     depends_on:

@@ -1,5 +1,10 @@
 import mysql.connector
 import os
+import sys
+
+sys.path.append('/pinepods')
+
+import database_functions.functions
 # import Auth.Passfunctions
 import string
 import secrets
@@ -78,6 +83,35 @@ cursor.execute("""INSERT INTO AppSettings (SelfServiceUser)
 
 cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
                 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
+
+# Create the web API Key
+def create_api_key(cnx, user_id=1):
+    cursor = cnx.cursor()
+
+    # Check if API key exists for user_id
+    query = "SELECT APIKey FROM APIKeys WHERE UserID = %s"
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+
+    if result:
+        api_key = result[0]
+    else:
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
+
+        query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
+        cursor.execute(query, (user_id, api_key))
+        cnx.commit()
+
+    cursor.close()
+    return api_key
+
+web_api_key = create_api_key(cnx)
+
+with open("/tmp/web_api_key.txt", "w") as f:
+    f.write(web_api_key)
 
 # Your admin user variables
 admin_fullname = os.environ.get("FULLNAME", "Admin User")

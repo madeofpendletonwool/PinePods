@@ -9,7 +9,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Make sure the package repository is up to date. Also install needed packages via apt
 RUN apt update && \
     apt -qy upgrade && \
-    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev && \
+    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Install needed python packages via pip
@@ -19,9 +19,12 @@ RUN pip install -r ./requirements.txt
 COPY wait-for-it/wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
+# Add a cache-busting build argument
+ARG CACHEBUST=1
+
 # Put pinepods Files in place
 # Create structure for pinepods
-RUN git clone -b linux-client https://github.com/madeofpendletonwool/pypods.git /pinepods && \
+RUN git clone -b web-api https://github.com/madeofpendletonwool/pypods.git /pinepods && \
     chmod -R 755 /pinepods
 
 # Begin pinepods Setup

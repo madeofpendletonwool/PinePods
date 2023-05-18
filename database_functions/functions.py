@@ -299,8 +299,6 @@ def return_selected_episode(cnx, user_id, title, url):
     return episodes
 
 
-
-
 def return_pods(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
@@ -1019,8 +1017,6 @@ def delete_api(cnx, api_id):
     cursor.close()
     cnx.close()
 
-
-
 def set_username(cnx, user_id, new_username):
     cursor = cnx.cursor()
     query = "UPDATE Users SET Username = %s WHERE UserID = %s"
@@ -1211,21 +1207,26 @@ def get_stats(cnx, user_id):
     
     cursor.execute(query, (user_id,))
     
-    result = cursor.fetchone()
-    stats = {
-        "UserCreated": result[0],
-        "PodcastsPlayed": result[1],
-        "TimeListened": result[2],
-        "PodcastsAdded": result[3],
-        "EpisodesSaved": result[4],
-        "EpisodesDownloaded": result[5]
-    }
+    results = cursor.fetchall()
+    result = results[0] if results else None
+
+    if result:
+        stats = {
+            "UserCreated": result[0],
+            "PodcastsPlayed": result[1],
+            "TimeListened": result[2],
+            "PodcastsAdded": result[3],
+            "EpisodesSaved": result[4],
+            "EpisodesDownloaded": result[5]
+        }
+    else:
+        stats = None
     
     cursor.close()
     cnx.close()
-
     
     return stats
+
 
 def saved_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
@@ -1310,7 +1311,6 @@ def check_saved(cnx, user_id, title, url):
     finally:
         if cursor:
             cursor.close()
-            cnx.close()
 
 
 
@@ -1408,7 +1408,6 @@ def check_podcast(cnx, user_id, podcast_name):
         if cursor:
             cursor.close()
         cnx.commit()
-    cursor.close()
     cnx.close()
 
 
@@ -1434,12 +1433,7 @@ def get_saved_session_from_file():
     except FileNotFoundError:
         return None
 
-def check_saved_session(cnx):
-    session_value = get_saved_session_from_file()
-
-    if not session_value:
-        return False
-
+def check_saved_session(cnx, session_value):
     cursor = cnx.cursor()
 
     # Get the session with the matching value and expiration time
@@ -1481,14 +1475,7 @@ def check_saved_web_session(cnx, session_value):
     cnx.close()
 
 
-def create_session(cnx, user_id):
-    import secrets
-    # Generate a new session value
-    session_value = secrets.token_hex(32)
-
-    # Save the session value to the local session.txt file
-    save_session_to_file(session_value)
-
+def create_session(cnx, user_id, session_value):
     # Calculate the expiration date 30 days in the future
     expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
 
@@ -1527,7 +1514,6 @@ def clean_expired_sessions(cnx):
 
     cnx.commit()
     cursor.close()
-    cnx.close()
 
 
 def user_exists(cnx, username):
