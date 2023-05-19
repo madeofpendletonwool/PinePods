@@ -1818,9 +1818,9 @@ def main(page: ft.Page, session_value=None):
             disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=22)
             disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
             if download_status_bool == True:
-                download_info_button = ft.ElevatedButton(f'Disable Download User', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+                download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
             else:
-                download_info_button = ft.ElevatedButton(f'Enable Download User', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+                download_info_button = ft.ElevatedButton(f'Enable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
 
             download_info_col = ft.Column(controls=[disable_download_text, disable_download_notify, download_info_button])
             download_info = ft.Container(content=download_info_col)
