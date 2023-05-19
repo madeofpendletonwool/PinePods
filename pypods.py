@@ -1990,6 +1990,7 @@ def main(page: ft.Page, session_value=None):
                         user_edit_container,
                         guest_info,
                         self_service_info,
+                        download_info,
                         api_edit_container
                     ]
                     
