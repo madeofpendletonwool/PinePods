@@ -73,13 +73,20 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")
 
-cursor.execute("""CREATE TABLE IF NOT EXISTS AppSettings (
-                    AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
-                    SelfServiceUser TINYINT(1) DEFAULT 0
-                )""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS AppSettings (
+        AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+        SelfServiceUser TINYINT(1) DEFAULT 0,
+        DownloadEnabled TINYINT(1) DEFAULT 1
+    )
+""")
 
-cursor.execute("""INSERT INTO AppSettings (SelfServiceUser)
-                  SELECT 0 FROM DUAL WHERE NOT EXISTS (SELECT * FROM AppSettings)""")
+cursor.execute("""
+    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled)
+    SELECT 0, 1 FROM DUAL
+    WHERE NOT EXISTS (SELECT * FROM AppSettings)
+""")
+
 
 cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
                 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")

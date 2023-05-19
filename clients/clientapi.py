@@ -154,6 +154,12 @@ async def api_guest_status(api_key: str = Depends(get_api_key_from_header)):
     result = database_functions.functions.guest_status(cnx)
     return result
 
+@app.get("/api/data/download_status", response_model=bool)
+async def api_download_status(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    result = database_functions.functions.download_status(cnx)
+    return result
+
 @app.get("/api/data/user_details/{username}")
 async def api_get_user_details(username: str, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
@@ -242,6 +248,12 @@ async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(.
 async def api_enable_disable_guest(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     database_functions.functions.enable_disable_guest(cnx)
+    return {"success": True}
+
+@app.post("/api/data/enable_disable_downloads")
+async def api_enable_disable_downloads(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.enable_disable_downloads(cnx)
     return {"success": True}
 
 @app.post("/api/data/enable_disable_self_service")
