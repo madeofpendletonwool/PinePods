@@ -276,9 +276,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [X] Responsive layout
   - [X] Security and Logins
   - [X] Database interaction for users and podcast data
-
-### Needed pre-beta release
-
 - [x] Fully update Readme with updated info and docs including deployment guide
 - [X] Bugs
   - [X] Links when searching an episode are blue (wrong color)
@@ -307,27 +304,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [x] Option to run your own local podcast index api connection
 - [x] Implement Gravitar API for profile picture
 - [x] Make web version utilize API Routes instead of database connections directly
-- [ ] Implement cache clearing for saved credentials in settings
 - [x] Update flet dependancy to v6 (This fixes audio routing)
+- [x] Ability to disable downloads (for public servers)
 
-### To be added after beta version
+### Pre-beta version
 
+- [ ] One set of functions. Currently client and web app uses different function set. This is be changed for consistency. 
 - [ ] Self Service PW Resets
-- [ ] Ability to disable downloads (for public servers)
-- [ ] Rotating currently playing
-- [ ] Implement smoother scrolling with big list loading
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Allow local downloads to just download the mp3 files direct
-- [ ] Page refreshing to handle adding and removing of things better
-- [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
-- [ ] Reload not needed to add and remove episodes from pages
-- [ ] Customizable login screen
-- [ ] Add highlight to indicate which page you're on
-- [ ] Add Itunes podcast API
-- [ ] Allow for episodes to be played without being added
-- [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] MFA Logins - Github integration and local MFA (OAuth)
-- [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
 - [ ] GUI Wrapper for App
   - [x] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
   - [x] Options to create API keys on the web client as well as ability to remove them
@@ -335,17 +318,42 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
     - [ ] Flatpak
     - [ ] Snap
     - [ ] PyPi
+    - [ ] Packaging and automation
   - [X] Proper web layout
   - [ ] Windows App
+    - [ ] Packaging and automation
   - [ ] Mac App
-  - [ ] Mobile Apps
-    - [ ] Sign in retention for moble editions
-    - [ ] Android App
-    - [ ] IOS App
+    - [ ] Packaging and automation
+- [ ] Refresh changes on readme
+
+
+
+### To be added after beta version
+
+- [ ] Layout Settings page better
+- [ ] Rotating currently playing
+- [ ] Implement smoother scrolling with big list loading
+- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
+- [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
+- [ ] Page refreshing to handle adding and removing of things better
+- [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
+- [ ] Reload not needed to add and remove episodes from pages
+- [ ] Customizable login screens
+- [ ] Add highlight to indicate which page you're on
+- [ ] Add Itunes podcast API
+- [ ] Allow for episodes to be played without being added
+- [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
+- [ ] MFA Logins - Github integration and local MFA (OAuth)
+- [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
 - [ ] Option to run the client app with local config. Not connected to a server
 - [ ] Add verification before deleting user
 - [ ] Rating System
 - [ ] Sharing System
+- [ ] Mobile Apps
+  - [ ] Sign in retention for moble editions
+  - [ ] Android App
+  - [ ] IOS App
+  - [ ] Packaging and automation
 
 ## Screenshots :camera:
 

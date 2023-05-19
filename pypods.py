@@ -3964,23 +3964,32 @@ def main(page: ft.Page, session_value=None):
 
 
     def download_selected_episode(url, title, page):
-        check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers, active_user.user_id, title, url)
-        if check_downloads:
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
+        # First, check if downloads are enabled
+        download_status = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+        if not download_status:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Downloads are currently disabled! If you'd like to download episodes ask your administrator to enable the option."))
             page.snack_bar.open = True
             page.update()
         else:
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
-            page.update()
-            current_episode.url = url
-            current_episode.title = title
-            current_episode.download_pod()
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
-            page.snack_bar.open = True
-            page.overlay.remove(progress_stack)
-            page.update()
+            # Proceed with the rest of the process
+            check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers, active_user.user_id, title, url)
+            if check_downloads:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
+                page.snack_bar.open = True
+                page.update()
+            else:
+                pr = ft.ProgressRing()
+                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+                page.overlay.append(progress_stack)
+                page.update()
+                current_episode.url = url
+                current_episode.title = title
+                current_episode.download_pod()
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+                page.snack_bar.open = True
+                page.overlay.remove(progress_stack)
+                page.update()
+
 
         
     def delete_selected_episode(url, title, page):
