@@ -413,6 +413,12 @@ def main(page: ft.Page, session_value=None):
         page.snack_bar.open = True
         page.update()
 
+    def download_option_change(e):
+        api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
+        page.snack_bar.open = True
+        page.update()
+
     def self_service_change(e):
         api_functions.functions.call_enable_disable_self_service(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
@@ -2035,7 +2041,7 @@ def main(page: ft.Page, session_value=None):
                 download_status = 'enabled'
             else:
                 download_status = 'disabled'
-            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=22)
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):', color=active_user.font_color, size=22)
             disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
             if download_status_bool == True:
                 download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -2820,10 +2826,6 @@ def main(page: ft.Page, session_value=None):
                 download_ep_column = ft.Column(
                     controls=[download_entry_title, download_entry_description, download_entry_released]
                 )
-                # download_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[download_entry_artwork_url, download_ep_column, download_ep_play_button]
-                # )
                 download_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[download_ep_column, download_ep_play_button]),
