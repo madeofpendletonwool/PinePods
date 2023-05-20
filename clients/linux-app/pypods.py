@@ -2,14 +2,14 @@
 import flet as ft
 # from flet import *
 from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+
+
 # Internal Functions
 import internal_functions.functions
-# import database_functions.functions
-# import app_functions.functions
-# import Auth.Passfunctions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
+
 # Others
 import time
 import mysql.connector
@@ -410,6 +410,12 @@ def main(page: ft.Page, session_value=None):
     def guest_user_change(e):
         api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def download_option_change(e):
+        api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
         page.snack_bar.open = True
         page.update()
 
@@ -2029,6 +2035,23 @@ def main(page: ft.Page, session_value=None):
             user_edit_container = ft.Container(content=user_edit_column)
             user_edit_container.padding=padding.only(left=70, right=50)
 
+            # Download Enable/Disable
+            download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+            if download_status_bool == True:
+                download_status = 'enabled'
+            else:
+                download_status = 'disabled'
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):', color=active_user.font_color, size=22)
+            disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
+            if download_status_bool == True:
+                download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                download_info_button = ft.ElevatedButton(f'Enable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            download_info_col = ft.Column(controls=[disable_download_text, disable_download_notify, download_info_button])
+            download_info = ft.Container(content=download_info_col)
+            download_info.padding=padding.only(left=70, right=50)
+
             # Guest User Settings 
             guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             if guest_status_bool == True:
@@ -2073,6 +2096,7 @@ def main(page: ft.Page, session_value=None):
                 user_row_container.visible = False
                 user_edit_container.visible = False
                 guest_info.visible = False
+                download_info.visible = False
                 self_service_info.visible = False
 
             # Create search view object
@@ -2084,6 +2108,7 @@ def main(page: ft.Page, session_value=None):
                         user_row_container,
                         user_edit_container,
                         guest_info,
+                        download_info,
                         self_service_info
                     ]
                     
@@ -2801,10 +2826,6 @@ def main(page: ft.Page, session_value=None):
                 download_ep_column = ft.Column(
                     controls=[download_entry_title, download_entry_description, download_entry_released]
                 )
-                # download_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[download_entry_artwork_url, download_ep_column, download_ep_play_button]
-                # )
                 download_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[download_ep_column, download_ep_play_button]),
@@ -4080,23 +4101,31 @@ def main(page: ft.Page, session_value=None):
 
 
     def download_selected_episode(url, title, page):
-        check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers, active_user.user_id, title, url)
-        if check_downloads:
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
+        # First, check if downloads are enabled
+        download_status = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+        if not download_status:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Downloads are currently disabled! If you'd like to download episodes ask your administrator to enable the option."))
             page.snack_bar.open = True
             page.update()
         else:
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
-            page.update()
-            current_episode.url = url
-            current_episode.title = title
-            current_episode.download_pod()
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
-            page.snack_bar.open = True
-            page.overlay.remove(progress_stack)
-            page.update()
+            # Proceed with the rest of the process
+            check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers, active_user.user_id, title, url)
+            if check_downloads:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already downloaded!"))
+                page.snack_bar.open = True
+                page.update()
+            else:
+                pr = ft.ProgressRing()
+                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+                page.overlay.append(progress_stack)
+                page.update()
+                current_episode.url = url
+                current_episode.title = title
+                current_episode.download_pod()
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+                page.snack_bar.open = True
+                page.overlay.remove(progress_stack)
+                page.update()
 
         
     def delete_selected_episode(url, title, page):

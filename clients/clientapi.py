@@ -1,5 +1,8 @@
+# Fast API
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form, File, UploadFile, Query
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
+
+# Needed Modules
 from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
@@ -9,8 +12,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
 import requests
-import database_functions.functions
-import Auth.Passfunctions
 from pydantic import BaseModel
 from typing import Dict
 from typing import List
@@ -19,6 +20,13 @@ import json
 import logging
 from typing import Any
 import argparse
+import sys
+
+# Internal Modules
+sys.path.append('/pinepods')
+
+import database_functions.functions
+import Auth.Passfunctions
 
 secret_key_middle = secrets.token_hex(32)
 
