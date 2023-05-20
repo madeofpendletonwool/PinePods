@@ -48,6 +48,16 @@ def call_guest_status(url, headers):
         print("Error fetching guest status:", response.status_code)
         return None
 
+def call_download_status(url, headers):
+    response = requests.get(url + "/download_status", headers=headers)
+    if response.status_code == 200:
+        is_active = response.json()
+        print("Download status:", is_active)
+        return is_active
+    else:
+        print("Error fetching guest status:", response.status_code)
+        return None
+
 def call_user_admin_check(url, headers, user_id):
     response = requests.get(url + f"/user_admin_check/{user_id}", headers=headers)
     if response.status_code == 200:
@@ -171,6 +181,20 @@ def call_enable_disable_guest(url, headers):
             return False
     else:
         print("Error changing guest account status:", response.status_code)
+        return None
+
+def call_enable_disable_downloads(url, headers):
+    response = requests.post(url + "/enable_disable_downloads", headers=headers)
+    if response.status_code == 200:
+        success = response.json()["success"]
+        if success:
+            print("Download Option Changed Successfully")
+            return True
+        else:
+            print("Error changing Download Status")
+            return False
+    else:
+        print("Error changing Download Status:", response.status_code)
         return None
 
 def call_enable_disable_self_service(url, headers):
