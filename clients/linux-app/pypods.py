@@ -2,14 +2,14 @@
 import flet as ft
 # from flet import *
 from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+
+
 # Internal Functions
 import internal_functions.functions
-# import database_functions.functions
-# import app_functions.functions
-# import Auth.Passfunctions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
+
 # Others
 import time
 import mysql.connector
@@ -2029,6 +2029,23 @@ def main(page: ft.Page, session_value=None):
             user_edit_container = ft.Container(content=user_edit_column)
             user_edit_container.padding=padding.only(left=70, right=50)
 
+            # Download Enable/Disable
+            download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+            if download_status_bool == True:
+                download_status = 'enabled'
+            else:
+                download_status = 'disabled'
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=22)
+            disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
+            if download_status_bool == True:
+                download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                download_info_button = ft.ElevatedButton(f'Enable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            download_info_col = ft.Column(controls=[disable_download_text, disable_download_notify, download_info_button])
+            download_info = ft.Container(content=download_info_col)
+            download_info.padding=padding.only(left=70, right=50)
+
             # Guest User Settings 
             guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             if guest_status_bool == True:
@@ -2073,6 +2090,7 @@ def main(page: ft.Page, session_value=None):
                 user_row_container.visible = False
                 user_edit_container.visible = False
                 guest_info.visible = False
+                download_info.visible = False
                 self_service_info.visible = False
 
             # Create search view object
@@ -2084,6 +2102,7 @@ def main(page: ft.Page, session_value=None):
                         user_row_container,
                         user_edit_container,
                         guest_info,
+                        download_info,
                         self_service_info
                     ]
                     

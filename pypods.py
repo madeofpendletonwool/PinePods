@@ -1976,6 +1976,7 @@ def main(page: ft.Page, session_value=None):
                 user_row_container.visible = False
                 user_edit_container.visible = False
                 guest_info.visible = False
+                download_info.visible = False
                 self_service_info.visible = False
                 api_edit_container.visible = False
 
