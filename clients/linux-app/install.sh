@@ -1,17 +1,31 @@
 #!/bin/bash
 
-# Replace these with your actual values
-APP_PATH="~/.local/bin/pypods"
-ICON_PATH="~/.config/pinepods/pinepods-appicon.png"
-APP_NAME="Pinepods"
-COMMENT="This is the desktop file for Pinepods. Do not edit this as changes are made automatically upon updates."
+# Define your local paths
+APP_PATH="$HOME/.local/bin"
+ICON_PATH="$HOME/.config/pinepods/pinepods-appicon.png"
 
+# Create necessary directories
+mkdir -p $(dirname $APP_PATH)
+mkdir -p $(dirname $ICON_PATH)
+
+# Download the app and the icon
+cp pinepods $APP_PATH
+cp pinepods-appicon.png $ICON_PATH
+
+# Set executable permissions on the app
+chmod +x $APP_PATH
+
+# Replace these with your actual values
+APP_NAME="Pinepods"
+COMMENT="A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
+
+# Create the desktop file
 cat > ~/.local/share/applications/pinepods.desktop << EOF
 [Desktop Entry]
 Version=1.0
 Name=$APP_NAME
 Comment=$COMMENT
-Exec=$APP_PATH
+Exec=$APP_PATH/pinepods
 Icon=$ICON_PATH
 Terminal=false
 Type=Application
@@ -22,3 +36,4 @@ EOF
 update-desktop-database ~/.local/share/applications
 
 echo "Desktop file created and database updated"
+
