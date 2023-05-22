@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Replace these with your actual values
-APP_PATH="/path/to/myapplication"
-ICON_PATH="/path/to/myapplication/icon.png"
-APP_NAME="My Application"
-COMMENT="My Application"
+APP_PATH="~/.local/bin/pypods"
+ICON_PATH="~/.config/pinepods/pinepods-appicon.png"
+APP_NAME="Pinepods"
+COMMENT="This is the desktop file for Pinepods. Do not edit this as changes are made automatically upon updates."
 
-cat > ~/.local/share/applications/myapplication.desktop << EOF
+cat > ~/.local/share/applications/pinepods.desktop << EOF
 [Desktop Entry]
 Version=1.0
 Name=$APP_NAME
