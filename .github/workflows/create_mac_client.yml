@@ -1,0 +1,46 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Create Pinepods Mac Client
+
+on:
+#   push:
+#     branches: [ "main" ]
+#   pull_request:
+#     branches: [ "main" ]
+  workflow_dispatch:
+
+# permissions:
+#   contents: read
+
+jobs:
+  build:
+
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.10"
+        
+    - name: Install dependencies
+      run: |
+        ls -la
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create Mac Client
+      run: |
+        flet pack clients/mac-app/pinepods.py --icon clients/mac-app/pinepods-appicon.png
+        
+        
+#     - name: Get Latest Tag
+#       uses: madeofpendletonwool/pinepods@v1
+
+    - name: Archive Pinepods Linux Client Release
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report
+        path: pinepods.tar
