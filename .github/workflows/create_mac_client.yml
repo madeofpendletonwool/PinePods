@@ -39,7 +39,7 @@ jobs:
 #     - name: Get Latest Tag
 #       uses: madeofpendletonwool/pinepods@v1
 
-    - name: Archive Pinepods Linux Client Release
+    - name: Archive Pinepods Mac Client Release
       uses: actions/upload-artifact@v3
       with:
         name: Pinepods-Mac
