@@ -309,15 +309,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### Pre-beta version
 
-- [ ] One set of functions. Currently client and web app uses different function set. This is be changed for consistency. 
+- [x] One set of functions. Currently client and web app uses different function set. This is be changed for consistency. 
 - [ ] Self Service PW Resets
-- [ ] GUI Wrapper for App
+- [x] GUI Wrapper for App
   - [x] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
   - [x] Options to create API keys on the web client as well as ability to remove them
-  - [ ] Linux App    
-    - [ ] Flatpak
-    - [ ] Snap
-    - [ ] PyPi
+  - [ ] Linux App
+    - [ ] Install Script
     - [ ] Packaging and automation
   - [X] Proper web layout
   - [ ] Windows App
@@ -349,6 +347,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add verification before deleting user
 - [ ] Rating System
 - [ ] Sharing System
+- [ ] Linux App    
+  - [ ] Flatpak
+  - [ ] Snap
 - [ ] Mobile Apps
   - [ ] Sign in retention for moble editions
   - [ ] Android App
