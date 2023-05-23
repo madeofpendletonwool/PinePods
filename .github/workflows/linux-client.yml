@@ -34,7 +34,7 @@ jobs:
     - name: Create Linux Client
       run: |
         flet pack clients/linux-app/pinepods.py
-        tar -cvf pinepods.tar clients/linux-app/dist/pinepods clients/linux-app/pinepods-appicon.png clients/linux-app/pinepods.desktop
+        tar -cvf pinepods.tar dist/pinepods clients/linux-app/pinepods-appicon.png clients/linux-app/pinepods.desktop
         
         
 #     - name: Get Latest Tag
