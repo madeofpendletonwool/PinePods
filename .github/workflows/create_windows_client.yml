@@ -38,8 +38,8 @@ jobs:
 #     - name: Get Latest Tag
 #       uses: madeofpendletonwool/pinepods@v1
 
-    - name: Archive Pinepods Linux Client Release
+    - name: Archive Pinepods Windows Client Release
       uses: actions/upload-artifact@v3
       with:
-        name: Pinepods-Mac
-        path: dist/pinepods.app
+        name: Pinepods-Windows
+        path: dist/pinepods.exe
