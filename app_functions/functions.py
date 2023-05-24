@@ -61,6 +61,41 @@ def parse_feed(feed_url):
     d = feedparser.parse(feed_url)
     return d
 
+def send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body):
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    try:
+        if send_mode == "SMTP":
+            # Set up the SMTP server.
+            if encryption == "SSL/TLS":
+                smtp = smtplib.SMTP_SSL(server_name, server_port)
+            else:
+                smtp = smtplib.SMTP(server_name, server_port)
+                smtp.starttls()
+
+            # Authenticate if needed.
+            if auth_required:
+                smtp.login(username, password)
+
+            # Create a message.
+            msg = MIMEMultipart()
+            msg['From'] = from_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+
+            # Send the message.
+            smtp.send_message(msg)
+            smtp.quit()
+        return 'Email sent successfully.'
+
+        elif send_mode == "Sendmail":
+            pass
+    except smtplib.SMTPException as e:
+        return f'Failed to send email: {str(e)}'
+
 
 if __name__ == "__main__":
     # Example usage

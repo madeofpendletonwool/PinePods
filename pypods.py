@@ -1898,7 +1898,7 @@ def main(page: ft.Page, session_value=None):
                 new_user.adjust_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
                 ))
             pw_reset_test = ft.ElevatedButton(text="Test Send", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
-                new_user.adjust_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
+                new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
                 ))
             pw_reset_server_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -2032,6 +2032,7 @@ def main(page: ft.Page, session_value=None):
                 )
             api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
             api_edit_container = ft.Container(content=api_edit_column)
+            div_row = ft.Divider(color=active_user.accent_color)
             api_edit_container.padding=padding.only(left=70, right=50)
 
 
@@ -2049,6 +2050,7 @@ def main(page: ft.Page, session_value=None):
                 download_info.visible = False
                 self_service_info.visible = False
                 api_edit_container.visible = False
+                div_row.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
@@ -2056,13 +2058,19 @@ def main(page: ft.Page, session_value=None):
                         pypods_appbar,
                         user_setting_text,
                         theme_row_container,
+                        div_row,
                         admin_setting_text,
                         user_row_container,
                         user_edit_container,
+                        div_row,
                         pw_reset_container,
+                        div_row,
                         guest_info,
+                        div_row,
                         self_service_info,
+                        div_row,
                         download_info,
+                        div_row,
                         api_edit_container
                     ]
                     
@@ -3383,8 +3391,13 @@ def main(page: ft.Page, session_value=None):
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
 
+        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
+            subject = "Test email from pinepods"
+            body = "If you got this your email settings are working! Great Job! Don't forget to git save."
+            app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
+
         def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
-            print(server_name)
+            app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
 
 
     # Modify User Stuff---------------------------
