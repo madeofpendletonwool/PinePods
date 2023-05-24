@@ -89,7 +89,7 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
             # Send the message.
             smtp.send_message(msg)
             smtp.quit()
-        return 'Email sent successfully.'
+            return 'Email sent successfully.'
 
         elif send_mode == "Sendmail":
             pass
