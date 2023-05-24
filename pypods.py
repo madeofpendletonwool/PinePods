@@ -1861,24 +1861,31 @@ def main(page: ft.Page, session_value=None):
             self_service_info.padding=padding.only(left=70, right=50)
 
             # User Self Service PW Resets
-            pw_reset_text = Text('Set Email Settings for Self Service Password Resets:', color=active_user.font_color, size=22)
+            def auth_box_check():
+                pw_reset_auth_user.disabled = False
+                pw_reset_auth_pw.disabled = False
+
+            pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color, size=22)
+            pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
 
             pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.CARD_MEMBERSHIP, hint_text='smtp.pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_port = ft.TextField(label="Port", icon=ft.icons.CARD_MEMBERSHIP, hint_text='587', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_email = ft.TextField(label="From Address", icon=ft.icons.EMAIL, hint_text='pwresets@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
-            pw_reset_send_mode = ft.Dropdown(width=125, label="Send Mode",    
+            pw_reset_send_mode = ft.Dropdown(width=250, label="Send Mode",    
                 options=[
                     ft.dropdown.Option("SMTP"),
                     ft.dropdown.Option("Sendmail"),
                 ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
-            pw_reset_encryption = ft.Dropdown(width=125, label="Encryption",    
+            pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",    
                 options=[
                     ft.dropdown.Option("None"),
                     ft.dropdown.Option("SSL/TLS"),
                 ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
-            pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, check_color=active_user.accent_color)
+            pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, on_change=auth_box_check, check_color=active_user.accent_color)
             pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.CARD_MEMBERSHIP, hint_text='user@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.EMAIL, hint_text='Ema1L!P@$$', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_auth_user.disabled = True
+            pw_reset_auth_pw.disabled = True
             pw_reset_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.adjust_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
                 ))
@@ -1897,8 +1904,10 @@ def main(page: ft.Page, session_value=None):
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
                             controls=[pw_reset_auth_user, pw_reset_auth_pw])
+            pw_reset_current = Text('Existing Email Server Values:', color=active_user.font_color, size=16)
+
             pw_reset_column = ft.Column(
-                            controls=[pw_reset_server_row, pw_reset_send_row, pw_reset_auth_row, pw_reset_email, pw_reset_auth]
+                            controls=[pw_reset_text, pw_reset_change, pw_reset_server_row, pw_reset_send_row, pw_reset_email, pw_reset_auth, pw_reset_auth_row, pw_reset_current]
                         )
             pw_reset_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
