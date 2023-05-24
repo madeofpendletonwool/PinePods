@@ -1863,29 +1863,35 @@ def main(page: ft.Page, session_value=None):
 
             # User Self Service PW Resets
             def auth_box_check(e):
-                pw_reset_auth_user.disabled = False
-                pw_reset_auth_pw.disabled = False
+                if new_user.auth_enabled == True:
+                    pw_reset_auth_user.disabled = True
+                    pw_reset_auth_pw.disabled = True
+                    new_user.auth_enabled = 0
+                else:
+                    pw_reset_auth_user.disabled = False
+                    pw_reset_auth_pw.disabled = False
+                    new_user.auth_enabled = 1
                 page.update()
 
             pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color, size=22)
             pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
 
-            pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.CARD_MEMBERSHIP, hint_text='smtp.pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
-            pw_reset_port = ft.TextField(label="Port", icon=ft.icons.CARD_MEMBERSHIP, hint_text='587', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.COMPUTER, hint_text='smtp.pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_port = ft.TextField(label="Port", hint_text='587', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_email = ft.TextField(label="From Address", icon=ft.icons.EMAIL, hint_text='pwresets@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_send_mode = ft.Dropdown(width=250, label="Send Mode",    
                 options=[
                     ft.dropdown.Option("SMTP"),
                     ft.dropdown.Option("Sendmail"),
-                ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
+                ],icon=ft.icons.SEND, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
             pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",    
                 options=[
                     ft.dropdown.Option("None"),
                     ft.dropdown.Option("SSL/TLS"),
-                ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
+                ],icon=ft.icons.ENHANCED_ENCRYPTION, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
             pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, on_change=auth_box_check, check_color=active_user.accent_color)
-            pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.CARD_MEMBERSHIP, hint_text='user@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
-            pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.EMAIL, hint_text='Ema1L!P@$$', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='user@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.LOCK, hint_text='Ema1L!P@$$', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_auth_user.disabled = True
             pw_reset_auth_pw.disabled = True
             pw_reset_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
@@ -1897,11 +1903,11 @@ def main(page: ft.Page, session_value=None):
             pw_reset_server_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[pw_reset_server_name, ft.Text(':'), pw_reset_port])
+                            controls=[pw_reset_server_name, ft.Text(':', size=24), pw_reset_port])
             pw_reset_send_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[pw_reset_send_mode, ft.Text('Encryption'), pw_reset_encryption])
+                            controls=[pw_reset_send_mode, pw_reset_encryption])
             pw_reset_auth_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
@@ -3260,6 +3266,7 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
+            self.auth_enabled = 0
 
     # New User Stuff ----------------------------
 
