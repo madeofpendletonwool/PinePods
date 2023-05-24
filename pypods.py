@@ -1882,7 +1882,7 @@ def main(page: ft.Page, session_value=None):
             pw_reset_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.adjust_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
                 ))
-            pw_reset_test = ft.ElevatedButton(label="Test Send", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
+            pw_reset_test = ft.ElevatedButton(text="Test Send", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.adjust_email_settings(),
                 ))
             pw_reset_server_row = ft.Row(
