@@ -88,12 +88,14 @@ cursor.execute("""
     )
 """)
 
-# Insert the key into the table (key is already bytes, so no need to call encode())
-cursor.execute("""
-    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
-    VALUES (0, 1, %s)
-""", (key,))  # SelfServiceUser and DownloadEnabled are 0 and 1
+cursor.execute("SELECT COUNT(*) FROM AppSettings WHERE AppSettingsID = 1")
+count = cursor.fetchone()[0]
 
+if count == 0:
+    cursor.execute("""
+        INSERT INTO AppSettings (AppSettingsID, SelfServiceUser, DownloadEnabled, EncryptionKey) 
+        VALUES (0, 1, %s)
+    """, (key,))
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS EmailSettings (
