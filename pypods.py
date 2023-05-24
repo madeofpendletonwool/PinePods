@@ -3394,6 +3394,7 @@ def main(page: ft.Page, session_value=None):
         def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
             subject = "Test email from pinepods"
             body = "If you got this your email settings are working! Great Job! Don't forget to git save."
+            to_email = active_user.email
             email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
             print(email_result)
 
