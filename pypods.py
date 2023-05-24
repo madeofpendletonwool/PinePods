@@ -1861,7 +1861,7 @@ def main(page: ft.Page, session_value=None):
             self_service_info.padding=padding.only(left=70, right=50)
 
             # User Self Service PW Resets
-            def auth_box_check():
+            def auth_box_check(e):
                 pw_reset_auth_user.disabled = False
                 pw_reset_auth_pw.disabled = False
 
