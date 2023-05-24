@@ -1,14 +1,16 @@
 import mysql.connector
 import os
 import sys
+from cryptography.fernet import Fernet
+import string
+import secrets
+import bcrypt
 
 sys.path.append('/pinepods')
 
 import database_functions.functions
 # import Auth.Passfunctions
-import string
-import secrets
-import bcrypt
+
 
 
 def hash_password(password: str):
@@ -73,20 +75,49 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")
 
+# Generate a key
+key = Fernet.generate_key()
+cipher_suite = Fernet(key)
+
+# You can store the key as bytes directly in a BINARY type column in MySQL.
+# But, for this example, let's convert the bytes to a string so we can print it out and see what's going on.
+key_str = key.decode()
+
+print(f"Generated key: {key_str}")
+
+# Note: When storing and retrieving the key and cipher text in/from the database, 
+# you'll need to convert these back to bytes.
+
+# Create the AppSettings table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS AppSettings (
         AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
         SelfServiceUser TINYINT(1) DEFAULT 0,
-        DownloadEnabled TINYINT(1) DEFAULT 1
+        DownloadEnabled TINYINT(1) DEFAULT 1,
+        EncryptionKey BINARY(32)  -- Set the data type to BINARY(32) to hold the 32-byte key
     )
 """)
 
+# Now, you can insert the encryption key into the AppSettings table.
+# Remember to convert the key string back to bytes.
 cursor.execute("""
-    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled)
-    SELECT 0, 1 FROM DUAL
-    WHERE NOT EXISTS (SELECT * FROM AppSettings)
-""")
+    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) VALUES (0, 1, %s)
+""", (key_str.encode(),))  # Assuming that SelfServiceUser and DownloadEnabled should be 0 and 1
 
+
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS EmailSettings (
+        EmailSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+        server_name VARCHAR(255),
+        server_port INT,
+        from_email VARCHAR(255),
+        send_mode VARCHAR(255),
+        encryption VARCHAR(255),
+        auth_required TINYINT(1),
+        username VARCHAR(255),
+        password VARCHAR(255)
+    )
+""")
 
 cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
                 VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")

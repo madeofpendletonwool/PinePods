@@ -1880,7 +1880,7 @@ def main(page: ft.Page, session_value=None):
             pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.CARD_MEMBERSHIP, hint_text='user@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.EMAIL, hint_text='Ema1L!P@$$', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
-                new_user.adjust_email_settings()
+                new_user.adjust_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
                 ))
             pw_reset_test = ft.ElevatedButton(label="Test Send", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.adjust_email_settings(),
@@ -1888,23 +1888,23 @@ def main(page: ft.Page, session_value=None):
             pw_reset_server_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[user_column])
-            pw_reset_send_row =             pw_reset_server_row = ft.Row(
+                            controls=[pw_reset_server_name, ft.Text(':') pw_reset_port])
+            pw_reset_send_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[user_column])
+                            controls=[pw_reset_send_mode, ft.Text('Encryption'), pw_reset_encryption])
             pw_reset_auth_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[user_column])
+                            controls=[pw_reset_auth_user, pw_reset_auth_pw])
             pw_reset_column = ft.Column(
-                            controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
+                            controls=[pw_reset_server_row, pw_reset_send_row, pw_reset_auth_row, pw_reset_email, pw_reset_auth]
                         )
             pw_reset_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[user_column])
-            pw_reset_container = ft.Container(content=user_row)
+                            controls=[pw_reset_column])
+            pw_reset_container = ft.Container(content=pw_reset_row)
             pw_reset_container.padding=padding.only(left=70, right=50)
 
             ### API Key Settings
@@ -2022,6 +2022,7 @@ def main(page: ft.Page, session_value=None):
                 admin_setting_text.visible = False
                 user_row_container.visible = False
                 user_edit_container.visible = False
+                pw_reset_container.visible = False
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
@@ -2036,6 +2037,7 @@ def main(page: ft.Page, session_value=None):
                         admin_setting_text,
                         user_row_container,
                         user_edit_container,
+                        pw_reset_container,
                         guest_info,
                         self_service_info,
                         download_info,
@@ -3357,6 +3359,10 @@ def main(page: ft.Page, session_value=None):
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
+
+        def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
+            print(server_name)
+
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
