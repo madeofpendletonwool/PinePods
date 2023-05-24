@@ -1158,7 +1158,7 @@ def download_status(cnx):
     cursor = cnx.cursor()
     query = "SELECT DownloadEnabled FROM AppSettings"
     cursor.execute(query)
-    result = cursor.fetchall()
+    result = cursor.fetchone()
     cursor.close()
     cnx.close()
 
