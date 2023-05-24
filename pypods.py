@@ -1870,12 +1870,12 @@ def main(page: ft.Page, session_value=None):
                 options=[
                     ft.dropdown.Option("SMTP"),
                     ft.dropdown.Option("Sendmail"),
-                ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+                ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
             pw_reset_encryption = ft.Dropdown(width=125, label="Encryption",    
                 options=[
                     ft.dropdown.Option("None"),
                     ft.dropdown.Option("SSL/TLS"),
-                ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+                ],icon=ft.icons.PERSON, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
             pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, check_color=active_user.accent_color)
             pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.CARD_MEMBERSHIP, hint_text='user@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.EMAIL, hint_text='Ema1L!P@$$', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
