@@ -93,7 +93,7 @@ count = cursor.fetchone()[0]
 
 if count == 0:
     cursor.execute("""
-        INSERT INTO AppSettings (AppSettingsID, SelfServiceUser, DownloadEnabled, EncryptionKey) 
+        INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
         VALUES (0, 1, %s)
     """, (key,))
 
