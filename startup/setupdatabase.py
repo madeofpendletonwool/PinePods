@@ -84,7 +84,7 @@ cursor.execute("""
         AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
         SelfServiceUser TINYINT(1) DEFAULT 0,
         DownloadEnabled TINYINT(1) DEFAULT 1,
-        EncryptionKey BINARY(32)  -- Set the data type to BINARY(32) to hold the 32-byte key
+        EncryptionKey BINARY(44)  -- Set the data type to BINARY(32) to hold the 32-byte key
     )
 """)
 
