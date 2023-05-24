@@ -1171,7 +1171,7 @@ def guest_status(cnx):
     cursor = cnx.cursor()
     query = "SELECT Email FROM Users WHERE Email = 'active'"
     cursor.execute(query)
-    result = cursor.fetchone()
+    result = cursor.fetchall()
     cursor.close()
     cnx.close()
 

@@ -1811,6 +1811,7 @@ def main(page: ft.Page, session_value=None):
 
             # Download Enable/Disable
             download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+            print(download_status_bool)
             if download_status_bool == True:
                 download_status = 'enabled'
             else:
@@ -1864,6 +1865,7 @@ def main(page: ft.Page, session_value=None):
             def auth_box_check(e):
                 pw_reset_auth_user.disabled = False
                 pw_reset_auth_pw.disabled = False
+                page.update()
 
             pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color, size=22)
             pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
