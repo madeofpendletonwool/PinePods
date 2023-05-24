@@ -77,16 +77,6 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
 
 # Generate a key
 key = Fernet.generate_key()
-cipher_suite = Fernet(key)
-
-# You can store the key as bytes directly in a BINARY type column in MySQL.
-# But, for this example, let's convert the bytes to a string so we can print it out and see what's going on.
-key_str = key.decode()
-
-print(f"Generated key: {key_str}")
-
-# Note: When storing and retrieving the key and cipher text in/from the database, 
-# you'll need to convert these back to bytes.
 
 # Create the AppSettings table
 cursor.execute("""
@@ -98,11 +88,11 @@ cursor.execute("""
     )
 """)
 
-# Now, you can insert the encryption key into the AppSettings table.
-# Remember to convert the key string back to bytes.
+# Insert the key into the table (key is already bytes, so no need to call encode())
 cursor.execute("""
-    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) VALUES (0, 1, %s)
-""", (key_str.encode(),))  # Assuming that SelfServiceUser and DownloadEnabled should be 0 and 1
+    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
+    VALUES (0, 1, %s)
+""", (key,))  # SelfServiceUser and DownloadEnabled are 0 and 1
 
 
 cursor.execute("""
