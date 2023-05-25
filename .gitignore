@@ -59,3 +59,11 @@ clients/mac-app/pinepods
 clients/windows-app/generated*
 clients/windows-app/pinepods.spec
 clients/linux-app/pinepods.spec
+
+# Mac Files
+.DS_Store
+clients/.DS_Store
+*/.DS_Store
+*/pinepods.spec
+*/generated
+clients/mac-app/pinepods.spec
