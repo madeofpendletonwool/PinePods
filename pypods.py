@@ -3397,7 +3397,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
 
             pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)functions
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
             page.overlay.append(progress_stack)
             page.update()
 
