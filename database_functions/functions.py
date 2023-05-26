@@ -685,10 +685,8 @@ def save_email_settings(cnx, email_settings):
 
 def get_encryption_key(cnx):
     cursor = cnx.cursor()
-
     query = ("SELECT EncryptionKey FROM AppSettings WHERE AppSettingsID = 1")
     cursor.execute(query)
-
     result = cursor.fetchone()
     cursor.close()
     cnx.close()
@@ -696,7 +694,10 @@ def get_encryption_key(cnx):
     if not result:
         return None
 
-    return result['EncryptionKey']
+    # Convert the result to a dictionary.
+    result_dict = dict(zip([column[0] for column in cursor.description], result))
+
+    return result_dict['EncryptionKey']
 
 def delete_podcast(cnx, url, title, user_id):
 
