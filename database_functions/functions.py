@@ -688,16 +688,20 @@ def get_encryption_key(cnx):
     query = ("SELECT EncryptionKey FROM AppSettings WHERE AppSettingsID = 1")
     cursor.execute(query)
     result = cursor.fetchone()
-    cursor.close()
-    cnx.close()
 
     if not result:
+        cursor.close()
+        cnx.close()
         return None
 
     # Convert the result to a dictionary.
     result_dict = dict(zip([column[0] for column in cursor.description], result))
 
+    cursor.close()
+    cnx.close()
+
     return result_dict['EncryptionKey']
+
 
 def delete_podcast(cnx, url, title, user_id):
 

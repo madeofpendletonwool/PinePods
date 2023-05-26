@@ -3420,6 +3420,8 @@ def main(page: ft.Page, session_value=None):
             email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
             print(email_result)
 
+            page.overlay.remove(progress_stack)
+
             send_email_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(f"Email Send Test"),
@@ -3436,8 +3438,6 @@ def main(page: ft.Page, session_value=None):
             page.dialog = send_email_dlg
             send_email_dlg.open = True
             page.update()
-
-            page.overlay.remove(progress_stack)
 
         def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
             self.server_name = server_name
