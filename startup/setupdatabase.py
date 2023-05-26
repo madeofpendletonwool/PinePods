@@ -100,14 +100,14 @@ if count == 0:
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS EmailSettings (
         EmailSettingsID INT AUTO_INCREMENT PRIMARY KEY,
-        server_name VARCHAR(255),
-        server_port INT,
-        from_email VARCHAR(255),
-        send_mode VARCHAR(255),
-        encryption VARCHAR(255),
-        auth_required TINYINT(1),
-        username VARCHAR(255),
-        password VARCHAR(255)
+        Server_Name VARCHAR(255),
+        Server_Port INT,
+        From_Email VARCHAR(255),
+        Send_Mode VARCHAR(255),
+        Encryption VARCHAR(255),
+        Auth_Required TINYINT(1),
+        Username VARCHAR(255),
+        Password VARCHAR(255)
     )
 """)
 

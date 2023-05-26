@@ -1,6 +1,7 @@
 import requests
 import secrets
 import json
+from pydantic import BaseModel
 
 def generate_session_token():
     return secrets.token_hex(32)
@@ -395,9 +396,53 @@ def call_download_episode_list(url, headers, user_id):
         print("Error fetching downloaded episodes:", response.status_code)
         print("Error message:", response.text)
         return None
+    
+def call_get_encryption_key(url, headers):
+    response = requests.get(url + "/get_encryption_key", headers=headers)
+    if response.status_code == 200:
+        encryption_key = response.json()['encryption_key']
+        return encryption_key
+    else:
+        print("Error getting encryption key:", response.status_code)
+        return None
 
 
+class EmailSettings(BaseModel):
+    server_name: str
+    server_port: int
+    from_email: str
+    send_mode: str
+    encryption: str
+    auth_required: bool
+    email_username: str
+    email_password: str
 
+def call_save_email_settings(url, headers, server_name, server_port, from_email, send_mode, encryption, auth_required, email_username, email_password):
+    from cryptography.fernet import Fernet
+    # First, retrieve the encryption key.
+    encryption_key = call_get_encryption_key(url, headers)
+    if encryption_key is None:
+        print("Cannot save settings without encryption key.")
+        return
+
+    cipher_suite = Fernet(encryption_key)
+    encrypted_password = cipher_suite.encrypt(email_password.encode())
+
+    data = {
+        "server_name": server_name,
+        "server_port": server_port,
+        "from_email": from_email,
+        "send_mode": send_mode,
+        "encryption": encryption,
+        "auth_required": auth_required,
+        "email_username": email_username,
+        "email_password": encrypted_password.decode(),  # We decode the encrypted password to string because JSON doesn't support bytes.
+    }
+    response = requests.post(url + "/save_email_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        print("Email settings saved.")
+    else:
+        print("Error saving email settings:", response.status_code)
 
 def call_get_queue_list(url, headers, queue_urls):
     data = {"queue_urls": queue_urls}

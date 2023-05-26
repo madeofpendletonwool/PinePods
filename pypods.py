@@ -297,10 +297,6 @@ def main(page: ft.Page, session_value=None):
         page.snack_bar.open = True
         page.update()
 
-    def save_email_settings(e):
-        pass
-        api_functions.functions.call_save_email_settings()
-
     def display_hello(e):
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Hello {active_user.fullname}! Click profile icon for stats!"))
         page.snack_bar.open = True
@@ -3401,9 +3397,13 @@ def main(page: ft.Page, session_value=None):
                 page.update()
 
             pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)functions
             page.overlay.append(progress_stack)
             page.update()
+
+            def save_email_settings(e):
+                api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
+
 
             self.server_name = server_name
             self.server_port = server_port
@@ -3440,10 +3440,15 @@ def main(page: ft.Page, session_value=None):
             page.overlay.remove(progress_stack)
 
         def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
-
-            app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
-
-
+            self.server_name = server_name
+            self.server_port = server_port
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+            api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
