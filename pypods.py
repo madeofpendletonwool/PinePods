@@ -3422,7 +3422,7 @@ def main(page: ft.Page, session_value=None):
 
 
             self.server_name = server_name
-            self.server_port = server_port
+            self.server_port = int(server_port)
             self.from_email = from_email
             self.send_mode = send_mode
             self.encryption = encryption
