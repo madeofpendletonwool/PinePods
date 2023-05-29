@@ -521,11 +521,8 @@ async def api_create_api_key(user_id: int = Body(..., embed=True), api_key: str 
     new_api_key = database_functions.functions.create_api_key(cnx, user_id)
     return {"api_key": new_api_key}
 
-sys.path.append('/pinepods')
-
-from api_functions.functions import EmailSettings
 @app.post("/api/data/save_email_settings")
-async def api_save_email_settings(email_settings: EmailSettings = Body(..., embed=True), api_key: str = Depends(get_api_key_from_header)):
+async def api_save_email_settings(email_settings: dict = Body(..., embed=True), api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     print(f'Here are the email settings: {email_settings}')
     database_functions.functions.save_email_settings(cnx, email_settings)
