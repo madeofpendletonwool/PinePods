@@ -35,6 +35,7 @@ import secrets
 import appdirs
 import logging
 import hashlib
+import base64
 
 # Wait for Client API Server to start
 time.sleep(3)
