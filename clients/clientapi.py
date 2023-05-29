@@ -535,6 +535,12 @@ async def api_get_encryption_key(api_key: str = Depends(get_api_key_from_header)
     print(encryption_key)
     return {"encryption_key": encryption_key}
 
+@app.get("/api/data/get_email_settings")
+async def api_get_email_settings(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    email_settings = database_functions.functions.get_email_settings(cnx)
+    return email_settings
+
 @app.delete("/api/data/delete_api_key/{api_id}")
 async def api_delete_api_key(api_id: int, api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()

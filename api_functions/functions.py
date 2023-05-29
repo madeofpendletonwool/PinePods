@@ -450,6 +450,15 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
         print("Error saving email settings:", response.status_code)
         print("Response body:", response.json())
 
+def call_get_email_info(url, headers):
+    response = requests.get(url + "/get_email_settings", headers=headers)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Error retrieving email settings:", response.status_code)
+        print("Response body:", response.json())
+        return None
 
 
 def call_get_queue_list(url, headers, queue_urls):

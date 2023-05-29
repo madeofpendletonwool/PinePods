@@ -1753,8 +1753,9 @@ def main(page: ft.Page, session_value=None):
                             controls=[user_column])
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
+            
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
+            current_email_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=22)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
@@ -1929,6 +1930,62 @@ def main(page: ft.Page, session_value=None):
                             controls=[pw_reset_column])
             pw_reset_container = ft.Container(content=pw_reset_row)
             pw_reset_container.padding=padding.only(left=70, right=50)
+
+            #Email Table Setup - Admin only
+            email_table_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
+
+            email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+            email_table_rows = []
+
+            server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
+            from_email = email_information['From_Email']
+            send_mode = email_information['Send_Mode']
+            encryption = email_information['Encryption']
+            auth = email_information['Auth_Required']
+
+            if auth == 1:
+                auth_user = email_information['Username']
+            else:
+                auth_user = 'Auth not defined!'
+
+
+                
+                # Create a new data row with the user information
+                row = ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(server_info)),
+                        ft.DataCell(ft.Text(from_email)),
+                        ft.DataCell(ft.Text(send_mode)),
+                        ft.DataCell(ft.Text(encryption)),
+                        ft.DataCell(ft.Text(auth_user))
+                    ]
+                )
+                
+                # Append the row to the list of data rows
+                email_table_rows.append(row)
+
+            email_table = ft.DataTable(
+                bgcolor=active_user.main_color, 
+                border=ft.border.all(2, active_user.main_color),
+                border_radius=10,
+                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                heading_row_color=active_user.nav_color1,
+                heading_row_height=100,
+                data_row_color={"hovered": active_user.font_color},
+                # show_checkbox_column=True,
+                columns=[
+                ft.DataColumn(ft.Text("Server Name"), numeric=True),
+                ft.DataColumn(ft.Text("From Email")),
+                ft.DataColumn(ft.Text("Send Mode")),
+                ft.DataColumn(ft.Text("Encryption?")),
+                ft.DataColumn(ft.Text("Username"))
+            ],
+                rows=email_table_rows
+                )
+            email_edit_column = ft.Column(controls=[email_table_text, email_table])
+            email_edit_container = ft.Container(content=email_edit_column)
+            email_edit_container.padding=padding.only(left=70, right=50)
 
             ### API Key Settings
 

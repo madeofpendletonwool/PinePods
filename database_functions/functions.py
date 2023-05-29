@@ -707,6 +707,21 @@ def get_encryption_key(cnx):
     print(base64.b64encode(result_dict['EncryptionKey']).decode())
     return base64.b64encode(result_dict['EncryptionKey']).decode()
 
+def get_email_settings(cnx):
+    cursor = cnx.cursor()
+    
+    query = "SELECT * FROM EmailSettings"
+    cursor.execute(query)
+    
+    result = cursor.fetchone()
+    cursor.close()
+    cnx.close()
+    
+    if result:
+        keys = ["EmailSettingsID", "Server_Name", "Server_Port", "From_Email", "Send_Mode", "Encryption", "Auth_Required", "Username", "Password"]
+        return dict(zip(keys, result))
+    else:
+        return None
 
 
 def delete_podcast(cnx, url, title, user_id):
