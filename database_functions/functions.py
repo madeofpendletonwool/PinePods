@@ -674,6 +674,7 @@ def download_episode_list(cnx, user_id):
     return rows
 
 def save_email_settings(cnx, email_settings):
+    print(email_settings)
     cursor = cnx.cursor()
     
     query = ("UPDATE EmailSettings SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1")
