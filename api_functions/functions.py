@@ -419,6 +419,8 @@ class EmailSettings(BaseModel):
     email_password: str
 
 def call_save_email_settings(url, headers, server_name, server_port, from_email, send_mode, encryption, auth_required, email_username, email_password, encryption_key):
+    from cryptography.fernet import Fernet
+    
     if encryption_key is None:
         print("Cannot save settings without encryption key.")
         return
