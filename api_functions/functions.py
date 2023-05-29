@@ -428,6 +428,9 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
     cipher_suite = Fernet(encryption_key)
     encrypted_password = cipher_suite.encrypt(email_password.encode())
 
+    # Decode encrypted password back to string
+    decoded_password = encrypted_password.decode()
+
     data = {
         "server_name": server_name,
         "server_port": server_port,
@@ -436,13 +439,23 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
         "encryption": encryption,
         "auth_required": auth_required,
         "email_username": email_username,
-        "email_password": encrypted_password.decode(),  # We decode the encrypted password to string because JSON doesn't support bytes.
+        "email_password": decoded_password,
     }
-    response = requests.post(url + "/save_email_settings", headers=headers, json=data)
+
+    # Printing variables along with their types
+    for key, value in data.items():
+        print(f"{key}: {value} ({type(value)})")
+
+    # Printing encrypted and decoded password
+    print(f"Encrypted password: {encrypted_password} ({type(encrypted_password)})")
+    print(f"Decoded password: {decoded_password} ({type(decoded_password)})")
+
+    response = requests.post(url + "/api/data/save_email_settings", headers=headers, json=data)
     if response.status_code == 200:
         print("Email settings saved.")
     else:
         print("Error saving email settings:", response.status_code)
+
 
 def call_get_queue_list(url, headers, queue_urls):
     data = {"queue_urls": queue_urls}
