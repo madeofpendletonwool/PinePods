@@ -679,11 +679,12 @@ def save_email_settings(cnx, email_settings):
     
     query = ("UPDATE EmailSettings SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1")
     
-    cursor.execute(query, (email_settings.server_name, email_settings.server_port, email_settings.from_email, email_settings.send_mode, email_settings.encryption, email_settings.auth_required, email_settings.email_username, email_settings.email_password))
+    cursor.execute(query, (email_settings['server_name'], email_settings['server_port'], email_settings['from_email'], email_settings['send_mode'], email_settings['encryption'], int(email_settings['auth_required']), email_settings['email_username'], email_settings['email_password']))
     
     cnx.commit()
     cursor.close()
     cnx.close()
+
 
 def get_encryption_key(cnx):
     cursor = cnx.cursor()
