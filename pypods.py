@@ -3403,8 +3403,21 @@ def main(page: ft.Page, session_value=None):
 
             def save_email_settings(e):
                 encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+                encryption_key_bytes = base64.b64decode(encryption_key)
                 print(f'your key {encryption_key}')
-                api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password, encryption_key)
+                api_functions.functions.call_save_email_settings(
+                    app_api.url, 
+                    app_api.headers, 
+                    server_name, 
+                    server_port, 
+                    from_email, 
+                    send_mode, 
+                    encryption, 
+                    auth_required, 
+                    email_username, 
+                    email_password, 
+                    encryption_key_bytes
+                )
 
 
             self.server_name = server_name

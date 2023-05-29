@@ -7,6 +7,7 @@ import requests
 import datetime
 import time
 import appdirs
+import base64
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
@@ -700,9 +701,10 @@ def get_encryption_key(cnx):
     cursor.close()
     cnx.close()
 
-    print(result_dict['EncryptionKey'])
+    # Convert the bytearray to a base64 encoded string before returning.
+    print(base64.b64encode(result_dict['EncryptionKey']).decode())
+    return base64.b64encode(result_dict['EncryptionKey']).decode()
 
-    return result_dict['EncryptionKey']
 
 
 def delete_podcast(cnx, url, title, user_id):
