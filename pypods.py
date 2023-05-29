@@ -3409,14 +3409,14 @@ def main(page: ft.Page, session_value=None):
                 api_functions.functions.call_save_email_settings(
                     app_api.url, 
                     app_api.headers, 
-                    server_name, 
-                    server_port, 
-                    from_email, 
-                    send_mode, 
-                    encryption, 
-                    auth_required, 
-                    email_username, 
-                    email_password, 
+                    self.server_name, 
+                    self.server_port, 
+                    self.from_email, 
+                    self.send_mode, 
+                    self.encryption, 
+                    self.auth_required, 
+                    self.email_username, 
+                    self.email_password, 
                     encryption_key_bytes
                 )
 
