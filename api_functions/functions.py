@@ -450,7 +450,7 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
     print(f"Encrypted password: {encrypted_password} ({type(encrypted_password)})")
     print(f"Decoded password: {decoded_password} ({type(decoded_password)})")
 
-    response = requests.post(url + "/api/data/save_email_settings", headers=headers, json=data)
+    response = requests.post(url + "/save_email_settings", headers=headers, json=data)
     if response.status_code == 200:
         print("Email settings saved.")
     else:
