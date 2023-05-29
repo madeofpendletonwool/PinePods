@@ -700,6 +700,8 @@ def get_encryption_key(cnx):
     cursor.close()
     cnx.close()
 
+    print(result_dict['EncryptionKey'])
+
     return result_dict['EncryptionKey']
 
 

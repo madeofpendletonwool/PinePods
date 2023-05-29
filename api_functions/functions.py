@@ -401,6 +401,7 @@ def call_get_encryption_key(url, headers):
     response = requests.get(url + "/get_encryption_key", headers=headers)
     if response.status_code == 200:
         encryption_key = response.json()['encryption_key']
+        print("Encryption key:", encryption_key)
         return encryption_key
     else:
         print("Error getting encryption key:", response.status_code)
@@ -417,10 +418,7 @@ class EmailSettings(BaseModel):
     email_username: str
     email_password: str
 
-def call_save_email_settings(url, headers, server_name, server_port, from_email, send_mode, encryption, auth_required, email_username, email_password):
-    from cryptography.fernet import Fernet
-    # First, retrieve the encryption key.
-    encryption_key = call_get_encryption_key(url, headers)
+def call_save_email_settings(url, headers, server_name, server_port, from_email, send_mode, encryption, auth_required, email_username, email_password, encryption_key):
     if encryption_key is None:
         print("Cannot save settings without encryption key.")
         return
