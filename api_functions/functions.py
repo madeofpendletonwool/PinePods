@@ -422,15 +422,18 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
     decoded_password = encrypted_password.decode()
 
     data = {
-        "server_name": server_name,
-        "server_port": server_port,
-        "from_email": from_email,
-        "send_mode": send_mode,
-        "encryption": encryption,
-        "auth_required": auth_required,
-        "email_username": email_username,
-        "email_password": decoded_password,
+        "email_settings": {
+            "server_name": server_name,
+            "server_port": server_port,
+            "from_email": from_email,
+            "send_mode": send_mode,
+            "encryption": encryption,
+            "auth_required": auth_required,
+            "email_username": email_username,
+            "email_password": decoded_password,
+        }
     }
+
 
     # Printing variables along with their types
     for key, value in data.items():
