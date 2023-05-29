@@ -527,7 +527,7 @@ from api_functions.functions import EmailSettings
 @app.post("/api/data/save_email_settings")
 async def api_save_email_settings(email_settings: EmailSettings = Body(..., embed=True), api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
-    print(email_settings)
+    print(f'Here are the email settings: {email_settings}')
     database_functions.functions.save_email_settings(cnx, email_settings)
     return {"message": "Email settings saved."}
 
