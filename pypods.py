@@ -3406,6 +3406,7 @@ def main(page: ft.Page, session_value=None):
                 encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
                 encryption_key_bytes = base64.b64decode(encryption_key)
                 print(f'your key {encryption_key}')
+                print(self.email_password)
                 api_functions.functions.call_save_email_settings(
                     app_api.url, 
                     app_api.headers, 

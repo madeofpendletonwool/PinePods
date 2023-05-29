@@ -408,16 +408,6 @@ def call_get_encryption_key(url, headers):
         return None
 
 
-class EmailSettings(BaseModel):
-    server_name: str
-    server_port: int
-    from_email: str
-    send_mode: str
-    encryption: str
-    auth_required: bool
-    email_username: str
-    email_password: str
-
 def call_save_email_settings(url, headers, server_name, server_port, from_email, send_mode, encryption, auth_required, email_username, email_password, encryption_key):
     from cryptography.fernet import Fernet
     
@@ -455,6 +445,8 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
         print("Email settings saved.")
     else:
         print("Error saving email settings:", response.status_code)
+        print("Response body:", response.json())
+
 
 
 def call_get_queue_list(url, headers, queue_urls):
