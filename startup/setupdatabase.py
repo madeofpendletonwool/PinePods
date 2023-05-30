@@ -112,9 +112,16 @@ cursor.execute("""
 """)
 
 cursor.execute("""
-    INSERT IGNORE INTO EmailSettings (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
-    VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', 1, 'default_username', 'default_password')
+    SELECT COUNT(*) FROM EmailSettings
 """)
+rows = cursor.fetchone()
+
+if rows[0] == 0:
+    cursor.execute("""
+        INSERT INTO EmailSettings (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
+        VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', 1, 'default_username', 'default_password')
+    """)
+
 
 
 cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
