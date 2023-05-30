@@ -1192,7 +1192,7 @@ def main(page: ft.Page, session_value=None):
         pw_reset_email
             ], tight=True),
         actions=[
-        ft.TextButton("Submit", on_click=lambda e: create_reset_code(page, pw_reset_email.value))
+        ft.TextButton("Submit", on_click=lambda e: create_reset_code(page, pw_reset_email.value)),
         ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
         ],
         actions_alignment=ft.MainAxisAlignment.END
