@@ -1,7 +1,6 @@
 import mysql.connector
 from mysql.connector import errorcode
 import mysql.connector.pooling
-from mysql.connector import converter
 import sys
 import os
 import requests
