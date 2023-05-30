@@ -1753,9 +1753,9 @@ def main(page: ft.Page, session_value=None):
                             controls=[user_column])
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
-            
+
             #User Table Setup - Admin only
-            current_email_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=22)
+            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=22)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
