@@ -52,7 +52,9 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     Email VARCHAR(255),
                     Hashed_PW CHAR(60),
                     Salt CHAR(60),
-                    IsAdmin TINYINT(1)
+                    IsAdmin TINYINT(1),
+                    Reset_Code TEXT,
+                    Reset_Expiry DATETIME
                 )""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (

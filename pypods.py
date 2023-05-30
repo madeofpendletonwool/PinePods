@@ -36,6 +36,7 @@ import appdirs
 import logging
 import hashlib
 import base64
+import string
 
 # Wait for Client API Server to start
 time.sleep(3)
@@ -1143,6 +1144,63 @@ def main(page: ft.Page, session_value=None):
         page.update()
         page.go("/")
 
+    def reset_credentials(page):
+
+        def close_self_service_pw_dlg(e):
+            create_self_service_pw_dlg.open = False
+            page.update()
+
+        def create_reset_code(page, user_email):
+            import random
+            import datetime
+            from cryptography.fernet import Fernet
+
+            # Generate a random reset code
+            reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+            user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers, user_email, reset_code)
+            if user_exist == True:
+                # Send the reset code via email
+                subject = "Your Password Reset Code"
+                body = f"Your password reset code is: {reset_code}. This code will expire in 1 hour."
+                email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+                encrypt_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+
+                cipher_suite = Fernet(encrypt_key)
+                decrypted_text = cipher_suite.decrypt(email_information['Password'])
+                decrypt_email_pw = decrypted_text.decode('utf-8') 
+
+                email_result = app_functions.functions.send_email(email_information['Server_Name'], email_information['Server_Port'], email_information['From_Email'], user_email, email_information['Send_Mode'], email_information['Encryption'], email_information['Auth_Required'], email_information['Username'], decrypt_email_pw, subject, body)
+                page.snack_bar = ft.SnackBar(content=ft.Text(email_result))
+                page.snack_bar.open = True
+                page.update()
+                print(email_result)  
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text('User not found with this email'))
+                page.snack_bar.open = True
+                page.update()
+                print(email_result) 
+
+
+        pw_reset_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com') 
+        create_self_service_pw_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"New API key listed below"),
+        content=ft.Column(controls=[
+        ft.Text("Reset Password:"),
+        ft.Text(f'To reset your password, please enter your email below and hit enter. An email will be sent to you with a code needed to reset if a user exists with that email.', selectable=True),
+        pw_reset_email
+            ], tight=True),
+        actions=[
+        ft.TextButton("Submit", on_click=lambda e: create_reset_code(page, pw_reset_email.value))
+        ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+        )
+        page.dialog = create_self_service_pw_dlg
+        create_self_service_pw_dlg.open = True
+        page.update()
+
     def go_theme_rebuild(page):
         # navbar.visible = True
         active_user.theme_select()
@@ -1503,7 +1561,20 @@ def main(page: ft.Page, session_value=None):
                                             spacing=20,
                                             controls=[
                                                 ft.Text("Haven't created a user yet?"),
-                                                ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                                ft.OutlinedButton(text="Create New User", on_click=self_service_user),
+                                                ft.Text("Forgot Password?"),
+                                                ft.OutlinedButton(
+                                                    content=ft.Text(
+                                                        "Reset Password",
+                                                        weight="w700",
+                                                    ),
+                                                    width=160,
+                                                    height=40,
+                                                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                    on_click = lambda e: reset_credentials(page)
+                                                    # on_click=lambda e: go_homelogin(e)
+                                                ),
+                                            
                                             ]
 
                                         )
@@ -1585,7 +1656,20 @@ def main(page: ft.Page, session_value=None):
                                         spacing=20,
                                         controls=[
                                             ft.Text("Haven't created a user yet?"),
-                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user),
+                                            ft.Text("Forgot Password?"),
+                                            ft.OutlinedButton(
+                                                content=ft.Text(
+                                                    "Reset Password",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click = lambda e: reset_credentials(page)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        
                                         ]
 
                                     )
@@ -1864,6 +1948,7 @@ def main(page: ft.Page, session_value=None):
             self_service_info.padding=padding.only(left=70, right=50)
 
             # User Self Service PW Resets
+
             def auth_box_check(e):
                 if new_user.auth_enabled == True:
                     pw_reset_auth_user.disabled = True
@@ -2104,6 +2189,7 @@ def main(page: ft.Page, session_value=None):
                 user_row_container.visible = False
                 user_edit_container.visible = False
                 pw_reset_container.visible = False
+                email_edit_container.visible = False
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
@@ -2122,6 +2208,7 @@ def main(page: ft.Page, session_value=None):
                         user_edit_container,
                         div_row,
                         pw_reset_container,
+                        email_edit_container,
                         div_row,
                         guest_info,
                         div_row,

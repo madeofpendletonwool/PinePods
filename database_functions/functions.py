@@ -1,6 +1,7 @@
 import mysql.connector
 from mysql.connector import errorcode
 import mysql.connector.pooling
+from mysql.connector import converter
 import sys
 import os
 import requests
@@ -1596,3 +1597,36 @@ def user_exists(cnx, username):
     cursor.close()
     cnx.close()
     return count > 0
+
+def reset_password_create_code(cnx, user_email, reset_code):
+    cursor = cnx.cursor()
+    
+    # Check if a user with this email exists
+    check_query = """
+        SELECT UserID
+        FROM Users
+        WHERE Email = %s
+    """
+    cursor.execute(check_query, (user_email,))
+    result = cursor.fetchone()
+    if result is None:
+        cursor.close()
+        cnx.close()
+        return False
+    
+    # If the user exists, update the reset code and expiry
+    reset_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
+
+    update_query = """
+        UPDATE Users
+        SET Reset_Code = %s,
+            Reset_Expiry = %s
+        WHERE Email = %s
+    """
+    params = (reset_code, reset_expiry.strftime('%Y-%m-%d %H:%M:%S'), user_email)
+    cursor.execute(update_query, params)
+    cursor.close()
+    cnx.close()
+    
+    return True
+

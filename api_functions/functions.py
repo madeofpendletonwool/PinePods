@@ -607,3 +607,12 @@ def call_get_api_info(url, headers):
         print("Error getting API info:", response.status_code)
         print("Error message:", response.text)
         return []
+
+def call_reset_password_create_code(url, headers, email, reset_code):
+    payload = {"email": email, "reset_code": reset_code}
+    response = requests.post(url + "/reset_password_create_code", headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["user_exists"]
+    else:
+        print("Error resetting password:", response.status_code)
+        return None

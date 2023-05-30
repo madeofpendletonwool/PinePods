@@ -554,6 +554,17 @@ async def api_get_api_info(api_key: str = Depends(get_api_key_from_header)):
     return {"api_info": api_information}
 
 
+class ResetPasswordPayload(BaseModel):
+    email: str
+    reset_code: str
+
+@app.post("/api/data/reset_password_create_code")
+async def api_reset_password_route(payload: ResetPasswordPayload, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email, payload.reset_code)
+    return {"user_exists": user_exists}
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
