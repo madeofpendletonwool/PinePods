@@ -1155,6 +1155,9 @@ def main(page: ft.Page, session_value=None):
             import datetime
             from cryptography.fernet import Fernet
 
+            def close_code_pw_dlg(e):
+                create_self_service_pw_dlg.open = False
+                page.update()
             # Generate a random reset code
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
@@ -1174,7 +1177,29 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar = ft.SnackBar(content=ft.Text(email_result))
                 page.snack_bar.open = True
                 page.update()
-                print(email_result)  
+                print(email_result)
+                create_self_service_pw_dlg.open = False
+                ##### MORE CODE NEEDED HERE. Should open new alert that you can enter the reset on 
+                
+                code_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
+                close_code_pw_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Enter PW Reset Code:"),
+                content=ft.Column(controls=[
+                ft.Text("Reset Password:"),
+                ft.Text(f'Please Enter the code that was sent to your email to reset your password.', selectable=True),
+                code_reset_prompt
+                    ], tight=True),
+                actions=[
+                ft.TextButton("Submit", on_click=lambda e: create_reset_code(page, pw_reset_email.value)),
+                ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+                page.dialog = close_code_pw_dlg
+                close_code_pw_dlg.open = True
+                page.update()
+
             else:
                 page.snack_bar = ft.SnackBar(content=ft.Text('User not found with this email'))
                 page.snack_bar.open = True
@@ -1185,9 +1210,8 @@ def main(page: ft.Page, session_value=None):
         pw_reset_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com') 
         create_self_service_pw_dlg = ft.AlertDialog(
         modal=True,
-        title=ft.Text(f"New API key listed below"),
+        title=ft.Text(f"Reset Password:"),
         content=ft.Column(controls=[
-        ft.Text("Reset Password:"),
         ft.Text(f'To reset your password, please enter your email below and hit enter. An email will be sent to you with a code needed to reset if a user exists with that email.', selectable=True),
         pw_reset_email
             ], tight=True),
