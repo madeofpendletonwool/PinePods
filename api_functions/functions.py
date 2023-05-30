@@ -616,3 +616,22 @@ def call_reset_password_create_code(url, headers, email, reset_code):
     else:
         print("Error resetting password:", response.status_code)
         return None
+
+def call_verify_reset_code(url, headers, email, reset_code):
+    payload = {"email": email, "reset_code": reset_code}
+    response = requests.post(url + "/verify_reset_code", headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["code_valid"]
+    else:
+        print("Error verifying reset code:", response.status_code)
+        return False
+
+def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw):
+    payload = {"email": user_email, "salt": salt, "hashed_pw": hashed_pw}
+    response = requests.post(url + "/reset_password_prompt", headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["message"]
+    else:
+        print("Error resetting password:", response.status_code)
+        return None
+

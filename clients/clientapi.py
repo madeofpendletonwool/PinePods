@@ -564,6 +564,26 @@ async def api_reset_password_route(payload: ResetPasswordPayload, api_key: str =
     user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email, payload.reset_code)
     return {"user_exists": user_exists}
 
+@app.post("/api/data/verify_reset_code")
+async def api_verify_reset_code_route(payload: ResetPasswordPayload, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    code_valid = database_functions.functions.verify_reset_code(cnx, payload.email, payload.reset_code)
+    if code_valid is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"code_valid": code_valid}
+
+class ResetPasswordPayloadVerify(BaseModel):
+    email: str
+    salt: str
+    hashed_pw: str
+
+@app.post("/api/data/reset_password_prompt")
+async def api_reset_password_verify_route(payload: ResetPasswordPayloadVerify, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt, payload.hashed_pw)
+    if message is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": message}
 
 
 if __name__ == '__main__':

@@ -1156,13 +1156,59 @@ def main(page: ft.Page, session_value=None):
             from cryptography.fernet import Fernet
 
             def close_code_pw_dlg(e):
-                create_self_service_pw_dlg.open = False
+                code_pw_dlg.open = False
                 page.update()
             # Generate a random reset code
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers, user_email, reset_code)
             if user_exist == True:
+                def pw_reset(page, user_email, reset_code,):
+                    code_valid = api_functions.function.call_verify_reset_code(app_api.url, app_api.headers, user_email, reset_code)
+                    if code_valid == True:
+                        def close_code_pw_reset_dlg(e):
+                            code_pw_reset_dlg.open = False
+                            page.update()
+
+                        def verify_pw_reset(page, user_email, pw_reset_prompt, pw_verify_prompt):
+                            if pw_reset_prompt == pw_verify_prompt:
+                                salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
+                                api_functions.function.call_reset_password_prompt(app_api.url, app_api.headers, user_email, salt, hash_pw)
+                                page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
+                                page.snack_bar.open = True
+                                page.update()
+                            else:
+                                code_pw_reset_dlg.open = False
+                                page.snack_bar = ft.SnackBar(content=ft.Text('Your Passwords do not match. Please try again.'))
+                                page.snack_bar.open = True
+                                page.update()
+
+                        pw_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
+                        pw_verify_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
+                        code_pw_reset_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Enter PW Reset Code:"),
+                        content=ft.Column(controls=[
+                        ft.Text("Reset Password:"),
+                        ft.Text(f'Please enter your new password and then verify it below.', selectable=True),
+                        pw_reset_prompt,
+                        pw_verify_prompt
+                            ], tight=True),
+                        actions=[
+                        ft.TextButton("Submit", on_click=lambda e: verify_pw_reset(page, user_email, pw_reset_prompt.value, pw_verify_prompt.value)),
+                        ft.TextButton("Cancel", on_click=close_code_pw_reset_dlg)
+                        ],
+                        actions_alignment=ft.MainAxisAlignment.END
+                        )
+                        page.dialog = code_pw_reset_dlg
+                        code_pw_reset_dlg.open = True
+                        page.update()
+
+                    else:
+                        page.snack_bar = ft.SnackBar(content=ft.Text('Code not valid. Please check your email.'))
+                        page.snack_bar.open = True
+                        page.update()
+
                 # Send the reset code via email
                 subject = "Your Password Reset Code"
                 body = f"Your password reset code is: {reset_code}. This code will expire in 1 hour."
@@ -1182,7 +1228,7 @@ def main(page: ft.Page, session_value=None):
                 ##### MORE CODE NEEDED HERE. Should open new alert that you can enter the reset on 
                 
                 code_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
-                close_code_pw_dlg = ft.AlertDialog(
+                code_pw_dlg = ft.AlertDialog(
                 modal=True,
                 title=ft.Text(f"Enter PW Reset Code:"),
                 content=ft.Column(controls=[
@@ -1191,13 +1237,13 @@ def main(page: ft.Page, session_value=None):
                 code_reset_prompt
                     ], tight=True),
                 actions=[
-                ft.TextButton("Submit", on_click=lambda e: create_reset_code(page, pw_reset_email.value)),
+                ft.TextButton("Submit", on_click=lambda e: pw_reset(page, user_email, code_reset_prompt.value)),
                 ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
                 ],
                 actions_alignment=ft.MainAxisAlignment.END
                 )
-                page.dialog = close_code_pw_dlg
-                close_code_pw_dlg.open = True
+                page.dialog = code_pw_dlg
+                code_pw_dlg.open = True
                 page.update()
 
             else:

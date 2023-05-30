@@ -1629,3 +1629,50 @@ def reset_password_create_code(cnx, user_email, reset_code):
     
     return True
 
+def verify_reset_code(cnx, user_email, reset_code):
+    cursor = cnx.cursor()
+
+    select_query = """
+        SELECT Reset_Code, Reset_Expiry
+        FROM Users
+        WHERE Email = %s
+    """
+    cursor.execute(select_query, (user_email,))
+    result = cursor.fetchone()
+    
+    cursor.close()
+    cnx.close()
+
+    # Check if a user with this email exists
+    if result is None:
+        return None
+    
+    # Check if the reset code is valid and not expired
+    stored_code, expiry = result
+    if stored_code == reset_code and datetime.datetime.now() < expiry:
+        return True
+    
+    return False
+
+def reset_password_prompt(cnx, user_email, salt, hashed_pw):
+    cursor = cnx.cursor()
+
+    update_query = """
+        UPDATE Users
+        SET Hashed_PW = %s,
+            Salt = %s,
+            Reset_Code = NULL,
+            Reset_Expiry = NULL
+        WHERE Email = %s
+    """
+    params = (hashed_pw, salt, user_email)
+    cursor.execute(update_query, params)
+
+    if cursor.rowcount == 0:
+        return None
+
+    cnx.commit()
+    cursor.close()
+    cnx.close()
+
+    return "Password Reset Successfully"
