@@ -1561,7 +1561,15 @@ def main(page: ft.Page, session_value=None):
                                             spacing=20,
                                             controls=[
                                                 ft.Text("Haven't created a user yet?"),
-                                                ft.OutlinedButton(text="Create New User", on_click=self_service_user),
+                                                ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                            
+                                            ]
+
+                                        ),
+                                        ft.Row(
+                                            alignment="center",
+                                            spacing=20,
+                                            controls=[
                                                 ft.Text("Forgot Password?"),
                                                 ft.OutlinedButton(
                                                     content=ft.Text(
@@ -1656,7 +1664,15 @@ def main(page: ft.Page, session_value=None):
                                         spacing=20,
                                         controls=[
                                             ft.Text("Haven't created a user yet?"),
-                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user),
+                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                        
+                                        ]
+
+                                    ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
                                             ft.Text("Forgot Password?"),
                                             ft.OutlinedButton(
                                                 content=ft.Text(
@@ -2017,9 +2033,8 @@ def main(page: ft.Page, session_value=None):
             pw_reset_container.padding=padding.only(left=70, right=50)
 
             #Email Table Setup - Admin only
-            email_table_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
-
             email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+            print(email_information)
             email_table_rows = []
 
             server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
@@ -2068,7 +2083,7 @@ def main(page: ft.Page, session_value=None):
             ],
                 rows=email_table_rows
                 )
-            email_edit_column = ft.Column(controls=[email_table_text, email_table])
+            email_edit_column = ft.Column(controls=[pw_reset_current, email_table])
             email_edit_container = ft.Container(content=email_edit_column)
             email_edit_container.padding=padding.only(left=70, right=50)
 
