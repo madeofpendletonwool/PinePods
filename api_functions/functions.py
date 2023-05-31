@@ -627,11 +627,12 @@ def call_verify_reset_code(url, headers, email, reset_code):
         return False
 
 def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw):
-    payload = {"email": user_email, "salt": salt, "hashed_pw": hashed_pw}
+    payload = {"email": user_email, "salt": salt.decode(), "hashed_pw": hashed_pw.decode()}
     response = requests.post(url + "/reset_password_prompt", headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()["message"]
     else:
         print("Error resetting password:", response.status_code)
         return None
+
 
