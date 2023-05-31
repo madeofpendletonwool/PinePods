@@ -2061,6 +2061,7 @@ def main(page: ft.Page, session_value=None):
             pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",    
                 options=[
                     ft.dropdown.Option("None"),
+                    ft.dropdown.Option("STARTTLS"),
                     ft.dropdown.Option("SSL/TLS"),
                 ],icon=ft.icons.ENHANCED_ENCRYPTION, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
             pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, on_change=auth_box_check, check_color=active_user.accent_color)

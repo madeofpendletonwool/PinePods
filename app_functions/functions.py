@@ -70,10 +70,13 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
         if send_mode == "SMTP":
             # Set up the SMTP server.
             if encryption == "SSL/TLS":
-                smtp = smtplib.SMTP_SSL(server_name, server_port)
-            else:
-                smtp = smtplib.SMTP(server_name, server_port)
+                smtp = smtplib.SMTP_SSL(server_name, server_port, timeout=10)
+            elif encryption == "STARTTLS":
+                smtp = smtplib.SMTP(server_name, server_port, timeout=10)
                 smtp.starttls()
+            else:  # No encryption
+                smtp = smtplib.SMTP(server_name, server_port, timeout=10)
+
 
             # Authenticate if needed.
             if auth_required:
