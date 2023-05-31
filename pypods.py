@@ -1214,7 +1214,6 @@ def main(page: ft.Page, session_value=None):
                 body = f"Your password reset code is: {reset_code}. This code will expire in 1 hour."
                 email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
                 encrypt_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
-                print(f'Encrypt Key: {encrypt_key}')
 
                 decoded_key = urlsafe_b64decode(encrypt_key)
 
@@ -1226,7 +1225,6 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar = ft.SnackBar(content=ft.Text(email_result))
                 page.snack_bar.open = True
                 page.update()
-                print(email_result)
                 create_self_service_pw_dlg.open = False
 
                 ##### MORE CODE NEEDED HERE. Should open new alert that you can enter the reset on 
@@ -1255,7 +1253,6 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar = ft.SnackBar(content=ft.Text('User not found with this email'))
                 page.snack_bar.open = True
                 page.update()
-                print(email_result) 
 
 
         pw_reset_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com') 
@@ -1988,7 +1985,6 @@ def main(page: ft.Page, session_value=None):
 
             # Download Enable/Disable
             download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
-            print(download_status_bool)
             if download_status_bool == True:
                 download_status = 'enabled'
             else:
@@ -2109,7 +2105,7 @@ def main(page: ft.Page, session_value=None):
 
             #Email Table Setup - Admin only
             email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-            print(f'Current email info {email_information}')
+            print(f'email_information: {email_information}')
             email_table_rows = []
 
             server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
@@ -2125,19 +2121,19 @@ def main(page: ft.Page, session_value=None):
 
 
                 
-                # Create a new data row with the user information
-                row = ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(server_info)),
-                        ft.DataCell(ft.Text(from_email)),
-                        ft.DataCell(ft.Text(send_mode)),
-                        ft.DataCell(ft.Text(encryption)),
-                        ft.DataCell(ft.Text(auth_user))
-                    ]
-                )
-                
-                # Append the row to the list of data rows
-                email_table_rows.append(row)
+            # Create a new data row with the user information
+            row = ft.DataRow(
+                cells=[
+                    ft.DataCell(ft.Text(server_info)),
+                    ft.DataCell(ft.Text(from_email)),
+                    ft.DataCell(ft.Text(send_mode)),
+                    ft.DataCell(ft.Text(encryption)),
+                    ft.DataCell(ft.Text(auth_user))
+                ]
+            )
+            
+            # Append the row to the list of data rows
+            email_table_rows.append(row)
 
             email_table = ft.DataTable(
                 bgcolor=active_user.main_color, 
@@ -3639,8 +3635,6 @@ def main(page: ft.Page, session_value=None):
             def save_email_settings(e):
                 encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
                 encryption_key_bytes = base64.b64decode(encryption_key)
-                print(f'your key {encryption_key}')
-                print(self.email_password)
                 api_functions.functions.call_save_email_settings(
                     app_api.url, 
                     app_api.headers, 
@@ -3669,7 +3663,6 @@ def main(page: ft.Page, session_value=None):
             body = "If you got this your email settings are working! Great Job! Don't forget to git save."
             to_email = active_user.email
             email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
-            print(email_result)
 
             page.overlay.remove(progress_stack)
 
