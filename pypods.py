@@ -1159,7 +1159,7 @@ def main(page: ft.Page, session_value=None):
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers, user_email, reset_code)
             if user_exist == True:
-                def pw_reset(page, user_email, reset_code,):
+                def pw_reset(page, user_email, reset_code):
                     code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers, user_email, reset_code)
                     if code_valid == True:
                         def close_code_pw_reset_dlg(e):
@@ -1169,7 +1169,7 @@ def main(page: ft.Page, session_value=None):
                         def verify_pw_reset(page, user_email, pw_reset_prompt, pw_verify_prompt):
                             if pw_reset_prompt == pw_verify_prompt:
                                 salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
-                                api_functions.function.call_reset_password_prompt(app_api.url, app_api.headers, user_email, salt, hash_pw)
+                                api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers, user_email, salt, hash_pw)
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
                                 page.snack_bar.open = True
                                 page.update()
@@ -1179,8 +1179,8 @@ def main(page: ft.Page, session_value=None):
                                 page.snack_bar.open = True
                                 page.update()
 
-                        pw_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
-                        pw_verify_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
+                        pw_reset_prompt = ft.TextField(label="New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
+                        pw_verify_prompt = ft.TextField(label="Verify New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
                         code_pw_reset_dlg = ft.AlertDialog(
                         modal=True,
                         title=ft.Text(f"Enter PW Reset Code:"),
