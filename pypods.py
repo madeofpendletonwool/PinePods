@@ -4,7 +4,6 @@ import flet as ft
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
-import database_functions.functions
 import app_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
@@ -15,13 +14,11 @@ import mysql.connector
 import mysql.connector.pooling
 import json
 import re
-import feedparser
 import urllib.request
 import requests
 from functools import partial
 import os
 import requests
-import tempfile
 import time
 import random
 import datetime
@@ -30,13 +27,13 @@ import threading
 from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
-import math
 import secrets
-import appdirs
 import logging
 import hashlib
 import base64
 import string
+from base64 import urlsafe_b64decode
+
 
 # Wait for Client API Server to start
 time.sleep(3)
@@ -1214,8 +1211,11 @@ def main(page: ft.Page, session_value=None):
                 body = f"Your password reset code is: {reset_code}. This code will expire in 1 hour."
                 email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
                 encrypt_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+                print(f'Encrypt Key: {encrypt_key}')
 
-                cipher_suite = Fernet(encrypt_key)
+                decoded_key = urlsafe_b64decode(encrypt_key)
+
+                cipher_suite = Fernet(decoded_key)
                 decrypted_text = cipher_suite.decrypt(email_information['Password'])
                 decrypt_email_pw = decrypted_text.decode('utf-8') 
 
@@ -1225,6 +1225,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
                 print(email_result)
                 create_self_service_pw_dlg.open = False
+
                 ##### MORE CODE NEEDED HERE. Should open new alert that you can enter the reset on 
                 
                 code_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
