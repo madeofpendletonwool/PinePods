@@ -3619,7 +3619,7 @@ def main(page: ft.Page, session_value=None):
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
 
-        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
+        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username=None, password=None):
             def close_email_dlg(e):
                 send_email_dlg.open = False
                 page.update()

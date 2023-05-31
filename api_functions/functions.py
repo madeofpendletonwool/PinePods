@@ -415,10 +415,14 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
         return
 
     cipher_suite = Fernet(encryption_key)
-    encrypted_password = cipher_suite.encrypt(email_password.encode())
 
-    # Decode encrypted password back to string
-    decoded_password = encrypted_password.decode()
+    # Only encrypt password if it's not None
+    if email_password is not None:
+        encrypted_password = cipher_suite.encrypt(email_password.encode())
+        # Decode encrypted password back to string
+        decoded_password = encrypted_password.decode()
+    else:
+        decoded_password = None
 
     data = {
         "email_settings": {
@@ -439,6 +443,7 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
     else:
         print("Error saving email settings:", response.status_code)
         print("Response body:", response.json())
+
 
 def call_get_email_info(url, headers):
     response = requests.get(url + "/get_email_settings", headers=headers)
