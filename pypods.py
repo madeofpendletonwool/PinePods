@@ -2068,10 +2068,7 @@ def main(page: ft.Page, session_value=None):
             pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.LOCK, hint_text='Ema1L!P@$$', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             pw_reset_auth_user.disabled = True
             pw_reset_auth_pw.disabled = True
-            pw_reset_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
-                new_user.adjust_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
-                ))
-            pw_reset_test = ft.ElevatedButton(text="Test Send", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
+            pw_reset_test = ft.ElevatedButton(text="Test Send and Submit", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
                 new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
                 ))
             pw_reset_server_row = ft.Row(
@@ -2091,10 +2088,10 @@ def main(page: ft.Page, session_value=None):
             pw_reset_buttons = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
-                            controls=[pw_reset_test, pw_reset_submit])
+                            controls=[pw_reset_test])
 
             pw_reset_column = ft.Column(
-                            controls=[pw_reset_text, pw_reset_change, pw_reset_server_row, pw_reset_send_row, pw_reset_email, pw_reset_auth, pw_reset_auth_row, pw_reset_buttons, pw_reset_current]
+                            controls=[pw_reset_text, pw_reset_change, pw_reset_server_row, pw_reset_send_row, pw_reset_email, pw_reset_auth, pw_reset_auth_row, pw_reset_buttons]
                         )
             pw_reset_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
