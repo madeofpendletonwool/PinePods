@@ -3646,6 +3646,8 @@ def main(page: ft.Page, session_value=None):
                     self.email_password, 
                     encryption_key_bytes
                 )
+                send_email_dlg.open = False
+                page.update()
 
 
             self.server_name = server_name

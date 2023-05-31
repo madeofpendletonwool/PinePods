@@ -65,6 +65,7 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
+    import socket
 
     try:
         if send_mode == "SMTP":
@@ -98,6 +99,20 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
             pass
     except smtplib.SMTPException as e:
         return f'Failed to send email: {str(e)}'
+    except smtplib.SMTPAuthenticationError:
+        return 'Authentication Error: Invalid username or password.'
+    except smtplib.SMTPRecipientsRefused:
+        return 'Recipients Refused: Email address is not accepted by the server.'
+    except smtplib.SMTPSenderRefused:
+        return 'Sender Refused: Sender address is not accepted by the server.'
+    except smtplib.SMTPDataError:
+        return 'Unexpected server response: Possibly the message data was rejected by the server.'
+    except socket.gaierror:
+        return 'Server Not Found: Please check your server settings.'
+    except ConnectionRefusedError:
+        return 'Connection Refused: The server refused the connection.'
+    except TimeoutError:
+        return 'Timeout Error: The connection to the server timed out.'
 
 
 if __name__ == "__main__":
