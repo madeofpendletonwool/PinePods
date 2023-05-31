@@ -1623,7 +1623,15 @@ def reset_password_create_code(cnx, user_email, reset_code):
         WHERE Email = %s
     """
     params = (reset_code, reset_expiry.strftime('%Y-%m-%d %H:%M:%S'), user_email)
-    cursor.execute(update_query, params)
+    try:
+        cursor.execute(update_query, params)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error when trying to update reset code: {e}")
+        cursor.close()
+        cnx.close()
+        return False
+
     cursor.close()
     cnx.close()
     
