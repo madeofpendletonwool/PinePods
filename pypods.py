@@ -2109,7 +2109,7 @@ def main(page: ft.Page, session_value=None):
 
             #Email Table Setup - Admin only
             email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-            print(email_information)
+            print(f'Current email info {email_information}')
             email_table_rows = []
 
             server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])

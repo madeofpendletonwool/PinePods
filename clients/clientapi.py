@@ -524,7 +524,6 @@ async def api_create_api_key(user_id: int = Body(..., embed=True), api_key: str 
 @app.post("/api/data/save_email_settings")
 async def api_save_email_settings(email_settings: dict = Body(..., embed=True), api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
-    print(f'Here are the email settings: {email_settings}')
     database_functions.functions.save_email_settings(cnx, email_settings)
     return {"message": "Email settings saved."}
 
@@ -532,7 +531,6 @@ async def api_save_email_settings(email_settings: dict = Body(..., embed=True), 
 async def api_get_encryption_key(api_key: str = Depends(get_api_key_from_header)):
     cnx = get_database_connection()
     encryption_key = database_functions.functions.get_encryption_key(cnx)
-    print(encryption_key)
     return {"encryption_key": encryption_key}
 
 @app.get("/api/data/get_email_settings")

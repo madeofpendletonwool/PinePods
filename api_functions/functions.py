@@ -216,7 +216,7 @@ def call_self_service_status(url, headers):
     response = requests.get(url + "/self_service_status", headers=headers)
     if response.status_code == 200:
         status = response.json()["status"]
-        print(f'status should be 0 1 or true false: {status}')
+        print(f'Self Service Status: {status}')
         return status
     else:
         print("Error fetching self-service status:", response.status_code)
@@ -394,7 +394,6 @@ def call_download_episode_list(url, headers, user_id):
         return response.json()["downloaded_episodes"]
     else:
         print("Error fetching downloaded episodes:", response.status_code)
-        print("Error message:", response.text)
         return None
     
 def call_get_encryption_key(url, headers):
@@ -434,15 +433,6 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
         }
     }
 
-
-    # Printing variables along with their types
-    for key, value in data.items():
-        print(f"{key}: {value} ({type(value)})")
-
-    # Printing encrypted and decoded password
-    print(f"Encrypted password: {encrypted_password} ({type(encrypted_password)})")
-    print(f"Decoded password: {decoded_password} ({type(decoded_password)})")
-
     response = requests.post(url + "/save_email_settings", headers=headers, json=data)
     if response.status_code == 200:
         print("Email settings saved.")
@@ -480,9 +470,6 @@ def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
         return None
 
 def call_check_usernames(url, headers, username):
-    print("call_check_usernames - URL:", url)
-    print("call_check_usernames - Headers:", headers)
-    print("call_check_usernames - Username:", username)
 
     data = {"username": username}
     response = requests.post(url + "/check_usernames", headers=headers, json=username)  # Send the username directly as a string
