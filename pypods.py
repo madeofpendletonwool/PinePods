@@ -1149,7 +1149,6 @@ def main(page: ft.Page, session_value=None):
 
         def create_reset_code(page, user_email):
             import random
-            import datetime
             from cryptography.fernet import Fernet
 
             def close_code_pw_dlg(e):
@@ -1161,7 +1160,7 @@ def main(page: ft.Page, session_value=None):
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers, user_email, reset_code)
             if user_exist == True:
                 def pw_reset(page, user_email, reset_code,):
-                    code_valid = api_functions.function.call_verify_reset_code(app_api.url, app_api.headers, user_email, reset_code)
+                    code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers, user_email, reset_code)
                     if code_valid == True:
                         def close_code_pw_reset_dlg(e):
                             code_pw_reset_dlg.open = False
@@ -1205,7 +1204,11 @@ def main(page: ft.Page, session_value=None):
                         page.snack_bar = ft.SnackBar(content=ft.Text('Code not valid. Please check your email.'))
                         page.snack_bar.open = True
                         page.update()
-
+                # Create a progress ring while email sends
+                pr = ft.ProgressRing()
+                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+                page.overlay.append(progress_stack)
+                page.update()
                 # Send the reset code via email
                 subject = "Your Password Reset Code"
                 body = f"Your password reset code is: {reset_code}. This code will expire in 1 hour."
@@ -1245,6 +1248,7 @@ def main(page: ft.Page, session_value=None):
                 )
                 page.dialog = code_pw_dlg
                 code_pw_dlg.open = True
+                page.overlay.remove(progress_stack)
                 page.update()
 
             else:
