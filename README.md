@@ -324,6 +324,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Self Service PW Resets
 - [ ] Add creator info to bottom of stats page
 - [ ] Refresh changes on readme
+- [ ] Default User Creation
 
 ### To be added after beta version
 
