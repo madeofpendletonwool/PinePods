@@ -1178,7 +1178,8 @@ def main(page: ft.Page, session_value=None):
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Your Passwords do not match. Please try again.'))
                                 page.snack_bar.open = True
                                 page.update()
-
+                        code_pw_dlg.open = False
+                        page.update()
                         pw_reset_prompt = ft.TextField(label="New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
                         pw_verify_prompt = ft.TextField(label="Verify New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
                         code_pw_reset_dlg = ft.AlertDialog(
@@ -1201,6 +1202,7 @@ def main(page: ft.Page, session_value=None):
                         page.update()
 
                     else:
+                        code_pw_dlg.open = False
                         page.snack_bar = ft.SnackBar(content=ft.Text('Code not valid. Please check your email.'))
                         page.snack_bar.open = True
                         page.update()
@@ -1208,6 +1210,7 @@ def main(page: ft.Page, session_value=None):
                 pr = ft.ProgressRing()
                 progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
                 page.overlay.append(progress_stack)
+                create_self_service_pw_dlg.open = False
                 page.update()
                 # Send the reset code via email
                 subject = "Your Password Reset Code"
@@ -1226,8 +1229,6 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.update()
                 create_self_service_pw_dlg.open = False
-
-                ##### MORE CODE NEEDED HERE. Should open new alert that you can enter the reset on 
                 
                 code_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
                 code_pw_dlg = ft.AlertDialog(
