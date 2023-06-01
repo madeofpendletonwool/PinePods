@@ -1172,6 +1172,7 @@ def main(page: ft.Page, session_value=None):
                                 api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers, user_email, salt, hash_pw)
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
                                 page.snack_bar.open = True
+                                code_pw_reset_dlg.open = False
                                 page.update()
                             else:
                                 code_pw_reset_dlg.open = False
@@ -1180,6 +1181,7 @@ def main(page: ft.Page, session_value=None):
                                 page.update()
                         code_pw_dlg.open = False
                         page.update()
+                        time.sleep(1)
                         pw_reset_prompt = ft.TextField(label="New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
                         pw_verify_prompt = ft.TextField(label="Verify New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
                         code_pw_reset_dlg = ft.AlertDialog(
