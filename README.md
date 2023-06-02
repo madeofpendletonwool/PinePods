@@ -318,14 +318,14 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
     - [x] Packaging and automation
   - [x] Mac App
     - [x] Packaging and automation
+- [x] Self Service PW Resets
+- [x] Add creator info to bottom of stats page
+- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close)
 
 ### Pre-beta version
 
-- [ ] Self Service PW Resets
-- [ ] Add creator info to bottom of stats page
 - [ ] Refresh changes on readme
 - [ ] Default User Creation
-- [ ] Fix client pooling issue
 - [ ] Issue with web search bar may be due to appbar
 
 ### To be added after beta version

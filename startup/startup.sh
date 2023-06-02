@@ -5,43 +5,38 @@ export DB_PASSWORD=$DB_PASSWORD
 export DB_HOST=$DB_HOST
 export DB_NAME=$DB_NAME
 export DB_PORT=$DB_PORT
-export FULLNAME=$FULLNAME
-export USERNAME=$USERNAME
-export EMAIL=$EMAIL
-export PASSWORD=$PASSWORD
+export FULLNAME=${FULLNAME:-'Pinepods Admin'}
+export USERNAME=${USERNAME:-'admin'}
+export EMAIL=${EMAIL:-'admin@pinepods.online'}
+export PASSWORD=${PASSWORD:-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c14 ; echo '')}
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
+
+if [[ $FULLNAME == 'Pinepods Admin' ]]; then
+  echo "Admin User Information"
+  echo "FULLNAME: $FULLNAME"
+  echo "USERNAME: $USERNAME"
+  echo "EMAIL: $EMAIL"
+  echo "PASSWORD: $PASSWORD"
+fi
 
 cat << "EOF"
          A
         d$b
       .d\$$b.
-    .d$i$$\$$b.
-       d$$@b
-      d\$$$ib
-    .d$$$\$$$b
-  .d$$@$$$$\$$ib.
-      d$$i$$b
-     d\$$$$@$b
-  .d$@$$\$$$$$@b.
-.d$$$$i$$$\$$$$$$b.
-        ###
-        ###
-        ###
-
-
- _______   __                                                __           
-/       \ /  |                                              /  |          
-$$$$$$$  |$$/  _______    ______    ______    ______    ____$$ |  _______ 
-$$ |__$$ |/  |/       \  /      \  /      \  /      \  /    $$ | /       |
-$$    $$/ $$ |$$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$$ |/$$$$$$$/ 
-$$$$$$$/  $$ |$$ |  $$ |$$    $$ |$$ |  $$ |$$ |  $$ |$$ |  $$ |$$      \ 
-$$ |      $$ |$$ |  $$ |$$$$$$$$/ $$ |__$$ |$$ \__$$ |$$ \__$$ | $$$$$$  |
-$$ |      $$ |$$ |  $$ |$$       |$$    $$/ $$    $$/ $$    $$ |/     $$/ 
-$$/       $$/ $$/   $$/  $$$$$$$/ $$$$$$$/   $$$$$$/   $$$$$$$/ $$$$$$$/  
-                                  $$ |                                    
-                                  $$ |                                    
-                                  $$/                                     
+    .d$i$$\$$b.      _______   __                                                __           
+       d$$@b        /       \ /  |                                              /  |          
+      d\$$$ib       $$$$$$$  |$$/  _______    ______    ______    ______    ____$$ |  _______ 
+    .d$$$\$$$b      $$ |__$$ |/  |/       \  /      \  /      \  /      \  /    $$ | /       |
+  .d$$@$$$$\$$ib.   $$    $$/ $$ |$$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$$ |/$$$$$$$/ 
+      d$$i$$b       $$$$$$$/  $$ |$$ |  $$ |$$    $$ |$$ |  $$ |$$ |  $$ |$$ |  $$ |$$      \ 
+     d\$$$$@$b.     $$ |      $$ |$$ |  $$ |$$$$$$$$/ $$ |__$$ |$$ \__$$ |$$ \__$$ | $$$$$$  |
+  .d$@$$\$$$$$@b.   $$ |      $$ |$$ |  $$ |$$       |$$    $$/ $$    $$/ $$    $$ |/     $$/ 
+.d$$$$i$$$\$$$$$$b. $$/       $$/ $$/   $$/  $$$$$$$/ $$$$$$$/   $$$$$$/   $$$$$$$/ $$$$$$$/  
+        ###                                           $$ |                                    
+        ###                                           $$ |                                    
+        ###                                           $$/                                     
+                                        
 A project created and written by Collin Pendleton
 collinp@gooseberrydevelopment.com
 
