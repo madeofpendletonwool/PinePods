@@ -1,0 +1,54 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Create Pinepods Linux Client
+
+on:
+#   push:
+#     branches: [ "main" ]
+#   pull_request:
+#     branches: [ "main" ]
+  workflow_dispatch:
+
+# permissions:
+#   contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.10"
+        
+    - name: Install dependencies
+      run: |
+        ls -la
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create Linux Client
+      run: |
+        flet pack clients/linux-app/pinepods.py
+        mkdir linuxapp
+        cp dist/pinepods linuxapp/
+        cp clients/linux-app/pinepods-appicon.png linuxapp/
+        cp clients/linux-app/pinepods.desktop linuxapp/
+        chmod +x clients/linux-app/install.sh
+        cp clients/linux-app/install.sh linuxapp/
+        tar -cvf pinepods.tar -C linuxapp/ .
+        
+        
+#     - name: Get Latest Tag
+#       uses: madeofpendletonwool/pinepods@v1
+
+    - name: Archive Pinepods Linux Client Release
+      uses: actions/upload-artifact@v3
+      with:
+        name: Pinepods-Linux
+        path: pinepods.tar
+

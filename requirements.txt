@@ -4,7 +4,6 @@ flet
 requests
 python-dateutil
 feedparser
-python-vlc
 flask
 flask-cors
 python-dateutil
@@ -12,3 +11,16 @@ html2text
 bcrypt
 flask_caching
 appdirs
+passlib
+uvicorn
+fastapi
+itsdangerous
+aiofiles
+keyring
+cryptography
+python-multipart
+gunicorn
+werkzeug
+pillow
+pyinstaller
+fernet

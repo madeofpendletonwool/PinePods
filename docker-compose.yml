@@ -3,23 +3,53 @@ services:
   db:
     image: mariadb:latest
     environment:
+      MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: pypods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
+    volumes:
+      - /home/user/pinepods/sql:/var/lib/mysql
     ports:
       - "3306:3306"
     restart: always
-  pypods-imageproxy:
-    image: madeofpendletonwool/pypods-imageproxy:latest
-    ports:
-      - "8000:8000"
-    restart: always
-  # pypods:
-  #   image: madeofpendletonwool/pypods:latest
+  # pinepods-proxy:
+  #   image: madeofpendletonwool/pinepods-proxy:latest
   #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     - db
-  #     - pypods-imageproxy
+  #     - "8033:8000"
+  #   restart: always
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+      # The port that the Pinepods UI will be hosted at. Open a browser and access at http://localhost:8034 for example
+      - "8034:8034"
+      # This is the port the API server is hosted at. You can also change this but the API Server Port var below must also equal this.
+      - "8032:8032"
+      # Port for proxy host. Whatever this is set to the PROXY_HOST var must also match
+      - "8000:8000"
+    environment:
+      # Default Admin User Information
+      USERNAME: pinepods
+      PASSWORD: password
+      FULLNAME: John Pinepods
+      EMAIL: john@pinepods.com
+      # Database Vars
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: pypods_database
+      # Image/Audio Proxy Vars
+      PROXY_HOST: localhost
+      PROXY_PORT: 8000
+      PROXY_PROTOCOL: http
+      REVERSE_PROXY: "True"
+      # Search Index API Vars
+      API_URL: 'https://api.pinepods.online/api/search'
+      # Client API Server Vars
+      API_SERVER_PORT: 8032
+
+
+    depends_on:
+      - db

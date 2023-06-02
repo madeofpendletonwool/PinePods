@@ -1,13 +1,15 @@
 # Various flet imports
 import flet as ft
 # from flet import *
-from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+
+
 # Internal Functions
 import internal_functions.functions
-import app_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
+
 # Others
 import time
 import mysql.connector
@@ -17,11 +19,13 @@ import re
 import sys
 import urllib.request
 import requests
+from requests.exceptions import RequestException, MissingSchema
 from functools import partial
 import os
 import requests
 import time
 import random
+import string
 import datetime
 import html2text
 import threading
@@ -29,73 +33,174 @@ from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
 import secrets
+import appdirs
 import logging
 import hashlib
+import keyring
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
-import string
-from base64 import urlsafe_b64decode
-
-
-# Wait for Client API Server to start
-time.sleep(3)
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Proxy variables
-proxy_host = os.environ.get("PROXY_HOST", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
-proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
-reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
+#--- Encryption functions and file retrieval for saved sessions/api keys-------------------------
 
-# Podcast Index API url
-api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
+def set_encryption_password(password):
+    keyring.set_password("pinepods", "encryption_key", password)
 
-# API Setup for FastAPI interactions with the database
-with open("/tmp/web_api_key.txt", "r") as f:
-    web_api_key = f.read().strip()
+def get_encryption_password():
+    return keyring.get_password("pinepods", "encryption_key")
+
+def get_key(password, salt):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(password))
+    return key
+
+def encrypt_data(data, key):
+    f = Fernet(key)
+    encrypted_data = f.encrypt(data.encode())
+    return encrypted_data
+
+def decrypt_data(encrypted_data, key):
+    f = Fernet(key)
+    data = f.decrypt(encrypted_data).decode()
+    return data
+
+password = get_encryption_password()
+if password is None:
+    password = "".join(random.choices(string.ascii_letters + string.digits, k=32))
+    set_encryption_password(password)
+
+def get_salt_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    salt_file_path = os.path.join(data_dir, "salt.txt")
+    return salt_file_path
+
+def save_salt(salt):
+    salt_file_path = get_salt_file_path()
+    with open(salt_file_path, "wb") as file:
+        file.write(salt)
+
+def get_saved_salt():
+    salt_file_path = get_salt_file_path()
+    try:
+        with open(salt_file_path, "rb") as file:
+            salt = file.read()
+            return salt
+    except FileNotFoundError:
+        return None
+
+salt = get_saved_salt()
+if salt is None:
+    salt = os.urandom(16)
+    save_salt(salt)
+key = get_key(password.encode(), salt)
+
+def get_session_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "session.txt")
+    return session_file_path
+
+def get_api_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "api_config.txt")
+    return session_file_path
+
+def save_server_vals(api_key, server_name):
+    session_file_path = get_api_file_path()
+    data = f"{api_key}\n{server_name}\n"
+    encrypted_data = encrypt_data(data, key)
+    with open(session_file_path, "wb") as file:
+        file.write(encrypted_data)
+
+def save_session_id_to_file(session_id):
+    session_file_path = get_session_file_path()
+    encrypted_data = encrypt_data(session_id, key)
+    with open(session_file_path, "wb") as file:
+        file.write(encrypted_data)
+
+def get_server_vals():
+    session_file_path = get_api_file_path()
+    try:
+        with open(session_file_path, "rb") as file:
+            encrypted_data = file.read()
+            data = decrypt_data(encrypted_data, key)
+            api_key, server_name, _ = data.split("\n")
+            return api_key, server_name
+    except FileNotFoundError:
+        return None, None
+
+def get_saved_session_id_from_file():
+    session_file_path = get_session_file_path()
+    try:
+        with open(session_file_path, "rb") as file:
+            encrypted_data = file.read()
+            session_id = decrypt_data(encrypted_data, key)
+            return session_id
+    except FileNotFoundError:
+        return None
+
+def check_saved_session():
+    session_id = get_saved_session_id_from_file()
+    if session_id:
+        return session_id
+    else:
+        return None
+
+
+def check_saved_server_vals():
+    api_key, server_name = get_server_vals()
+    if api_key and server_name:
+        return api_key, server_name
+    else:
+        return None, None
+
+def generate_session_token():
+    return secrets.token_hex(32)
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
-# Initial Vars needed to start and used throughout
-if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
-else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
-
-
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-@app.route('/preload/<path:url>')
-def preload_audio_file(url):
-    # Try to get the response from cache
-    if reverse_proxy == "True":
-        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-    else:
-        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+def preload_audio_file(url, proxy_url, cache):
+    response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
-    return ""
 
-@app.route('/cached_audio/<path:url>')
-def serve_cached_audio(url):
-    content = cache.get(url)
+def initialize_audio_routes(app, proxy_url):
+    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+    @app.route('/preload/<path:url>')
+    def route_preload_audio_file(url):
+        preload_audio_file(url, proxy_url, cache)
+        return ""
 
+    @app.route('/cached_audio/<path:url>')
+    def serve_cached_audio(url):
+        content = cache.get(url)
 
+        if content is not None:
+            response = Response(content, content_type='audio/mpeg')
+            return response
+        else:
+            return "", 404
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+    return cache
+
 
 # Make login Screen start on boot
 login_screen = True
@@ -110,25 +215,31 @@ def main(page: ft.Page, session_value=None):
 
     class API:
         def __init__(self, page):
-            self.server_name = 'http://localhost:8032'
-            self.api_value = web_api_key
+            self.url = None
+            self.api_value = None
             self.headers = None
             self.page = page
+
+        def api_verify(self, server_name, api_value, retain_session=False):
+            pr = ft.ProgressRing()
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            self.page.overlay.append(progress_stack)
+            self.page.update()
+            url = server_name + "/api/data"
+            check_url = server_name + "/api/pinepods_check"
+            self.url = url
+            self.api_value = api_value
             self.headers = {"Api-Key": self.api_value}
 
-        def api_verify(self, retain_session=False):
-            self.url = self.server_name + "/api/data"
-            check_url = self.server_name + "/api/pinepods_check"
-            self.headers = {"Api-Key": self.api_value}
-
-            initial_headers = {
-                "pinepods_api": self.api_value,
+            headers = {
+                "pinepods_api": api_value,
             }
 
             try:
                 check_response = requests.get(check_url, timeout=10)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.overlay.remove(progress_stack)
                     self.page.update()
                     return
 
@@ -136,10 +247,11 @@ def main(page: ft.Page, session_value=None):
 
                 if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+                    self.page.overlay.remove(progress_stack)
                     self.page.update()
                     return
 
-                response = requests.get(self.url, headers=initial_headers, timeout=10)
+                response = requests.get(url, headers=headers, timeout=10)
                 response.raise_for_status()
 
             except MissingSchema:
@@ -148,12 +260,25 @@ def main(page: ft.Page, session_value=None):
                 self.show_error_snackbar("Request timed out. Please check your URL.")
             except RequestException as e:
                 self.show_error_snackbar(f"Request failed: {e}")
+                start_config(page)
 
             else:
                 if response.status_code == 200:
                     data = response.json()
-
+                    api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
+                    saved_session_value = get_saved_session_id_from_file()
+                    check_session = api_functions.functions.call_check_saved_session(self.url, self.headers, saved_session_value)
+                    global api_url
+                    global proxy_url
+                    global proxy_host
+                    global proxy_port
+                    global proxy_protocol
+                    global reverse_proxy
+                    global cache
+                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(self.url, self.headers)
                     self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    # Initialize the audio routes
+                    cache = initialize_audio_routes(app, proxy_url)
 
                     if retain_session == True:
                         save_server_vals(self.api_value, server_name)
@@ -175,6 +300,7 @@ def main(page: ft.Page, session_value=None):
                     start_config(self.page)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
+            self.page.overlay.remove(progress_stack)
             self.page.update()
 
         def show_error_snackbar(self, message):
@@ -281,7 +407,7 @@ def main(page: ft.Page, session_value=None):
 
     def guest_user_change(e):
         api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest User Modified!"))
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
         page.snack_bar.open = True
         page.update()
 
@@ -361,7 +487,7 @@ def main(page: ft.Page, session_value=None):
 
         self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
 
-        if self_service_status == 0:
+        if not self_service_status:
             self_service_dlg = ft.AlertDialog(
                 modal=True,
                 title=ft.Text(f"User Creation"),
@@ -377,7 +503,7 @@ def main(page: ft.Page, session_value=None):
             self_service_dlg.open = True
             self.page.update()
 
-        elif self_service_status == 1:
+        elif self_service_status:
             new_user = User(page)
 
             self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
@@ -481,6 +607,7 @@ def main(page: ft.Page, session_value=None):
                 if self.audio_playing:
                     api_functions.functions.call_increment_listen_time(app_api.url, app_api.headers, active_user.user_id)
 
+
         def play_episode(self, e=None, listen_duration=None):            
             if self.loading_audio == True:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Please wait until current podcast has finished loading before selecting a new one."))
@@ -498,7 +625,7 @@ def main(page: ft.Page, session_value=None):
 
                 # Preload the audio file and cache it
                 global cache
-                preload_audio_file(self.url)
+                preload_audio_file(self.url, proxy_url, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
@@ -537,6 +664,7 @@ def main(page: ft.Page, session_value=None):
 
                 self.record_history()
                 api_functions.functions.call_increment_played(app_api.url, app_api.headers, active_user.user_id)
+
 
                 # convert milliseconds to a timedelta object
                 delta = datetime.timedelta(milliseconds=media_length)
@@ -590,6 +718,14 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element.release()
                     self.audio_playing = False
                     self.toggle_current_status()
+
+        def _monitor_audio(self):
+            while True:
+                state = self.player.get_state()
+                if state == vlc.State.Ended:
+                    self.thread = None
+                    break
+                time.sleep(1)
 
         def pause_episode(self, e=None):
             self.audio_element.pause()
@@ -952,7 +1088,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1021,6 +1156,9 @@ def main(page: ft.Page, session_value=None):
 
 #--Defining Routes---------------------------------------------------
 
+    def start_config(page):
+        page.go("/server_config")
+
     def start_login(page):
         page.go("/login")
 
@@ -1078,8 +1216,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1112,8 +1248,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1141,6 +1275,7 @@ def main(page: ft.Page, session_value=None):
         page.overlay.append(active_user.navbar_stack)
         page.update()
         page.go("/")
+
 
     def reset_credentials(page):
 
@@ -1281,8 +1416,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1495,7 +1628,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1507,8 +1639,8 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/userstats" or page.route == "/userstats":
-
             user_stats = api_functions.functions.call_get_stats(app_api.url, app_api.headers, active_user.user_id)
+
 
             stats_created_date = user_stats['UserCreated']
             stats_pods_played = user_stats['PodcastsPlayed']
@@ -1519,14 +1651,14 @@ def main(page: ft.Page, session_value=None):
 
             user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers, active_user.user_id)
 
-            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
-            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
-            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to')
-            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
-            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
-            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database')
-            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved')
-            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded')
+            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=20, weight="bold")
+            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}', size=16)
+            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to', size=16)
+            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening', size=16)
+            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added', size=16)
+            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database', size=16)
+            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved', size=16)
+            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded', size=16)
             stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_added_display, eps_saved_display, eps_downloaded_display])
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
@@ -1560,11 +1692,10 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             # coffee_contain.padding=padding.only(left=70, right=50)
             coffee_contain.alignment=alignment.bottom_center
-            img_folder = os.path.abspath(os.path.join(os.getcwd(), 'images'))
-            img_file = os.path.join(img_folder, "pinepods-appicon.png")
-
+            two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
+            sys.path.append(two_folders_back)
             pinepods_img = ft.Image(
-                src=img_file,
+                src=f"pinepods-appicon.png",
                 width=100,
                 height=100,
                 fit=ft.ImageFit.CONTAIN,
@@ -1572,12 +1703,11 @@ def main(page: ft.Page, session_value=None):
             pine_contain = ft.Container(content=pinepods_img)
             pine_contain.alignment=alignment.bottom_center
             pine_div_row = ft.Divider(color=active_user.accent_color)
-            pine_contain.padding=padding.only(top=40)    
+            pine_contain.padding=padding.only(top=40)           
 
 
             stats_view = ft.View("/userstats",
                     [
-                        pypods_appbar,
                         stats_container,
                         pine_div_row,
                         pine_contain,
@@ -1589,10 +1719,104 @@ def main(page: ft.Page, session_value=None):
             stats_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
-                stats_view,
-
+                stats_view
                 
             )
+
+
+        if page.route == "/server_config" or page.route == "/server_config":
+            retain_session = ft.Switch(label="Save API Key", value=False)
+            retain_session_contained = ft.Container(content=retain_session)
+            retain_session_contained.padding = padding.only(left=70)
+
+            server_configpage = ft.Column(
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Card(
+                        elevation=15,
+                        content=ft.Container(
+                            width=550,
+                            height=600,
+                            padding=padding.all(30),
+                            gradient=GradientGenerator(
+                                "#2f2937", "#251867"
+                            ),
+                            border_radius=border_radius.all(12),
+                            content=ft.Column(
+                                horizontal_alignment="center",
+                                alignment="start",
+                                controls=[
+                                    ft.Text(
+                                        "PinePods",
+                                        size=32,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
+                                        size=22,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "Welcome to PinePods. Let's begin by connecting to your server. Please enter your server name and API Key below. Keep in mind that if you setup Pinepods with a reverse proxy it's unlikely that you need a port number in your url",
+                                        size=14,
+                                        weight="w700",
+                                        text_align="center",
+                                        color="#64748b",
+                                    ),
+                                    ft.Container(
+                                        padding=padding.only(bottom=20)
+                                    ),
+                                    server_name,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    app_api_key,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    retain_session_contained,
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.FilledButton(
+                                                content=ft.Text(
+                                                    "Login",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click=lambda e: app_api.api_verify(server_name.value, app_api_key.value, retain_session.value)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    )
+                ],
+            )
+
+            # Create search view object
+            server_configpage_view = ft.View("/server_config",                
+                horizontal_alignment="center",
+                vertical_alignment="center",
+                    controls=[
+                        server_configpage
+                    ]
+                    
+                )
+            # search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                server_configpage
+                
+            ) 
 
         if page.route == "/login" or page.route == "/login":
             guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
@@ -1610,7 +1834,7 @@ def main(page: ft.Page, session_value=None):
                             elevation=15,
                             content=ft.Container(
                                 width=550,
-                                height=620,
+                                height=650,
                                 padding=padding.all(30),
                                 gradient=GradientGenerator(
                                     "#2f2937", "#251867"
@@ -1679,16 +1903,16 @@ def main(page: ft.Page, session_value=None):
                                                 ),
                                             ],
                                         ),
-                                        ft.Row(
-                                            alignment="center",
-                                            spacing=20,
-                                            controls=[
-                                                ft.Text("Haven't created a user yet?"),
-                                                ft.OutlinedButton(text="Create New User", on_click=self_service_user)
-                                            
-                                            ]
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.Text("Haven't created a user yet?"),
+                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                        
+                                        ]
 
-                                        ),
+                                    ),
                                         ft.Row(
                                             alignment="center",
                                             spacing=20,
@@ -1724,7 +1948,7 @@ def main(page: ft.Page, session_value=None):
                         elevation=15,
                         content=ft.Container(
                             width=550,
-                            height=620,
+                            height=650,
                             padding=ft.padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
@@ -1890,7 +2114,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             search_view = ft.View("/searchpod",
                     [
-                        pypods_appbar,
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
                     ]
                     
@@ -1976,9 +2199,8 @@ def main(page: ft.Page, session_value=None):
                             controls=[user_column])
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
-
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=16)
+            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=16)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
@@ -2040,7 +2262,7 @@ def main(page: ft.Page, session_value=None):
                 download_status = 'enabled'
             else:
                 download_status = 'disabled'
-            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=16)
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):', color=active_user.font_color, size=16)
             disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
             if download_status_bool == True:
                 download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -2084,6 +2306,7 @@ def main(page: ft.Page, session_value=None):
             self_service_info_col = ft.Column(controls=[self_service_text, self_service_notify, self_service_button])
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
+
 
             # User Self Service PW Resets
 
@@ -2207,115 +2430,8 @@ def main(page: ft.Page, session_value=None):
             email_edit_container = ft.Container(content=email_edit_column)
             email_edit_container.padding=padding.only(left=70, right=50)
 
-            ### API Key Settings
-
-            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=16)
-
-            def create_api(e):
-                def close_api_dlg(e):
-                    create_api_dlg.open = False
-                    page.update()
-
-                new_key = api_functions.functions.call_create_api_key(app_api.url, app_api.headers, active_user.user_id)
-
-                create_api_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"New API key listed below"),
-                content=ft.Column(controls=[
-                ft.Text("Be sure to copy your key. There's no way to ever see it again (You can always create a new one if you forget)"),
-                ft.Text(f'Api key: {new_key}', selectable=True),
-                    ], tight=True),
-                actions=[
-                ft.TextButton("Close", on_click=close_api_dlg)
-                ],
-                actions_alignment=ft.MainAxisAlignment.END
-                )
-                page.dialog = create_api_dlg
-                create_api_dlg.open = True
-                page.update()
-
-            def open_edit_api(e):
-                def close_api_dlg(e):
-                    modify_api_dlg.open = False
-                    page.update()
-
-                def delete_api(e):
-                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id)
-                    modify_api_dlg.open = False
-                    page.update()
-
-                modify_api_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"Would you like to delete api {active_user.api_id}?"),
-                actions=[
-                ft.TextButton(content=ft.Text("Delete API", color=ft.colors.RED_400), on_click=delete_api),
-                ft.TextButton("Cancel", on_click=close_api_dlg)
-                ],
-                actions_alignment=ft.MainAxisAlignment.END
-                )
-
-                page.dialog = modify_api_dlg
-                modify_api_dlg.open = True
-                page.update()
-
-            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
-
-            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers)
-
-            # Skip the first entry in api_information
-            api_information = api_information[1:]
-
-            api_table_rows = []
-            def create_on_select_changed_lambda(api_id, pages):
-                return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
-
-
-            for entry in api_information:
-                api_id = entry['APIKeyID']
-                api_key = '...' + entry['LastFourDigits']
-                username = entry['Username']
-                api_created = entry['Created']
-                
-                # Create a new data row with the user information
-                row = ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(api_id)),
-                        ft.DataCell(ft.Text(api_key)),
-                        ft.DataCell(ft.Text(username)),
-                        ft.DataCell(ft.Text(api_created))
-                    ],
-                    on_select_changed=create_on_select_changed_lambda(api_id, page)
-                )
-                
-                # Append the row to the list of data rows
-                api_table_rows.append(row)
-
-            api_table = ft.DataTable(
-                bgcolor=active_user.main_color, 
-                border=ft.border.all(2, active_user.main_color),
-                border_radius=10,
-                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                heading_row_color=active_user.nav_color1,
-                heading_row_height=100,
-                data_row_color={"hovered": active_user.font_color},
-                # show_checkbox_column=True,
-                columns=[
-                ft.DataColumn(ft.Text("API ID"), numeric=True),
-                ft.DataColumn(ft.Text("API Last Four Digits")),
-                ft.DataColumn(ft.Text("User Who Created")),
-                ft.DataColumn(ft.Text("Created At")),
-            ],
-                rows=api_table_rows
-                )
-            api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
-            api_edit_container = ft.Container(content=api_edit_column)
-            div_row = ft.Divider(color=active_user.accent_color)
-            api_edit_container.padding=padding.only(left=70, right=50)
-
-
-
             # Check if admin settings should be displayed 
+            div_row = ft.Divider(color=active_user.accent_color)
             user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
             if user_is_admin == True:
                 pass
@@ -2323,18 +2439,16 @@ def main(page: ft.Page, session_value=None):
                 admin_setting_text.visible = False
                 user_row_container.visible = False
                 user_edit_container.visible = False
-                pw_reset_container.visible = False
-                email_edit_container.visible = False
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
-                api_edit_container.visible = False
+                pw_reset_container.visible = False
+                email_edit_container.visible = False
                 div_row.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
                     [
-                        pypods_appbar,
                         user_setting_text,
                         theme_row_container,
                         div_row,
@@ -2349,9 +2463,7 @@ def main(page: ft.Page, session_value=None):
                         div_row,
                         self_service_info,
                         div_row,
-                        download_info,
-                        div_row,
-                        api_edit_container
+                        download_info   
                     ]
                     
                 )
@@ -2501,7 +2613,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         feed_row,
                         *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
@@ -2518,6 +2629,7 @@ def main(page: ft.Page, session_value=None):
 
             # Get Pod info
             pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
+
 
             # Get and format list
             pod_list_number = 1
@@ -2561,6 +2673,9 @@ def main(page: ft.Page, session_value=None):
                 pod_list_column = ft.Column(
                     controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
                 )
+                # pod_list_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
                 pod_list_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
                     ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
@@ -2630,7 +2745,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                     [
-                        pypods_appbar,
                         top_bar,
                         pod_view_row,
                         *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
@@ -2823,7 +2937,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_hist_view = ft.View("/history",
                     [
-                        pypods_appbar,
                         top_bar,
                         history_title_row,
                         *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
@@ -2871,6 +2984,10 @@ def main(page: ft.Page, session_value=None):
                 saved_ep_column = ft.Column(
                     controls=[saved_entry_title, saved_entry_description, saved_entry_released]
                 )
+                # saved_ep_row = ft.Row(
+                #     alignment=ft.MainAxisAlignment.CENTER,
+                #     controls=[saved_entry_artwork_url, saved_ep_column, saved_ep_play_button]
+                # )
                 saved_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[saved_ep_column, saved_ep_play_button]),
@@ -3016,7 +3133,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_saved_view = ft.View("/saved",
                     [
-                        pypods_appbar,
                         top_bar,
                         saved_title_row,
                         *[saved_ep_row_dict.get(f'search_row{i+1}') for i in range(len(saved_ep_rows))]
@@ -3210,7 +3326,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_download_view = ft.View("/downloads",
                     [
-                        pypods_appbar,
                         top_bar,
                         download_title_row,
                         *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
@@ -3404,7 +3519,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_queue_view = ft.View("/queue",
                     [
-                        pypods_appbar,
                         top_bar,
                         queue_title_row,
                         *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
@@ -3493,7 +3607,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         top_bar,
                         podcast_row,
                         feed_row,
@@ -3559,7 +3672,6 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
-            self.auth_enabled = 0
 
     # New User Stuff ----------------------------
 
@@ -3671,79 +3783,6 @@ def main(page: ft.Page, session_value=None):
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
 
-        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username=None, password=None):
-            def close_email_dlg(e):
-                send_email_dlg.open = False
-                page.update()
-
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
-            page.update()
-
-            def save_email_settings(e):
-                encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
-                encryption_key_bytes = base64.b64decode(encryption_key)
-                api_functions.functions.call_save_email_settings(
-                    app_api.url, 
-                    app_api.headers, 
-                    self.server_name, 
-                    self.server_port, 
-                    self.from_email, 
-                    self.send_mode, 
-                    self.encryption, 
-                    self.auth_required, 
-                    self.email_username, 
-                    self.email_password, 
-                    encryption_key_bytes
-                )
-                send_email_dlg.open = False
-                page.update()
-
-
-            self.server_name = server_name
-            self.server_port = int(server_port)
-            self.from_email = from_email
-            self.send_mode = send_mode
-            self.encryption = encryption
-            self.auth_required = auth_required
-            self.email_username = username
-            self.email_password = password
-
-            subject = "Test email from pinepods"
-            body = "If you got this your email settings are working! Great Job! Don't forget to git save."
-            to_email = active_user.email
-            email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
-
-            page.overlay.remove(progress_stack)
-
-            send_email_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Email Send Test"),
-            content=ft.Column(controls=[
-            ft.Text(f"Test email send result: {email_result}", selectable=True),
-            ft.Text(f'If the email sent successfully be sure to hit save. This will save your settings to the database for later use with resetting passwords.', selectable=True),
-                ], tight=True),
-            actions=[
-            ft.TextButton("Save", on_click=save_email_settings),
-            ft.TextButton("Close", on_click=close_email_dlg)
-            ],
-            actions_alignment=ft.MainAxisAlignment.END
-            )
-            page.dialog = send_email_dlg
-            send_email_dlg.open = True
-            page.update()
-
-        def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
-            self.server_name = server_name
-            self.server_port = server_port
-            self.from_email = from_email
-            self.send_mode = send_mode
-            self.encryption = encryption
-            self.auth_required = auth_required
-            self.email_username = username
-            self.email_password = password
-            api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
@@ -3820,6 +3859,7 @@ def main(page: ft.Page, session_value=None):
                     salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                     api_functions.functions.call_set_password(app_api.url, app_api.headers, self.user_id, salt, hash_pw)
 
+
             if self.email is not None:
                 if not re.match(self.email_regex, self.email):
                     page.snack_bar = ft.SnackBar(content=ft.Text(f"This does not appear to be a properly formatted email"))
@@ -3837,6 +3877,7 @@ def main(page: ft.Page, session_value=None):
                     api_functions.functions.call_set_username(app_api.url, app_api.headers, self.user_id, self.username)
 
             api_functions.functions.call_set_isadmin(app_api.url, app_api.headers, self.user_id, self.isadmin)
+
             user_changed = True
 
             if user_changed == True:
@@ -3892,12 +3933,10 @@ def main(page: ft.Page, session_value=None):
                 self.username = login_details['Username']
                 self.email = login_details['Email']
                 if retain_session:
-                    if page.web:
-                        print('Web version currently doesnt retain sessions')
-                    else:
-                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
-                        if session_token:
-                            save_session_id_to_file(session_token)
+                    session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                    if session_token:
+                        save_session_id_to_file(session_token)
+
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
@@ -4084,6 +4123,24 @@ def main(page: ft.Page, session_value=None):
         can_reveal_password=True,
     )
 
+    server_name = ft.TextField(
+        label="Server Name",
+        border="underline",
+        hint_text="ex. https://api.pinepods.online",
+        width=320,
+        text_size=14,
+    )
+
+    app_api_key = ft.TextField(
+        label="API Key",
+        border="underline",
+        width=320,
+        text_size=14,
+        hint_text='Generate this from settings in PinePods',
+        password=True,
+        can_reveal_password=True,
+    )
+
     active_user = User(page)
 
 # Create Sidebar------------------------------------------------------
@@ -4214,7 +4271,6 @@ def main(page: ft.Page, session_value=None):
 
 
     page.title = "PinePods"
-    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True)
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
@@ -4425,7 +4481,6 @@ def main(page: ft.Page, session_value=None):
                 page.overlay.remove(progress_stack)
                 page.update()
 
-
         
     def delete_selected_episode(url, title, page):
         current_episode.url = url
@@ -4455,6 +4510,7 @@ def main(page: ft.Page, session_value=None):
 
     def save_selected_episode(url, title, page):
         check_saved = api_functions.functions.call_check_saved(app_api.url, app_api.headers, active_user.user_id, title, url)
+
         if check_saved:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already saved!"))
             page.snack_bar.open = True
@@ -4488,14 +4544,13 @@ def main(page: ft.Page, session_value=None):
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
-    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color)
-    page.add(pypods_appbar)
-    page.appbar.visible = False
-
-    app_api.api_verify()
-
+    saved_app_api_key, saved_app_server_name = check_saved_server_vals()
+    if saved_app_api_key and saved_app_server_name:
+        app_api.api_verify(saved_app_server_name, saved_app_api_key)
+    else:
+        start_config(page)
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+# ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
-# ft.app(target=main, port=8034)
+ft.app(target=main, port=8036)

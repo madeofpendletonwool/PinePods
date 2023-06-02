@@ -48,3 +48,22 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+
+# InstallerFiles
+clients/windows-app/pinepods.exe
+clients/linux-app/pinepods
+clients/windows-app/dist
+clients/linux-app/dist
+clients/mac-app/dist
+clients/mac-app/pinepods
+clients/windows-app/generated*
+clients/windows-app/pinepods.spec
+clients/linux-app/pinepods.spec
+
+# Mac Files
+.DS_Store
+clients/.DS_Store
+*/.DS_Store
+*/pinepods.spec
+*/generated
+clients/mac-app/pinepods.spec
