@@ -7,6 +7,7 @@ import requests
 import datetime
 import time
 import appdirs
+import base64
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
@@ -143,7 +144,6 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 
                 parsed_duration = 0
                 if entry.itunes_duration:
-                    print('itunes_duration:')
                     duration_string = entry.itunes_duration
                     match = re.match(r'(\d+):(\d+)', duration_string)
                     if match:
@@ -164,8 +164,6 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                     parsed_duration = entry.itunes_duration
                 else:
                     parsed_duration = 0
-
-                print(parsed_duration)
 
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
@@ -323,14 +321,10 @@ def refresh_pods(cnx):
 
     select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL FROM Podcasts"
 
-    print('before query')
-
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall() # fetch the result set
 
     cursor.nextset()  # move to the next result set
-
-    print('after fetch')
 
     for (podcast_id, feed_url, artwork_url) in result_set:
         print(f'Running for :{podcast_id}')
@@ -352,11 +346,9 @@ def remove_unavailable_episodes(cnx):
         episode_id, podcast_id, episode_title, episode_url, published_date = episode
 
         try:
-            print('checking')
             # check if episode URL is still valid
             response = requests.head(episode_url)
             if response.status_code == 404:
-                print('deleteing')
                 # remove episode from database
                 delete_episode = "DELETE FROM Episodes WHERE EpisodeID=%s"
                 cursor.execute(delete_episode, (episode_id,))
@@ -573,8 +565,6 @@ def download_podcast(cnx, url, title, user_id):
         return False
 
     episode_id = episode_id[0]
-    print(episode_id)
-    print(title)
 
     # Get the current date and time for DownloadedDate
     downloaded_date = datetime.datetime.now()
@@ -593,7 +583,6 @@ def download_podcast(cnx, url, title, user_id):
     timestamp = time.time()
     filename = f"{user_id}-{episode_id}-{timestamp}.mp3"
     file_path = os.path.join(download_location, filename)
-    print(file_path)
 
     dir_path = os.path.dirname(file_path)
     os.makedirs(dir_path, exist_ok=True)
@@ -672,6 +661,55 @@ def download_episode_list(cnx, user_id):
 
     return rows
 
+def save_email_settings(cnx, email_settings):
+    cursor = cnx.cursor()
+    
+    query = ("UPDATE EmailSettings SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1")
+    
+    cursor.execute(query, (email_settings['server_name'], email_settings['server_port'], email_settings['from_email'], email_settings['send_mode'], email_settings['encryption'], int(email_settings['auth_required']), email_settings['email_username'], email_settings['email_password']))
+    
+    cnx.commit()
+    cursor.close()
+    cnx.close()
+
+
+def get_encryption_key(cnx):
+    cursor = cnx.cursor()
+    query = ("SELECT EncryptionKey FROM AppSettings WHERE AppSettingsID = 1")
+    cursor.execute(query)
+    result = cursor.fetchone()
+
+    if not result:
+        cursor.close()
+        cnx.close()
+        return None
+
+    # Convert the result to a dictionary.
+    result_dict = dict(zip([column[0] for column in cursor.description], result))
+
+    cursor.close()
+    cnx.close()
+
+    # Convert the bytearray to a base64 encoded string before returning.
+    return base64.b64encode(result_dict['EncryptionKey']).decode()
+
+def get_email_settings(cnx):
+    cursor = cnx.cursor()
+    
+    query = "SELECT * FROM EmailSettings"
+    cursor.execute(query)
+    
+    result = cursor.fetchone()
+    cursor.close()
+    cnx.close()
+    
+    if result:
+        keys = ["EmailSettingsID", "Server_Name", "Server_Port", "From_Email", "Send_Mode", "Encryption", "Auth_Required", "Username", "Password"]
+        return dict(zip(keys, result))
+    else:
+        return None
+
+
 def delete_podcast(cnx, url, title, user_id):
 
     cursor = cnx.cursor()
@@ -693,7 +731,6 @@ def delete_podcast(cnx, url, title, user_id):
 
     # Delete the downloaded file
     os.remove(downloaded_location)
-    print(f"Deleted downloaded file at {downloaded_location}")
 
     # Remove the entry from the DownloadedEpisodes table
     query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
@@ -923,7 +960,6 @@ def get_episode_listen_time(cnx, user_id, title, url):
                 cnx.close()
 
 def get_theme(cnx, user_id):
-    print(user_id)
     cursor = None
     try:
         cursor = cnx.cursor()
@@ -1285,8 +1321,6 @@ def save_episode(cnx, url, title, user_id):
         return False
 
     episode_id = episode_id[0]
-    print(episode_id)
-    print(title)
 
     # Insert a new row into the DownloadedEpisodes table
     cursor = cnx.cursor()
@@ -1544,3 +1578,91 @@ def user_exists(cnx, username):
     cursor.close()
     cnx.close()
     return count > 0
+
+def reset_password_create_code(cnx, user_email, reset_code):
+    cursor = cnx.cursor()
+    
+    # Check if a user with this email exists
+    check_query = """
+        SELECT UserID
+        FROM Users
+        WHERE Email = %s
+    """
+    cursor.execute(check_query, (user_email,))
+    result = cursor.fetchone()
+    if result is None:
+        cursor.close()
+        cnx.close()
+        return False
+    
+    # If the user exists, update the reset code and expiry
+    reset_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
+
+    update_query = """
+        UPDATE Users
+        SET Reset_Code = %s,
+            Reset_Expiry = %s
+        WHERE Email = %s
+    """
+    params = (reset_code, reset_expiry.strftime('%Y-%m-%d %H:%M:%S'), user_email)
+    try:
+        cursor.execute(update_query, params)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error when trying to update reset code: {e}")
+        cursor.close()
+        cnx.close()
+        return False
+
+    cursor.close()
+    cnx.close()
+    
+    return True
+
+def verify_reset_code(cnx, user_email, reset_code):
+    cursor = cnx.cursor()
+
+    select_query = """
+        SELECT Reset_Code, Reset_Expiry
+        FROM Users
+        WHERE Email = %s
+    """
+    cursor.execute(select_query, (user_email,))
+    result = cursor.fetchone()
+    
+    cursor.close()
+    cnx.close()
+
+    # Check if a user with this email exists
+    if result is None:
+        return None
+    
+    # Check if the reset code is valid and not expired
+    stored_code, expiry = result
+    if stored_code == reset_code and datetime.datetime.now() < expiry:
+        return True
+    
+    return False
+
+def reset_password_prompt(cnx, user_email, salt, hashed_pw):
+    cursor = cnx.cursor()
+
+    update_query = """
+        UPDATE Users
+        SET Hashed_PW = %s,
+            Salt = %s,
+            Reset_Code = NULL,
+            Reset_Expiry = NULL
+        WHERE Email = %s
+    """
+    params = (hashed_pw, salt, user_email)
+    cursor.execute(update_query, params)
+
+    if cursor.rowcount == 0:
+        return None
+
+    cnx.commit()
+    cursor.close()
+    cnx.close()
+
+    return "Password Reset Successfully"

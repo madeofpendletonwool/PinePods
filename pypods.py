@@ -4,7 +4,6 @@ import flet as ft
 from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
-import database_functions.functions
 import app_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
@@ -15,13 +14,12 @@ import mysql.connector
 import mysql.connector.pooling
 import json
 import re
-import feedparser
+import sys
 import urllib.request
 import requests
 from functools import partial
 import os
 import requests
-import tempfile
 import time
 import random
 import datetime
@@ -30,11 +28,13 @@ import threading
 from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
-import math
 import secrets
-import appdirs
 import logging
 import hashlib
+import base64
+import string
+from base64 import urlsafe_b64decode
+
 
 # Wait for Client API Server to start
 time.sleep(3)
@@ -1142,6 +1142,141 @@ def main(page: ft.Page, session_value=None):
         page.update()
         page.go("/")
 
+    def reset_credentials(page):
+
+        def close_self_service_pw_dlg(e):
+            create_self_service_pw_dlg.open = False
+            page.update()
+
+        def create_reset_code(page, user_email):
+            import random
+            from cryptography.fernet import Fernet
+
+            def close_code_pw_dlg(e):
+                code_pw_dlg.open = False
+                page.update()
+            # Generate a random reset code
+            reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+            user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers, user_email, reset_code)
+            if user_exist == True:
+                def pw_reset(page, user_email, reset_code):
+                    code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers, user_email, reset_code)
+                    if code_valid == True:
+                        def close_code_pw_reset_dlg(e):
+                            code_pw_reset_dlg.open = False
+                            page.update()
+
+                        def verify_pw_reset(page, user_email, pw_reset_prompt, pw_verify_prompt):
+                            if pw_reset_prompt == pw_verify_prompt:
+                                salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
+                                api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers, user_email, salt, hash_pw)
+                                page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
+                                page.snack_bar.open = True
+                                code_pw_reset_dlg.open = False
+                                page.update()
+                            else:
+                                code_pw_reset_dlg.open = False
+                                page.snack_bar = ft.SnackBar(content=ft.Text('Your Passwords do not match. Please try again.'))
+                                page.snack_bar.open = True
+                                page.update()
+                        code_pw_dlg.open = False
+                        page.update()
+                        time.sleep(1)
+                        pw_reset_prompt = ft.TextField(label="New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
+                        pw_verify_prompt = ft.TextField(label="Verify New Password", icon=ft.icons.PASSWORD, password=True, can_reveal_password=True) 
+                        code_pw_reset_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Enter PW Reset Code:"),
+                        content=ft.Column(controls=[
+                        ft.Text("Reset Password:"),
+                        ft.Text(f'Please enter your new password and then verify it below.', selectable=True),
+                        pw_reset_prompt,
+                        pw_verify_prompt
+                            ], tight=True),
+                        actions=[
+                        ft.TextButton("Submit", on_click=lambda e: verify_pw_reset(page, user_email, pw_reset_prompt.value, pw_verify_prompt.value)),
+                        ft.TextButton("Cancel", on_click=close_code_pw_reset_dlg)
+                        ],
+                        actions_alignment=ft.MainAxisAlignment.END
+                        )
+                        page.dialog = code_pw_reset_dlg
+                        code_pw_reset_dlg.open = True
+                        page.update()
+
+                    else:
+                        code_pw_dlg.open = False
+                        page.snack_bar = ft.SnackBar(content=ft.Text('Code not valid. Please check your email.'))
+                        page.snack_bar.open = True
+                        page.update()
+                # Create a progress ring while email sends
+                pr = ft.ProgressRing()
+                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+                page.overlay.append(progress_stack)
+                create_self_service_pw_dlg.open = False
+                page.update()
+                # Send the reset code via email
+                subject = "Your Password Reset Code"
+                body = f"Your password reset code is: {reset_code}. This code will expire in 1 hour."
+                email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+                encrypt_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+
+                decoded_key = urlsafe_b64decode(encrypt_key)
+
+                cipher_suite = Fernet(decoded_key)
+                decrypted_text = cipher_suite.decrypt(email_information['Password'])
+                decrypt_email_pw = decrypted_text.decode('utf-8') 
+
+                email_result = app_functions.functions.send_email(email_information['Server_Name'], email_information['Server_Port'], email_information['From_Email'], user_email, email_information['Send_Mode'], email_information['Encryption'], email_information['Auth_Required'], email_information['Username'], decrypt_email_pw, subject, body)
+                page.snack_bar = ft.SnackBar(content=ft.Text(email_result))
+                page.snack_bar.open = True
+                page.update()
+                create_self_service_pw_dlg.open = False
+                
+                code_reset_prompt = ft.TextField(label="Code", icon=ft.icons.PASSWORD) 
+                code_pw_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Enter PW Reset Code:"),
+                content=ft.Column(controls=[
+                ft.Text("Reset Password:"),
+                ft.Text(f'Please Enter the code that was sent to your email to reset your password.', selectable=True),
+                code_reset_prompt
+                    ], tight=True),
+                actions=[
+                ft.TextButton("Submit", on_click=lambda e: pw_reset(page, user_email, code_reset_prompt.value)),
+                ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+                page.dialog = code_pw_dlg
+                code_pw_dlg.open = True
+                page.overlay.remove(progress_stack)
+                page.update()
+
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text('User not found with this email'))
+                page.snack_bar.open = True
+                page.update()
+
+
+        pw_reset_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com') 
+        create_self_service_pw_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"Reset Password:"),
+        content=ft.Column(controls=[
+        ft.Text(f'To reset your password, please enter your email below and hit enter. An email will be sent to you with a code needed to reset if a user exists with that email.', selectable=True),
+        pw_reset_email
+            ], tight=True),
+        actions=[
+        ft.TextButton("Submit", on_click=lambda e: create_reset_code(page, pw_reset_email.value)),
+        ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+        )
+        page.dialog = create_self_service_pw_dlg
+        create_self_service_pw_dlg.open = True
+        page.update()
+
     def go_theme_rebuild(page):
         # navbar.visible = True
         active_user.theme_select()
@@ -1396,11 +1531,57 @@ def main(page: ft.Page, session_value=None):
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
 
+            def highlight_link(e):
+                e.control.style.color = ft.colors.BLUE
+                e.control.update()
+
+            def unhighlight_link(e):
+                e.control.style.color = None
+                e.control.update()
+
+            # Creator info
+            coffee_info = ft.Column([ft.Text('PinePods is a creation of Collin Pendleton.', ft.TextAlign.CENTER),
+                ft.Text('A lot of work has gone into making this app.', ft.TextAlign.CENTER),
+                ft.Text('Thank you for using it!', ft.TextAlign.CENTER),
+                ft.Text(
+                    disabled=False,
+                    spans=[
+                        ft.TextSpan("If you'd like, you can buy me a coffee"),
+                        ft.TextSpan(
+                            " here",
+                            ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
+                            url="https://www.buymeacoffee.com/collinscoffee",
+                            on_enter=highlight_link,
+                            on_exit=unhighlight_link,
+                        ),
+                    ],
+                ),
+            ], ft.MainAxisAlignment.CENTER, ft.CrossAxisAlignment.CENTER)
+            coffee_contain = ft.Container(content=coffee_info)
+            # coffee_contain.padding=padding.only(left=70, right=50)
+            coffee_contain.alignment=alignment.bottom_center
+            img_folder = os.path.abspath(os.path.join(os.getcwd(), 'images'))
+            img_file = os.path.join(img_folder, "pinepods-appicon.png")
+
+            pinepods_img = ft.Image(
+                src=img_file,
+                width=100,
+                height=100,
+                fit=ft.ImageFit.CONTAIN,
+            )
+            pine_contain = ft.Container(content=pinepods_img)
+            pine_contain.alignment=alignment.bottom_center
+            pine_div_row = ft.Divider(color=active_user.accent_color)
+            pine_contain.padding=padding.only(top=40)    
+
 
             stats_view = ft.View("/userstats",
                     [
                         pypods_appbar,
-                        stats_container
+                        stats_container,
+                        pine_div_row,
+                        pine_contain,
+                        coffee_contain
                     ]
                     
                 )
@@ -1408,7 +1589,8 @@ def main(page: ft.Page, session_value=None):
             stats_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
-                stats_view
+                stats_view,
+
                 
             )
 
@@ -1503,6 +1685,27 @@ def main(page: ft.Page, session_value=None):
                                             controls=[
                                                 ft.Text("Haven't created a user yet?"),
                                                 ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                            
+                                            ]
+
+                                        ),
+                                        ft.Row(
+                                            alignment="center",
+                                            spacing=20,
+                                            controls=[
+                                                ft.Text("Forgot Password?"),
+                                                ft.OutlinedButton(
+                                                    content=ft.Text(
+                                                        "Reset Password",
+                                                        weight="w700",
+                                                    ),
+                                                    width=160,
+                                                    height=40,
+                                                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                    on_click = lambda e: reset_credentials(page)
+                                                    # on_click=lambda e: go_homelogin(e)
+                                                ),
+                                            
                                             ]
 
                                         )
@@ -1585,6 +1788,27 @@ def main(page: ft.Page, session_value=None):
                                         controls=[
                                             ft.Text("Haven't created a user yet?"),
                                             ft.OutlinedButton(text="Create New User", on_click=self_service_user)
+                                        
+                                        ]
+
+                                    ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.Text("Forgot Password?"),
+                                            ft.OutlinedButton(
+                                                content=ft.Text(
+                                                    "Reset Password",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click = lambda e: reset_credentials(page)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        
                                         ]
 
                                     )
@@ -1692,7 +1916,7 @@ def main(page: ft.Page, session_value=None):
             user_setting_text.padding=padding.only(left=70, right=50)
 
             # Theme Select Elements
-            theme_text = ft.Text('Select Theme:', color=active_user.font_color, size=22)
+            theme_text = ft.Text('Select Theme:', color=active_user.font_color, size=16)
             theme_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
              options=[
                 ft.dropdown.Option("light"),
@@ -1729,7 +1953,7 @@ def main(page: ft.Page, session_value=None):
 
             # New User Creation Elements
             new_user = User(page)
-            user_text = Text('Create New User:', color=active_user.font_color, size=22)
+            user_text = Text('Create New User:', color=active_user.font_color, size=16)
             user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
@@ -1752,8 +1976,9 @@ def main(page: ft.Page, session_value=None):
                             controls=[user_column])
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
+
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=22)
+            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=16)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
@@ -1815,7 +2040,7 @@ def main(page: ft.Page, session_value=None):
                 download_status = 'enabled'
             else:
                 download_status = 'disabled'
-            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=22)
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=16)
             disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
             if download_status_bool == True:
                 download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1832,7 +2057,7 @@ def main(page: ft.Page, session_value=None):
                 guest_status = 'enabled'
             else:
                 guest_status = 'disabled'
-            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
+            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
             disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
             if guest_status_bool == True:
                 guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1849,7 +2074,7 @@ def main(page: ft.Page, session_value=None):
                 self_service_status = 'enabled'
             else:
                 self_service_status = 'disabled'
-            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
+            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
             self_service_notify = ft.Text(f'Self Service user creation is currently {self_service_status}')
             if self_service_bool == True:
                 self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -1860,9 +2085,131 @@ def main(page: ft.Page, session_value=None):
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
 
+            # User Self Service PW Resets
+
+            def auth_box_check(e):
+                if new_user.auth_enabled == True:
+                    pw_reset_auth_user.disabled = True
+                    pw_reset_auth_pw.disabled = True
+                    new_user.auth_enabled = 0
+                else:
+                    pw_reset_auth_user.disabled = False
+                    pw_reset_auth_pw.disabled = False
+                    new_user.auth_enabled = 1
+                page.update()
+
+            pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color, size=16)
+            pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
+
+            pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.COMPUTER, hint_text='smtp.pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_port = ft.TextField(label="Port", hint_text='587', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_email = ft.TextField(label="From Address", icon=ft.icons.EMAIL, hint_text='pwresets@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_send_mode = ft.Dropdown(width=250, label="Send Mode",    
+                options=[
+                    ft.dropdown.Option("SMTP"),
+                    ft.dropdown.Option("Sendmail"),
+                ],icon=ft.icons.SEND, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
+            pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",    
+                options=[
+                    ft.dropdown.Option("None"),
+                    ft.dropdown.Option("STARTTLS"),
+                    ft.dropdown.Option("SSL/TLS"),
+                ],icon=ft.icons.ENHANCED_ENCRYPTION, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
+            pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, on_change=auth_box_check, check_color=active_user.accent_color)
+            pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='user@pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.LOCK, hint_text='Ema1L!P@$$', password=True, can_reveal_password=True, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
+            pw_reset_auth_user.disabled = True
+            pw_reset_auth_pw.disabled = True
+            pw_reset_test = ft.ElevatedButton(text="Test Send and Submit", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
+                new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
+                ))
+            pw_reset_server_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.START,
+                            controls=[pw_reset_server_name, ft.Text(':', size=24), pw_reset_port])
+            pw_reset_send_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.START,
+                            controls=[pw_reset_send_mode, pw_reset_encryption])
+            pw_reset_auth_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.START,
+                            controls=[pw_reset_auth_user, pw_reset_auth_pw])
+            pw_reset_current = Text('Existing Email Server Values:', color=active_user.font_color, size=16)
+
+            pw_reset_buttons = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.START,
+                            controls=[pw_reset_test])
+
+            pw_reset_column = ft.Column(
+                            controls=[pw_reset_text, pw_reset_change, pw_reset_server_row, pw_reset_send_row, pw_reset_email, pw_reset_auth, pw_reset_auth_row, pw_reset_buttons]
+                        )
+            pw_reset_row = ft.Row(
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                            alignment=ft.MainAxisAlignment.START,
+                            controls=[pw_reset_column])
+            pw_reset_container = ft.Container(content=pw_reset_row)
+            pw_reset_container.padding=padding.only(left=70, right=50)
+
+            #Email Table Setup - Admin only
+            email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+            print(f'email_information: {email_information}')
+            email_table_rows = []
+
+            server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
+            from_email = email_information['From_Email']
+            send_mode = email_information['Send_Mode']
+            encryption = email_information['Encryption']
+            auth = email_information['Auth_Required']
+
+            if auth == 1:
+                auth_user = email_information['Username']
+            else:
+                auth_user = 'Auth not defined!'
+
+
+                
+            # Create a new data row with the user information
+            row = ft.DataRow(
+                cells=[
+                    ft.DataCell(ft.Text(server_info)),
+                    ft.DataCell(ft.Text(from_email)),
+                    ft.DataCell(ft.Text(send_mode)),
+                    ft.DataCell(ft.Text(encryption)),
+                    ft.DataCell(ft.Text(auth_user))
+                ]
+            )
+            
+            # Append the row to the list of data rows
+            email_table_rows.append(row)
+
+            email_table = ft.DataTable(
+                bgcolor=active_user.main_color, 
+                border=ft.border.all(2, active_user.main_color),
+                border_radius=10,
+                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                heading_row_color=active_user.nav_color1,
+                heading_row_height=100,
+                data_row_color={"hovered": active_user.font_color},
+                # show_checkbox_column=True,
+                columns=[
+                ft.DataColumn(ft.Text("Server Name"), numeric=True),
+                ft.DataColumn(ft.Text("From Email")),
+                ft.DataColumn(ft.Text("Send Mode")),
+                ft.DataColumn(ft.Text("Encryption?")),
+                ft.DataColumn(ft.Text("Username"))
+            ],
+                rows=email_table_rows
+                )
+            email_edit_column = ft.Column(controls=[pw_reset_current, email_table])
+            email_edit_container = ft.Container(content=email_edit_column)
+            email_edit_container.padding=padding.only(left=70, right=50)
+
             ### API Key Settings
 
-            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=22)
+            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=16)
 
             def create_api(e):
                 def close_api_dlg(e):
@@ -1963,6 +2310,7 @@ def main(page: ft.Page, session_value=None):
                 )
             api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
             api_edit_container = ft.Container(content=api_edit_column)
+            div_row = ft.Divider(color=active_user.accent_color)
             api_edit_container.padding=padding.only(left=70, right=50)
 
 
@@ -1975,10 +2323,13 @@ def main(page: ft.Page, session_value=None):
                 admin_setting_text.visible = False
                 user_row_container.visible = False
                 user_edit_container.visible = False
+                pw_reset_container.visible = False
+                email_edit_container.visible = False
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
                 api_edit_container.visible = False
+                div_row.visible = False
 
             # Create search view object
             settings_view = ft.View("/settings",
@@ -1986,12 +2337,20 @@ def main(page: ft.Page, session_value=None):
                         pypods_appbar,
                         user_setting_text,
                         theme_row_container,
+                        div_row,
                         admin_setting_text,
                         user_row_container,
                         user_edit_container,
+                        div_row,
+                        pw_reset_container,
+                        email_edit_container,
+                        div_row,
                         guest_info,
+                        div_row,
                         self_service_info,
+                        div_row,
                         download_info,
+                        div_row,
                         api_edit_container
                     ]
                     
@@ -3200,6 +3559,7 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
+            self.auth_enabled = 0
 
     # New User Stuff ----------------------------
 
@@ -3310,6 +3670,80 @@ def main(page: ft.Page, session_value=None):
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
+
+        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username=None, password=None):
+            def close_email_dlg(e):
+                send_email_dlg.open = False
+                page.update()
+
+            pr = ft.ProgressRing()
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
+            page.update()
+
+            def save_email_settings(e):
+                encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+                encryption_key_bytes = base64.b64decode(encryption_key)
+                api_functions.functions.call_save_email_settings(
+                    app_api.url, 
+                    app_api.headers, 
+                    self.server_name, 
+                    self.server_port, 
+                    self.from_email, 
+                    self.send_mode, 
+                    self.encryption, 
+                    self.auth_required, 
+                    self.email_username, 
+                    self.email_password, 
+                    encryption_key_bytes
+                )
+                send_email_dlg.open = False
+                page.update()
+
+
+            self.server_name = server_name
+            self.server_port = int(server_port)
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+
+            subject = "Test email from pinepods"
+            body = "If you got this your email settings are working! Great Job! Don't forget to git save."
+            to_email = active_user.email
+            email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
+
+            page.overlay.remove(progress_stack)
+
+            send_email_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Email Send Test"),
+            content=ft.Column(controls=[
+            ft.Text(f"Test email send result: {email_result}", selectable=True),
+            ft.Text(f'If the email sent successfully be sure to hit save. This will save your settings to the database for later use with resetting passwords.', selectable=True),
+                ], tight=True),
+            actions=[
+            ft.TextButton("Save", on_click=save_email_settings),
+            ft.TextButton("Close", on_click=close_email_dlg)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+            )
+            page.dialog = send_email_dlg
+            send_email_dlg.open = True
+            page.update()
+
+        def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
+            self.server_name = server_name
+            self.server_port = server_port
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+            api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):

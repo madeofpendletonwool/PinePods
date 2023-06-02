@@ -1,14 +1,16 @@
 import mysql.connector
 import os
 import sys
+from cryptography.fernet import Fernet
+import string
+import secrets
+import bcrypt
 
 sys.path.append('/pinepods')
 
 import database_functions.functions
 # import Auth.Passfunctions
-import string
-import secrets
-import bcrypt
+
 
 
 def hash_password(password: str):
@@ -50,7 +52,9 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     Email VARCHAR(255),
                     Hashed_PW CHAR(60),
                     Salt CHAR(60),
-                    IsAdmin TINYINT(1)
+                    IsAdmin TINYINT(1),
+                    Reset_Code TEXT,
+                    Reset_Expiry DATETIME
                 )""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
@@ -73,19 +77,53 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")
 
+# Generate a key
+key = Fernet.generate_key()
+
+# Create the AppSettings table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS AppSettings (
         AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
         SelfServiceUser TINYINT(1) DEFAULT 0,
-        DownloadEnabled TINYINT(1) DEFAULT 1
+        DownloadEnabled TINYINT(1) DEFAULT 1,
+        EncryptionKey BINARY(44)  -- Set the data type to BINARY(32) to hold the 32-byte key
+    )
+""")
+
+cursor.execute("SELECT COUNT(*) FROM AppSettings WHERE AppSettingsID = 1")
+count = cursor.fetchone()[0]
+
+if count == 0:
+    cursor.execute("""
+        INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
+        VALUES (0, 1, %s)
+    """, (key,))
+
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS EmailSettings (
+        EmailSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+        Server_Name VARCHAR(255),
+        Server_Port INT,
+        From_Email VARCHAR(255),
+        Send_Mode VARCHAR(255),
+        Encryption VARCHAR(255),
+        Auth_Required TINYINT(1),
+        Username VARCHAR(255),
+        Password VARCHAR(255)
     )
 """)
 
 cursor.execute("""
-    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled)
-    SELECT 0, 1 FROM DUAL
-    WHERE NOT EXISTS (SELECT * FROM AppSettings)
+    SELECT COUNT(*) FROM EmailSettings
 """)
+rows = cursor.fetchone()
+
+if rows[0] == 0:
+    cursor.execute("""
+        INSERT INTO EmailSettings (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
+        VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', 1, 'default_username', 'default_password')
+    """)
+
 
 
 cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)

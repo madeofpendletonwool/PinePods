@@ -1,6 +1,7 @@
 import requests
 import secrets
 import json
+from pydantic import BaseModel
 
 def generate_session_token():
     return secrets.token_hex(32)
@@ -215,7 +216,7 @@ def call_self_service_status(url, headers):
     response = requests.get(url + "/self_service_status", headers=headers)
     if response.status_code == 200:
         status = response.json()["status"]
-        print(f'status should be 0 1 or true false: {status}')
+        print(f'Self Service Status: {status}')
         return status
     else:
         print("Error fetching self-service status:", response.status_code)
@@ -393,10 +394,66 @@ def call_download_episode_list(url, headers, user_id):
         return response.json()["downloaded_episodes"]
     else:
         print("Error fetching downloaded episodes:", response.status_code)
-        print("Error message:", response.text)
+        return None
+    
+def call_get_encryption_key(url, headers):
+    response = requests.get(url + "/get_encryption_key", headers=headers)
+    if response.status_code == 200:
+        encryption_key = response.json()['encryption_key']
+        print("Encryption key:", encryption_key)
+        return encryption_key
+    else:
+        print("Error getting encryption key:", response.status_code)
         return None
 
 
+def call_save_email_settings(url, headers, server_name, server_port, from_email, send_mode, encryption, auth_required, email_username, email_password, encryption_key):
+    from cryptography.fernet import Fernet
+    
+    if encryption_key is None:
+        print("Cannot save settings without encryption key.")
+        return
+
+    cipher_suite = Fernet(encryption_key)
+
+    # Only encrypt password if it's not None
+    if email_password is not None:
+        encrypted_password = cipher_suite.encrypt(email_password.encode())
+        # Decode encrypted password back to string
+        decoded_password = encrypted_password.decode()
+    else:
+        decoded_password = None
+
+    data = {
+        "email_settings": {
+            "server_name": server_name,
+            "server_port": server_port,
+            "from_email": from_email,
+            "send_mode": send_mode,
+            "encryption": encryption,
+            "auth_required": auth_required,
+            "email_username": email_username,
+            "email_password": decoded_password,
+        }
+    }
+
+    response = requests.post(url + "/save_email_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        print("Email settings saved.")
+    else:
+        print("Error saving email settings:", response.status_code)
+        print("Response body:", response.json())
+
+
+def call_get_email_info(url, headers):
+    response = requests.get(url + "/get_email_settings", headers=headers)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Error retrieving email settings:", response.status_code)
+        print("Response body:", response.json())
+        return None
 
 
 def call_get_queue_list(url, headers, queue_urls):
@@ -418,9 +475,6 @@ def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
         return None
 
 def call_check_usernames(url, headers, username):
-    print("call_check_usernames - URL:", url)
-    print("call_check_usernames - Headers:", headers)
-    print("call_check_usernames - Username:", username)
 
     data = {"username": username}
     response = requests.post(url + "/check_usernames", headers=headers, json=username)  # Send the username directly as a string
@@ -545,3 +599,32 @@ def call_get_api_info(url, headers):
         print("Error getting API info:", response.status_code)
         print("Error message:", response.text)
         return []
+
+def call_reset_password_create_code(url, headers, email, reset_code):
+    payload = {"email": email, "reset_code": reset_code}
+    response = requests.post(url + "/reset_password_create_code", headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["user_exists"]
+    else:
+        print("Error resetting password:", response.status_code)
+        return None
+
+def call_verify_reset_code(url, headers, email, reset_code):
+    payload = {"email": email, "reset_code": reset_code}
+    response = requests.post(url + "/verify_reset_code", headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["code_valid"]
+    else:
+        print("Error verifying reset code:", response.status_code)
+        return False
+
+def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw):
+    payload = {"email": user_email, "salt": salt.decode(), "hashed_pw": hashed_pw.decode()}
+    response = requests.post(url + "/reset_password_prompt", headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["message"]
+    else:
+        print("Error resetting password:", response.status_code)
+        return None
+
+

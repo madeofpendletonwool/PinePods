@@ -306,25 +306,27 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Make web version utilize API Routes instead of database connections directly
 - [x] Update flet dependancy to v6 (This fixes audio routing)
 - [x] Ability to disable downloads (for public servers)
-
-### Pre-beta version
-
 - [x] One set of functions. Currently client and web app uses different function set. This is be changed for consistency. 
-- [ ] Self Service PW Resets
 - [x] GUI Wrapper for App
   - [x] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
   - [x] Options to create API keys on the web client as well as ability to remove them
-  - [ ] Linux App
-    - [ ] Install Script
-    - [ ] Packaging and automation
+  - [x] Linux App
+    - [x] Install Script
+    - [x] Packaging and automation
   - [X] Proper web layout
-  - [ ] Windows App
-    - [ ] Packaging and automation
-  - [ ] Mac App
-    - [ ] Packaging and automation
+  - [x] Windows App
+    - [x] Packaging and automation
+  - [x] Mac App
+    - [x] Packaging and automation
+
+### Pre-beta version
+
+- [ ] Self Service PW Resets
+- [ ] Add creator info to bottom of stats page
 - [ ] Refresh changes on readme
-
-
+- [ ] Default User Creation
+- [ ] Fix client pooling issue
+- [ ] Issue with web search bar may be due to appbar
 
 ### To be added after beta version
 

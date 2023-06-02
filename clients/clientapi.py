@@ -521,7 +521,23 @@ async def api_create_api_key(user_id: int = Body(..., embed=True), api_key: str 
     new_api_key = database_functions.functions.create_api_key(cnx, user_id)
     return {"api_key": new_api_key}
 
+@app.post("/api/data/save_email_settings")
+async def api_save_email_settings(email_settings: dict = Body(..., embed=True), api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    database_functions.functions.save_email_settings(cnx, email_settings)
+    return {"message": "Email settings saved."}
 
+@app.get("/api/data/get_encryption_key")
+async def api_get_encryption_key(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    encryption_key = database_functions.functions.get_encryption_key(cnx)
+    return {"encryption_key": encryption_key}
+
+@app.get("/api/data/get_email_settings")
+async def api_get_email_settings(api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    email_settings = database_functions.functions.get_email_settings(cnx)
+    return email_settings
 
 @app.delete("/api/data/delete_api_key/{api_id}")
 async def api_delete_api_key(api_id: int, api_key: str = Depends(get_api_key_from_header)):
@@ -535,6 +551,37 @@ async def api_get_api_info(api_key: str = Depends(get_api_key_from_header)):
     api_information = database_functions.functions.get_api_info(cnx)
     return {"api_info": api_information}
 
+
+class ResetPasswordPayload(BaseModel):
+    email: str
+    reset_code: str
+
+@app.post("/api/data/reset_password_create_code")
+async def api_reset_password_route(payload: ResetPasswordPayload, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email, payload.reset_code)
+    return {"user_exists": user_exists}
+
+@app.post("/api/data/verify_reset_code")
+async def api_verify_reset_code_route(payload: ResetPasswordPayload, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    code_valid = database_functions.functions.verify_reset_code(cnx, payload.email, payload.reset_code)
+    if code_valid is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"code_valid": code_valid}
+
+class ResetPasswordPayloadVerify(BaseModel):
+    email: str
+    salt: str
+    hashed_pw: str
+
+@app.post("/api/data/reset_password_prompt")
+async def api_reset_password_verify_route(payload: ResetPasswordPayloadVerify, api_key: str = Depends(get_api_key_from_header)):
+    cnx = get_database_connection()
+    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt, payload.hashed_pw)
+    if message is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": message}
 
 
 if __name__ == '__main__':
