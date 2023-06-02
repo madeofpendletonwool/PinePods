@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Generator
 import json
 import logging
 from typing import Any
