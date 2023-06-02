@@ -14,6 +14,7 @@ import mysql.connector
 import mysql.connector.pooling
 import json
 import re
+import sys
 import urllib.request
 import requests
 from functools import partial
