@@ -1530,6 +1530,48 @@ def main(page: ft.Page, session_value=None):
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
 
+            def highlight_link(e):
+                e.control.style.color = ft.colors.BLUE
+                e.control.update()
+
+            def unhighlight_link(e):
+                e.control.style.color = None
+                e.control.update()
+
+            # Creator info
+            coffee_info = ft.Column([ft.Text('PinePods is a creation of Collin Pendleton.', ft.TextAlign.CENTER),
+                ft.Text('A lot of work has gone into making this app.', ft.TextAlign.CENTER),
+                ft.Text('Thank you for using it!', ft.TextAlign.CENTER),
+                ft.Text(
+                    disabled=False,
+                    spans=[
+                        ft.TextSpan("If you'd like, you can buy me a coffee"),
+                        ft.TextSpan(
+                            " here",
+                            ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
+                            url="https://www.buymeacoffee.com/collinscoffee",
+                            on_enter=highlight_link,
+                            on_exit=unhighlight_link,
+                        ),
+                    ],
+                ),
+            ], ft.MainAxisAlignment.CENTER, ft.CrossAxisAlignment.CENTER)
+            coffee_contain = ft.Container(content=coffee_info)
+            # coffee_contain.padding=padding.only(left=70, right=50)
+            coffee_contain.alignment=alignment.bottom_center
+            two_folders_back = os.path.abspath(os.path.join(os.getcwd(), 'images'))
+            sys.path.append(two_folders_back)
+            pinepods_img = ft.Image(
+                src=f"pinepods-appicon.png",
+                width=100,
+                height=100,
+                fit=ft.ImageFit.CONTAIN,
+            )
+            pine_contain = ft.Container(content=pinepods_img)
+            pine_contain.alignment=alignment.bottom_center
+            pine_div_row = ft.Divider(color=active_user.accent_color)
+            pine_contain.padding=padding.only(top=40)    
+
 
             stats_view = ft.View("/userstats",
                     [
@@ -1868,7 +1910,7 @@ def main(page: ft.Page, session_value=None):
             user_setting_text.padding=padding.only(left=70, right=50)
 
             # Theme Select Elements
-            theme_text = ft.Text('Select Theme:', color=active_user.font_color, size=22)
+            theme_text = ft.Text('Select Theme:', color=active_user.font_color, size=16)
             theme_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color, 
              options=[
                 ft.dropdown.Option("light"),
@@ -1905,7 +1947,7 @@ def main(page: ft.Page, session_value=None):
 
             # New User Creation Elements
             new_user = User(page)
-            user_text = Text('Create New User:', color=active_user.font_color, size=22)
+            user_text = Text('Create New User:', color=active_user.font_color, size=16)
             user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
             user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
@@ -1930,7 +1972,7 @@ def main(page: ft.Page, session_value=None):
             user_row_container.padding=padding.only(left=70, right=50)
 
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=22)
+            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=16)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
@@ -1992,7 +2034,7 @@ def main(page: ft.Page, session_value=None):
                 download_status = 'enabled'
             else:
                 download_status = 'disabled'
-            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=22)
+            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public.):', color=active_user.font_color, size=16)
             disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
             if download_status_bool == True:
                 download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -2009,7 +2051,7 @@ def main(page: ft.Page, session_value=None):
                 guest_status = 'enabled'
             else:
                 guest_status = 'disabled'
-            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
+            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
             disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
             if guest_status_bool == True:
                 guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -2026,7 +2068,7 @@ def main(page: ft.Page, session_value=None):
                 self_service_status = 'enabled'
             else:
                 self_service_status = 'disabled'
-            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=22)
+            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
             self_service_notify = ft.Text(f'Self Service user creation is currently {self_service_status}')
             if self_service_bool == True:
                 self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
@@ -2050,7 +2092,7 @@ def main(page: ft.Page, session_value=None):
                     new_user.auth_enabled = 1
                 page.update()
 
-            pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color, size=22)
+            pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color, size=16)
             pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
 
             pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.COMPUTER, hint_text='smtp.pinepods.online', border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color, cursor_color=active_user.accent_color )
@@ -2161,7 +2203,7 @@ def main(page: ft.Page, session_value=None):
 
             ### API Key Settings
 
-            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=22)
+            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=16)
 
             def create_api(e):
                 def close_api_dlg(e):

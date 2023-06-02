@@ -325,6 +325,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add creator info to bottom of stats page
 - [ ] Refresh changes on readme
 - [ ] Default User Creation
+- [ ] Fix client pooling issue
 
 ### To be added after beta version
 

@@ -16,6 +16,7 @@ import mysql.connector
 import mysql.connector.pooling
 import json
 import re
+import sys
 import urllib.request
 import requests
 from requests.exceptions import RequestException, MissingSchema
@@ -1650,30 +1651,67 @@ def main(page: ft.Page, session_value=None):
 
             user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers, active_user.user_id)
 
-            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
-            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
-            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to')
-            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
-            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
-            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database')
-            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved')
-            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded')
+            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=20, weight="bold")
+            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}', size=16)
+            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to', size=16)
+            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening', size=16)
+            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added', size=16)
+            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database', size=16)
+            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved', size=16)
+            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded', size=16)
             stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_added_display, eps_saved_display, eps_downloaded_display])
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
 
-            coffee_link = ft.Row(controls=[ft.Text("If you'd like, buy Collin a coffee here"),
-                             ft.Text('here', url='https://buymeacoffee/collinscoffee')])
+            def highlight_link(e):
+                e.control.style.color = ft.colors.BLUE
+                e.control.update()
+
+            def unhighlight_link(e):
+                e.control.style.color = None
+                e.control.update()
+
             # Creator info
-            ft.Column([ft.Text('PinePods is a creation of Collin Pendleton.'),
-                ft.Text('A lot of work has gone into making this app.'),
-                ft.Text('Thank you for using it!'),
-                coffee_link])
+            coffee_info = ft.Column([ft.Text('PinePods is a creation of Collin Pendleton.', ft.TextAlign.CENTER),
+                ft.Text('A lot of work has gone into making this app.', ft.TextAlign.CENTER),
+                ft.Text('Thank you for using it!', ft.TextAlign.CENTER),
+                ft.Text(
+                    disabled=False,
+                    spans=[
+                        ft.TextSpan("If you'd like, you can buy me a coffee"),
+                        ft.TextSpan(
+                            " here",
+                            ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
+                            url="https://www.buymeacoffee.com/collinscoffee",
+                            on_enter=highlight_link,
+                            on_exit=unhighlight_link,
+                        ),
+                    ],
+                ),
+            ], ft.MainAxisAlignment.CENTER, ft.CrossAxisAlignment.CENTER)
+            coffee_contain = ft.Container(content=coffee_info)
+            # coffee_contain.padding=padding.only(left=70, right=50)
+            coffee_contain.alignment=alignment.bottom_center
+            two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
+            sys.path.append(two_folders_back)
+            pinepods_img = ft.Image(
+                src=f"pinepods-appicon.png",
+                width=100,
+                height=100,
+                fit=ft.ImageFit.CONTAIN,
+            )
+            pine_contain = ft.Container(content=pinepods_img)
+            pine_contain.alignment=alignment.bottom_center
+            pine_div_row = ft.Divider(color=active_user.accent_color)
+            pine_contain.padding=padding.only(top=40)           
 
 
             stats_view = ft.View("/userstats",
                     [
-                        stats_container
+                        stats_container,
+                        pine_div_row,
+                        pine_contain,
+                        coffee_contain
                     ]
                     
                 )
