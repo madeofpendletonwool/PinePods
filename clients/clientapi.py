@@ -100,13 +100,11 @@ def get_api_keys(cnx):
     cursor.close()
     return rows
 
-def get_api_key(request: Request, api_key: str = Depends(api_key_header)):
+def get_api_key(request: Request, api_key: str = Depends(api_key_header), cnx: Generator = Depends(get_database_connection)):
     if api_key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key is missing")
 
-    cnx = get_database_connection()
     api_keys = get_api_keys(cnx)
-    cnx.close()
 
     for api_key_entry in api_keys:
         stored_key = api_key_entry["APIKey"]
@@ -135,14 +133,12 @@ async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
 @app.post("/api/data/clean_expired_sessions/")
-async def api_clean_expired_sessions(api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_clean_expired_sessions(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     database_functions.functions.clean_expired_sessions(cnx)
     return {"status": "success"}
 
 @app.get("/api/data/check_saved_session/{session_value}", response_model=int)
-async def api_check_saved_session(session_value: str, api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_check_saved_session(session_value: str, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     result = database_functions.functions.check_saved_session(cnx, session_value)
     if result:
         return result
@@ -173,8 +169,7 @@ async def api_download_status(cnx = Depends(get_database_connection), api_key: s
     return result
 
 @app.get("/api/data/user_details/{username}")
-async def api_get_user_details(username: str, api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_get_user_details(username: str, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     result = database_functions.functions.get_user_details(cnx, username)
     if result:
         return result
