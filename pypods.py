@@ -1577,7 +1577,10 @@ def main(page: ft.Page, session_value=None):
             stats_view = ft.View("/userstats",
                     [
                         pypods_appbar,
-                        stats_container
+                        stats_container,
+                        pine_div_row,
+                        pine_contain,
+                        coffee_contain
                     ]
                     
                 )
@@ -1585,7 +1588,8 @@ def main(page: ft.Page, session_value=None):
             stats_view.scroll = ft.ScrollMode.AUTO
             # Create final page
             page.views.append(
-                stats_view
+                stats_view,
+
                 
             )
 

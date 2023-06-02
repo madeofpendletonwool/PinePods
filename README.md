@@ -326,6 +326,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Refresh changes on readme
 - [ ] Default User Creation
 - [ ] Fix client pooling issue
+- [ ] Issue with web search bar may be due to appbar
 
 ### To be added after beta version
 
