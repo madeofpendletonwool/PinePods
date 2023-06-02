@@ -1560,10 +1560,11 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             # coffee_contain.padding=padding.only(left=70, right=50)
             coffee_contain.alignment=alignment.bottom_center
-            two_folders_back = os.path.abspath(os.path.join(os.getcwd(), 'images'))
-            sys.path.append(two_folders_back)
+            img_folder = os.path.abspath(os.path.join(os.getcwd(), 'images'))
+            img_file = os.path.join(img_folder, "pinepods-appicon.png")
+
             pinepods_img = ft.Image(
-                src=f"pinepods-appicon.png",
+                src=img_file,
                 width=100,
                 height=100,
                 fit=ft.ImageFit.CONTAIN,
