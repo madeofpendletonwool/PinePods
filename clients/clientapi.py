@@ -83,7 +83,7 @@ def setup_connection_pool():
     return pooling.MySQLConnectionPool(
         pool_name="pinepods_api_pool",
         pool_size=25,  # Adjust the pool size according to your needs
-        pool_reset_session=True,
+        pool_reset_session=False,
         host=db_host,
         port=db_port,
         user=db_user,
