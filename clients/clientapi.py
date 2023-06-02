@@ -63,7 +63,13 @@ else:
 print(f'Proxy url is configured to {proxy_url}')
 
 def get_database_connection():
-    return connection_pool.get_connection()
+    db = None
+    try:
+        db = connection_pool.get_connection()
+        yield db
+    finally:
+        if db is not None:
+            db.close()
 
 
 def setup_connection_pool():
@@ -157,14 +163,12 @@ async def api_config(api_key: str = Depends(get_api_key_from_header)):
     }
 
 @app.get("/api/data/guest_status", response_model=bool)
-async def api_guest_status(api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_guest_status(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     result = database_functions.functions.guest_status(cnx)
     return result
 
 @app.get("/api/data/download_status", response_model=bool)
-async def api_download_status(api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_download_status(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     result = database_functions.functions.download_status(cnx)
     return result
 
