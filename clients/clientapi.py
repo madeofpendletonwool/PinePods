@@ -64,13 +64,8 @@ else:
 print(f'Proxy url is configured to {proxy_url}')
 
 def get_database_connection():
-    db = None
-    try:
-        db = connection_pool.get_connection()
-        yield db
-    finally:
-        if db is not None:
-            db.close()
+    db = connection_pool.get_connection()
+    return db
 
 
 def setup_connection_pool():
@@ -83,7 +78,7 @@ def setup_connection_pool():
     return pooling.MySQLConnectionPool(
         pool_name="pinepods_api_pool",
         pool_size=25,  # Adjust the pool size according to your needs
-        pool_reset_session=False,
+        pool_reset_session=True,
         host=db_host,
         port=db_port,
         user=db_user,
@@ -92,6 +87,7 @@ def setup_connection_pool():
     )
 
 connection_pool = setup_connection_pool()
+
 
 def get_api_keys(cnx):
     cursor = cnx.cursor(dictionary=True)
