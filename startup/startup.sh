@@ -13,7 +13,7 @@ export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
-  echo "Admin User Information"
+  echo "Admin User Information:"
   echo "FULLNAME: $FULLNAME"
   echo "USERNAME: $USERNAME"
   echo "EMAIL: $EMAIL"
@@ -36,7 +36,7 @@ cat << "EOF"
         ###                                           $$ |                                    
         ###                                           $$ |                                    
         ###                                           $$/                                     
-                                        
+
 A project created and written by Collin Pendleton
 collinp@gooseberrydevelopment.com
 
