@@ -1321,6 +1321,7 @@ def main(page: ft.Page, session_value=None):
 
     def route_change(e):
 
+        banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
         search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
         refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
