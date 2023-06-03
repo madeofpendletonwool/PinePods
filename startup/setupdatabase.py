@@ -162,11 +162,15 @@ with open("/tmp/web_api_key.txt", "w") as f:
 admin_fullname = os.environ.get("FULLNAME", "Admin User")
 admin_username = os.environ.get("USERNAME", "admin")
 admin_email = os.environ.get("EMAIL", "admin@pinepods.online")
+print(admin_email)
+print(admin_username)
+print(admin_fullname)
 
 alphabet = string.ascii_letters + string.digits + string.punctuation
 fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
 
 admin_pw = os.environ.get("PASSWORD", fallback_password)
+print(admin_pw)
 
 salt, hash_pw = hash_password(admin_pw)
 
