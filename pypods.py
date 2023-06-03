@@ -1487,6 +1487,20 @@ def main(page: ft.Page, session_value=None):
                     home_pods_active = True
                     home_ep_number += 1
 
+                    search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
+                    search_btn = ft.ElevatedButton("Search!", on_click=open_search)
+                    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
+                    refresh_ctn = ft.Container(
+                        content=refresh_btn,
+                        alignment=ft.alignment.top_left
+                    )
+                    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
+                    search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
+                    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
+                    top_row_container = ft.Container(content=top_row, expand=True)
+                    top_row_container.padding=ft.padding.only(left=60)
+                    top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+
             home_view = ft.View("/", [
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
@@ -4201,14 +4215,14 @@ def main(page: ft.Page, session_value=None):
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
     search_btn = ft.ElevatedButton("Search!", on_click=open_search)
     refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
-    search_box = ft.Container(
-        content=search_pods,
-        alignment=ft.alignment.top_right
-    )
-    search_btn_ctn = ft.Container(
-        content=search_btn,
-        alignment=ft.alignment.top_right
-    )
+    # search_box = ft.Container(
+    #     content=search_pods,
+    #     alignment=ft.alignment.top_right
+    # )
+    # search_btn_ctn = ft.Container(
+    #     content=search_btn,
+    #     alignment=ft.alignment.top_right
+    # )
     refresh_ctn = ft.Container(
         content=refresh_btn,
         alignment=ft.alignment.top_left
@@ -4362,9 +4376,6 @@ def main(page: ft.Page, session_value=None):
     top_row_container.padding=ft.padding.only(left=60)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
-    test_text = Text('This is a test')
-    test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
-
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url
