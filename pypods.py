@@ -952,7 +952,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1078,8 +1077,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1112,8 +1109,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1281,8 +1276,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
         refresh_btn.icon_color = active_user.font_color
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
@@ -1495,7 +1488,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1577,7 +1569,6 @@ def main(page: ft.Page, session_value=None):
 
             stats_view = ft.View("/userstats",
                     [
-                        pypods_appbar,
                         stats_container,
                         pine_div_row,
                         pine_contain,
@@ -1890,7 +1881,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             search_view = ft.View("/searchpod",
                     [
-                        pypods_appbar,
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
                     ]
                     
@@ -2334,7 +2324,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             settings_view = ft.View("/settings",
                     [
-                        pypods_appbar,
                         user_setting_text,
                         theme_row_container,
                         div_row,
@@ -2501,7 +2490,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         feed_row,
                         *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
@@ -2630,7 +2618,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                     [
-                        pypods_appbar,
                         top_bar,
                         pod_view_row,
                         *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
@@ -2823,7 +2810,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_hist_view = ft.View("/history",
                     [
-                        pypods_appbar,
                         top_bar,
                         history_title_row,
                         *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
@@ -3016,7 +3002,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_saved_view = ft.View("/saved",
                     [
-                        pypods_appbar,
                         top_bar,
                         saved_title_row,
                         *[saved_ep_row_dict.get(f'search_row{i+1}') for i in range(len(saved_ep_rows))]
@@ -3210,7 +3195,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_download_view = ft.View("/downloads",
                     [
-                        pypods_appbar,
                         top_bar,
                         download_title_row,
                         *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
@@ -3404,7 +3388,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_queue_view = ft.View("/queue",
                     [
-                        pypods_appbar,
                         top_bar,
                         queue_title_row,
                         *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
@@ -3493,7 +3476,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         top_bar,
                         podcast_row,
                         feed_row,
@@ -4214,7 +4196,6 @@ def main(page: ft.Page, session_value=None):
 
 
     page.title = "PinePods"
-    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True)
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
     # Podcast Search Function Setup
     search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
@@ -4487,10 +4468,6 @@ def main(page: ft.Page, session_value=None):
     page.theme_mode = "dark"
 
     top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
-
-    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color)
-    page.add(pypods_appbar)
-    page.appbar.visible = False
 
     app_api.api_verify()
 
