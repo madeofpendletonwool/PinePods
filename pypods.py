@@ -1487,19 +1487,19 @@ def main(page: ft.Page, session_value=None):
                     home_pods_active = True
                     home_ep_number += 1
 
-                    search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
-                    search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-                    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
-                    refresh_ctn = ft.Container(
-                        content=refresh_btn,
-                        alignment=ft.alignment.top_left
-                    )
-                    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
-                    search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
-                    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
-                    top_row_container = ft.Container(content=top_row, expand=True)
-                    top_row_container.padding=ft.padding.only(left=60)
-                    top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+                search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
+                search_btn = ft.ElevatedButton("Search!", on_click=open_search)
+                refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
+                refresh_ctn = ft.Container(
+                    content=refresh_btn,
+                    alignment=ft.alignment.top_left
+                )
+                settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
+                search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
+                top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
+                top_row_container = ft.Container(content=top_row, expand=True)
+                top_row_container.padding=ft.padding.only(left=60)
+                top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
             home_view = ft.View("/", [
                         top_bar,
