@@ -22,6 +22,7 @@ def add_podcast(cnx, podcast_values, user_id):
     if result is not None:
         # podcast already exists for the user, return False
         cursor.close()
+        cnx.close()
         return False
 
     # insert the podcast into the database
@@ -805,6 +806,7 @@ def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
     else:
         # Episode not found in the database
         cursor.close()
+        cnx.close()
         return False
 
 def episode_remove_queue(cnx, user_id, url, title):
@@ -879,6 +881,7 @@ def record_listen_duration(cnx, url, title, user_id, listen_duration):
     if result is None:
         # Episode not found in database, handle this case
         cursor.close()
+        cnx.close()
         return
     episode_id = result[0]
 
@@ -1365,6 +1368,7 @@ def check_saved(cnx, user_id, title, url):
     finally:
         if cursor:
             cursor.close()
+            cnx.close()
 
 
 
@@ -1568,6 +1572,7 @@ def clean_expired_sessions(cnx):
 
     cnx.commit()
     cursor.close()
+    cnx.close()
 
 
 def user_exists(cnx, username):

@@ -952,7 +952,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1029,14 +1028,6 @@ def main(page: ft.Page, session_value=None):
         top_view = page.views[-1]
         page.go(top_view.route)
 
-    def open_search(e):
-        pr = ft.ProgressRing()
-        global progress_stack
-        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-        page.overlay.append(progress_stack)
-        page.update()
-        page.go("/searchpod")
-
     def open_poddisplay(e):
         pr = ft.ProgressRing()
         global progress_stack
@@ -1078,11 +1069,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
-        refresh_btn.icon_color = active_user.font_color
-        banner_button.bgcolor = active_user.accent_color
-        banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -1093,14 +1079,6 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
-        search_btn.bgcolor = active_user.accent_color
-        search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         active_user.navbar_stack = ft.Stack([navbar], expand=True)
@@ -1112,11 +1090,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
-        refresh_btn.icon_color = active_user.font_color
-        banner_button.bgcolor = active_user.accent_color
-        banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -1127,14 +1100,6 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
-        search_btn.bgcolor = active_user.accent_color
-        search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         active_user.navbar_stack = ft.Stack([navbar], expand=True)
@@ -1281,11 +1246,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        pypods_appbar.bgcolor = active_user.main_color
-        pypods_appbar.color = active_user.accent_color
-        refresh_btn.icon_color = active_user.font_color
-        banner_button.bgcolor = active_user.accent_color
-        banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -1296,14 +1256,6 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
-        search_btn.bgcolor = active_user.accent_color
-        search_btn.color = active_user.main_color
         audio_container.bgcolor = active_user.main_color
         audio_scrubber.active_color = active_user.nav_color2
         audio_scrubber.inactive_color = active_user.nav_color2
@@ -1327,6 +1279,52 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
+
+        def open_search(e):
+            new_search.searchvalue = search_pods.value
+            pr = ft.ProgressRing()
+            global progress_stack
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
+            page.update()
+
+            # Run the test_connection function
+            connection_test_result = internal_functions.functions.test_connection(api_url)
+            if connection_test_result is not True:
+                page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
+                page.snack_bar.open = True
+                page.overlay.remove(progress_stack)
+                page.update()
+                return  # Do not proceed further if the connection test failed
+
+            page.go("/searchpod")
+
+        banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
+        banner_button.bgcolor = active_user.accent_color
+        banner_button.color = active_user.main_color
+        search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
+        search_btn = ft.ElevatedButton("Search!", on_click=open_search)
+        search_pods.color = active_user.accent_color
+        search_pods.focused_bgcolor = active_user.accent_color
+        search_pods.focused_border_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.cursor_color = active_user.accent_color
+        search_btn.bgcolor = active_user.accent_color
+        search_btn.color = active_user.main_color
+        refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
+        refresh_btn.icon_color = active_user.font_color
+        refresh_ctn = ft.Container(
+            content=refresh_btn,
+            alignment=ft.alignment.top_left
+        )
+        settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
+        search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
+        top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
+        top_row_container = ft.Container(content=top_row, expand=True)
+        top_row_container.padding=ft.padding.only(left=60)
+        top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+        page.update()
 
         # page.views.clear()
         if page.route == "/" or page.route == "/":
@@ -1495,7 +1493,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_number += 1
 
             home_view = ft.View("/", [
-                        pypods_appbar,
                         top_bar,
                         *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                     ]
@@ -1577,7 +1574,6 @@ def main(page: ft.Page, session_value=None):
 
             stats_view = ft.View("/userstats",
                     [
-                        pypods_appbar,
                         stats_container,
                         pine_div_row,
                         pine_contain,
@@ -1837,7 +1833,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
-            podcast_value = search_pods.value
+            podcast_value = new_search.searchvalue
             search_results = internal_functions.functions.searchpod(podcast_value, api_url)
             return_results = search_results['feeds']
             page.overlay.remove(progress_stack)
@@ -1890,7 +1886,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             search_view = ft.View("/searchpod",
                     [
-                        pypods_appbar,
                         *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
                     ]
                     
@@ -2154,7 +2149,6 @@ def main(page: ft.Page, session_value=None):
 
             #Email Table Setup - Admin only
             email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-            print(f'email_information: {email_information}')
             email_table_rows = []
 
             server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
@@ -2334,7 +2328,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             settings_view = ft.View("/settings",
                     [
-                        pypods_appbar,
                         user_setting_text,
                         theme_row_container,
                         div_row,
@@ -2501,7 +2494,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         feed_row,
                         *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
                         
@@ -2630,7 +2622,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                     [
-                        pypods_appbar,
                         top_bar,
                         pod_view_row,
                         *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
@@ -2823,7 +2814,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_hist_view = ft.View("/history",
                     [
-                        pypods_appbar,
                         top_bar,
                         history_title_row,
                         *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
@@ -3016,7 +3006,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_saved_view = ft.View("/saved",
                     [
-                        pypods_appbar,
                         top_bar,
                         saved_title_row,
                         *[saved_ep_row_dict.get(f'search_row{i+1}') for i in range(len(saved_ep_rows))]
@@ -3210,7 +3199,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_download_view = ft.View("/downloads",
                     [
-                        pypods_appbar,
                         top_bar,
                         download_title_row,
                         *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
@@ -3404,7 +3392,6 @@ def main(page: ft.Page, session_value=None):
             # Create search view object
             ep_queue_view = ft.View("/queue",
                     [
-                        pypods_appbar,
                         top_bar,
                         queue_title_row,
                         *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
@@ -3493,7 +3480,6 @@ def main(page: ft.Page, session_value=None):
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        pypods_appbar,
                         top_bar,
                         podcast_row,
                         feed_row,
@@ -3537,7 +3523,7 @@ def main(page: ft.Page, session_value=None):
         page.banner.open = True
         page.update()
 
-    banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
+    # banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
 
 # Login/User Changes------------------------------------------------------
     class User:
@@ -4056,6 +4042,14 @@ def main(page: ft.Page, session_value=None):
     # Initial user value set
     modify_user = User(page)
 
+# Searhcing Class
+
+    class SearchPods:
+        def __init__(self, page):
+            self.searchvalue = None
+
+    new_search = SearchPods(page)
+
     def GradientGenerator(start, end):
         ColorGradient = ft.LinearGradient(
             begin=alignment.bottom_left,
@@ -4214,24 +4208,7 @@ def main(page: ft.Page, session_value=None):
 
 
     page.title = "PinePods"
-    page.appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color="white"), center_title=True)
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
-    # Podcast Search Function Setup
-    search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
-    search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
-    search_box = ft.Container(
-        content=search_pods,
-        alignment=ft.alignment.top_right
-    )
-    search_btn_ctn = ft.Container(
-        content=search_btn,
-        alignment=ft.alignment.top_right
-    )
-    refresh_ctn = ft.Container(
-        content=refresh_btn,
-        alignment=ft.alignment.top_left
-    )
 
     # get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -4374,16 +4351,8 @@ def main(page: ft.Page, session_value=None):
 
 
     # Various rows and columns for layout
-    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
-    search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
-    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
-    top_row_container = ft.Container(content=top_row, expand=True)
-    top_row_container.padding=ft.padding.only(left=60)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
-    test_text = Text('This is a test')
-    test_column = ft.Container(alignment=ft.alignment.bottom_center, border=ft.border.all(1, ft.colors.OUTLINE), content=test_text)
-
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url
@@ -4485,12 +4454,6 @@ def main(page: ft.Page, session_value=None):
 
 # Starting Page Layout
     page.theme_mode = "dark"
-
-    top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
-
-    pypods_appbar = AppBar(title=Text("PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting", color=active_user.accent_color), center_title=True, bgcolor=active_user.main_color)
-    page.add(pypods_appbar)
-    page.appbar.visible = False
 
     app_api.api_verify()
 

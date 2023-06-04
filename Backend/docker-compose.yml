@@ -1,0 +1,9 @@
+version: '3'
+services:
+    pypods-backend:
+       image: madeofpendletonwool/pinepods_backend:latest
+       container_name: pypods-be
+       env_file: env_file
+       ports:
+            - 5000:5000
+       restart: unless-stopped

@@ -2,6 +2,7 @@ version: '3'
 services:
   db:
     image: mariadb:latest
+    command: --wait_timeout=1800
     environment:
       MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: password

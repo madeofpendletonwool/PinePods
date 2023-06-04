@@ -318,29 +318,30 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
     - [x] Packaging and automation
   - [x] Mac App
     - [x] Packaging and automation
+- [x] Self Service PW Resets
+- [x] Add creator info to bottom of stats page
+- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close)
+- [x] Default User Creation (Default User is now created if user vars aren't specified in compoose file)
+- [x] Issue with web search bar may be due to appbar (This was a rabbit hole. Turns out this was due to the way the top bar was created prior to the routes. I needed to rebuild how searching is done, but this is now fixed)
 
 ### Pre-beta version
 
-- [ ] Self Service PW Resets
-- [ ] Add creator info to bottom of stats page
 - [ ] Refresh changes on readme
-- [ ] Default User Creation
-- [ ] Fix client pooling issue
-- [ ] Issue with web search bar may be due to appbar
+- [ ] Full Screen Currently Playing Page
 
 ### To be added after beta version
 
+- [ ] Implement smoother scrolling with big list loading
+- [ ] Page refreshing to handle adding and removing of things better
+- [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
+- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
+- [ ] Reload not needed to add and remove episodes from pages
+- [ ] Add Itunes podcast API
 - [ ] Layout Settings page better
 - [ ] Rotating currently playing
-- [ ] Implement smoother scrolling with big list loading
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
-- [ ] Page refreshing to handle adding and removing of things better
 - [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
-- [ ] Reload not needed to add and remove episodes from pages
 - [ ] Customizable login screens
 - [ ] Add highlight to indicate which page you're on
-- [ ] Add Itunes podcast API
 - [ ] Allow for episodes to be played without being added
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] MFA Logins - Github integration and local MFA (OAuth)
