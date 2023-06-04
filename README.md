@@ -328,6 +328,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page
+- [ ] Fix issue where podcast mins are displayed as seconds
 
 ### To be added after beta version
 

@@ -576,6 +576,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume = 1
                 self.volume_timer = None
                 self.volume_changed = False
+                self.audio_con_art_url_parsed = None
                 self.loading_audio = False
                 self.name_truncated = 'placeholder'
                 # self.episode_name = self.name
@@ -766,6 +767,7 @@ def main(page: ft.Page, session_value=None):
                 audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
+                self.audio_con_art_url_parsed = audio_con_art_url_parsed
                 audio_container_image_landing.src = audio_con_art_url_parsed
                 audio_container_image_landing.width = 40
                 audio_container_image_landing.height = 40
@@ -1493,8 +1495,7 @@ def main(page: ft.Page, session_value=None):
 
             if home_episodes is None:
                 home_ep_number = 1
-                home_ep_rows = []
-                home_ep_row_dict = {}
+                home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
                 home_pod_name = "No Podcasts added yet"
                 home_ep_title = "Podcasts you add will display new episodes here."
@@ -1524,16 +1525,15 @@ def main(page: ft.Page, session_value=None):
                     ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
                 ])
-                home_ep_row = ft.Container(content=home_ep_row_content)
-                home_ep_row.padding=ft.padding.only(left=70, right=50)
-                home_ep_rows.append(home_ep_row)
-                home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                home_div_row = ft.Divider(color=active_user.accent_color)
+                home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
+                home_ep_row = ft.Container(content=home_ep_column)
+                home_ep_row.padding=padding.only(left=70, right=50)
+                home_row_list.controls.append(home_ep_row)
                 home_pods_active = True
                 home_ep_number += 1
             else:
                 home_ep_number = 1
-                home_ep_rows = []
-                home_ep_row_dict = {}
                 home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
                 for entry in home_episodes:
@@ -3641,13 +3641,23 @@ def main(page: ft.Page, session_value=None):
                     pod_view
         )
 
-        if page.route == "/playng" or page.route == "/playing":
+        if page.route == "/playing" or page.route == "/playing":
+            fs_container_image = current_episode.audio_con_art_url_parsed
+            fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
+            audio_container_image_landing.border_radius = ft.border_radius.all(45)
+
+            current_column = ft.Column(controls=[
+                fs_container_image_landing, currently_playing
+            ])
+
+            current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
+            current_container.padding=padding.only(left=70, right=50)
 
             # Create search view object
             ep_playing_view = ft.View("/playing",
                     [
                         top_bar,
-                        ft.Text('This works')
+                        current_container
 
                     ]
                     
