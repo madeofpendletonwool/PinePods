@@ -9,6 +9,7 @@ import internal_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
+import app_functions.functions
 
 # Others
 import time
