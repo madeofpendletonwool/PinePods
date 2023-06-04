@@ -1028,25 +1028,6 @@ def main(page: ft.Page, session_value=None):
         top_view = page.views[-1]
         page.go(top_view.route)
 
-    def open_search(e):
-        print(search_pods.value)
-        pr = ft.ProgressRing()
-        global progress_stack
-        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-        page.overlay.append(progress_stack)
-        page.update()
-
-        # Run the test_connection function
-        connection_test_result = internal_functions.functions.test_connection(api_url)
-        if connection_test_result is not True:
-            page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
-            page.snack_bar.open = True
-            page.overlay.remove(progress_stack)
-            page.update()
-            return  # Do not proceed further if the connection test failed
-
-        page.go("/searchpod")
-
     def open_poddisplay(e):
         pr = ft.ProgressRing()
         global progress_stack
@@ -1309,6 +1290,25 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
+
+        def open_search(e):
+            print(search_pods.value)
+            pr = ft.ProgressRing()
+            global progress_stack
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
+            page.update()
+
+            # Run the test_connection function
+            connection_test_result = internal_functions.functions.test_connection(api_url)
+            if connection_test_result is not True:
+                page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
+                page.snack_bar.open = True
+                page.overlay.remove(progress_stack)
+                page.update()
+                return  # Do not proceed further if the connection test failed
+
+            page.go("/searchpod")
 
         banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
         banner_button.bgcolor = active_user.accent_color
