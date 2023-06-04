@@ -1029,6 +1029,7 @@ def main(page: ft.Page, session_value=None):
         page.go(top_view.route)
 
     def open_search(e):
+        print(search_pods.value)
         pr = ft.ProgressRing()
         global progress_stack
         progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
