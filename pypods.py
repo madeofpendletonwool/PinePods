@@ -4370,11 +4370,11 @@ def main(page: ft.Page, session_value=None):
 
 
     # Various rows and columns for layout
-    settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
-    search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
-    top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
-    top_row_container = ft.Container(content=top_row, expand=True)
-    top_row_container.padding=ft.padding.only(left=60)
+    # settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
+    # search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
+    # top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
+    # top_row_container = ft.Container(content=top_row, expand=True)
+    # top_row_container.padding=ft.padding.only(left=60)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
 
