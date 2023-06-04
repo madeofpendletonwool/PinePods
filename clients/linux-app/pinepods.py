@@ -410,7 +410,18 @@ def main(page: ft.Page, session_value=None):
         api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
         page.snack_bar.open = True
+        guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
+        if guest_status_bool == True:
+            guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+        else:
+            guest_info_button = ft.ElevatedButton(f'Enable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
+        if guest_status_bool == True:
+            guest_status = 'enabled'
+        else:
+            guest_status = 'disabled'
+        disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
         page.update()
+
 
     def download_option_change(e):
         api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
@@ -1193,6 +1204,9 @@ def main(page: ft.Page, session_value=None):
 
     def open_user_stats(e):
         page.go("/userstats")
+
+    def open_currently_playing(e):
+        page.go("/playing")
 
     def open_episode_select(page, url, title):
         current_episode.url = url
@@ -2663,7 +2677,7 @@ def main(page: ft.Page, session_value=None):
                 # Defining the attributes of each podcast that will be displayed on screen
                 pod_list_title_display = ft.Text(pod_list_title)
                 pod_list_desc_display = ft.Text(pod_list_desc)
-                # Episode Count and subtitle
+                # Episode Count and subtitl
                 pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
                 pod_list_ep_count_display = ft.Text(pod_list_ep_count)
                 pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
@@ -3627,6 +3641,25 @@ def main(page: ft.Page, session_value=None):
                     pod_view
         )
 
+        if page.route == "/playng" or page.route == "/playing":
+
+            # Create search view object
+            ep_playing_view = ft.View("/playing",
+                    [
+                        top_bar,
+                        ft.Text('This works')
+
+                    ]
+                    
+                )
+            ep_playing_view.bgcolor = active_user.bgcolor
+            ep_playing_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                ep_playing_view
+                    
+                )
+
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
@@ -4322,7 +4355,7 @@ def main(page: ft.Page, session_value=None):
     )
     ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
     # Create the currently playing container
-    currently_playing = ft.Container(content=ft.Text('test'))
+    currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
     currently_playing.padding=ft.padding.only(bottom=5)
 
     def format_time(time):
@@ -4347,7 +4380,7 @@ def main(page: ft.Page, session_value=None):
     audio_scrubber_column.width = '100%'
     # Image for podcast playing
     audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg", width=40, height=40)
-    audio_container_image = ft.Container(content=audio_container_image_landing)
+    audio_container_image = ft.Container(content=audio_container_image_landing, on_click=open_currently_playing)
     audio_container_image.border_radius = ft.border_radius.all(25)
     currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])

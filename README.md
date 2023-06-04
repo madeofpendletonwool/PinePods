@@ -331,7 +331,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### To be added after beta version
 
-- [ ] Implement smoother scrolling with big list loading
+- [ ] Rebuild image Pulling process. The current one is just unworkable
+- [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [ ] Page refreshing to handle adding and removing of things better
 - [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
@@ -339,7 +340,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add Itunes podcast API
 - [ ] Layout Settings page better
 - [ ] Rotating currently playing
-- [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
 - [ ] Customizable login screens
 - [ ] Add highlight to indicate which page you're on
 - [ ] Allow for episodes to be played without being added
