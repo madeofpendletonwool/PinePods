@@ -3923,12 +3923,6 @@ def main(page: ft.Page, session_value=None):
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
 
-    class SearchPods:
-        def __init__(self, page):
-            self.searchvalue = None
-
-    new_search = SearchPods(page)
-
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
             active_theme = api_functions.functions.call_get_theme(app_api.url, app_api.headers, self.user_id)
@@ -4061,6 +4055,14 @@ def main(page: ft.Page, session_value=None):
 
     # Initial user value set
     modify_user = User(page)
+
+# Searhcing Class
+
+    class SearchPods:
+        def __init__(self, page):
+            self.searchvalue = None
+
+    new_search = SearchPods(page)
 
     def GradientGenerator(start, end):
         ColorGradient = ft.LinearGradient(
