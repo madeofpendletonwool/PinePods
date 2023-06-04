@@ -1293,6 +1293,7 @@ def main(page: ft.Page, session_value=None):
 
         def open_search(e):
             print(search_pods.value)
+            new_search.searchvalue = search_pods.value
             pr = ft.ProgressRing()
             global progress_stack
             progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
@@ -1844,7 +1845,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
-            podcast_value = search_pods.value
+            podcast_value = new_search.searchvalue
             search_results = internal_functions.functions.searchpod(podcast_value, api_url)
             print(search_results)
             return_results = search_results['feeds']
@@ -3921,6 +3922,12 @@ def main(page: ft.Page, session_value=None):
                 active_user.user_id = 1
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
+
+    class SearchPods:
+        def __init__(self, page):
+            self.searchvalue = None
+
+    new_search = SearchPods(page)
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
