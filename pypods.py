@@ -1246,9 +1246,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        refresh_btn.icon_color = active_user.font_color
-        banner_button.bgcolor = active_user.accent_color
-        banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -1259,14 +1256,6 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
-        search_btn.bgcolor = active_user.accent_color
-        search_btn.color = active_user.main_color
         audio_container.bgcolor = active_user.main_color
         audio_scrubber.active_color = active_user.nav_color2
         audio_scrubber.inactive_color = active_user.nav_color2
@@ -1292,7 +1281,6 @@ def main(page: ft.Page, session_value=None):
     def route_change(e):
 
         def open_search(e):
-            print(search_pods.value)
             new_search.searchvalue = search_pods.value
             pr = ft.ProgressRing()
             global progress_stack
@@ -1847,7 +1835,6 @@ def main(page: ft.Page, session_value=None):
             # Get Pod info
             podcast_value = new_search.searchvalue
             search_results = internal_functions.functions.searchpod(podcast_value, api_url)
-            print(search_results)
             return_results = search_results['feeds']
             page.overlay.remove(progress_stack)
 
@@ -2162,7 +2149,6 @@ def main(page: ft.Page, session_value=None):
 
             #Email Table Setup - Admin only
             email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-            print(f'email_information: {email_information}')
             email_table_rows = []
 
             server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
@@ -4223,22 +4209,6 @@ def main(page: ft.Page, session_value=None):
 
     page.title = "PinePods"
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
-    # Podcast Search Function Setup
-    # search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
-    # search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-    # refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
-    # search_box = ft.Container(
-    #     content=search_pods,
-    #     alignment=ft.alignment.top_right
-    # )
-    # search_btn_ctn = ft.Container(
-    #     content=search_btn,
-    #     alignment=ft.alignment.top_right
-    # )
-    # refresh_ctn = ft.Container(
-    #     content=refresh_btn,
-    #     alignment=ft.alignment.top_left
-    # )
 
     # get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -4381,11 +4351,6 @@ def main(page: ft.Page, session_value=None):
 
 
     # Various rows and columns for layout
-    # settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
-    # search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
-    # top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
-    # top_row_container = ft.Container(content=top_row, expand=True)
-    # top_row_container.padding=ft.padding.only(left=60)
     audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
     audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
 
@@ -4489,8 +4454,6 @@ def main(page: ft.Page, session_value=None):
 
 # Starting Page Layout
     page.theme_mode = "dark"
-
-    # top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
     app_api.api_verify()
 

@@ -16,17 +16,12 @@ def test_connection(api_url):
 
 
 def searchpod(podcast_value, api_url):
-    print(f"API URL: {api_url}")
-    print(f"Podcast Value: {podcast_value}")
 
     # Set the query parameter
     params = {'query': f'{podcast_value}'}
-    print(f"Params: {params}")
 
     # Make the GET request to the API
     response = requests.get(api_url, params=params)
-    print(f"Response: {response}")
-    print(f"Response content: {response.content}")
 
     try:
         search_results = response.json()
