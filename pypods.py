@@ -1334,6 +1334,7 @@ def main(page: ft.Page, session_value=None):
         top_row_container = ft.Container(content=top_row, expand=True)
         top_row_container.padding=ft.padding.only(left=60)
         top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+        page.update()
 
         # page.views.clear()
         if page.route == "/" or page.route == "/":
