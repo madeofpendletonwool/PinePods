@@ -1034,6 +1034,16 @@ def main(page: ft.Page, session_value=None):
         progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
         page.overlay.append(progress_stack)
         page.update()
+
+        # Run the test_connection function
+        connection_test_result = internal_functions.functions.test_connection(api_url)
+        if connection_test_result is not True:
+            page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
+            page.snack_bar.open = True
+            page.overlay.remove(progress_stack)
+            page.update()
+            return  # Do not proceed further if the connection test failed
+
         page.go("/searchpod")
 
     def open_poddisplay(e):

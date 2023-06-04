@@ -1,0 +1,13 @@
+FROM python:3.11.2-slim-buster
+
+WORKDIR /app
+
+COPY . .
+
+RUN pip install -r requirements.txt
+
+# Copy the startup script
+COPY startup.sh /app/startup.sh
+RUN chmod +x /app/startup.sh
+
+CMD ["/app/startup.sh"]
