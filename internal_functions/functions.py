@@ -31,7 +31,7 @@ def searchpod(podcast_value, api_url):
 
 if __name__ == '__main__':
     api_url = 'https://search.pinepods.online/api/search'
-    podcast_value = 'my brother my brother and me'
+    podcast_value = 'Me and My Brothers Podcast'
     results = searchpod(podcast_value, api_url)
     print(results)
     if isinstance(results, str):

@@ -1855,6 +1855,7 @@ def main(page: ft.Page, session_value=None):
             # Get Pod info
             podcast_value = search_pods.value
             search_results = internal_functions.functions.searchpod(podcast_value, api_url)
+            print(search_results)
             return_results = search_results['feeds']
             page.overlay.remove(progress_stack)
 
