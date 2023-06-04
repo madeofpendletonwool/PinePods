@@ -9,7 +9,7 @@ def test_connection(api_url):
     except requests.exceptions.HTTPError as http_err:
         return f"HTTP error occurred: {http_err}"
     except requests.exceptions.ConnectionError as conn_err:
-        return f"Error connecting: {conn_err}"
+        return f"Your API_URL Variable is probably wrong. Error connecting: {conn_err}"
     except Exception as err:
         return f"An error occurred: {err}"
     # If there's no exception, the connection is established successfully
