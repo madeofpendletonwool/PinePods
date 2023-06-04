@@ -4479,7 +4479,7 @@ def main(page: ft.Page, session_value=None):
 # Starting Page Layout
     page.theme_mode = "dark"
 
-    top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+    # top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
 
     app_api.api_verify()
 
