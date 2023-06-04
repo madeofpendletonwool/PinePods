@@ -1087,9 +1087,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        refresh_btn.icon_color = active_user.font_color
-        banner_button.bgcolor = active_user.accent_color
-        banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -1100,14 +1097,6 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
-        search_btn.bgcolor = active_user.accent_color
-        search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         active_user.navbar_stack = ft.Stack([navbar], expand=True)
@@ -1119,9 +1108,6 @@ def main(page: ft.Page, session_value=None):
         # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
-        refresh_btn.icon_color = active_user.font_color
-        banner_button.bgcolor = active_user.accent_color
-        banner_button.color = active_user.main_color
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -1132,14 +1118,6 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
-        search_btn.bgcolor = active_user.accent_color
-        search_btn.color = active_user.main_color
         navbar = NavBar(page).create_navbar()
         navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         active_user.navbar_stack = ft.Stack([navbar], expand=True)
@@ -1332,9 +1310,20 @@ def main(page: ft.Page, session_value=None):
     def route_change(e):
 
         banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
+        banner_button.bgcolor = active_user.accent_color
+        banner_button.color = active_user.main_color
         search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
+        search_pods.color = active_user.accent_color
+        search_pods.focused_bgcolor = active_user.accent_color
+        search_pods.focused_border_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.focused_color = active_user.accent_color
+        search_pods.cursor_color = active_user.accent_color
+        search_btn.bgcolor = active_user.accent_color
+        search_btn.color = active_user.main_color
         refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
+        refresh_btn.icon_color = active_user.font_color
         refresh_ctn = ft.Container(
             content=refresh_btn,
             alignment=ft.alignment.top_left
@@ -3545,7 +3534,7 @@ def main(page: ft.Page, session_value=None):
         page.banner.open = True
         page.update()
 
-    banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
+    # banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
 
 # Login/User Changes------------------------------------------------------
     class User:
@@ -4225,8 +4214,8 @@ def main(page: ft.Page, session_value=None):
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
     # Podcast Search Function Setup
     # search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
-    search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-    refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
+    # search_btn = ft.ElevatedButton("Search!", on_click=open_search)
+    # refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color, tooltip="Refresh Podcast List", on_click=refresh_podcasts)
     # search_box = ft.Container(
     #     content=search_pods,
     #     alignment=ft.alignment.top_right
@@ -4235,10 +4224,10 @@ def main(page: ft.Page, session_value=None):
     #     content=search_btn,
     #     alignment=ft.alignment.top_right
     # )
-    refresh_ctn = ft.Container(
-        content=refresh_btn,
-        alignment=ft.alignment.top_left
-    )
+    # refresh_ctn = ft.Container(
+    #     content=refresh_btn,
+    #     alignment=ft.alignment.top_left
+    # )
 
     # get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
