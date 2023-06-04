@@ -2529,6 +2529,7 @@ def main(page: ft.Page, session_value=None):
             ep_number = 1
             ep_rows = []
             ep_row_dict = {}
+            ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
             episode_results = app_functions.functions.parse_feed(clicked_podcast.feedurl)
 
@@ -2601,19 +2602,14 @@ def main(page: ft.Page, session_value=None):
                         ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                         ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
                         ])
-
-                ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
-                ep_row_list.controls.append(ep_row_content)
+                
                 div_row = ft.Divider(color=active_user.accent_color)
-                ep_column = ft.Column(controls=[ep_row_list, div_row])
-                ep_row = ft.Container(content=ep_column)
-
-                ep_row.padding=padding.only(left=70, right=50)
-                ep_rows.append(ep_row)
-                # home_ep_rows.append(ft.Text('test'))
-                ep_row_dict[f'search_row{ep_number}'] = ep_row
-                pods_active = True
+                ep_row_final = ft.Column(controls=[ep_row_content, div_row])
+                ep_row_list.controls.append(ep_row_final)
                 ep_number += 1
+
+            ep_row_contain = ft.Container(content=ep_row_list)
+            ep_row_contain.padding = padding.only(left=70, right=50)
 
             page.overlay.remove(progress_stack)
             # Create search view object
@@ -2621,8 +2617,8 @@ def main(page: ft.Page, session_value=None):
                     "/poddisplay",
                     [
                         feed_row,
-                        *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
-                        
+                        # *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
+                        ep_row_contain
                     ]
                     
                 )
