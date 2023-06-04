@@ -1377,6 +1377,7 @@ def main(page: ft.Page, session_value=None):
                 home_ep_number = 1
                 home_ep_rows = []
                 home_ep_row_dict = {}
+                home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
                 for entry in home_episodes:
                     home_ep_title = entry['EpisodeTitle']
@@ -1486,15 +1487,14 @@ def main(page: ft.Page, session_value=None):
                     home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
                     home_ep_row = ft.Container(content=home_ep_column)
                     home_ep_row.padding=padding.only(left=70, right=50)
-                    home_ep_rows.append(home_ep_row)
-                    # home_ep_rows.append(ft.Text('test'))
-                    home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                    home_row_list.controls.append(home_ep_row)
                     home_pods_active = True
                     home_ep_number += 1
 
             home_view = ft.View("/", [
                         top_bar,
-                        *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
+                        # *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))],
+                        home_row_contain
                     ]
                 )
             home_view.bgcolor = active_user.bgcolor
