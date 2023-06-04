@@ -30,19 +30,26 @@ def searchpod(podcast_value, api_url):
     except requests.exceptions.RequestException as req_err:
         return f"Error occurred: {req_err}"
 
-    try:
-        search_results = response.json()
-        return search_results
-    except json.JSONDecodeError as json_err:
-        return f"Error decoding JSON: {json_err}"
+    # Only decode the response if there is content
+    if response.content:
+        try:
+            search_results = response.json()
+            return search_results
+        except ValueError as e:
+            return f"Error decoding JSON: {e}"
+    else:
+        return f"Received empty response from the server"
+
+
 
 if __name__ == '__main__':
-    api_url = 'https://api.pinepods.online/api/search'
+    api_url = 'https://search.pinepods.online/api/search'
     podcast_value = 'my brother my brother and me'
     results = searchpod(podcast_value, api_url)
-    if isinstance(results, str):
-        print(f"Error occurred: {results}")
-    else:
-        return_results = results.get('feeds', [])
-        for d in return_results:
-            print(d.get('title', ''))
+    print(results)
+    # if isinstance(results, str):
+    #     print(f"Error occurred: {results}")
+    # else:
+    #     return_results = results.get('feeds', [])
+    #     for d in return_results:
+    #         print(d.get('title', ''))
