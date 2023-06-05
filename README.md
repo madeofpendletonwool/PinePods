@@ -320,7 +320,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
     - [x] Packaging and automation
 - [x] Self Service PW Resets
 - [x] Add creator info to bottom of stats page
-- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close)
 - [x] Default User Creation (Default User is now created if user vars aren't specified in compoose file)
 - [x] Issue with web search bar may be due to appbar (This was a rabbit hole. Turns out this was due to the way the top bar was created prior to the routes. I needed to rebuild how searching is done, but this is now fixed)
 
@@ -329,6 +328,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page
 - [ ] Fix issue where podcast mins are displayed as seconds
+- [ ] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close)
+- [ ] Occasionally podcasts will put seconds value in mins
 
 ### To be added after beta version
 

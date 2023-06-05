@@ -656,6 +656,7 @@ def main(page: ft.Page, session_value=None):
                         duration = self.audio_element.get_duration()
                         if duration > 0:
                             media_length = duration
+                            self.media_length = media_length
                             break
                     except Exception as e:
                         pass
@@ -3667,23 +3668,23 @@ def main(page: ft.Page, session_value=None):
                 icon_color="white",
                 on_click=lambda e: current_episode.seek_episode()
             )
-            fs_ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
+            fs_ep_audio_controls = ft.Row(controls=[fs_play_button, fs_pause_button, fs_seek_button])
 
-            fs_audio_scrubber = ft.Slider(min=0, expand=True,  max=current_episode.seconds, label="{value}", on_change=slider_changed)
-            fs_audio_scrubber.width = '100%'
-            fs_audio_scrubber_column = ft.Column(controls=[audio_scrubber])
-            fs_audio_scrubber_column.horizontal_alignment.STRETCH
-            fs_audio_scrubber_column.width = '100%'
-            fs_current_time_text = ft.Text(current_episode.current_progress)
-            fs_current_time = ft.Container(content=current_time_text)
-            fs_podcast_length = ft.Container(content=ft.Text(current_episode.length))
-            fs_scrub_bar_row = ft.Row(controls=[fs_current_time, fs_audio_scrubber_column, fs_podcast_length])
+            # fs_audio_scrubber = ft.Slider(min=0, expand=True,  max=current_episode.seconds, label="{value}", on_change=slider_changed)
+            # fs_audio_scrubber.width = '100%'
+            # fs_audio_scrubber_column = ft.Column(controls=[audio_scrubber])
+            # fs_audio_scrubber_column.horizontal_alignment.STRETCH
+            # fs_audio_scrubber_column.width = '100%'
+            # fs_current_time_text = ft.Text(current_episode.current_progress)
+            # fs_current_time = ft.Container(content=current_time_text)
+            # fs_podcast_length = ft.Container(content=ft.Text(current_episode.length))
+            fs_scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
 
 
-            fs_volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
-            fs_volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
-            fs_volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
-            fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], expand=True)
+            # fs_volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
+            # fs_volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
+            # fs_volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
+            # fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], expand=True)
             fs_volume_container = ft.Container(
                     height=35,
                     width=275,
@@ -3693,8 +3694,25 @@ def main(page: ft.Page, session_value=None):
                     content=volume_adjust_column)
             fs_volume_container.adding=ft.padding.all(50)
 
+            def toggle_second_status(status):
+                if current_episode.state == 'playing':
+                    # fs_audio_scrubber.value = current_episode.get_current_seconds()
+                    audio_scrubber.update()
+                    # current_time.content = ft.Text(current_episode.current_progress, color=active_user.font_color)
+                    current_time.update()
+
+            total_seconds = current_episode.media_length // 1000
+
+            def update_function():
+                for i in range(total_seconds):
+                    toggle_second_status(current_episode.audio_element.data)
+                    time.sleep(1)
+
+            update_thread = threading.Thread(target=update_function)
+            update_thread.start()
+
             current_column = ft.Column(controls=[
-                fs_container_image_landing, currently_playing, fs_ep_audio_controls, fs_volume_container
+                fs_container_image_landing, currently_playing, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_container
             ])
 
             current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
