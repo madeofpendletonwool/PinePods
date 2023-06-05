@@ -3642,16 +3642,65 @@ def main(page: ft.Page, session_value=None):
         )
 
         if page.route == "/playing" or page.route == "/playing":
+            audio_container.visible = False
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             audio_container_image_landing.border_radius = ft.border_radius.all(45)
 
+            # Create the audio controls
+            fs_play_button = ft.IconButton(
+                icon=ft.icons.PLAY_ARROW,
+                tooltip="Play Podcast",
+                icon_color="white",
+                on_click=lambda e: current_episode.resume_podcast()
+            )
+            fs_pause_button = ft.IconButton(
+                icon=ft.icons.PAUSE,
+                tooltip="Pause Playback",
+                icon_color="white",
+                on_click=lambda e: current_episode.pause_episode()
+            )
+            fs_pause_button.visible = False
+            fs_seek_button = ft.IconButton(
+                icon=ft.icons.FAST_FORWARD,
+                tooltip="Seek 10 seconds",
+                icon_color="white",
+                on_click=lambda e: current_episode.seek_episode()
+            )
+            fs_ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
+
+            fs_audio_scrubber = ft.Slider(min=0, expand=True,  max=current_episode.seconds, label="{value}", on_change=slider_changed)
+            fs_audio_scrubber.width = '100%'
+            fs_audio_scrubber_column = ft.Column(controls=[audio_scrubber])
+            fs_audio_scrubber_column.horizontal_alignment.STRETCH
+            fs_audio_scrubber_column.width = '100%'
+            fs_current_time_text = ft.Text(current_episode.current_progress)
+            fs_current_time = ft.Container(content=current_time_text)
+            fs_podcast_length = ft.Container(content=ft.Text(current_episode.length))
+            fs_scrub_bar_row = ft.Row(controls=[fs_current_time, fs_audio_scrubber_column, fs_podcast_length])
+
+
+            fs_volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
+            fs_volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
+            fs_volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
+            fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], expand=True)
+            fs_volume_container = ft.Container(
+                    height=35,
+                    width=275,
+                    bgcolor=ft.colors.WHITE,
+                    border_radius=45,
+                    padding=6,
+                    content=volume_adjust_column)
+            fs_volume_container.adding=ft.padding.all(50)
+
             current_column = ft.Column(controls=[
-                fs_container_image_landing, currently_playing
+                fs_container_image_landing, currently_playing, fs_ep_audio_controls, fs_volume_container
             ])
 
             current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
             current_container.padding=padding.only(left=70, right=50)
+
+
 
             # Create search view object
             ep_playing_view = ft.View("/playing",
@@ -3679,7 +3728,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def open_repo(e):
-        page.launch_url('https://github.com/madeofpendletonwool/pypods')
+        page.launch_url('https://github.com/madeofpendletonwool/PinePods')
 
     page.banner = ft.Banner(
         bgcolor=ft.colors.BLUE,
