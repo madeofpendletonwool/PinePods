@@ -196,10 +196,10 @@ class VerifyPasswordInput(BaseModel):
     password: str
 
 @app.post("/api/data/verify_password/")
-async def api_verify_password(data: VerifyPasswordInput, api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_verify_password(data: VerifyPasswordInput, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
     return {"is_password_valid": is_password_valid}
+
 
 @app.get("/api/data/return_episodes/{user_id}")
 async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_header)):
