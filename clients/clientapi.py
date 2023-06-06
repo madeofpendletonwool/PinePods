@@ -242,8 +242,7 @@ async def api_get_user_details_id(user_id: int, api_key: str = Depends(get_api_k
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 @app.get("/api/data/get_theme/{user_id}")
-async def api_get_theme(user_id: int, api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_get_theme(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     theme = database_functions.functions.get_theme(cnx, user_id)
     return {"theme": theme}
 
