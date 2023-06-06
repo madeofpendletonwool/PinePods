@@ -586,6 +586,18 @@ def main(page: ft.Page, session_value=None):
                     self.active_pod = self.name
                 self.queue = []
                 self.state = 'stopped'
+                self.fs_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_ARROW,
+                    tooltip="Play Podcast",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_resume_podcast()
+                )
+                self.fs_pause_button = ft.IconButton(
+                    icon=ft.icons.PAUSE,
+                    tooltip="Pause Playback",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_pause_episode()
+                )
                 Toggle_Pod.initialized = True
             else:
                 self.page = page
@@ -610,6 +622,18 @@ def main(page: ft.Page, session_value=None):
                 self.volume_changed = False
                 self.loading_audio = False
                 self.name_truncated = 'placeholder'
+                self.fs_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_ARROW,
+                    tooltip="Play Podcast",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_resume_podcast()
+                )
+                self.fs_pause_button = ft.IconButton(
+                    icon=ft.icons.PAUSE,
+                    tooltip="Pause Playback",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_pause_episode()
+                )
                 # self.episode_name = self.name
                 self.queue = []
                 self.state = 'stopped'
@@ -753,6 +777,28 @@ def main(page: ft.Page, session_value=None):
             self.toggle_current_status()
             self.page.update()
 
+        def pause_episode(self, e=None):
+            self.audio_element.pause()
+            self.audio_playing = False
+            self.toggle_current_status()
+            self.page.update()
+
+        def resume_podcast(self, e=None):
+            self.audio_element.resume()
+            self.audio_playing = True
+            self.toggle_current_status()
+            self.page.update()
+
+        def fs_pause_episode(self, e=None):
+            self.fs_play_button.visible = False
+            self.fs_pause_button.visible = True
+            self.pause_episode()
+
+        def fs_resume_podcast(self, e=None):
+            self.fs_pause_button.visible = False
+            self.fs_play_button.visible = True
+            self.resume_podcast()
+
         def toggle_current_status(self):
             if self.audio_playing:
                 play_button.visible = False
@@ -825,8 +871,6 @@ def main(page: ft.Page, session_value=None):
             else:
                 self.volume_changed = False
 
-
-
                 
         def toggle_second_status(self, status):
             if self.state == 'playing':
@@ -841,6 +885,12 @@ def main(page: ft.Page, session_value=None):
             seconds = 10
             time = self.audio_element.get_current_position()
             seek_position = time + 10000
+            self.audio_element.seek(seek_position)
+
+        def seek_back_episode(self):
+            seconds = 10
+            time = self.audio_element.get_current_position()
+            seek_position = time - 10000
             self.audio_element.seek(seek_position)
 
         def time_scrub(self, time):
@@ -1482,6 +1532,8 @@ def main(page: ft.Page, session_value=None):
         top_row_container = ft.Container(content=top_row, expand=True)
         top_row_container.padding=ft.padding.only(left=60)
         top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+        if current_episode.audio_playing == True:
+            audio_container.visible = True
         page.update()
 
 
@@ -3646,53 +3698,40 @@ def main(page: ft.Page, session_value=None):
             audio_container.visible = False
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
-            audio_container_image_landing.border_radius = ft.border_radius.all(45)
+            fs_container_image_landing.border_radius = ft.border_radius.all(45)
+            fs_container_image_row = ft.Row(controls=[fs_container_image_landing], alignment=ft.MainAxisAlignment.CENTER)
+            fs_currently_playing = ft.Container(content=ft.Text(current_episode.name_truncated, size=16), on_click=open_currently_playing, alignment=ft.alignment.center)
 
             # Create the audio controls
-            fs_play_button = ft.IconButton(
-                icon=ft.icons.PLAY_ARROW,
-                tooltip="Play Podcast",
-                icon_color="white",
-                on_click=lambda e: current_episode.resume_podcast()
-            )
-            fs_pause_button = ft.IconButton(
-                icon=ft.icons.PAUSE,
-                tooltip="Pause Playback",
-                icon_color="white",
-                on_click=lambda e: current_episode.pause_episode()
-            )
-            fs_pause_button.visible = False
+            if current_episode.audio_playing == True:
+                current_episode.fs_play_button.visible = False
+            else:
+                current_episode.fs_pause_button.visible = False
             fs_seek_button = ft.IconButton(
                 icon=ft.icons.FAST_FORWARD,
                 tooltip="Seek 10 seconds",
                 icon_color="white",
                 on_click=lambda e: current_episode.seek_episode()
             )
-            fs_ep_audio_controls = ft.Row(controls=[fs_play_button, fs_pause_button, fs_seek_button])
-
-            # fs_audio_scrubber = ft.Slider(min=0, expand=True,  max=current_episode.seconds, label="{value}", on_change=slider_changed)
-            # fs_audio_scrubber.width = '100%'
-            # fs_audio_scrubber_column = ft.Column(controls=[audio_scrubber])
-            # fs_audio_scrubber_column.horizontal_alignment.STRETCH
-            # fs_audio_scrubber_column.width = '100%'
-            # fs_current_time_text = ft.Text(current_episode.current_progress)
-            # fs_current_time = ft.Container(content=current_time_text)
-            # fs_podcast_length = ft.Container(content=ft.Text(current_episode.length))
-            fs_scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
-
-
-            # fs_volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
-            # fs_volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
-            # fs_volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
-            # fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], expand=True)
+            fs_seek_back_button = ft.IconButton(
+                icon=ft.icons.FAST_REWIND,
+                tooltip="Seek 10 seconds",
+                icon_color="white",
+                on_click=lambda e: current_episode.seek_back_episode()
+            )
+            fs_ep_audio_controls = ft.Row(controls=[fs_seek_back_button, current_episode.fs_play_button, current_episode.fs_pause_button, fs_seek_button], alignment=ft.MainAxisAlignment.CENTER)
+            fs_scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length], alignment=ft.MainAxisAlignment.CENTER)
+            fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], alignment=ft.MainAxisAlignment.CENTER)
             fs_volume_container = ft.Container(
                     height=35,
                     width=275,
                     bgcolor=ft.colors.WHITE,
                     border_radius=45,
                     padding=6,
-                    content=volume_adjust_column)
+                    content=fs_volume_adjust_column,
+                    alignment=ft.alignment.center)
             fs_volume_container.adding=ft.padding.all(50)
+            fs_volume_adjust_row = ft.Row(controls=[fs_volume_container], alignment=ft.MainAxisAlignment.CENTER)
 
             def toggle_second_status(status):
                 if current_episode.state == 'playing':
@@ -3711,13 +3750,18 @@ def main(page: ft.Page, session_value=None):
             update_thread = threading.Thread(target=update_function)
             update_thread.start()
 
+            fs_volume_container.bgcolor = active_user.main_color
+            current_episode.fs_play_button.icon_color = active_user.accent_color
+            current_episode.fs_pause_button.icon_color = active_user.accent_color
+            fs_seek_button.icon_color = active_user.accent_color
+
             current_column = ft.Column(controls=[
-                fs_container_image_landing, currently_playing, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_container
+                fs_container_image_row, fs_currently_playing, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
             ])
 
             current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
             current_container.padding=padding.only(left=70, right=50)
-
+            current_container.alignment = alignment.center
 
 
             # Create search view object
