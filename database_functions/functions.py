@@ -935,6 +935,7 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
         if cursor:
             cursor.close()
         if cnx:
+            print('cnx open')
             # cnx.close()
 
 def get_episode_listen_time(cnx, user_id, title, url):
