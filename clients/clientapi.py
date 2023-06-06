@@ -202,12 +202,12 @@ async def api_verify_password(data: VerifyPasswordInput, cnx = Depends(get_datab
 
 
 @app.get("/api/data/return_episodes/{user_id}")
-async def api_return_episodes(user_id: int, api_key: str = Depends(get_api_key_from_header)):
-    cnx = get_database_connection()
+async def api_return_episodes(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     episodes = database_functions.functions.return_episodes(cnx, user_id)
     if episodes is None:
         episodes = []  # Return an empty list instead of raising an exception
     return {"episodes": episodes}
+
 
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
