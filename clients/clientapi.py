@@ -6,6 +6,8 @@ from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
+from mysql.connector.pooling import MySQLConnectionPool
+from mysql.connector import Error
 import os
 from datetime import datetime
 from fastapi.middleware.gzip import GZipMiddleware
