@@ -66,12 +66,15 @@ print(f'Proxy url is configured to {proxy_url}')
 from fastapi import Depends
 
 def get_database_connection() -> Generator:
+    cnx = None
     try:
         cnx = connection_pool.get_connection()
         yield cnx
     finally:
-        print('connection closed')
-        cnx.close()
+        if cnx is not None:
+            print('connection closed')
+            cnx.close()
+
 
 
 
