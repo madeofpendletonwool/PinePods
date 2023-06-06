@@ -63,19 +63,9 @@ else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
 
-from fastapi import Depends
-
-def get_database_connection() -> Generator:
-    cnx = None
-    try:
-        cnx = connection_pool.get_connection()
-        yield cnx
-    finally:
-        if cnx is not None:
-            print('connection closed')
-            cnx.close()
-
-
+def get_database_connection():
+    db = connection_pool.get_connection()
+    return db
 
 
 def setup_connection_pool():
