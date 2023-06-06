@@ -938,29 +938,29 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
             # cnx.close()
 
 def get_episode_listen_time(cnx, user_id, title, url):
-        cursor = None
-        try:
-            cursor = cnx.cursor()
+    cursor = None
+    try:
+        cursor = cnx.cursor()
 
-            # Get the EpisodeID from the Episodes table
-            query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
-            cursor.execute(query, (title, url))
-            episode_id = cursor.fetchone()[0]
+        # Get the EpisodeID from the Episodes table
+        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
+        cursor.execute(query, (title, url))
+        episode_id = cursor.fetchone()[0]
 
-            # Get the user's listen duration for this episode
-            query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
-            cursor.execute(query, (user_id, episode_id))
-            listen_duration = cursor.fetchone()[0]
+        # Get the user's listen duration for this episode
+        query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
+        cursor.execute(query, (user_id, episode_id))
+        listen_duration = cursor.fetchone()[0]
 
-            return listen_duration
+        return listen_duration
 
-            # Seek to the user's last listen duration
-            # current_episode.seek_to_second(listen_duration)
+        # Seek to the user's last listen duration
+        # current_episode.seek_to_second(listen_duration)
 
-        finally:
-            if cursor:
-                cursor.close()
-                # cnx.close()
+    finally:
+        if cursor:
+            cursor.close()
+            # cnx.close()
 
 def get_theme(cnx, user_id):
     cursor = None
