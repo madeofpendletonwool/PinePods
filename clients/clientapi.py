@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
 import secrets
 import requests
 from pydantic import BaseModel
@@ -63,10 +64,15 @@ else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
 
-def get_database_connection():
-    db = connection_pool.get_connection()
-    yield db
-    db.close()
+def get_database_connection() -> MySQLConnectionPool:
+    try:
+        db = connection_pool.get_connection()
+        yield db
+    except Error as e:
+        raise HTTPException(500, "Unable to connect to the database")
+    finally:
+        db.close()
+
 
 
 def setup_connection_pool():
