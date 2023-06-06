@@ -1336,8 +1336,7 @@ def main(page: ft.Page, session_value=None):
 
             if home_episodes is None:
                 home_ep_number = 1
-                home_ep_rows = []
-                home_ep_row_dict = {}
+                home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
                 home_pod_name = "No Podcasts added yet"
                 home_ep_title = "Podcasts you add will display new episodes here."
@@ -1367,16 +1366,15 @@ def main(page: ft.Page, session_value=None):
                     ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
                 ])
-                home_ep_row = ft.Container(content=home_ep_row_content)
-                home_ep_row.padding=ft.padding.only(left=70, right=50)
-                home_ep_rows.append(home_ep_row)
-                home_ep_row_dict[f'search_row{home_ep_number}'] = home_ep_row
+                home_div_row = ft.Divider(color=active_user.accent_color)
+                home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
+                home_ep_row = ft.Container(content=home_ep_column)
+                home_ep_row.padding=padding.only(left=70, right=50)
+                home_row_list.controls.append(home_ep_row)
                 home_pods_active = True
                 home_ep_number += 1
             else:
                 home_ep_number = 1
-                home_ep_rows = []
-                home_ep_row_dict = {}
                 home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
                 for entry in home_episodes:
@@ -1495,7 +1493,7 @@ def main(page: ft.Page, session_value=None):
 
             home_view = ft.View("/", [
                         top_bar,
-                        # *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))],
+                        # *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                         home_row_contain
                     ]
                 )
