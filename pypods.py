@@ -1491,6 +1491,8 @@ def main(page: ft.Page, session_value=None):
                     home_pods_active = True
                     home_ep_number += 1
 
+            home_row_contain = ft.Container(content=home_row_list)
+
             home_view = ft.View("/", [
                         top_bar,
                         # *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))],
