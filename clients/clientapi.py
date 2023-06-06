@@ -65,7 +65,8 @@ print(f'Proxy url is configured to {proxy_url}')
 
 def get_database_connection():
     db = connection_pool.get_connection()
-    return db
+    yield db
+    db.close()
 
 
 def setup_connection_pool():
