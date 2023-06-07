@@ -2,7 +2,7 @@ from flask import Flask, request, Response
 from flask_caching import Cache
 from flask_cors import CORS
 import requests
-from requests import timeout
+from requests import Timeout
 import os
 from werkzeug.datastructures import Headers
 from PIL import Image
