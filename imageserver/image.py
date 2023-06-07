@@ -1,4 +1,4 @@
-from flask import Flask, request, Response
+from flask import Flask, request, Response, send_file
 from flask_caching import Cache
 from flask_cors import CORS
 import requests
@@ -47,7 +47,7 @@ def proxy():
             response = cache.get(url)
             if response is None:
                 try:
-                    response = requests.get(url, headers=headers, timeout=1)  # set a timeout
+                    response = requests.get(url, headers=headers, timeout=10)  # set a timeout
                 except Timeout:
                     print(f'The request for {url} timed out')
                     return send_file('/pinepods/images/pinepods-logo.jpeg', mimetype='image/jpeg')
