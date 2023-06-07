@@ -2,6 +2,7 @@ from flask import Flask, request, Response
 from flask_caching import Cache
 from flask_cors import CORS
 import requests
+from requests import timeout
 import os
 from werkzeug.datastructures import Headers
 from PIL import Image
@@ -44,14 +45,18 @@ def proxy():
             # Try to get the response from cache
             response = cache.get(url)
             if response is None:
-                response = requests.get(url, headers=headers)
-                # Optimize the image content
-                content = optimize_image(response.content)
-                # Cache the response for 300 seconds
-                cache.set(url, content, timeout=300)
+                try:
+                    response = requests.get(url, headers=headers, timeout=1)  # set a timeout
+                except Timeout:
+                    print(f'The request for {url} timed out')
+                    return Response('Request timeout', status=408)
         else:
-            # For non-image files, make the request normally
-            response = requests.get(url, headers=headers)
+            try:
+                response = requests.get(url, headers=headers, timeout=1)  # set a timeout
+            except Timeout:
+                print(f'The request for {url} timed out')
+                return Response('Request timeout', status=408)  # return a 408 Timeout response
+
 
         content = response.content
         headers = response.headers
