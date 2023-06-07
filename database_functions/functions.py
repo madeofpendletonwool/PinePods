@@ -143,28 +143,33 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 
 
 
-                parsed_duration = 0
-                if entry.itunes_duration:
-                    duration_string = entry.itunes_duration
-                    match = re.match(r'(\d+):(\d+)', duration_string)
+                def parse_duration(duration_string: str) -> int:
+                    match = re.match(r'(\d+):(\d+)(?::(\d+))?', duration_string)  # Regex to optionally match HH:MM:SS
                     if match:
-                        parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
-                        print('Found duration using itunes_duration')
+                        if match.group(3):  # If there is an HH part
+                            parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(match.group(3))
+                        else:  # It's only MM:SS
+                            parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
+                        print('Found duration using duration_string')
                     else:
                         try:
                             parsed_duration = int(duration_string)
-                            print('Found duration using itunes_duration')
+                            print('Found duration using duration_string')
                         except ValueError:
-                            print(f'Error parsing duration from itunes_duration: {duration_string}')
+                            print(f'Error parsing duration from duration_string: {duration_string}')
+                            parsed_duration = 0
+                    return parsed_duration
 
+                parsed_duration = 0
+                if entry.itunes_duration:
+                    parsed_duration = parse_duration(entry.itunes_duration)
                 elif entry.itunes_duration_seconds:
-                    parsed_duration = entry.itunes_duration
+                    parsed_duration = entry.itunes_duration_seconds
                 elif entry.duration:
-                    parsed_duration = entry.itunes_duration
+                    parsed_duration = parse_duration(entry.duration)
                 elif entry.length:
-                    parsed_duration = entry.itunes_duration
-                else:
-                    parsed_duration = 0
+                    parsed_duration = parse_duration(entry.length)
+
 
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
