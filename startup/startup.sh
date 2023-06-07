@@ -47,7 +47,7 @@ EOF
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
 # Start the proxy server
-nohup gunicorn --bind 0.0.0.0:${PROXY_PORT:-8000} --timeout 120 pinepods.imageserver.wsgi:app &
+nohup gunicorn --bind 0.0.0.0:${PROXY_PORT:-8000} --workers 4 --timeout 30 pinepods.imageserver.wsgi:app &
 # Start the FastAPI client api
 python3 /pinepods/clients/clientapi.py --port ${API_SERVER_PORT:-8032} &
 # Start PinePods

@@ -4,6 +4,7 @@ from flask_cors import CORS
 import requests
 from requests import Timeout
 import os
+import sys
 from werkzeug.datastructures import Headers
 from PIL import Image
 import io
@@ -49,7 +50,7 @@ def proxy():
                     response = requests.get(url, headers=headers, timeout=1)  # set a timeout
                 except Timeout:
                     print(f'The request for {url} timed out')
-                    return Response('Request timeout', status=408)
+                    return send_file('/pinepods/images/pinepods-logo.jpeg', mimetype='image/jpeg')
         else:
             try:
                 response = requests.get(url, headers=headers, timeout=1)  # set a timeout
