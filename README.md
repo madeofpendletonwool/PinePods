@@ -320,18 +320,21 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
     - [x] Packaging and automation
 - [x] Self Service PW Resets
 - [x] Add creator info to bottom of stats page
-- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close)
 - [x] Default User Creation (Default User is now created if user vars aren't specified in compoose file)
 - [x] Issue with web search bar may be due to appbar (This was a rabbit hole. Turns out this was due to the way the top bar was created prior to the routes. I needed to rebuild how searching is done, but this is now fixed)
+- [x] Occasionally podcasts will put seconds value in mins (This was a bug due to duration parsing. Code fixed, everything now displays properly)
+- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close) Edit: I actually think this is truly fixed now. I rebuilt the way this works using async, no problems so far
 
 ### Pre-beta version
 
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page
+- [ ] Removing podcast is broken
+- [ ] Rebuild image Pulling process. The current one is just unworkable
 
 ### To be added after beta version
 
-- [ ] Implement smoother scrolling with big list loading
+- [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [ ] Page refreshing to handle adding and removing of things better
 - [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
@@ -339,7 +342,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add Itunes podcast API
 - [ ] Layout Settings page better
 - [ ] Rotating currently playing
-- [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
 - [ ] Customizable login screens
 - [ ] Add highlight to indicate which page you're on
 - [ ] Allow for episodes to be played without being added
