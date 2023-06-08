@@ -21,7 +21,8 @@ def optimize_image(content):
 
 app = Flask(__name__)
 CORS(app)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+cache = Cache(app, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': '/pinepods/cache'})
+
 
 @app.route('/proxy')
 def proxy():

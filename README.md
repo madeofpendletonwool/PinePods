@@ -329,7 +329,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page
-- [ ] Removing podcast is broken
 - [ ] Rebuild image Pulling process. The current one is just unworkable
 
 ### To be added after beta version

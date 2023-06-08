@@ -793,14 +793,65 @@ def main(page: ft.Page, session_value=None):
             self.page.update()
 
         def fs_pause_episode(self, e=None):
-            self.fs_play_button.visible = False
-            self.fs_pause_button.visible = True
-            self.pause_episode()
+            self.fs_play_button.visible = True
+            self.fs_pause_button.visible = False
+            self.audio_element.pause()
+            self.audio_playing = False
+            self.fs_toggle_current_status()
+            self.page.update()
 
         def fs_resume_podcast(self, e=None):
-            self.fs_pause_button.visible = False
-            self.fs_play_button.visible = True
-            self.resume_podcast()
+            self.fs_pause_button.visible = True
+            self.fs_play_button.visible = False
+            self.audio_element.resume()
+            self.audio_playing = True
+            self.fs_toggle_current_status()
+            self.page.update()
+
+        def fs_toggle_current_status(self):
+            if self.audio_playing:
+                play_button.visible = False
+                pause_button.visible = True
+                audio_container.bgcolor = active_user.main_color
+                audio_container.visible = False
+                max_chars = character_limit(int(page.width))
+                self.name_truncated = truncate_text(self.name, max_chars)
+                currently_playing.content = ft.Text(self.name_truncated, size=16)
+                current_time.content = ft.Text(self.length, color=active_user.font_color)
+                podcast_length.content = ft.Text(self.length)
+                audio_con_artwork_no = random.randint(1, 12)
+                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
+                audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
+                audio_con_art_url_parsed = check_image(audio_con_art_url)
+                self.audio_con_art_url_parsed = audio_con_art_url_parsed
+                audio_container_image_landing.src = audio_con_art_url_parsed
+                audio_container_image_landing.width = 40
+                audio_container_image_landing.height = 40
+                audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                audio_container_image.border_radius = ft.border_radius.all(75)
+                audio_container_image_landing.update()
+                audio_scrubber.active_color = active_user.nav_color2
+                audio_scrubber.inactive_color = active_user.nav_color2
+                audio_scrubber.thumb_color = active_user.accent_color
+                volume_container.bgcolor = active_user.main_color
+                volume_down_icon.icon_color = active_user.accent_color
+                volume_up_icon.icon_color = active_user.accent_color
+                volume_button.icon_color = active_user.accent_color
+                volume_slider.active_color = active_user.nav_color2
+                volume_slider.inactive_color = active_user.nav_color2
+                volume_slider.thumb_color = active_user.accent_color
+                play_button.icon_color = active_user.accent_color
+                pause_button.icon_color = active_user.accent_color
+                seek_button.icon_color = active_user.accent_color
+                currently_playing.color = active_user.font_color
+                # current_time_text.color = active_user.font_color
+                podcast_length.color = active_user.font_color
+                self.page.update()
+            else:
+                pause_button.visible = False
+                play_button.visible = True
+                currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                self.page.update()
 
         def toggle_current_status(self):
             if self.audio_playing:
@@ -1490,6 +1541,11 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
+
+        if current_episode.audio_playing == True:
+            audio_container.visible == True
+        else: 
+            audio_container.visible == False
 
         def open_search(e):
             new_search.searchvalue = search_pods.value
@@ -3760,8 +3816,11 @@ def main(page: ft.Page, session_value=None):
             current_episode.fs_pause_button.icon_color = active_user.accent_color
             fs_seek_button.icon_color = active_user.accent_color
 
+            show_notes_button = ft.OutlinedButton("Show Notes", on_click=lambda x, url=current_episode.url, title=current_episode.name: open_episode_select(page, url, title))
+            fs_show_notes_row = ft.Row(controls=[show_notes_button], alignment=ft.MainAxisAlignment.CENTER)
+
             current_column = ft.Column(controls=[
-                fs_container_image_row, fs_currently_playing, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
+                fs_container_image_row, fs_currently_playing, fs_show_notes_row, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
             ])
 
             current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
