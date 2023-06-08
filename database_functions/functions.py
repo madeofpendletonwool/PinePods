@@ -150,11 +150,9 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                             parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(match.group(3))
                         else:  # It's only MM:SS
                             parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
-                        print('Found duration using duration_string')
                     else:
                         try:
                             parsed_duration = int(duration_string)
-                            print('Found duration using duration_string')
                         except ValueError:
                             print(f'Error parsing duration from duration_string: {duration_string}')
                             parsed_duration = 0

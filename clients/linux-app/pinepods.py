@@ -208,7 +208,10 @@ login_screen = True
 
 audio_playing = False
 active_pod = 'Set at start'
-script_dir = os.path.dirname(os.path.abspath(__file__))
+# two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
+# sys.path.append(two_folders_back)
+initial_script_dir = os.path.dirname(os.path.realpath(__file__))
+script_dir = os.path.dirname(os.path.dirname(initial_script_dir))
 
 def main(page: ft.Page, session_value=None):
 
@@ -1755,9 +1758,9 @@ def main(page: ft.Page, session_value=None):
                 ft.Text(
                     disabled=False,
                     spans=[
-                        ft.TextSpan("If you'd like, you can buy me a coffee"),
+                        ft.TextSpan("If you'd like, you can buy me a coffee "),
                         ft.TextSpan(
-                            " here",
+                            "here",
                             ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
                             url="https://www.buymeacoffee.com/collinscoffee",
                             on_enter=highlight_link,
@@ -1769,10 +1772,12 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             # coffee_contain.padding=padding.only(left=70, right=50)
             coffee_contain.alignment=alignment.bottom_center
-            two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
-            sys.path.append(two_folders_back)
+            # two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
+            # sys.path.append(two_folders_back)
+            coffee_script_dir = os.path.dirname(os.path.realpath(__file__))
+            image_path = os.path.join(coffee_script_dir, "pinepods-appicon.png")
             pinepods_img = ft.Image(
-                src=f"pinepods-appicon.png",
+                src=image_path,
                 width=100,
                 height=100,
                 fit=ft.ImageFit.CONTAIN,
