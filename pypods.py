@@ -1140,6 +1140,9 @@ def main(page: ft.Page, session_value=None):
     def open_user_stats(e):
         page.go("/userstats")
 
+    def open_currently_playing(e):
+        page.go("/playing")
+
     def open_episode_select(page, url, title):
         current_episode.url = url
         current_episode.title = title
@@ -3638,8 +3641,11 @@ def main(page: ft.Page, session_value=None):
             current_episode.fs_pause_button.icon_color = active_user.accent_color
             fs_seek_button.icon_color = active_user.accent_color
 
+            show_notes_button = ft.OutlinedButton("Show Notes", on_click=lambda x, url=current_episode.url, title=current_episode.name: open_episode_select(page, url, title))
+            fs_show_notes_row = ft.Row(controls=[show_notes_button], alignment=ft.MainAxisAlignment.CENTER)
+
             current_column = ft.Column(controls=[
-                fs_container_image_row, fs_currently_playing, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
+                fs_container_image_row, fs_currently_playing, fs_show_notes_row, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
             ])
 
             current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
@@ -4414,7 +4420,7 @@ def main(page: ft.Page, session_value=None):
     )
     ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
     # Create the currently playing container
-    currently_playing = ft.Container(content=ft.Text('test'))
+    currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
     currently_playing.padding=ft.padding.only(bottom=5)
 
     def format_time(time):
@@ -4439,7 +4445,7 @@ def main(page: ft.Page, session_value=None):
     audio_scrubber_column.width = '100%'
     # Image for podcast playing
     audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg", width=40, height=40)
-    audio_container_image = ft.Container(content=audio_container_image_landing)
+    audio_container_image = ft.Container(content=audio_container_image_landing, on_click=open_currently_playing)
     audio_container_image.border_radius = ft.border_radius.all(25)
     currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
