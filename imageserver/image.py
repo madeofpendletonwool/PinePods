@@ -23,7 +23,7 @@ def open_image(file):
             return output.getvalue()
     except UnidentifiedImageError:
         print("Unidentified image, using default.")
-        with Image.open('/pinepods/images/pinepods-logo.png') as image:
+        with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
             output = io.BytesIO()
             image.save(output, format='JPEG')
             return output.getvalue()
@@ -36,7 +36,7 @@ def optimize_image(content):
                 return future.result(timeout=1)  # set timeout to 1 second
             except TimeoutError:
                 print("Image processing took too long, using default.")
-                with Image.open('/pinepods/images/pinepods-logo.png') as image:
+                with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
                     output = io.BytesIO()
                     image.save(output, format='JPEG')
                     return output.getvalue()
