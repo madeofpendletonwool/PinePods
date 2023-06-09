@@ -11,6 +11,8 @@ import io
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from PIL import UnidentifiedImageError
 
+sys.path.append('/pinepods')
+
 def open_image(file):
     try:
         with Image.open(file) as image:
@@ -21,7 +23,7 @@ def open_image(file):
             return output.getvalue()
     except UnidentifiedImageError:
         print("Unidentified image, using default.")
-        with Image.open('default.jpg') as image:
+        with Image.open('images/pinepods-logo.png') as image:
             output = io.BytesIO()
             image.save(output, format='JPEG')
             return output.getvalue()
@@ -34,7 +36,7 @@ def optimize_image(content):
                 return future.result(timeout=1)  # set timeout to 1 second
             except TimeoutError:
                 print("Image processing took too long, using default.")
-                with Image.open('default.jpg') as image:
+                with Image.open('images/pinepods-logo.png') as image:
                     output = io.BytesIO()
                     image.save(output, format='JPEG')
                     return output.getvalue()
