@@ -8,15 +8,37 @@ import sys
 from werkzeug.datastructures import Headers
 from PIL import Image
 import io
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from PIL import UnidentifiedImageError
 
-def optimize_image(content):
-    with io.BytesIO(content) as f:
-        with Image.open(f) as image:
+def open_image(file):
+    try:
+        with Image.open(file) as image:
             if image.mode == 'RGBA' or image.mode == 'P':
                 image = image.convert('RGB')
             output = io.BytesIO()
             image.save(output, format='JPEG', optimize=True, quality=50) # Compress and save the image
             return output.getvalue()
+    except UnidentifiedImageError:
+        print("Unidentified image, using default.")
+        with Image.open('default.jpg') as image:
+            output = io.BytesIO()
+            image.save(output, format='JPEG')
+            return output.getvalue()
+
+def optimize_image(content):
+    with io.BytesIO(content) as f:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(open_image, f)
+            try:
+                return future.result(timeout=1)  # set timeout to 1 second
+            except TimeoutError:
+                print("Image processing took too long, using default.")
+                with Image.open('default.jpg') as image:
+                    output = io.BytesIO()
+                    image.save(output, format='JPEG')
+                    return output.getvalue()
+
 
 
 app = Flask(__name__)
