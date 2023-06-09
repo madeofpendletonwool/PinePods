@@ -438,6 +438,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume = 1
                 self.volume_timer = None
                 self.volume_changed = False
+                self.audio_con_art_url_parsed = None
                 self.loading_audio = False
                 self.name_truncated = 'placeholder'
                 self.fs_play_button = ft.IconButton(
