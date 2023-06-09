@@ -552,6 +552,7 @@ def main(page: ft.Page, session_value=None):
                     page.snack_bar.open = True
                     page.overlay.remove(progress_stack)
                     self.audio_element.release()
+                    self.loading_audio = False
                     self.page.update()
                     return
 

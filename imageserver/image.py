@@ -23,17 +23,14 @@ app = Flask(__name__)
 CORS(app)
 cache = Cache(app, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': '/pinepods/cache'})
 
-
 @app.route('/proxy')
 def proxy():
     url = request.args.get('url')
     if url.startswith('http'):
-        # handle remote URL
         headers = {}
         if 'Range' in request.headers:
             headers['Range'] = request.headers['Range']
         
-       
         # Check if the URL is an audio or image file
         if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
             # Try to get the response from cache
@@ -42,34 +39,31 @@ def proxy():
                 response = requests.get(url, headers=headers)
                 # Cache the entire audio file content
                 cache.set(url, response.content)
-        # Check if the URL is an image file
+            content = response
         elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
-            # Try to get the response from cache
             response = cache.get(url)
             if response is None:
                 try:
                     response = requests.get(url, headers=headers, timeout=10)  # set a timeout
+                    response = optimize_image(response.content)
+                    cache.set(url, response)
                 except Timeout:
                     print(f'The request for {url} timed out')
                     return send_file('/pinepods/images/pinepods-logo.jpeg', mimetype='image/jpeg')
+            content = response
         else:
             try:
                 response = requests.get(url, headers=headers, timeout=1)  # set a timeout
+                content = response.content
             except Timeout:
                 print(f'The request for {url} timed out')
                 return Response('Request timeout', status=408)  # return a 408 Timeout response
-
-
-        content = response.content
-        headers = response.headers
     else:
-        # handle local file path
         if not os.path.isfile(url):
             return Response('File not found', status=404)
         with open(url, 'rb') as f:
             content = f.read()
-        headers = {}
-
+            
     headers = Headers({
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -79,6 +73,7 @@ def proxy():
     })
 
     return Response(content, status=206 if 'Range' in request.headers else 200, headers=headers)
+
 
 if __name__ == '__main__':
     app.run()
