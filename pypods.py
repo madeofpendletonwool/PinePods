@@ -541,6 +541,7 @@ def main(page: ft.Page, session_value=None):
                         duration = self.audio_element.get_duration()
                         if duration > 0:
                             media_length = duration
+                            self.media_length = media_length
                             break
                     except Exception as e:
                         pass
