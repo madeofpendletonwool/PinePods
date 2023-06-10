@@ -627,4 +627,14 @@ def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw):
         print("Error resetting password:", response.status_code)
         return None
 
+def call_clear_guest_data(url, headers):
+    response = requests.post(url + "/clear_guest_data", headers=headers)
+    if response.status_code == 200:
+        return response.json()["message"]
+    else:
+        print("Error clearing guest data:", response.status_code)
+        return None
+
+
+
 

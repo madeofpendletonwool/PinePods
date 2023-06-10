@@ -555,7 +555,6 @@ def main(page: ft.Page, session_value=None):
                     page.snack_bar.open = True
                     page.overlay.remove(progress_stack)
                     self.audio_element.release()
-                    self.loading_audio = False
                     self.page.update()
                     return
 
@@ -598,8 +597,9 @@ def main(page: ft.Page, session_value=None):
                     time.sleep(1)
 
                     if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
-                        self.record_listen_duration()
-                        self.last_listen_duration_update = datetime.datetime.now()
+                        if self.audio_playing == True:
+                            self.record_listen_duration()
+                            self.last_listen_duration_update = datetime.datetime.now()
 
 
 
@@ -3739,7 +3739,6 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
-            self.auth_enabled = 0
 
     # New User Stuff ----------------------------
 
@@ -4071,13 +4070,13 @@ def main(page: ft.Page, session_value=None):
                 self.fullname = login_details['Fullname']
                 self.username = login_details['Username']
                 self.email = login_details['Email']
-                if retain_session:
-                    if page.web:
-                        print('Web version currently doesnt retain sessions')
-                    else:
-                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
-                        if session_token:
-                            save_session_id_to_file(session_token)
+                # if retain_session:
+                #     if page.web:
+                #         print('Web version currently doesnt retain sessions')
+                #     else:
+                #         session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                #         if session_token:
+                #             save_session_id_to_file(session_token)
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
@@ -4102,6 +4101,10 @@ def main(page: ft.Page, session_value=None):
                 active_user.user_id = 1
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
+
+        def clear_guest(self, e):
+            if self.user_id == 1:
+                api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
@@ -4640,6 +4643,7 @@ def main(page: ft.Page, session_value=None):
         page.update() 
 
     page.on_resize = page_checksize
+    page.on_disconnect = active_user.clear_guest
 
 # Starting Page Layout
     page.theme_mode = "dark"

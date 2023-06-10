@@ -541,6 +541,13 @@ async def api_reset_password_verify_route(payload: ResetPasswordPayloadVerify, c
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": message}
 
+@app.post("/api/data/clear_guest_data")
+async def api_clear_guest_data(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    message = database_functions.functions.clear_guest_data(cnx)
+    if message is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": message}
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -737,8 +737,9 @@ def main(page: ft.Page, session_value=None):
                     time.sleep(1)
 
                     if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
-                        self.record_listen_duration()
-                        self.last_listen_duration_update = datetime.datetime.now()
+                        if self.audio_playing == True:
+                            self.record_listen_duration()
+                            self.last_listen_duration_update = datetime.datetime.now()
 
 
 
@@ -4230,6 +4231,11 @@ def main(page: ft.Page, session_value=None):
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
 
+        def clear_guest(self, e):
+            if self.user_id == 1:
+                api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
+
+
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
             active_theme = api_functions.functions.call_get_theme(app_api.url, app_api.headers, self.user_id)
@@ -4787,6 +4793,7 @@ def main(page: ft.Page, session_value=None):
         page.update() 
 
     page.on_resize = page_checksize
+    page.on_disconnect = active_user.clear_guest
 
 # Starting Page Layout
     page.theme_mode = "dark"
