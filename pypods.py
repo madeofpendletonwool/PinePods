@@ -706,6 +706,7 @@ def main(page: ft.Page, session_value=None):
                 audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
+                self.audio_con_art_url_parsed = audio_con_art_url_parsed
                 audio_container_image_landing.src = audio_con_art_url_parsed
                 audio_container_image_landing.width = 40
                 audio_container_image_landing.height = 40
@@ -1370,6 +1371,11 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
+
+        if current_episode.audio_playing == True:
+            audio_container.visible == True
+        else: 
+            audio_container.visible == False
 
         def open_search(e):
             new_search.searchvalue = search_pods.value
@@ -3584,6 +3590,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/playing" or page.route == "/playing":
             audio_container.visible = False
+            print(current_episode.audio_con_art_url_parsed)
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)

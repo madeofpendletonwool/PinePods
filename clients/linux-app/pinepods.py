@@ -3757,6 +3757,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/playing" or page.route == "/playing":
             audio_container.visible = False
+            print(current_episode.audio_con_art_url_parsed)
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)
