@@ -775,16 +775,16 @@ def main(page: ft.Page, session_value=None):
 
             # self.page.update()
 
-        def seek_back_episode(self):
-            seconds = 10
-            time = self.audio_element.get_current_position()
-            seek_position = time - 10000
-            self.audio_element.seek(seek_position)
-
         def seek_episode(self):
             seconds = 10
             time = self.audio_element.get_current_position()
             seek_position = time + 10000
+            self.audio_element.seek(seek_position)
+
+        def seek_back_episode(self):
+            seconds = 10
+            time = self.audio_element.get_current_position()
+            seek_position = time - 10000
             self.audio_element.seek(seek_position)
 
         def time_scrub(self, time):

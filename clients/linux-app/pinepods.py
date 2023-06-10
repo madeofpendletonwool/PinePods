@@ -760,26 +760,6 @@ def main(page: ft.Page, session_value=None):
                     self.audio_playing = False
                     self.toggle_current_status()
 
-        def _monitor_audio(self):
-            while True:
-                state = self.player.get_state()
-                if state == vlc.State.Ended:
-                    self.thread = None
-                    break
-                time.sleep(1)
-
-        def pause_episode(self, e=None):
-            self.audio_element.pause()
-            self.audio_playing = False
-            self.toggle_current_status()
-            self.page.update()
-
-        def resume_podcast(self, e=None):
-            self.audio_element.resume()
-            self.audio_playing = True
-            self.toggle_current_status()
-            self.page.update()
-
         def pause_episode(self, e=None):
             self.audio_element.pause()
             self.audio_playing = False
