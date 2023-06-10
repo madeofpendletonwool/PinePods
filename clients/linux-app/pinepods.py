@@ -4495,7 +4495,8 @@ def main(page: ft.Page, session_value=None):
                 
                 return gravatar_url
 
-            gravatar_url = get_gravatar_url(active_user.email)
+            if active_user.user_id is not 1:
+                gravatar_url = get_gravatar_url(active_user.email)
             active_user.get_initials()
             
             user_content = ft.Image(src=gravatar_url, width=42, height=45, border_radius=8) if gravatar_url else Text(
