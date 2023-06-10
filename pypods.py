@@ -1,13 +1,13 @@
 # Various flet imports
 import flet as ft
 # from flet import *
-from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
-import app_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
+import app_functions.functions
 # Others
 import time
 import mysql.connector
@@ -17,11 +17,13 @@ import re
 import sys
 import urllib.request
 import requests
+from requests.exceptions import RequestException, MissingSchema
 from functools import partial
 import os
 import requests
 import time
 import random
+import string
 import datetime
 import html2text
 import threading
@@ -29,11 +31,14 @@ from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
 import secrets
+import appdirs
 import logging
 import hashlib
+import keyring
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
-import string
-from base64 import urlsafe_b64decode
 
 
 # Wait for Client API Server to start
@@ -65,37 +70,32 @@ else:
 
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-@app.route('/preload/<path:url>')
-def preload_audio_file(url):
-    # Try to get the response from cache
-    if reverse_proxy == "True":
-        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-    else:
-        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+def preload_audio_file(url, proxy_url, cache):
+    response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
-    return ""
 
-@app.route('/cached_audio/<path:url>')
-def serve_cached_audio(url):
-    content = cache.get(url)
+def initialize_audio_routes(app, proxy_url):
+    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+    @app.route('/preload/<path:url>')
+    def route_preload_audio_file(url):
+        preload_audio_file(url, proxy_url, cache)
+        return ""
 
+    @app.route('/cached_audio/<path:url>')
+    def serve_cached_audio(url):
+        content = cache.get(url)
 
+        if content is not None:
+            response = Response(content, content_type='audio/mpeg')
+            return response
+        else:
+            return "", 404
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+    return cache
 
 # Make login Screen start on boot
 login_screen = True
@@ -361,7 +361,7 @@ def main(page: ft.Page, session_value=None):
 
         self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
 
-        if self_service_status == 0:
+        if not self_service_status:
             self_service_dlg = ft.AlertDialog(
                 modal=True,
                 title=ft.Text(f"User Creation"),
@@ -377,7 +377,7 @@ def main(page: ft.Page, session_value=None):
             self_service_dlg.open = True
             self.page.update()
 
-        elif self_service_status == 1:
+        elif self_service_status:
             new_user = User(page)
 
             self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
@@ -1711,7 +1711,7 @@ def main(page: ft.Page, session_value=None):
                             elevation=15,
                             content=ft.Container(
                                 width=550,
-                                height=620,
+                                height=650,
                                 padding=padding.all(30),
                                 gradient=GradientGenerator(
                                     "#2f2937", "#251867"
@@ -1825,7 +1825,7 @@ def main(page: ft.Page, session_value=None):
                         elevation=15,
                         content=ft.Container(
                             width=550,
-                            height=620,
+                            height=650,
                             padding=ft.padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"

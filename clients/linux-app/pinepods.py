@@ -2,8 +2,6 @@
 import flet as ft
 # from flet import *
 from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
-
-
 # Internal Functions
 import internal_functions.functions
 import Auth.Passfunctions
@@ -2759,7 +2757,7 @@ def main(page: ft.Page, session_value=None):
                 pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
                 pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                 pod_list_ep_count = 'Start Searching!'
-                pod_list_website = "https://github.com/madeofpendletonwool/pypods"
+                pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
                 pod_list_feed = ""
                 pod_list_author = "PinePods"
                 pod_list_categories = ""
@@ -2771,7 +2769,7 @@ def main(page: ft.Page, session_value=None):
                 # Defining the attributes of each podcast that will be displayed on screen
                 pod_list_title_display = ft.Text(pod_list_title)
                 pod_list_desc_display = ft.Text(pod_list_desc)
-                # Episode Count and subtitl
+                # Episode Count and subtitle
                 pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
                 pod_list_ep_count_display = ft.Text(pod_list_ep_count)
                 pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
@@ -2786,9 +2784,6 @@ def main(page: ft.Page, session_value=None):
                 pod_list_column = ft.Column(
                     controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
                 )
-                # pod_list_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
                 pod_list_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
                     ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
@@ -2797,7 +2792,6 @@ def main(page: ft.Page, session_value=None):
                 pod_list_row.padding=padding.only(left=70, right=50)
                 pod_list_rows.append(pod_list_row)
                 pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
-                # pod_list_number += 1
 
             else:
 
@@ -3097,10 +3091,6 @@ def main(page: ft.Page, session_value=None):
                 saved_ep_column = ft.Column(
                     controls=[saved_entry_title, saved_entry_description, saved_entry_released]
                 )
-                # saved_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[saved_entry_artwork_url, saved_ep_column, saved_ep_play_button]
-                # )
                 saved_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[saved_ep_column, saved_ep_play_button]),
