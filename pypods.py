@@ -775,6 +775,12 @@ def main(page: ft.Page, session_value=None):
 
             # self.page.update()
 
+        def seek_back_episode(self):
+            seconds = 10
+            time = self.audio_element.get_current_position()
+            seek_position = time - 10000
+            self.audio_element.seek(seek_position)
+
         def seek_episode(self):
             seconds = 10
             time = self.audio_element.get_current_position()
@@ -1421,6 +1427,8 @@ def main(page: ft.Page, session_value=None):
         top_row_container = ft.Container(content=top_row, expand=True)
         top_row_container.padding=ft.padding.only(left=60)
         top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+        if current_episode.audio_playing == True:
+            audio_container.visible = True
         page.update()
 
         # page.views.clear()
@@ -1613,14 +1621,14 @@ def main(page: ft.Page, session_value=None):
 
             user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers, active_user.user_id)
 
-            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
-            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
-            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to')
-            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
-            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
-            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database')
-            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved')
-            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded')
+            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=20, weight="bold")
+            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}', size=16)
+            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to', size=16)
+            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening', size=16)
+            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added', size=16)
+            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database', size=16)
+            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved', size=16)
+            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded', size=16)
             stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_added_display, eps_saved_display, eps_downloaded_display])
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
@@ -1640,9 +1648,9 @@ def main(page: ft.Page, session_value=None):
                 ft.Text(
                     disabled=False,
                     spans=[
-                        ft.TextSpan("If you'd like, you can buy me a coffee"),
+                        ft.TextSpan("If you'd like, you can buy me a coffee "),
                         ft.TextSpan(
-                            " here",
+                            "here",
                             ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
                             url="https://www.buymeacoffee.com/collinscoffee",
                             on_enter=highlight_link,
@@ -2070,7 +2078,7 @@ def main(page: ft.Page, session_value=None):
             user_row_container.padding=padding.only(left=70, right=50)
 
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=16)
+            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=16)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
@@ -2619,7 +2627,7 @@ def main(page: ft.Page, session_value=None):
                 pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
                 pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                 pod_list_ep_count = 'Start Searching!'
-                pod_list_website = "https://github.com/madeofpendletonwool/pypods"
+                pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
                 pod_list_feed = ""
                 pod_list_author = "PinePods"
                 pod_list_categories = ""
@@ -3616,6 +3624,7 @@ def main(page: ft.Page, session_value=None):
             )
             fs_ep_audio_controls = ft.Row(controls=[fs_seek_back_button, current_episode.fs_play_button, current_episode.fs_pause_button, fs_seek_button], alignment=ft.MainAxisAlignment.CENTER)
             fs_scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length], alignment=ft.MainAxisAlignment.CENTER)
+            fs_scrub_bar_row.visible = True
             fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], alignment=ft.MainAxisAlignment.CENTER)
             fs_volume_container = ft.Container(
                     height=35,
@@ -3688,7 +3697,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def open_repo(e):
-        page.launch_url('https://github.com/madeofpendletonwool/pypods')
+        page.launch_url('https://github.com/madeofpendletonwool/PinePods')
 
     page.banner = ft.Banner(
         bgcolor=ft.colors.BLUE,
@@ -3881,7 +3890,7 @@ def main(page: ft.Page, session_value=None):
             self.email_password = password
 
             subject = "Test email from pinepods"
-            body = "If you got this your email settings are working! Great Job! Don't forget to git save."
+            body = "If you got this your email settings are working! Great Job! Don't forget to hit save."
             to_email = active_user.email
             email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
 
@@ -4532,11 +4541,6 @@ def main(page: ft.Page, session_value=None):
         
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
     audio_container.visible = False
-
-
-    # Various rows and columns for layout
-    audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
-    audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url

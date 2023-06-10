@@ -4007,6 +4007,80 @@ def main(page: ft.Page, session_value=None):
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
 
+        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username=None, password=None):
+            def close_email_dlg(e):
+                send_email_dlg.open = False
+                page.update()
+
+            pr = ft.ProgressRing()
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
+            page.update()
+
+            def save_email_settings(e):
+                encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+                encryption_key_bytes = base64.b64decode(encryption_key)
+                api_functions.functions.call_save_email_settings(
+                    app_api.url, 
+                    app_api.headers, 
+                    self.server_name, 
+                    self.server_port, 
+                    self.from_email, 
+                    self.send_mode, 
+                    self.encryption, 
+                    self.auth_required, 
+                    self.email_username, 
+                    self.email_password, 
+                    encryption_key_bytes
+                )
+                send_email_dlg.open = False
+                page.update()
+
+
+            self.server_name = server_name
+            self.server_port = int(server_port)
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+
+            subject = "Test email from pinepods"
+            body = "If you got this your email settings are working! Great Job! Don't forget to hit save."
+            to_email = active_user.email
+            email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
+
+            page.overlay.remove(progress_stack)
+
+            send_email_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Email Send Test"),
+            content=ft.Column(controls=[
+            ft.Text(f"Test email send result: {email_result}", selectable=True),
+            ft.Text(f'If the email sent successfully be sure to hit save. This will save your settings to the database for later use with resetting passwords.', selectable=True),
+                ], tight=True),
+            actions=[
+            ft.TextButton("Save", on_click=save_email_settings),
+            ft.TextButton("Close", on_click=close_email_dlg)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+            )
+            page.dialog = send_email_dlg
+            send_email_dlg.open = True
+            page.update()
+
+        def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
+            self.server_name = server_name
+            self.server_port = server_port
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+            api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
+
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
