@@ -97,6 +97,7 @@ def initialize_audio_routes(app, proxy_url):
 
     return cache
 
+cache = initialize_audio_routes(app, proxy_url)
 # Make login Screen start on boot
 login_screen = True
 
