@@ -324,33 +324,31 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Issue with web search bar may be due to appbar (This was a rabbit hole. Turns out this was due to the way the top bar was created prior to the routes. I needed to rebuild how searching is done, but this is now fixed)
 - [x] Occasionally podcasts will put seconds value in mins (This was a bug due to duration parsing. Code fixed, everything now displays properly)
 - [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close) Edit: I actually think this is truly fixed now. I rebuilt the way this works using async, no problems so far
+- [x] Rebuild image Pulling process. The current one is just unworkable (It runs a lot better now. It spawns 4 workers to handle image gathering. Though it still isn't perfect, it hangs a bit occationally but for the time being it's totally usable)
+- [x] Layout Settings page better
 
 ### Pre-beta version
 
 - [ ] Refresh changes on readme
-- [ ] Full Screen Currently Playing Page
-- [ ] Rebuild image Pulling process. The current one is just unworkable
-
-### To be added after beta version
-
+- [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
+- [ ] Rework local images to run through the image proxy
 - [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
+
+### To be added after beta version (Listed in order they will be implemented)
+
 - [ ] Page refreshing to handle adding and removing of things better
+- [ ] Reload not needed to add and remove episodes from pages
 - [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Reload not needed to add and remove episodes from pages
 - [ ] Add Itunes podcast API
-- [ ] Layout Settings page better
 - [ ] Rotating currently playing
-- [ ] Customizable login screens
 - [ ] Add highlight to indicate which page you're on
+- [ ] Customizable login screens
 - [ ] Allow for episodes to be played without being added
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
+- [ ] Option to run the client app with local config. Not connected to a server
 - [ ] MFA Logins - Github integration and local MFA (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
-- [ ] Option to run the client app with local config. Not connected to a server
-- [ ] Add verification before deleting user
-- [ ] Rating System
-- [ ] Sharing System
 - [ ] Linux App    
   - [ ] Flatpak
   - [ ] Snap
@@ -359,9 +357,33 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [ ] Android App
   - [ ] IOS App
   - [ ] Packaging and automation
+- [ ] Add verification before deleting user
+- [ ] Rating System
+- [ ] Sharing System
 
 ## Screenshots :camera:
 
+Main Homepage with podcasts displayed
 <p align="center">
-  <img src="./images/podlist.png">
+  <img src="./images/homethemed.png">
+</p>
+
+Loads of themes!
+<p align="center">
+  <img src="./images/home.png">
+</p>
+
+Full Podcast Management
+<p align="center">
+  <img src="./images/podpage.png">
+</p>
+
+Browse through episodes
+<p align="center">
+  <img src="./images/podview.png">
+</p>
+
+Markdown and HTML display compatible
+<p align="center">
+  <img src="./images/markdownview.png">
 </p>
