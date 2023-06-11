@@ -636,5 +636,16 @@ def call_clear_guest_data(url, headers):
         return None
 
 
+def call_get_episode_metadata(url, headers, episode_id, user_id):
+    data = {
+        "episode_id": episode_id,
+        "user_id": user_id,
+    }
+    response = requests.post(url + f"/get_episode_metadata", headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["episode"]
+    else:
+        print("Error fetching episode metadata:", response.status_code)
+        return None
 
 

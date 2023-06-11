@@ -4348,7 +4348,7 @@ def main(page: ft.Page, session_value=None):
                 return gravatar_url
 
             gravatar_url = None
-            if active_user.user_id is not 1:
+            if active_user.user_id != 1:
                 gravatar_url = get_gravatar_url(active_user.email)
             active_user.get_initials()
             

@@ -203,7 +203,7 @@ def initialize_audio_routes(app, proxy_url):
 
 # Make login Screen start on boot
 login_screen = True
-
+user_home_dir = os.path.expanduser("~")
 audio_playing = False
 active_pod = 'Set at start'
 # two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
@@ -468,6 +468,80 @@ def main(page: ft.Page, session_value=None):
         global clicked_podcast
         clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website, categories=pod_categories, episode_count=pod_episode_count)
         return clicked_podcast
+
+    def save_episode_metadata(episode, user_home_dir):
+        # The directory where the metadata file will be stored
+        metadata_dir = os.path.join(user_home_dir, '.pinepods', 'metadata')
+        
+        # Create the directory if it doesn't already exist
+        os.makedirs(metadata_dir, exist_ok=True)
+        
+        # The filename will be based on the episode's ID
+        filename = f'{episode["EpisodeID"]}.json'
+        file_path = os.path.join(metadata_dir, filename)
+        
+        # Save the metadata to the file
+        with open(file_path, 'w') as f:
+            json.dump(episode, f)
+
+    # def download_local_episode_list(cnx, user_id, user_home_dir):
+    #     cursor = cnx.cursor(dictionary=True)
+
+    #     # ... your existing code here ...
+
+    #     rows = cursor.fetchall()
+
+    #     cursor.close()
+
+    #     if rows:
+    #         for row in rows:
+    #             save_episode_metadata(row, user_home_dir)
+                
+
+    #     return rows
+    
+    def download_episode_file(episode_url, user_home_dir):
+        download_dir = os.path.join(user_home_dir, '.pypods', 'downloads')
+        os.makedirs(download_dir, exist_ok=True)
+        
+        response = requests.get(episode_url, stream=True)
+        
+        # The filename will be the last part of the URL
+        filename = episode_url.split('/')[-1]
+        file_path = os.path.join(download_dir, filename)
+        
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:  # filter out keep-alive new chunks
+                    f.write(chunk)
+
+        return file_path
+
+    def locally_download_episode(episode_id, user_id, user_home_dir):
+        # First, retrieve the episode's metadata from the database
+        episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, episode_id, active_user.user_id)
+        
+        # Next, download the actual episode data (the audio file)
+        # You'll need to write this function yourself. It would use something like 
+        # requests.get() to download the file and write it to disk.
+        download_episode_file(episode["EpisodeURL"], user_home_dir)
+
+        # Store the episode's metadata locally
+        save_episode_metadata(episode, user_home_dir)
+
+    def load_local_downloaded_episodes(user_id):
+        user_home_dir = os.path.expanduser("~")
+        downloads_dir = os.path.join(user_home_dir, '.pinepods', 'downloads')
+        json_file_path = os.path.join(downloads_dir, f'{user_id}_downloads.json')
+
+        try:
+            with open(json_file_path, 'r') as file:
+                downloaded_episodes = json.load(file)
+        except FileNotFoundError:
+            print(f"No downloaded episodes found for user {user_id}")
+            downloaded_episodes = []
+
+        return downloaded_episodes
 
     class Podcast:
         def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None, categories=None, episode_count=None):
@@ -948,7 +1022,6 @@ def main(page: ft.Page, session_value=None):
 
         def delete_pod(self):
             api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
-
 
         def queue_pod(self, url):
             self.queue.append(url)
@@ -1699,7 +1772,8 @@ def main(page: ft.Page, session_value=None):
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: locally_download_episode(url, title, page)),
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
@@ -3256,6 +3330,9 @@ def main(page: ft.Page, session_value=None):
 
             # Get Pod info
             download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
+            print(download_episode_list)
+            download_local_episode_list = load_local_downloaded_episodes(active_user.user_id)
+            print(f'Here starts the local list: {download_local_episode_list}')
 
             if download_episode_list is None:
                 download_ep_number = 1
@@ -4496,7 +4573,7 @@ def main(page: ft.Page, session_value=None):
                 return gravatar_url
 
             gravatar_url = None
-            if active_user.user_id is not 1:
+            if active_user.user_id != 1:
                 gravatar_url = get_gravatar_url(active_user.email)
             active_user.get_initials()
             
