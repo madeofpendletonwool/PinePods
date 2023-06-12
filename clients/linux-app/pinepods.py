@@ -517,9 +517,9 @@ def main(page: ft.Page, session_value=None):
 
         return file_path
 
-    def locally_download_episode(episode_id, user_id, user_home_dir):
+    def locally_download_episode(url, title, user_id, user_home_dir, page):
         # First, retrieve the episode's metadata from the database
-        episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, episode_id, active_user.user_id)
+        episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title, active_user.user_id)
         
         # Next, download the actual episode data (the audio file)
         # You'll need to write this function yourself. It would use something like 
@@ -1773,7 +1773,7 @@ def main(page: ft.Page, session_value=None):
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork, page)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: locally_download_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: locally_download_episode(url, title, active_user.user_id, user_home_dir, page)),
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )

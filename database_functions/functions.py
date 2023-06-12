@@ -1701,8 +1701,19 @@ def clear_guest_data(cnx):
 
     return "Guest user data cleared successfully"
 
-def get_episode_metadata(cnx, episode_id, user_id):
+def get_episode_metadata(cnx, url, title, user_id):
     cursor = cnx.cursor(dictionary=True)
+
+    query = ("SELECT EpisodeID FROM Episodes "
+             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
+    cursor.execute(query, (url, title))
+    episode_id = cursor.fetchone()
+
+    if episode_id is None:
+        # Episode not found
+        return False
+
+    episode_id = episode_id[0]
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
