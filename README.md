@@ -365,25 +365,25 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 Main Homepage with podcasts displayed
 <p align="center">
-  <img src="./images/homethemed.png">
+  <img src="./images/screenshots/homethemed.png">
 </p>
 
 Loads of themes!
 <p align="center">
-  <img src="./images/home.png">
+  <img src="./images/screenshots/home.png">
 </p>
 
 Full Podcast Management
 <p align="center">
-  <img src="./images/podpage.png">
+  <img src="./images/screenshots/podpage.png">
 </p>
 
 Browse through episodes
 <p align="center">
-  <img src="./images/podview.png">
+  <img src="./images/screenshots/podview.png">
 </p>
 
 Markdown and HTML display compatible
 <p align="center">
-  <img src="./images/markdownview.png">
+  <img src="./images/screenshots/markdownview.png">
 </p>
