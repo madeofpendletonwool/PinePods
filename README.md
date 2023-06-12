@@ -333,6 +333,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] Rework local images to run through the image proxy
 - [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
+- [ ] API documentation
 
 ### To be added after beta version (Listed in order they will be implemented)
 
