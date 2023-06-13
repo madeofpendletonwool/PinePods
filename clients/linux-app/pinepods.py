@@ -524,6 +524,7 @@ def main(page: ft.Page, session_value=None):
         # Next, download the actual episode data (the audio file)
         # You'll need to write this function yourself. It would use something like 
         # requests.get() to download the file and write it to disk.
+        print(episode)
         download_episode_file(episode["EpisodeURL"], user_home_dir)
 
         # Store the episode's metadata locally
