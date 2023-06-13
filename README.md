@@ -340,6 +340,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Page refreshing to handle adding and removing of things better
 - [ ] Reload not needed to add and remove episodes from pages
 - [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
+- [ ] Mass downloading episodes. Entire podcast at once
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Add Itunes podcast API
 - [ ] Rotating currently playing
