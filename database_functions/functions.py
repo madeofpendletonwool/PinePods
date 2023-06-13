@@ -1715,7 +1715,7 @@ def get_episode_metadata(cnx, url, title, user_id):
         return False
 
     print(episode_id)
-    episode_id = episode_id[0]
+    episode_id = episode_id['EpisodeID']
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
