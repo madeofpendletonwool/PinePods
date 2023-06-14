@@ -645,6 +645,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume_changed = False
                 self.audio_con_art_url_parsed = None
                 self.loading_audio = False
+                self.local = False
                 self.name_truncated = 'placeholder'
                 # self.episode_name = self.name
                 if url is None or name is None:
@@ -688,6 +689,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume_timer = None
                 self.volume_changed = False
                 self.loading_audio = False
+                self.local = False
                 self.name_truncated = 'placeholder'
                 self.fs_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_ARROW,
@@ -727,13 +729,17 @@ def main(page: ft.Page, session_value=None):
                 if self.audio_element:
                     self.audio_element.release()
 
-                # Preload the audio file and cache it
-                global cache
-                preload_audio_file(self.url, proxy_url, cache)
+                if self.local == False:
+                    # Preload the audio file and cache it
+                    global cache
+                    preload_audio_file(self.url, proxy_url, cache)
 
-                self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
-                page.overlay.append(self.audio_element)
-                # self.audio_element.play()
+                    self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+                    page.overlay.append(self.audio_element)
+                    # self.audio_element.play()
+                else:
+                    self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+                    page.overlay.append(self.audio_element) 
 
                 self.audio_playing = True
                 page.update()
@@ -786,6 +792,7 @@ def main(page: ft.Page, session_value=None):
                 page.overlay.remove(progress_stack)
                 page.update()
                 self.loading_audio = False
+                self.local = False
                 
                 # convert milliseconds to seconds
                 total_seconds = media_length // 1000
@@ -3271,8 +3278,8 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
                             ]) 
                     else:
-                        saved_ep_dur = seconds_to_time(home_ep_duration)
-                        saved_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
+                        saved_ep_dur = seconds_to_time(saved_ep_duration)
+                        saved_dur_display = ft.Text(f'Episode Duration: {saved_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             saved_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
@@ -3559,14 +3566,14 @@ def main(page: ft.Page, session_value=None):
                         icon_color=active_user.accent_color,
                         icon_size=40,
                         tooltip="Play Episode",
-                        on_click=lambda x, url=local_download_ep_local_url, title=local_download_ep_title, artwork=local_download_ep_artwork: play_selected_episode(url, title, artwork)
+                        on_click=lambda x, url=local_download_ep_local_url, title=local_download_ep_title, artwork=local_download_ep_artwork: play_selected_local_episode(url, title, artwork)
                     )
                     local_download_ep_resume_button = ft.IconButton(
                         icon=ft.icons.PLAY_CIRCLE,
                         icon_color=active_user.accent_color,
                         icon_size=40,
                         tooltip="Resume Episode",
-                        on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title, artwork=local_download_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
+                        on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title, artwork=local_download_ep_artwork, listen_duration=listen_duration: resume_selected_local_episode(url, title, artwork, listen_duration)
                     )
                     local_download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
@@ -3591,8 +3598,8 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
                             ]) 
                     else:
-                        local_download_ep_dur = seconds_to_time(home_ep_duration)
-                        local_download_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
+                        local_download_ep_dur = seconds_to_time(local_download_ep_duration)
+                        local_download_dur_display = ft.Text(f'Episode Duration: {local_download_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             local_download_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
@@ -3777,8 +3784,8 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_entry_progress, ft.Row(controls=[queue_ep_play_button, queue_ep_resume_button, queue_popup_button])]),
                             ]) 
                     else:
-                        queue_ep_dur = seconds_to_time(home_ep_duration)
-                        queue_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
+                        queue_ep_dur = seconds_to_time(queue_ep_duration)
+                        queue_dur_display = ft.Text(f'Episode Duration: {queue_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             queue_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
@@ -4900,6 +4907,20 @@ def main(page: ft.Page, session_value=None):
         current_episode.url = url
         current_episode.name = title
         current_episode.artwork = artwork
+        current_episode.play_episode(listen_duration=listen_duration)
+
+    def play_selected_local_episode(url, title, artwork):
+        current_episode.url = url
+        current_episode.name = title
+        current_episode.artwork = artwork
+        current_episode.local = True
+        current_episode.play_episode()
+
+    def resume_selected_local_episode(url, title, artwork, listen_duration):
+        current_episode.url = url
+        current_episode.name = title
+        current_episode.artwork = artwork
+        current_episode.local = True
         current_episode.play_episode(listen_duration=listen_duration)
 
 
