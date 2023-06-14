@@ -4731,7 +4731,7 @@ def main(page: ft.Page, session_value=None):
                     bgcolor=active_user.tertiary_color,
                     alignment=alignment.center,
                     content=user_content,
-                    on_hover=display_hello,
+                    # on_hover=display_hello,
                     on_click=open_user_stats
                 ),
                     ft.Divider(height=5, color="transparent"),
