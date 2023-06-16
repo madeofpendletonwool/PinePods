@@ -42,6 +42,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
 from io import BytesIO
 import pyotp
+import qrcode
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -433,7 +434,7 @@ def main(page: ft.Page, session_value=None):
         # store_user_secret(secret)
 
         # create a provisioning URL that the user can scan with their OTP app
-        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=user.email, issuer_name='My App')
+        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
 
         # convert this provisioning URL into a QR code and display it to the user
         # generate the QR code
@@ -442,33 +443,37 @@ def main(page: ft.Page, session_value=None):
         # # save it to a file
         # img.save("mfa_qrcode.png")
         # convert the QR code image to Base64
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
+        filename = f"{active_user.user_id}_qrcode.png"  # for example
+        img.save(filename)
 
-        # create a data URL that can be used in an <img> tag
-        img_data_url = f"data:image/png;base64,{img_str}"
-        return img_data_url
+        # get the URL for the image
+        # img_url = url_for(filename=filename)
+
+        return filename
 
     def setup_mfa(e):
         def close_mfa_dlg(e):
             mfa_dlg.open = False
             page.update()
 
+        def validate_mfa(e):
+            pass
+
         img_data_url = setup_user_for_otp()
         mfa_dlg = ft.AlertDialog(
-        modal=True,
-        title=ft.Text(f"Email Send Test"),
-        content=ft.Column(controls=[
-        ft.Text(f"Setup MFA: {email_result}", selectable=True),
-        ft.Text(f'Scan the code below with your authenticator app to setup MFA on your account.', selectable=True),
-            ], tight=True),
-        ft.Image(src=img_data_url)
-        actions=[
-        ft.TextButton("Save", on_click=save_email_settings),
-        ft.TextButton("Close", on_click=close_email_dlg)
-        ],
-        actions_alignment=ft.MainAxisAlignment.END
+            modal=True,
+            title=ft.Text(f"Setup MFA:"),
+            content=ft.Column(controls=[
+        #     ft.Text(f"Setup MFA:", selectable=True),
+            ft.Text(f'Scan the code below with your authenticator app and then click continue to validate your code.', selectable=True),
+                # ], tight=True),
+            ft.Image(src=img_data_url, width=200, height=200),
+            # actions=[
+            ft.TextButton("Continue", on_click=validate_mfa),
+            ft.TextButton("Close", on_click=close_mfa_dlg)
+            ],
+            tight=True),             
+            actions_alignment=ft.MainAxisAlignment.END,
         )
         page.dialog = mfa_dlg
         mfa_dlg.open = True
@@ -2412,7 +2417,10 @@ def main(page: ft.Page, session_value=None):
             # MFA Setup
 
             mfa_text = ft.Text('Setup MFA:', color=active_user.font_color, size=16)
-            mfa_setup = download_info_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=mfa_setup, bgcolor=active_user.main_color, color=active_user.accent_color)
+            mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+            mfa_column = ft.Column(controls=[mfa_text, mfa_button])
+            mfa_container = ft.Container(content=mfa_column)
+            mfa_container.padding=padding.only(left=70, right=50)
 
 
             # Admin Only Settings
@@ -2703,8 +2711,7 @@ def main(page: ft.Page, session_value=None):
                         user_setting_text,
                         theme_row_container,
                         div_row,
-                        mfa_text,
-                        mfa_setup,
+                        mfa_container,
                         div_row,
                         admin_setting_text,
                         user_row_container,
