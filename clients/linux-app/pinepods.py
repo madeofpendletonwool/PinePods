@@ -2,8 +2,6 @@
 import flet as ft
 # from flet import *
 from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
-
-
 # Internal Functions
 import internal_functions.functions
 import Auth.Passfunctions
@@ -205,13 +203,20 @@ def initialize_audio_routes(app, proxy_url):
 
 # Make login Screen start on boot
 login_screen = True
-
+user_home_dir = os.path.expanduser("~")
 audio_playing = False
 active_pod = 'Set at start'
 # two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
 # sys.path.append(two_folders_back)
 initial_script_dir = os.path.dirname(os.path.realpath(__file__))
 script_dir = os.path.dirname(os.path.dirname(initial_script_dir))
+
+appname = "pinepods"
+appauthor = "Gooseberry Development"
+
+# user_data_dir would be the equivalent to the home directory you were using
+user_data_dir = appdirs.user_data_dir(appname, appauthor)
+metadata_dir = os.path.join(user_data_dir, 'metadata')
 
 def main(page: ft.Page, session_value=None):
 
@@ -471,6 +476,72 @@ def main(page: ft.Page, session_value=None):
         clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website, categories=pod_categories, episode_count=pod_episode_count)
         return clicked_podcast
 
+    def save_episode_metadata(episode):        
+        # Create the directory if it doesn't already exist
+        os.makedirs(metadata_dir, exist_ok=True)
+        
+        # The filename will be based on the episode's ID
+        filename = f'{episode["EpisodeID"]}.json'
+        file_path = os.path.join(metadata_dir, filename)
+        
+        # Save the metadata to the file
+        with open(file_path, 'w') as f:
+            json.dump(episode, f)
+    
+    def download_episode_file(episode_url, podcast_name):
+        download_dir = os.path.join(metadata_dir, 'downloads', podcast_name)
+        os.makedirs(download_dir, exist_ok=True)
+        
+        response = requests.get(episode_url, stream=True)
+        
+        # The filename will be the last part of the URL
+        filename = episode_url.split('/')[-1]
+        file_path = os.path.join(download_dir, filename)
+        
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:  # filter out keep-alive new chunks
+                    f.write(chunk)
+
+        return file_path
+
+
+    def locally_download_episode(url, title, user_id, user_home_dir, page):
+        pr = ft.ProgressRing()
+        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+        page.overlay.append(progress_stack)
+        page.update()
+        # First, retrieve the episode's metadata from the database
+        episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title, active_user.user_id)
+        
+        # Next, download the actual episode data (the audio file)
+        episode_local_path = download_episode_file(episode["EpisodeURL"], episode["PodcastName"])
+        
+        # Add the local path to the episode metadata
+        episode['EpisodeLocalPath'] = episode_local_path
+        # Store the episode's metadata locally
+        save_episode_metadata(episode)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode Downloaded!"))
+        page.snack_bar.open = True
+        page.overlay.remove(progress_stack)
+        page.update()
+
+
+    def load_local_downloaded_episodes(user_id):
+        downloaded_episodes = []
+
+        try:
+            for filename in os.listdir(metadata_dir):
+                if filename.endswith(".json"):
+                    json_file_path = os.path.join(metadata_dir, filename)
+                    with open(json_file_path, 'r') as file:
+                        episode_metadata = json.load(file)
+                        downloaded_episodes.append(episode_metadata)
+        except FileNotFoundError:
+            print(f"No local downloaded episodes found for user {user_id}")
+
+        return downloaded_episodes
+
     class Podcast:
         def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None, categories=None, episode_count=None):
             self.name = name
@@ -581,6 +652,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume_changed = False
                 self.audio_con_art_url_parsed = None
                 self.loading_audio = False
+                self.local = False
                 self.name_truncated = 'placeholder'
                 # self.episode_name = self.name
                 if url is None or name is None:
@@ -624,6 +696,7 @@ def main(page: ft.Page, session_value=None):
                 self.volume_timer = None
                 self.volume_changed = False
                 self.loading_audio = False
+                self.local = False
                 self.name_truncated = 'placeholder'
                 self.fs_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_ARROW,
@@ -663,13 +736,17 @@ def main(page: ft.Page, session_value=None):
                 if self.audio_element:
                     self.audio_element.release()
 
-                # Preload the audio file and cache it
-                global cache
-                preload_audio_file(self.url, proxy_url, cache)
+                if self.local == False:
+                    # Preload the audio file and cache it
+                    global cache
+                    preload_audio_file(self.url, proxy_url, cache)
 
-                self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
-                page.overlay.append(self.audio_element)
-                # self.audio_element.play()
+                    self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+                    page.overlay.append(self.audio_element)
+                    # self.audio_element.play()
+                else:
+                    self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
+                    page.overlay.append(self.audio_element) 
 
                 self.audio_playing = True
                 page.update()
@@ -722,6 +799,7 @@ def main(page: ft.Page, session_value=None):
                 page.overlay.remove(progress_stack)
                 page.update()
                 self.loading_audio = False
+                self.local = False
                 
                 # convert milliseconds to seconds
                 total_seconds = media_length // 1000
@@ -739,8 +817,9 @@ def main(page: ft.Page, session_value=None):
                     time.sleep(1)
 
                     if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
-                        self.record_listen_duration()
-                        self.last_listen_duration_update = datetime.datetime.now()
+                        if self.audio_playing == True:
+                            self.record_listen_duration()
+                            self.last_listen_duration_update = datetime.datetime.now()
 
 
 
@@ -760,26 +839,6 @@ def main(page: ft.Page, session_value=None):
                     self.audio_playing = False
                     self.toggle_current_status()
 
-        def _monitor_audio(self):
-            while True:
-                state = self.player.get_state()
-                if state == vlc.State.Ended:
-                    self.thread = None
-                    break
-                time.sleep(1)
-
-        def pause_episode(self, e=None):
-            self.audio_element.pause()
-            self.audio_playing = False
-            self.toggle_current_status()
-            self.page.update()
-
-        def resume_podcast(self, e=None):
-            self.audio_element.resume()
-            self.audio_playing = True
-            self.toggle_current_status()
-            self.page.update()
-
         def pause_episode(self, e=None):
             self.audio_element.pause()
             self.audio_playing = False
@@ -793,14 +852,65 @@ def main(page: ft.Page, session_value=None):
             self.page.update()
 
         def fs_pause_episode(self, e=None):
-            self.fs_play_button.visible = False
-            self.fs_pause_button.visible = True
-            self.pause_episode()
+            self.fs_play_button.visible = True
+            self.fs_pause_button.visible = False
+            self.audio_element.pause()
+            self.audio_playing = False
+            self.fs_toggle_current_status()
+            self.page.update()
 
         def fs_resume_podcast(self, e=None):
-            self.fs_pause_button.visible = False
-            self.fs_play_button.visible = True
-            self.resume_podcast()
+            self.fs_pause_button.visible = True
+            self.fs_play_button.visible = False
+            self.audio_element.resume()
+            self.audio_playing = True
+            self.fs_toggle_current_status()
+            self.page.update()
+
+        def fs_toggle_current_status(self):
+            if self.audio_playing:
+                play_button.visible = False
+                pause_button.visible = True
+                audio_container.bgcolor = active_user.main_color
+                audio_container.visible = False
+                max_chars = character_limit(int(page.width))
+                self.name_truncated = truncate_text(self.name, max_chars)
+                currently_playing.content = ft.Text(self.name_truncated, size=16)
+                current_time.content = ft.Text(self.length, color=active_user.font_color)
+                podcast_length.content = ft.Text(self.length)
+                audio_con_artwork_no = random.randint(1, 12)
+                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
+                audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
+                audio_con_art_url_parsed = check_image(audio_con_art_url)
+                self.audio_con_art_url_parsed = audio_con_art_url_parsed
+                audio_container_image_landing.src = audio_con_art_url_parsed
+                audio_container_image_landing.width = 40
+                audio_container_image_landing.height = 40
+                audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                audio_container_image.border_radius = ft.border_radius.all(75)
+                audio_container_image_landing.update()
+                audio_scrubber.active_color = active_user.nav_color2
+                audio_scrubber.inactive_color = active_user.nav_color2
+                audio_scrubber.thumb_color = active_user.accent_color
+                volume_container.bgcolor = active_user.main_color
+                volume_down_icon.icon_color = active_user.accent_color
+                volume_up_icon.icon_color = active_user.accent_color
+                volume_button.icon_color = active_user.accent_color
+                volume_slider.active_color = active_user.nav_color2
+                volume_slider.inactive_color = active_user.nav_color2
+                volume_slider.thumb_color = active_user.accent_color
+                play_button.icon_color = active_user.accent_color
+                pause_button.icon_color = active_user.accent_color
+                seek_button.icon_color = active_user.accent_color
+                currently_playing.color = active_user.font_color
+                # current_time_text.color = active_user.font_color
+                podcast_length.color = active_user.font_color
+                self.page.update()
+            else:
+                pause_button.visible = False
+                play_button.visible = True
+                currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                self.page.update()
 
         def toggle_current_status(self):
             if self.audio_playing:
@@ -918,7 +1028,6 @@ def main(page: ft.Page, session_value=None):
 
         def delete_pod(self):
             api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
-
 
         def queue_pod(self, url):
             self.queue.append(url)
@@ -1282,11 +1391,12 @@ def main(page: ft.Page, session_value=None):
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue'. For more information on PinePods and the features it has please check out the documentation website listed below. For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR.
     """, color=active_user.main_color
         )
         page.banner.actions = [
-            ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.ElevatedButton('Open PinePods Github Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.ElevatedButton('Open PinePods Documentation Site', on_click=open_doc_site, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
         navbar = NavBar(page).create_navbar()
@@ -1303,11 +1413,12 @@ def main(page: ft.Page, session_value=None):
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR:
+    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue'. For more information on PinePods and the features it has please check out the documentation website listed below. For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR.
     """, color=active_user.main_color
         )
         page.banner.actions = [
             ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color, color=active_user.accent_color),
+            ft.ElevatedButton('Open PinePods Documentation Site', on_click=open_doc_site, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
         navbar = NavBar(page).create_navbar()
@@ -1491,6 +1602,11 @@ def main(page: ft.Page, session_value=None):
 
     def route_change(e):
 
+        if current_episode.audio_playing == True:
+            audio_container.visible == True
+        else: 
+            audio_container.visible == False
+
         def open_search(e):
             new_search.searchvalue = search_pods.value
             pr = ft.ProgressRing()
@@ -1600,6 +1716,7 @@ def main(page: ft.Page, session_value=None):
                     home_ep_artwork = entry['EpisodeArtwork']
                     home_ep_url = entry['EpisodeURL']
                     home_ep_duration = entry['EpisodeDuration']
+
                     # do something with the episode information
                     home_entry_title_button = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
                     home_entry_title = ft.TextButton(content=home_entry_title_button, on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
@@ -1664,7 +1781,8 @@ def main(page: ft.Page, session_value=None):
                     home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: locally_download_episode(url, title, active_user.user_id, user_home_dir, page)),
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
@@ -2723,7 +2841,7 @@ def main(page: ft.Page, session_value=None):
                 pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
                 pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                 pod_list_ep_count = 'Start Searching!'
-                pod_list_website = "https://github.com/madeofpendletonwool/pypods"
+                pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
                 pod_list_feed = ""
                 pod_list_author = "PinePods"
                 pod_list_categories = ""
@@ -2735,7 +2853,7 @@ def main(page: ft.Page, session_value=None):
                 # Defining the attributes of each podcast that will be displayed on screen
                 pod_list_title_display = ft.Text(pod_list_title)
                 pod_list_desc_display = ft.Text(pod_list_desc)
-                # Episode Count and subtitl
+                # Episode Count and subtitle
                 pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
                 pod_list_ep_count_display = ft.Text(pod_list_ep_count)
                 pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
@@ -2750,9 +2868,6 @@ def main(page: ft.Page, session_value=None):
                 pod_list_column = ft.Column(
                     controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
                 )
-                # pod_list_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[pod_list_artwork_image, pod_list_column, remove_pod_button])
                 pod_list_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
                     ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
@@ -2761,7 +2876,6 @@ def main(page: ft.Page, session_value=None):
                 pod_list_row.padding=padding.only(left=70, right=50)
                 pod_list_rows.append(pod_list_row)
                 pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
-                # pod_list_number += 1
 
             else:
 
@@ -3061,10 +3175,6 @@ def main(page: ft.Page, session_value=None):
                 saved_ep_column = ft.Column(
                     controls=[saved_entry_title, saved_entry_description, saved_entry_released]
                 )
-                # saved_ep_row = ft.Row(
-                #     alignment=ft.MainAxisAlignment.CENTER,
-                #     controls=[saved_entry_artwork_url, saved_ep_column, saved_ep_play_button]
-                # )
                 saved_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[saved_ep_column, saved_ep_play_button]),
@@ -3175,8 +3285,8 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
                             ]) 
                     else:
-                        saved_ep_dur = seconds_to_time(home_ep_duration)
-                        saved_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
+                        saved_ep_dur = seconds_to_time(saved_ep_duration)
+                        saved_dur_display = ft.Text(f'Episode Duration: {saved_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             saved_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
@@ -3229,8 +3339,19 @@ def main(page: ft.Page, session_value=None):
 
             # Get Pod info
             download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
+            download_local_episode_list = load_local_downloaded_episodes(active_user.user_id)
 
-            if download_episode_list is None:
+            server_text = ft.Text("Server Downloaded Episodes:", size=16, color=active_user.font_color)
+            local_text = ft.Text("Locally Downloaded Episodes:", size=16, color=active_user.font_color)
+            download_title_row = ft.Row(controls=[server_text], alignment=ft.MainAxisAlignment.CENTER)
+            local_download_title_row = ft.Row(controls=[local_text], alignment=ft.MainAxisAlignment.CENTER)
+
+
+
+            download_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+            local_download_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+
+            if not download_episode_list and not download_local_episode_list:
                 download_ep_number = 1
                 download_ep_rows = []
                 download_ep_row_dict = {}
@@ -3269,10 +3390,10 @@ def main(page: ft.Page, session_value=None):
                 download_ep_number += 1
 
             else:
+
                 download_episode_list.reverse()
-                download_ep_number = 1
-                download_ep_rows = []
-                download_ep_row_dict = {}
+
+                download_local_episode_list.reverse()
 
                 for entry in download_episode_list:
                     download_ep_title = entry['EpisodeTitle']
@@ -3384,29 +3505,137 @@ def main(page: ft.Page, session_value=None):
                     download_ep_column = ft.Column(controls=[download_ep_row_content, download_div_row])
                     download_ep_row = ft.Container(content=download_ep_column)
                     download_ep_row.padding=padding.only(left=70, right=50)
-                    download_ep_rows.append(download_ep_row)
-                    # download_ep_rows.append(ft.Text('test'))
-                    download_ep_row_dict[f'search_row{download_ep_number}'] = download_ep_row
+                    download_row_list.controls.append(download_ep_row)
                     download_pods_active = True
-                    download_ep_number += 1
+                    # download_ep_number += 1
 
-            download_title = ft.Text(
-            "Downloaded Episodes:",
-            size=30,
-            font_family="RobotoSlab",
-            color=active_user.font_color,
-            weight=ft.FontWeight.W_300,
-        )
-            download_title_row = ft.Row(controls=[download_title], alignment=ft.MainAxisAlignment.CENTER)
+                for entry in download_local_episode_list:
+                    local_download_ep_title = entry['EpisodeTitle']
+                    local_download_pod_name = entry['PodcastName']
+                    local_download_pub_date = entry['EpisodePubDate']
+                    local_download_ep_desc = entry['EpisodeDescription']
+                    local_download_ep_artwork = entry['EpisodeArtwork']
+                    local_download_ep_url = entry['EpisodeURL']
+                    local_download_ep_local_url = entry['EpisodeLocalPath']
+                    local_download_ep_duration = entry['EpisodeDuration']
+                    local_download_ep_id = entry['EpisodeID']
+                    
+                    # do something with the episode information
+                    local_download_entry_title_button = ft.Text(f'{local_download_pod_name} - {local_download_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
+                    local_download_entry_title = ft.TextButton(content=local_download_entry_title_button, on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title: open_episode_select(page, url, title))
+                    local_download_entry_row = ft.ResponsiveRow([
+    ft.Column(col={"sm": 6}, controls=[local_download_entry_title]),
+])
 
+                    num_lines = local_download_ep_desc.count('\n')
+                    if num_lines > 15:
+                        if is_html(local_download_ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(local_download_ep_desc)
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = markdown_desc.splitlines()[:15]
+                                markdown_desc = '\n'.join(lines)
+                            # add inline style to change font color                            
+                            local_download_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                            local_download_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title: open_episode_select(page, url, title))
+                        else:
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = local_download_ep_desc.splitlines()[:15]
+                                local_download_ep_desc = '\n'.join(lines)
+                            # display plain text
+                            local_download_entry_description = ft.Text(local_download_ep_desc)
+
+                    else:
+                        if is_html(local_download_ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(local_download_ep_desc)
+                            # add inline style to change font color
+                            local_download_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                        else:
+                            # display plain text
+                            markdown_desc = local_download_ep_desc
+                            local_download_entry_description = ft.Text(local_download_ep_desc)
+                    local_download_entry_audio_url = ft.Text(local_download_ep_url, color=active_user.font_color)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, local_download_ep_title, local_download_ep_url)
+                    local_download_entry_released = ft.Text(f'Released on: {local_download_pub_date}', color=active_user.font_color)
+
+
+                    local_download_art_no = random.randint(1, 12)
+                    local_download_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{local_download_art_no}.jpeg")
+                    local_download_art_url = local_download_ep_artwork if local_download_ep_artwork else local_download_art_fallback
+                    local_download_art_parsed = check_image(local_download_art_url)
+                    local_download_entry_artwork_url = ft.Image(src=local_download_art_parsed, width=150, height=150)
+                    local_download_ep_play_button = ft.IconButton(
+                        icon=ft.icons.NOT_STARTED,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=local_download_ep_local_url, title=local_download_ep_title, artwork=local_download_ep_artwork: play_selected_local_episode(url, title, artwork)
+                    )
+                    local_download_ep_resume_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Resume Episode",
+                        on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title, artwork=local_download_ep_artwork, listen_duration=listen_duration: resume_selected_local_episode(url, title, artwork, listen_duration)
+                    )
+                    local_download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title, artwork=local_download_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DELETE, text="Delete Downloaded Episode", on_click=lambda x, url=local_download_ep_local_url, title=local_download_ep_title, episode_id=local_download_ep_id: delete_local_selected_episode(url, title, episode_id, page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title: save_selected_episode(url, title, page))
+                        ]
+                    )
+                    if check_episode_playback == True:
+                        listen_prog = seconds_to_time(listen_duration)
+                        local_download_ep_prog = seconds_to_time(local_download_ep_duration)
+                        progress_value = get_progress(listen_duration, local_download_ep_duration)
+                        local_download_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(local_download_ep_prog, color=active_user.font_color)])
+                        if num_lines > 15:
+                            local_download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
+                            ])
+                        else:
+                            local_download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
+                            ]) 
+                    else:
+                        local_download_ep_dur = seconds_to_time(local_download_ep_duration)
+                        local_download_dur_display = ft.Text(f'Episode Duration: {local_download_ep_dur}', color=active_user.font_color)
+                        if num_lines > 15:
+                            local_download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
+                            ])
+                        else:
+                            local_download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
+                                ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
+                            ]) 
+                    local_download_div_row = ft.Divider(color=active_user.accent_color)
+                    local_download_ep_column = ft.Column(controls=[local_download_ep_row_content, local_download_div_row])
+                    local_download_ep_row = ft.Container(content=local_download_ep_column)
+                    local_download_ep_row.padding=padding.only(left=70, right=50)
+                    local_download_row_list.controls.append(local_download_ep_row)
+                    local_download_pods_active = True
+                    # local_download_ep_number += 1
+
+            download_row_contain = ft.Container(content=download_row_list)
+
+            local_download_row_contain = ft.Container(content=local_download_row_list)
 
             # Create search view object
             ep_download_view = ft.View("/downloads",
                     [
                         top_bar,
                         download_title_row,
-                        *[download_ep_row_dict.get(f'search_row{i+1}') for i in range(len(download_ep_rows))]
-
+                        download_row_contain,
+                        local_download_title_row,
+                        local_download_row_contain
                     ]
                     
                 )
@@ -3561,8 +3790,8 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_entry_progress, ft.Row(controls=[queue_ep_play_button, queue_ep_resume_button, queue_popup_button])]),
                             ]) 
                     else:
-                        queue_ep_dur = seconds_to_time(home_ep_duration)
-                        queue_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
+                        queue_ep_dur = seconds_to_time(queue_ep_duration)
+                        queue_dur_display = ft.Text(f'Episode Duration: {queue_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             queue_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
@@ -3760,8 +3989,11 @@ def main(page: ft.Page, session_value=None):
             current_episode.fs_pause_button.icon_color = active_user.accent_color
             fs_seek_button.icon_color = active_user.accent_color
 
+            show_notes_button = ft.OutlinedButton("Show Notes", on_click=lambda x, url=current_episode.url, title=current_episode.name: open_episode_select(page, url, title))
+            fs_show_notes_row = ft.Row(controls=[show_notes_button], alignment=ft.MainAxisAlignment.CENTER)
+
             current_column = ft.Column(controls=[
-                fs_container_image_row, fs_currently_playing, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
+                fs_container_image_row, fs_currently_playing, fs_show_notes_row, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
             ])
 
             current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
@@ -3796,6 +4028,9 @@ def main(page: ft.Page, session_value=None):
 
     def open_repo(e):
         page.launch_url('https://github.com/madeofpendletonwool/PinePods')
+
+    def open_doc_site(e):
+        page.launch_url('https://pinepods.online')
 
     page.banner = ft.Banner(
         bgcolor=ft.colors.BLUE,
@@ -3946,6 +4181,80 @@ def main(page: ft.Page, session_value=None):
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 user_values = (self.fullname, self.username, self.email, hash_pw, salt)
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, user_values)
+
+        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username=None, password=None):
+            def close_email_dlg(e):
+                send_email_dlg.open = False
+                page.update()
+
+            pr = ft.ProgressRing()
+            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+            page.overlay.append(progress_stack)
+            page.update()
+
+            def save_email_settings(e):
+                encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
+                encryption_key_bytes = base64.b64decode(encryption_key)
+                api_functions.functions.call_save_email_settings(
+                    app_api.url, 
+                    app_api.headers, 
+                    self.server_name, 
+                    self.server_port, 
+                    self.from_email, 
+                    self.send_mode, 
+                    self.encryption, 
+                    self.auth_required, 
+                    self.email_username, 
+                    self.email_password, 
+                    encryption_key_bytes
+                )
+                send_email_dlg.open = False
+                page.update()
+
+
+            self.server_name = server_name
+            self.server_port = int(server_port)
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+
+            subject = "Test email from pinepods"
+            body = "If you got this your email settings are working! Great Job! Don't forget to hit save."
+            to_email = active_user.email
+            email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
+
+            page.overlay.remove(progress_stack)
+
+            send_email_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Email Send Test"),
+            content=ft.Column(controls=[
+            ft.Text(f"Test email send result: {email_result}", selectable=True),
+            ft.Text(f'If the email sent successfully be sure to hit save. This will save your settings to the database for later use with resetting passwords.', selectable=True),
+                ], tight=True),
+            actions=[
+            ft.TextButton("Save", on_click=save_email_settings),
+            ft.TextButton("Close", on_click=close_email_dlg)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+            )
+            page.dialog = send_email_dlg
+            send_email_dlg.open = True
+            page.update()
+
+        def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username, password):
+            self.server_name = server_name
+            self.server_port = server_port
+            self.from_email = from_email
+            self.send_mode = send_mode
+            self.encryption = encryption
+            self.auth_required = auth_required
+            self.email_username = username
+            self.email_password = password
+            api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
 
 
     # Modify User Stuff---------------------------
@@ -4125,6 +4434,11 @@ def main(page: ft.Page, session_value=None):
                 active_user.user_id = 1
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
+
+        def clear_guest(self, e):
+            if self.user_id == 1:
+                api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
+
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
@@ -4385,7 +4699,9 @@ def main(page: ft.Page, session_value=None):
                 
                 return gravatar_url
 
-            gravatar_url = get_gravatar_url(active_user.email)
+            gravatar_url = None
+            if active_user.user_id != 1:
+                gravatar_url = get_gravatar_url(active_user.email)
             active_user.get_initials()
             
             user_content = ft.Image(src=gravatar_url, width=42, height=45, border_radius=8) if gravatar_url else Text(
@@ -4420,7 +4736,7 @@ def main(page: ft.Page, session_value=None):
                     bgcolor=active_user.tertiary_color,
                     alignment=alignment.center,
                     content=user_content,
-                    on_hover=display_hello,
+                    # on_hover=display_hello,
                     on_click=open_user_stats
                 ),
                     ft.Divider(height=5, color="transparent"),
@@ -4598,6 +4914,20 @@ def main(page: ft.Page, session_value=None):
         current_episode.artwork = artwork
         current_episode.play_episode(listen_duration=listen_duration)
 
+    def play_selected_local_episode(url, title, artwork):
+        current_episode.url = url
+        current_episode.name = title
+        current_episode.artwork = artwork
+        current_episode.local = True
+        current_episode.play_episode()
+
+    def resume_selected_local_episode(url, title, artwork, listen_duration):
+        current_episode.url = url
+        current_episode.name = title
+        current_episode.artwork = artwork
+        current_episode.local = True
+        current_episode.play_episode(listen_duration=listen_duration)
+
 
     def download_selected_episode(url, title, page):
         # First, check if downloads are enabled
@@ -4634,6 +4964,32 @@ def main(page: ft.Page, session_value=None):
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
         page.snack_bar.open = True
         page.update()
+
+    def delete_local_selected_episode(url, title, episode_id, page):
+        current_episode.url = url
+        current_episode.title = title
+        #delete parts here
+        try:
+            os.remove(url)
+        except OSError as e:
+            page.snack_bar = ft.SnackBar(content=ft.Text("Error: %s : %s" % (url, e.strerror)))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        metadata_path = os.path.join(metadata_dir, f"{episode_id}.json")
+        try:
+            os.remove(metadata_path)
+        except OSError as e:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: %s : %s" % (metadata_path, e.strerror)))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
+        page.snack_bar.open = True
+        page.update()
+        page.go("/downloads")
 
     def queue_selected_episode(url, title, artwork, page):
         current_episode.url = url
@@ -4683,6 +5039,7 @@ def main(page: ft.Page, session_value=None):
         page.update() 
 
     page.on_resize = page_checksize
+    page.on_disconnect = active_user.clear_guest
 
 # Starting Page Layout
     page.theme_mode = "dark"

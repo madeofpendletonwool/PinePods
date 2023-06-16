@@ -1675,3 +1675,62 @@ def reset_password_prompt(cnx, user_email, salt, hashed_pw):
     # cnx.close()
 
     return "Password Reset Successfully"
+
+def clear_guest_data(cnx):
+    cursor = cnx.cursor()
+
+    # First delete all the episodes associated with the guest user
+    delete_episodes_query = """
+        DELETE Episodes
+        FROM Episodes
+        INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+        WHERE Podcasts.UserID = 1
+    """
+    cursor.execute(delete_episodes_query)
+
+    # Then delete all the podcasts associated with the guest user
+    delete_podcasts_query = """
+        DELETE FROM Podcasts 
+        WHERE UserID = 1
+    """
+    cursor.execute(delete_podcasts_query)
+
+    # Commit the transaction
+    cnx.commit()
+    cursor.close()
+
+    return "Guest user data cleared successfully"
+
+def get_episode_metadata(cnx, url, title, user_id):
+    cursor = cnx.cursor(dictionary=True)
+    print(url, title, user_id)
+
+    query = ("SELECT EpisodeID FROM Episodes "
+             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
+    cursor.execute(query, (url, title))
+    episode_id = cursor.fetchone()
+
+    if episode_id is None:
+        # Episode not found
+        return False
+
+    print(episode_id)
+    episode_id = episode_id['EpisodeID']
+
+    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
+             f"Podcasts.WebsiteURL "
+             f"FROM Episodes "
+             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s")
+
+    cursor.execute(query, (episode_id, user_id,))
+    row = cursor.fetchone()
+
+    cursor.close()
+
+    if not row:
+        raise ValueError(f"No episode found with ID {episode_id} for user {user_id}")
+        
+    return row
+

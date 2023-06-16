@@ -541,6 +541,23 @@ async def api_reset_password_verify_route(payload: ResetPasswordPayloadVerify, c
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": message}
 
+@app.post("/api/data/clear_guest_data")
+async def api_clear_guest_data(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    message = database_functions.functions.clear_guest_data(cnx)
+    if message is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": message}
+
+class EpisodeMetadata(BaseModel):
+    episode_url: str
+    episode_title: str
+    user_id: int
+
+@app.post("/api/data/get_episode_metadata")
+async def api_get_episode_metadata(data: EpisodeMetadata, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    episode = database_functions.functions.get_episode_metadata(cnx, data.episode_url, data.episode_title, data.user_id)
+    return {"episode": episode}
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -1,13 +1,13 @@
 # Various flet imports
 import flet as ft
 # from flet import *
-from flet import AppBar, ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
+from flet import ElevatedButton, Page, Text, View, colors, icons, ProgressBar, ButtonStyle, IconButton, TextButton, Row, alignment, border_radius, animation, MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
-import app_functions.functions
 import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
+import app_functions.functions
 # Others
 import time
 import mysql.connector
@@ -17,11 +17,13 @@ import re
 import sys
 import urllib.request
 import requests
+from requests.exceptions import RequestException, MissingSchema
 from functools import partial
 import os
 import requests
 import time
 import random
+import string
 import datetime
 import html2text
 import threading
@@ -29,11 +31,14 @@ from html.parser import HTMLParser
 from flask import Flask
 from flask_caching import Cache
 import secrets
+import appdirs
 import logging
 import hashlib
+import keyring
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
-import string
-from base64 import urlsafe_b64decode
 
 
 # Wait for Client API Server to start
@@ -65,38 +70,34 @@ else:
 
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-@app.route('/preload/<path:url>')
-def preload_audio_file(url):
-    # Try to get the response from cache
-    if reverse_proxy == "True":
-        response = requests.get(f'{proxy_protocol}://{proxy_host}/proxy', params={'url': url})
-    else:
-        response = requests.get(f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy', params={'url': url})
+def preload_audio_file(url, proxy_url, cache):
+    response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
-    return ""
 
-@app.route('/cached_audio/<path:url>')
-def serve_cached_audio(url):
-    content = cache.get(url)
+def initialize_audio_routes(app, proxy_url):
+    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+    @app.route('/preload/<path:url>')
+    def route_preload_audio_file(url):
+        preload_audio_file(url, proxy_url, cache)
+        return ""
 
+    @app.route('/cached_audio/<path:url>')
+    def serve_cached_audio(url):
+        content = cache.get(url)
 
+        if content is not None:
+            response = Response(content, content_type='audio/mpeg')
+            return response
+        else:
+            return "", 404
 
-    if content is not None:
-        response = Response(content, content_type='audio/mpeg')
-        return response
-    else:
-        return "", 404
+    return cache
 
+cache = initialize_audio_routes(app, proxy_url)
 # Make login Screen start on boot
 login_screen = True
 
@@ -361,7 +362,7 @@ def main(page: ft.Page, session_value=None):
 
         self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
 
-        if self_service_status == 0:
+        if not self_service_status:
             self_service_dlg = ft.AlertDialog(
                 modal=True,
                 title=ft.Text(f"User Creation"),
@@ -377,7 +378,7 @@ def main(page: ft.Page, session_value=None):
             self_service_dlg.open = True
             self.page.update()
 
-        elif self_service_status == 1:
+        elif self_service_status:
             new_user = User(page)
 
             self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods') 
@@ -438,8 +439,21 @@ def main(page: ft.Page, session_value=None):
                 self.volume = 1
                 self.volume_timer = None
                 self.volume_changed = False
+                self.audio_con_art_url_parsed = None
                 self.loading_audio = False
                 self.name_truncated = 'placeholder'
+                self.fs_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_ARROW,
+                    tooltip="Play Podcast",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_resume_podcast()
+                )
+                self.fs_pause_button = ft.IconButton(
+                    icon=ft.icons.PAUSE,
+                    tooltip="Pause Playback",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_pause_episode()
+                )
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -474,6 +488,18 @@ def main(page: ft.Page, session_value=None):
                 # self.episode_name = self.name
                 self.queue = []
                 self.state = 'stopped'
+                self.fs_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_ARROW,
+                    tooltip="Play Podcast",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_resume_podcast()
+                )
+                self.fs_pause_button = ft.IconButton(
+                    icon=ft.icons.PAUSE,
+                    tooltip="Pause Playback",
+                    icon_color="white",
+                    on_click=lambda e: current_episode.fs_pause_episode()
+                )
 
         def run_function_every_60_seconds(self):
             while True:
@@ -498,7 +524,7 @@ def main(page: ft.Page, session_value=None):
 
                 # Preload the audio file and cache it
                 global cache
-                preload_audio_file(self.url)
+                preload_audio_file(self.url, proxy_url, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
@@ -516,6 +542,7 @@ def main(page: ft.Page, session_value=None):
                         duration = self.audio_element.get_duration()
                         if duration > 0:
                             media_length = duration
+                            self.media_length = media_length
                             break
                     except Exception as e:
                         pass
@@ -570,8 +597,9 @@ def main(page: ft.Page, session_value=None):
                     time.sleep(1)
 
                     if (datetime.datetime.now() - self.last_listen_duration_update).total_seconds() > 15:
-                        self.record_listen_duration()
-                        self.last_listen_duration_update = datetime.datetime.now()
+                        if self.audio_playing == True:
+                            self.record_listen_duration()
+                            self.last_listen_duration_update = datetime.datetime.now()
 
 
 
@@ -603,6 +631,67 @@ def main(page: ft.Page, session_value=None):
             self.toggle_current_status()
             self.page.update()
 
+        def fs_pause_episode(self, e=None):
+            self.fs_play_button.visible = True
+            self.fs_pause_button.visible = False
+            self.audio_element.pause()
+            self.audio_playing = False
+            self.fs_toggle_current_status()
+            self.page.update()
+
+        def fs_resume_podcast(self, e=None):
+            self.fs_pause_button.visible = True
+            self.fs_play_button.visible = False
+            self.audio_element.resume()
+            self.audio_playing = True
+            self.fs_toggle_current_status()
+            self.page.update()
+
+        def fs_toggle_current_status(self):
+            if self.audio_playing:
+                play_button.visible = False
+                pause_button.visible = True
+                audio_container.bgcolor = active_user.main_color
+                audio_container.visible = False
+                max_chars = character_limit(int(page.width))
+                self.name_truncated = truncate_text(self.name, max_chars)
+                currently_playing.content = ft.Text(self.name_truncated, size=16)
+                current_time.content = ft.Text(self.length, color=active_user.font_color)
+                podcast_length.content = ft.Text(self.length)
+                audio_con_artwork_no = random.randint(1, 12)
+                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
+                audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
+                audio_con_art_url_parsed = check_image(audio_con_art_url)
+                self.audio_con_art_url_parsed = audio_con_art_url_parsed
+                audio_container_image_landing.src = audio_con_art_url_parsed
+                audio_container_image_landing.width = 40
+                audio_container_image_landing.height = 40
+                audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                audio_container_image.border_radius = ft.border_radius.all(75)
+                audio_container_image_landing.update()
+                audio_scrubber.active_color = active_user.nav_color2
+                audio_scrubber.inactive_color = active_user.nav_color2
+                audio_scrubber.thumb_color = active_user.accent_color
+                volume_container.bgcolor = active_user.main_color
+                volume_down_icon.icon_color = active_user.accent_color
+                volume_up_icon.icon_color = active_user.accent_color
+                volume_button.icon_color = active_user.accent_color
+                volume_slider.active_color = active_user.nav_color2
+                volume_slider.inactive_color = active_user.nav_color2
+                volume_slider.thumb_color = active_user.accent_color
+                play_button.icon_color = active_user.accent_color
+                pause_button.icon_color = active_user.accent_color
+                seek_button.icon_color = active_user.accent_color
+                currently_playing.color = active_user.font_color
+                # current_time_text.color = active_user.font_color
+                podcast_length.color = active_user.font_color
+                self.page.update()
+            else:
+                pause_button.visible = False
+                play_button.visible = True
+                currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                self.page.update()
+
         def toggle_current_status(self):
             if self.audio_playing:
                 play_button.visible = False
@@ -618,6 +707,7 @@ def main(page: ft.Page, session_value=None):
                 audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
+                self.audio_con_art_url_parsed = audio_con_art_url_parsed
                 audio_container_image_landing.src = audio_con_art_url_parsed
                 audio_container_image_landing.width = 40
                 audio_container_image_landing.height = 40
@@ -690,6 +780,12 @@ def main(page: ft.Page, session_value=None):
             seconds = 10
             time = self.audio_element.get_current_position()
             seek_position = time + 10000
+            self.audio_element.seek(seek_position)
+
+        def seek_back_episode(self):
+            seconds = 10
+            time = self.audio_element.get_current_position()
+            seek_position = time - 10000
             self.audio_element.seek(seek_position)
 
         def time_scrub(self, time):
@@ -1054,6 +1150,9 @@ def main(page: ft.Page, session_value=None):
     def open_user_stats(e):
         page.go("/userstats")
 
+    def open_currently_playing(e):
+        page.go("/playing")
+
     def open_episode_select(page, url, title):
         current_episode.url = url
         current_episode.title = title
@@ -1280,6 +1379,11 @@ def main(page: ft.Page, session_value=None):
 
     def route_change(e):
 
+        if current_episode.audio_playing == True:
+            audio_container.visible == True
+        else: 
+            audio_container.visible == False
+
         def open_search(e):
             new_search.searchvalue = search_pods.value
             pr = ft.ProgressRing()
@@ -1324,6 +1428,8 @@ def main(page: ft.Page, session_value=None):
         top_row_container = ft.Container(content=top_row, expand=True)
         top_row_container.padding=ft.padding.only(left=60)
         top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[top_row_container])
+        if current_episode.audio_playing == True:
+            audio_container.visible = True
         page.update()
 
         # page.views.clear()
@@ -1516,14 +1622,14 @@ def main(page: ft.Page, session_value=None):
 
             user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers, active_user.user_id)
 
-            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=16, weight="bold")
-            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}')
-            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to')
-            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening')
-            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added')
-            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database')
-            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved')
-            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded')
+            user_title = ft.Text(f"Stats for {active_user.fullname}:", size=20, weight="bold")
+            date_display = ft.Text(f'{active_user.username} created on {stats_created_date}', size=16)
+            pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to', size=16)
+            time_listened_display = ft.Text(f'{stats_time_listened} Minutes spent listening', size=16)
+            pods_added_display = ft.Text(f'{stats_pods_added} Podcasts added', size=16)
+            eps_added_display = ft.Text(f'{user_ep_count} Episodes associated with {active_user.fullname} in the database', size=16)
+            eps_saved_display = ft.Text(f'{stats_eps_saved} Podcasts episodes currently saved', size=16)
+            eps_downloaded_display = ft.Text(f'{stats_eps_downloaded} Podcasts episodes currently downloaded', size=16)
             stats_column = ft.Column(controls=[user_title, date_display, pods_played_display, time_listened_display, pods_added_display, eps_added_display, eps_saved_display, eps_downloaded_display])
             stats_container = ft.Container(content=stats_column)
             stats_container.padding=padding.only(left=70, right=50)
@@ -1543,9 +1649,9 @@ def main(page: ft.Page, session_value=None):
                 ft.Text(
                     disabled=False,
                     spans=[
-                        ft.TextSpan("If you'd like, you can buy me a coffee"),
+                        ft.TextSpan("If you'd like, you can buy me a coffee "),
                         ft.TextSpan(
-                            " here",
+                            "here",
                             ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
                             url="https://www.buymeacoffee.com/collinscoffee",
                             on_enter=highlight_link,
@@ -1606,7 +1712,7 @@ def main(page: ft.Page, session_value=None):
                             elevation=15,
                             content=ft.Container(
                                 width=550,
-                                height=620,
+                                height=650,
                                 padding=padding.all(30),
                                 gradient=GradientGenerator(
                                     "#2f2937", "#251867"
@@ -1720,7 +1826,7 @@ def main(page: ft.Page, session_value=None):
                         elevation=15,
                         content=ft.Container(
                             width=550,
-                            height=620,
+                            height=650,
                             padding=ft.padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
@@ -1973,7 +2079,7 @@ def main(page: ft.Page, session_value=None):
             user_row_container.padding=padding.only(left=70, right=50)
 
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Current (Select a user to modify properties):', color=active_user.font_color, size=16)
+            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=16)
 
             user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
             user_table_rows = []
@@ -2522,7 +2628,7 @@ def main(page: ft.Page, session_value=None):
                 pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
                 pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                 pod_list_ep_count = 'Start Searching!'
-                pod_list_website = "https://github.com/madeofpendletonwool/pypods"
+                pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
                 pod_list_feed = ""
                 pod_list_author = "PinePods"
                 pod_list_categories = ""
@@ -3491,6 +3597,98 @@ def main(page: ft.Page, session_value=None):
                     pod_view
         )
 
+        if page.route == "/playing" or page.route == "/playing":
+            audio_container.visible = False
+            print(current_episode.audio_con_art_url_parsed)
+            fs_container_image = current_episode.audio_con_art_url_parsed
+            fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
+            fs_container_image_landing.border_radius = ft.border_radius.all(45)
+            fs_container_image_row = ft.Row(controls=[fs_container_image_landing], alignment=ft.MainAxisAlignment.CENTER)
+            fs_currently_playing = ft.Container(content=ft.Text(current_episode.name_truncated, size=16), on_click=open_currently_playing, alignment=ft.alignment.center)
+
+            # Create the audio controls
+            if current_episode.audio_playing == True:
+                current_episode.fs_play_button.visible = False
+            else:
+                current_episode.fs_pause_button.visible = False
+            fs_seek_button = ft.IconButton(
+                icon=ft.icons.FAST_FORWARD,
+                tooltip="Seek 10 seconds",
+                icon_color="white",
+                on_click=lambda e: current_episode.seek_episode()
+            )
+            fs_seek_back_button = ft.IconButton(
+                icon=ft.icons.FAST_REWIND,
+                tooltip="Seek 10 seconds",
+                icon_color="white",
+                on_click=lambda e: current_episode.seek_back_episode()
+            )
+            fs_ep_audio_controls = ft.Row(controls=[fs_seek_back_button, current_episode.fs_play_button, current_episode.fs_pause_button, fs_seek_button], alignment=ft.MainAxisAlignment.CENTER)
+            fs_scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length], alignment=ft.MainAxisAlignment.CENTER)
+            fs_scrub_bar_row.visible = True
+            fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], alignment=ft.MainAxisAlignment.CENTER)
+            fs_volume_container = ft.Container(
+                    height=35,
+                    width=275,
+                    bgcolor=ft.colors.WHITE,
+                    border_radius=45,
+                    padding=6,
+                    content=fs_volume_adjust_column,
+                    alignment=ft.alignment.center)
+            fs_volume_container.adding=ft.padding.all(50)
+            fs_volume_adjust_row = ft.Row(controls=[fs_volume_container], alignment=ft.MainAxisAlignment.CENTER)
+
+            def toggle_second_status(status):
+                if current_episode.state == 'playing':
+                    # fs_audio_scrubber.value = current_episode.get_current_seconds()
+                    audio_scrubber.update()
+                    # current_time.content = ft.Text(current_episode.current_progress, color=active_user.font_color)
+                    current_time.update()
+
+            total_seconds = current_episode.media_length // 1000
+
+            def update_function():
+                for i in range(total_seconds):
+                    toggle_second_status(current_episode.audio_element.data)
+                    time.sleep(1)
+
+            update_thread = threading.Thread(target=update_function)
+            update_thread.start()
+
+            fs_volume_container.bgcolor = active_user.main_color
+            current_episode.fs_play_button.icon_color = active_user.accent_color
+            current_episode.fs_pause_button.icon_color = active_user.accent_color
+            fs_seek_button.icon_color = active_user.accent_color
+
+            show_notes_button = ft.OutlinedButton("Show Notes", on_click=lambda x, url=current_episode.url, title=current_episode.name: open_episode_select(page, url, title))
+            fs_show_notes_row = ft.Row(controls=[show_notes_button], alignment=ft.MainAxisAlignment.CENTER)
+
+            current_column = ft.Column(controls=[
+                fs_container_image_row, fs_currently_playing, fs_show_notes_row, fs_scrub_bar_row, fs_ep_audio_controls, fs_volume_adjust_row
+            ])
+
+            current_container = ft.Container(content=current_column, alignment=ft.alignment.center)
+            current_container.padding=padding.only(left=70, right=50)
+            current_container.alignment = alignment.center
+
+
+            # Create search view object
+            ep_playing_view = ft.View("/playing",
+                    [
+                        top_bar,
+                        current_container
+
+                    ]
+                    
+                )
+            ep_playing_view.bgcolor = active_user.bgcolor
+            ep_playing_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                ep_playing_view
+                    
+                )
+
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
@@ -3500,7 +3698,7 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def open_repo(e):
-        page.launch_url('https://github.com/madeofpendletonwool/pypods')
+        page.launch_url('https://github.com/madeofpendletonwool/PinePods')
 
     page.banner = ft.Banner(
         bgcolor=ft.colors.BLUE,
@@ -3541,7 +3739,6 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
-            self.auth_enabled = 0
 
     # New User Stuff ----------------------------
 
@@ -3693,7 +3890,7 @@ def main(page: ft.Page, session_value=None):
             self.email_password = password
 
             subject = "Test email from pinepods"
-            body = "If you got this your email settings are working! Great Job! Don't forget to git save."
+            body = "If you got this your email settings are working! Great Job! Don't forget to hit save."
             to_email = active_user.email
             email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
 
@@ -3873,13 +4070,13 @@ def main(page: ft.Page, session_value=None):
                 self.fullname = login_details['Fullname']
                 self.username = login_details['Username']
                 self.email = login_details['Email']
-                if retain_session:
-                    if page.web:
-                        print('Web version currently doesnt retain sessions')
-                    else:
-                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
-                        if session_token:
-                            save_session_id_to_file(session_token)
+                # if retain_session:
+                #     if page.web:
+                #         print('Web version currently doesnt retain sessions')
+                #     else:
+                #         session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                #         if session_token:
+                #             save_session_id_to_file(session_token)
                 go_homelogin(page)
             else:
                 on_click_wronguser(page)
@@ -3904,6 +4101,10 @@ def main(page: ft.Page, session_value=None):
                 active_user.user_id = 1
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
+
+        def clear_guest(self, e):
+            if self.user_id == 1:
+                api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
@@ -4146,7 +4347,9 @@ def main(page: ft.Page, session_value=None):
                 
                 return gravatar_url
 
-            gravatar_url = get_gravatar_url(active_user.email)
+            gravatar_url = None
+            if active_user.user_id != 1:
+                gravatar_url = get_gravatar_url(active_user.email)
             active_user.get_initials()
             
             user_content = ft.Image(src=gravatar_url, width=42, height=45, border_radius=8) if gravatar_url else Text(
@@ -4241,7 +4444,7 @@ def main(page: ft.Page, session_value=None):
     )
     ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
     # Create the currently playing container
-    currently_playing = ft.Container(content=ft.Text('test'))
+    currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
     currently_playing.padding=ft.padding.only(bottom=5)
 
     def format_time(time):
@@ -4266,7 +4469,7 @@ def main(page: ft.Page, session_value=None):
     audio_scrubber_column.width = '100%'
     # Image for podcast playing
     audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg", width=40, height=40)
-    audio_container_image = ft.Container(content=audio_container_image_landing)
+    audio_container_image = ft.Container(content=audio_container_image_landing, on_click=open_currently_playing)
     audio_container_image.border_radius = ft.border_radius.all(25)
     currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
@@ -4344,11 +4547,6 @@ def main(page: ft.Page, session_value=None):
         
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
     audio_container.visible = False
-
-
-    # Various rows and columns for layout
-    audio_row = ft.Row(spacing=25, alignment=ft.MainAxisAlignment.CENTER, controls=[play_button, pause_button, seek_button])
-    audio_controls_column = ft.Column(alignment=ft.MainAxisAlignment.END, controls=[audio_row])
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url
@@ -4447,6 +4645,7 @@ def main(page: ft.Page, session_value=None):
         page.update() 
 
     page.on_resize = page_checksize
+    page.on_disconnect = active_user.clear_guest
 
 # Starting Page Layout
     page.theme_mode = "dark"

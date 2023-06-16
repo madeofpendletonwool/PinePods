@@ -42,6 +42,8 @@ collinp@gooseberrydevelopment.com
 
 
 EOF
+# Creating cache directory
+mkdir -p /pinepods/cache
 # Database Setup
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 # Create Admin User
