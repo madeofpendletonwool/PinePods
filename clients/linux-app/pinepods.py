@@ -463,8 +463,38 @@ def main(page: ft.Page, session_value=None):
             mfa_dlg.open = False
             page.update()
 
+        mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456') 
+        validate_mfa_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Confirm MFA:"),
+            content=ft.Column(controls=[
+        #     ft.Text(f"Setup MFA:", selectable=True),
+            ft.Text(f'Please confirm the code from your authenticator app.', selectable=True),
+                # ], tight=True),
+            mfa_confirm_box,
+            # actions=[
+            ft.TextButton("Confirm", on_click=complete_mfa),
+            ft.TextButton("Cancel", on_click=close_validate_mfa_dlg)
+            ],
+            tight=True),             
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
+        def close_validate_mfa_dlg(e):
+            validate_mfa_dlg.open = False
+            page.update()
+
+        def complete_mfa(e):
+            
+
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
+            page.snack_bar.open = True
+            page.update()
+
         def validate_mfa(e):
-            pass
+            page.dialog = validate_mfa_dlg
+            validate_mfa_dlg.open = True
+            page.update()
 
         img_data_url = setup_user_for_otp()
         mfa_dlg = ft.AlertDialog(
