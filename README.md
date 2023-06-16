@@ -339,6 +339,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### To be added after beta version (Listed in order they will be implemented)
 
+- [ ] Offline mode for playing locally downloaded episodes
 - [ ] Page refreshing to handle adding and removing of things better
 - [ ] Reload not needed to add and remove episodes from pages
 - [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)

@@ -214,6 +214,13 @@ active_pod = 'Set at start'
 initial_script_dir = os.path.dirname(os.path.realpath(__file__))
 script_dir = os.path.dirname(os.path.dirname(initial_script_dir))
 
+appname = "pinepods"
+appauthor = "Gooseberry Development"
+
+# user_data_dir would be the equivalent to the home directory you were using
+user_data_dir = appdirs.user_data_dir(appname, appauthor)
+metadata_dir = os.path.join(user_data_dir, 'metadata')
+
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
@@ -527,10 +534,7 @@ def main(page: ft.Page, session_value=None):
         clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description, feedurl=pod_feed_url, website=pod_website, categories=pod_categories, episode_count=pod_episode_count)
         return clicked_podcast
 
-    def save_episode_metadata(episode, user_home_dir):
-        # The directory where the metadata file will be stored
-        metadata_dir = os.path.join(user_home_dir, '.pinepods', 'metadata')
-        
+    def save_episode_metadata(episode):        
         # Create the directory if it doesn't already exist
         os.makedirs(metadata_dir, exist_ok=True)
         
@@ -542,8 +546,8 @@ def main(page: ft.Page, session_value=None):
         with open(file_path, 'w') as f:
             json.dump(episode, f)
     
-    def download_episode_file(episode_url, podcast_name, user_home_dir):
-        download_dir = os.path.join(user_home_dir, '.pinepods', 'downloads', podcast_name)
+    def download_episode_file(episode_url, podcast_name):
+        download_dir = os.path.join(metadata_dir, 'downloads', podcast_name)
         os.makedirs(download_dir, exist_ok=True)
         
         response = requests.get(episode_url, stream=True)
@@ -561,24 +565,27 @@ def main(page: ft.Page, session_value=None):
 
 
     def locally_download_episode(url, title, user_id, user_home_dir, page):
+        pr = ft.ProgressRing()
+        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+        page.overlay.append(progress_stack)
+        page.update()
         # First, retrieve the episode's metadata from the database
         episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title, active_user.user_id)
         
         # Next, download the actual episode data (the audio file)
-        print(episode)
-        episode_local_path = download_episode_file(episode["EpisodeURL"], episode["PodcastName"], user_home_dir)
+        episode_local_path = download_episode_file(episode["EpisodeURL"], episode["PodcastName"])
         
         # Add the local path to the episode metadata
         episode['EpisodeLocalPath'] = episode_local_path
-
         # Store the episode's metadata locally
-        save_episode_metadata(episode, user_home_dir)
-
+        save_episode_metadata(episode)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode Downloaded!"))
+        page.snack_bar.open = True
+        page.overlay.remove(progress_stack)
+        page.update()
 
 
     def load_local_downloaded_episodes(user_id):
-        metadata_dir = os.path.join(user_home_dir, '.pinepods', 'metadata')
-
         downloaded_episodes = []
 
         try:
@@ -589,7 +596,7 @@ def main(page: ft.Page, session_value=None):
                         episode_metadata = json.load(file)
                         downloaded_episodes.append(episode_metadata)
         except FileNotFoundError:
-            print(f"No downloaded episodes found for user {user_id}")
+            print(f"No local downloaded episodes found for user {user_id}")
 
         return downloaded_episodes
 
@@ -3401,9 +3408,7 @@ def main(page: ft.Page, session_value=None):
 
             # Get Pod info
             download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
-            print(download_episode_list)
             download_local_episode_list = load_local_downloaded_episodes(active_user.user_id)
-            print(f'Here starts the local list: {download_local_episode_list}')
 
             server_text = ft.Text("Server Downloaded Episodes:", size=16, color=active_user.font_color)
             local_text = ft.Text("Locally Downloaded Episodes:", size=16, color=active_user.font_color)
@@ -3582,6 +3587,7 @@ def main(page: ft.Page, session_value=None):
                     local_download_ep_url = entry['EpisodeURL']
                     local_download_ep_local_url = entry['EpisodeLocalPath']
                     local_download_ep_duration = entry['EpisodeDuration']
+                    local_download_ep_id = entry['EpisodeID']
                     
                     # do something with the episode information
                     local_download_entry_title_button = ft.Text(f'{local_download_pod_name} - {local_download_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
@@ -3647,7 +3653,7 @@ def main(page: ft.Page, session_value=None):
                     local_download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title, artwork=local_download_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DELETE, text="Delete Downloaded Episode", on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title: delete_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DELETE, text="Delete Downloaded Episode", on_click=lambda x, url=local_download_ep_local_url, title=local_download_ep_title, episode_id=local_download_ep_id: delete_local_selected_episode(url, title, episode_id, page)),
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
@@ -3993,7 +3999,6 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/playing" or page.route == "/playing":
             audio_container.visible = False
-            print(current_episode.audio_con_art_url_parsed)
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)
@@ -5028,6 +5033,32 @@ def main(page: ft.Page, session_value=None):
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
         page.snack_bar.open = True
         page.update()
+
+    def delete_local_selected_episode(url, title, episode_id, page):
+        current_episode.url = url
+        current_episode.title = title
+        #delete parts here
+        try:
+            os.remove(url)
+        except OSError as e:
+            page.snack_bar = ft.SnackBar(content=ft.Text("Error: %s : %s" % (url, e.strerror)))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        metadata_path = os.path.join(metadata_dir, f"{episode_id}.json")
+        try:
+            os.remove(metadata_path)
+        except OSError as e:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: %s : %s" % (metadata_path, e.strerror)))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
+        page.snack_bar.open = True
+        page.update()
+        page.go("/downloads")
 
     def queue_selected_episode(url, title, artwork, page):
         current_episode.url = url

@@ -68,20 +68,20 @@ def proxy():
             response = cache.get(url)
             if response is None:
                 try:
-                    response = requests.get(url, headers=headers, timeout=10)  # set a timeout
+                    response = requests.get(url, headers=headers, timeout=5)  # set a timeout
                     response = optimize_image(response.content)
                     cache.set(url, response)
-                except Timeout:
+                except (requests.exceptions.ReadTimeout, requests.exceptions.RequestException):
                     print(f'The request for {url} timed out')
                     return send_file('/pinepods/images/pinepods-logo.jpeg', mimetype='image/jpeg')
             content = response
         else:
             try:
-                response = requests.get(url, headers=headers, timeout=1)  # set a timeout
+                response = requests.get(url, headers=headers, timeout=5)  # set a timeout
                 content = response.content
-            except Timeout:
-                print(f'The request for {url} timed out')
-                return Response('Request timeout', status=408)  # return a 408 Timeout response
+            except (requests.exceptions.ReadTimeout, requests.exceptions.RequestException):
+                print('Image request timeout')
+                return Response('imagetimeout', status=408) 
     else:
         if not os.path.isfile(url):
             return Response('File not found', status=404)
