@@ -558,6 +558,17 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx = Depends(get_data
     episode = database_functions.functions.get_episode_metadata(cnx, data.episode_url, data.episode_title, data.user_id)
     return {"episode": episode}
 
+@app.post("/api/data/save_mfa_secret")
+async def api_save_mfa_secret(user_id: int, mfa_secret: str, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    success = database_functions.functions.save_mfa_secret(cnx, user_id, mfa_secret)
+    if success:
+        return {"status": "success"}
+    else:
+        return {"status": "error"}
+
+
+@app.
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

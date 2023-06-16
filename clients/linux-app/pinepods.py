@@ -437,9 +437,6 @@ def main(page: ft.Page, session_value=None):
         # generate a new secret for the user
         secret = pyotp.random_base32()
 
-        # store the secret in your database
-        # store_user_secret(secret)
-
         # create a provisioning URL that the user can scan with their OTP app
         provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
 
@@ -450,8 +447,9 @@ def main(page: ft.Page, session_value=None):
         # # save it to a file
         # img.save("mfa_qrcode.png")
         # convert the QR code image to Base64
-        filename = f"{active_user.user_id}_qrcode.png"  # for example
+        filename = f"{user_data_dir}/{active_user.user_id}_qrcode.png"  # for example
         img.save(filename)
+        active_user.mfa_secret = secret
 
         # get the URL for the image
         # img_url = url_for(filename=filename)
@@ -459,8 +457,21 @@ def main(page: ft.Page, session_value=None):
         return filename
 
     def setup_mfa(e):
-        def close_mfa_dlg(e):
+        def close_mfa_dlg(page):
             mfa_dlg.open = False
+            page.update()
+
+        def close_validate_mfa_dlg(page):
+            validate_mfa_dlg.open = False
+            page.update()
+
+        def complete_mfa(e):
+            close_validate_mfa_dlg(page)
+
+            api_functions.functions.save_mfa_secret(app_api.url, app_api.headers, active_user.user_id, active_user.mfa_secret)
+
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
+            page.snack_bar.open = True
             page.update()
 
         mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456') 
@@ -480,18 +491,9 @@ def main(page: ft.Page, session_value=None):
             actions_alignment=ft.MainAxisAlignment.END,
         )
 
-        def close_validate_mfa_dlg(e):
-            validate_mfa_dlg.open = False
-            page.update()
-
-        def complete_mfa(e):
-            
-
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
-            page.snack_bar.open = True
-            page.update()
-
         def validate_mfa(e):
+            close_mfa_dlg(page)
+
             page.dialog = validate_mfa_dlg
             validate_mfa_dlg.open = True
             page.update()
@@ -4170,6 +4172,7 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
+            self.mfa_secret = None
 
     # New User Stuff ----------------------------
 

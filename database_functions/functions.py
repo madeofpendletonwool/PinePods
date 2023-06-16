@@ -1734,3 +1734,20 @@ def get_episode_metadata(cnx, url, title, user_id):
         
     return row
 
+    def save_mfa_secret(cnx, user_id, mfa_secret):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"UPDATE Users "
+             f"SET MFA_Secret = %s "
+             f"WHERE UserID = %s")
+    
+    try:
+        cursor.execute(query, (mfa_secret, user_id))
+        cnx.commit()
+        cursor.close()
+        return True
+    except Exception as e:
+        print("Error saving MFA secret:", e)
+        return False
+
+

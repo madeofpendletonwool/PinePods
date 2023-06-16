@@ -55,6 +55,7 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
                     IsAdmin TINYINT(1),
                     Reset_Code TEXT,
                     Reset_Expiry DATETIME
+                    MFA_Secret VARCHAR(50)
                 )""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
