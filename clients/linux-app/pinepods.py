@@ -478,7 +478,6 @@ def main(page: ft.Page, session_value=None):
 
     def save_episode_metadata(episode):        
         # Create the directory if it doesn't already exist
-        print(f"THis is the dir: {metadata_dir}")
         os.makedirs(metadata_dir, exist_ok=True)
         
         # The filename will be based on the episode's ID
@@ -530,7 +529,6 @@ def main(page: ft.Page, session_value=None):
 
     def load_local_downloaded_episodes(user_id):
         downloaded_episodes = []
-        print(metadata_dir)
 
         try:
             for filename in os.listdir(metadata_dir):
@@ -540,7 +538,7 @@ def main(page: ft.Page, session_value=None):
                         episode_metadata = json.load(file)
                         downloaded_episodes.append(episode_metadata)
         except FileNotFoundError:
-            print(f"No downloaded episodes found for user {user_id}")
+            print(f"No local downloaded episodes found for user {user_id}")
 
         return downloaded_episodes
 
@@ -3341,9 +3339,7 @@ def main(page: ft.Page, session_value=None):
 
             # Get Pod info
             download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
-            print(download_episode_list)
             download_local_episode_list = load_local_downloaded_episodes(active_user.user_id)
-            print(f'Here starts the local list: {download_local_episode_list}')
 
             server_text = ft.Text("Server Downloaded Episodes:", size=16, color=active_user.font_color)
             local_text = ft.Text("Locally Downloaded Episodes:", size=16, color=active_user.font_color)
@@ -3934,7 +3930,6 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/playing" or page.route == "/playing":
             audio_container.visible = False
-            print(current_episode.audio_con_art_url_parsed)
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)
@@ -4977,7 +4972,6 @@ def main(page: ft.Page, session_value=None):
         try:
             os.remove(url)
         except OSError as e:
-            print("Error: %s : %s" % (url, e.strerror))
             page.snack_bar = ft.SnackBar(content=ft.Text("Error: %s : %s" % (url, e.strerror)))
             page.snack_bar.open = True
             page.update()
