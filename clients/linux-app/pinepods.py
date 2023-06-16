@@ -40,6 +40,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
+from io import BytesIO
+import pyotp
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -423,6 +425,57 @@ def main(page: ft.Page, session_value=None):
         disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
         page.update()
 
+    def setup_user_for_otp():
+        # generate a new secret for the user
+        secret = pyotp.random_base32()
+
+        # store the secret in your database
+        # store_user_secret(secret)
+
+        # create a provisioning URL that the user can scan with their OTP app
+        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=user.email, issuer_name='My App')
+
+        # convert this provisioning URL into a QR code and display it to the user
+        # generate the QR code
+        img = qrcode.make(provisioning_url)
+
+        # # save it to a file
+        # img.save("mfa_qrcode.png")
+        # convert the QR code image to Base64
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+
+        # create a data URL that can be used in an <img> tag
+        img_data_url = f"data:image/png;base64,{img_str}"
+        return img_data_url
+
+    def setup_mfa(e):
+        def close_mfa_dlg(e):
+            mfa_dlg.open = False
+            page.update()
+
+        img_data_url = setup_user_for_otp()
+        mfa_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"Email Send Test"),
+        content=ft.Column(controls=[
+        ft.Text(f"Setup MFA: {email_result}", selectable=True),
+        ft.Text(f'Scan the code below with your authenticator app to setup MFA on your account.', selectable=True),
+            ], tight=True),
+        ft.Image(src=img_data_url)
+        actions=[
+        ft.TextButton("Save", on_click=save_email_settings),
+        ft.TextButton("Close", on_click=close_email_dlg)
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+        )
+        page.dialog = mfa_dlg
+        mfa_dlg.open = True
+        page.update()
+        # page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
+        # page.snack_bar.open = True
+        # page.update()
 
     def download_option_change(e):
         api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
@@ -2356,6 +2409,12 @@ def main(page: ft.Page, session_value=None):
             theme_row_container = ft.Container(content=theme_row)
             theme_row_container.padding = padding.only(left=70, right=50)
 
+            # MFA Setup
+
+            mfa_text = ft.Text('Setup MFA:', color=active_user.font_color, size=16)
+            mfa_setup = download_info_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=mfa_setup, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+
             # Admin Only Settings
 
             admin_setting = ft.Text(
@@ -2643,6 +2702,9 @@ def main(page: ft.Page, session_value=None):
                     [
                         user_setting_text,
                         theme_row_container,
+                        div_row,
+                        mfa_text,
+                        mfa_setup,
                         div_row,
                         admin_setting_text,
                         user_row_container,
