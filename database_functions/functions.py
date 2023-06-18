@@ -1734,7 +1734,7 @@ def get_episode_metadata(cnx, url, title, user_id):
         
     return row
 
-    def save_mfa_secret(cnx, user_id, mfa_secret):
+def save_mfa_secret(cnx, user_id, mfa_secret):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"UPDATE Users "
