@@ -4626,10 +4626,12 @@ def main(page: ft.Page, session_value=None):
 
 
         def mfa_login(self, mfa_prompt):
-            mfa_secret = int(mfa_prompt.value)
+            mfa_secret = mfa_prompt.value
             print(f'secret: {mfa_secret}')
             print(f'userid: {self.user_id}')
             mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
+
+            print(f'after verify. Heres mfa_verify: {mfa_verify}')
 
             if mfa_verify:            
                 if self.retain_session:
@@ -4640,6 +4642,10 @@ def main(page: ft.Page, session_value=None):
                     go_homelogin(page)
                 else:
                     on_click_wronguser(page)
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA Code incorrect"))
+                page.snack_bar.open = True
+                self.page.update()
 
         def saved_login(self, user_id):
             login_details = api_functions.functions.call_get_user_details_id(app_api.url, app_api.headers, user_id)
