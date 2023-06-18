@@ -528,7 +528,7 @@ async def api_verify_reset_code_route(payload: ResetPasswordPayload, cnx = Depen
     if code_valid is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {"code_valid": code_valid}
-    
+
 class ResetPasswordPayloadVerify(BaseModel):
     email: str
     salt: str
@@ -565,9 +565,6 @@ async def api_save_mfa_secret(user_id: int, mfa_secret: str, cnx = Depends(get_d
         return {"status": "success"}
     else:
         return {"status": "error"}
-
-
-@app.
 
 
 if __name__ == '__main__':
