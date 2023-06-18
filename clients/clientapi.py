@@ -528,7 +528,7 @@ async def api_verify_reset_code_route(payload: ResetPasswordPayload, cnx = Depen
     if code_valid is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {"code_valid": code_valid}
-
+    
 class ResetPasswordPayloadVerify(BaseModel):
     email: str
     salt: str

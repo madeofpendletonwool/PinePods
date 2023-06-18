@@ -649,4 +649,17 @@ def call_get_episode_metadata(url, headers, episode_url, episode_title, user_id)
         print("Error fetching episode metadata:", response.status_code)
         return None
 
+def call_save_mfa_secret(url, headers, user_id, mfa_secret):
+    data = {
+        "user_id": user_id,
+        "mfa_secret": mfa_secret
+    }
+    response = requests.post(url + "/save_mfa_secret", headers=headers, json=data)
+    
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving MFA secret:", response.status_code)
+        print("Error message:", response.text)
+        return False
 

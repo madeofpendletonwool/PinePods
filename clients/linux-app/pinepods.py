@@ -438,7 +438,8 @@ def main(page: ft.Page, session_value=None):
         secret = pyotp.random_base32()
 
         # create a provisioning URL that the user can scan with their OTP app
-        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
+        provisioning_url = pyotp.totp.TOTP(secret, interval=60).provisioning_uri(name=active_user.email, issuer_name='PinePods')
+
 
         # convert this provisioning URL into a QR code and display it to the user
         # generate the QR code
@@ -466,12 +467,23 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         def complete_mfa(e):
-            close_validate_mfa_dlg(page)
+            # Get the OTP entered by the user
+            entered_otp = mfa_confirm_box.value
 
-            api_functions.functions.save_mfa_secret(app_api.url, app_api.headers, active_user.user_id, active_user.mfa_secret)
+            # Verify the OTP
+            totp = pyotp.TOTP(active_user.mfa_secret, interval=60)
+            if totp.verify(entered_otp):
+                # If the OTP is valid, save the MFA secret
+                api_functions.functions.call_save_mfa_secret(app_api.url, app_api.headers, active_user.user_id, active_user.mfa_secret)
 
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
-            page.snack_bar.open = True
+                # Close the dialog and show a success message
+                close_validate_mfa_dlg(page)
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
+                page.snack_bar.open = True
+            else:
+                # If the OTP is not valid, show an error message
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"The entered OTP is incorrect. It also may have timed out before you entered it. Please cancel and try again."))
+                page.snack_bar.open = True
             page.update()
 
         mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456') 
@@ -485,7 +497,7 @@ def main(page: ft.Page, session_value=None):
             mfa_confirm_box,
             # actions=[
             ft.TextButton("Confirm", on_click=complete_mfa),
-            ft.TextButton("Cancel", on_click=close_validate_mfa_dlg)
+            ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
             ],
             tight=True),             
             actions_alignment=ft.MainAxisAlignment.END,
