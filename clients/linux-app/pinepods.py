@@ -505,6 +505,7 @@ def main(page: ft.Page, session_value=None):
 
         def validate_mfa(e):
             close_mfa_dlg(page)
+            page.update()
 
             page.dialog = validate_mfa_dlg
             validate_mfa_dlg.open = True
@@ -521,7 +522,7 @@ def main(page: ft.Page, session_value=None):
             ft.Image(src=img_data_url, width=200, height=200),
             # actions=[
             ft.TextButton("Continue", on_click=validate_mfa),
-            ft.TextButton("Close", on_click=close_mfa_dlg)
+            ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(page)))
             ],
             tight=True),             
             actions_alignment=ft.MainAxisAlignment.END,
@@ -2466,9 +2467,13 @@ def main(page: ft.Page, session_value=None):
             theme_row_container.padding = padding.only(left=70, right=50)
 
             # MFA Setup
-
-            mfa_text = ft.Text('Setup MFA:', color=active_user.font_color, size=16)
-            mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+            check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, active_user.user_id)
+            if check_mfa_status:
+                mfa_text = ft.Text(f'Setup MFA: currently enabled', color=active_user.font_color, size=16)
+                mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                mfa_text = ft.Text(f'Setup MFA: currently disabled', color=active_user.font_color, size=16)
+                mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
             mfa_column = ft.Column(controls=[mfa_text, mfa_button])
             mfa_container = ft.Container(content=mfa_column)
             mfa_container.padding=padding.only(left=70, right=50)

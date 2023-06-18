@@ -1751,3 +1751,21 @@ def save_mfa_secret(cnx, user_id, mfa_secret):
         return False
 
 
+def check_mfa_enabled(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
+
+    try:
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        cursor.close()
+
+        # Check if MFA_Secret is NULL
+        if result['MFA_Secret']:
+            return True  # MFA is enabled
+        else:
+            return False  # MFA is disabled
+    except Exception as e:
+        print("Error checking MFA status:", e)
+        return False

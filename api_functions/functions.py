@@ -663,3 +663,14 @@ def call_save_mfa_secret(url, headers, user_id, mfa_secret):
         print("Error message:", response.text)
         return False
 
+
+def call_check_mfa_enabled(url, headers, user_id):
+    response = requests.get(url + f"/check_mfa_enabled/{user_id}", headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get('mfa_enabled', False)
+    else:
+        print("Error checking MFA status:", response.status_code)
+        print("Error message:", response.text)
+        return False

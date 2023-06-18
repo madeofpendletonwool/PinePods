@@ -570,6 +570,12 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx = Depends(get_database_co
     else:
         return {"status": "error"}
 
+@app.get("/api/data/check_mfa_enabled/{user_id}")
+async def api_check_mfa_enabled(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_enabled = database_functions.functions.check_mfa_enabled(cnx, user_id)
+    return {"mfa_enabled": is_enabled}
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
