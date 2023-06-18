@@ -674,3 +674,18 @@ def call_check_mfa_enabled(url, headers, user_id):
         print("Error checking MFA status:", response.status_code)
         print("Error message:", response.text)
         return False
+
+def call_verify_mfa(url, headers, user_id, mfa_code):
+    data = {
+        "user_id": user_id,
+        "mfa_code": mfa_code
+    }
+    response = requests.post(url + "/verify_mfa", headers=headers, json=data)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get('verified', False)
+    else:
+        print("Error verifying MFA code:", response.status_code)
+        print("Error message:", response.text)
+        return False

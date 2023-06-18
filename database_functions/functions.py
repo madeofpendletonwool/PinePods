@@ -1769,3 +1769,19 @@ def check_mfa_enabled(cnx, user_id):
     except Exception as e:
         print("Error checking MFA status:", e)
         return False
+
+def get_mfa_secret(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
+
+    try:
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        cursor.close()
+
+        return result['MFA_Secret']
+    except Exception as e:
+        print("Error retrieving MFA secret:", e)
+        return None
+

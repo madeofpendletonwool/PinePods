@@ -25,6 +25,7 @@ import logging
 from typing import Any
 import argparse
 import sys
+from pyotp import TOTP
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -574,6 +575,16 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx = Depends(get_database_co
 async def api_check_mfa_enabled(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     is_enabled = database_functions.functions.check_mfa_enabled(cnx, user_id)
     return {"mfa_enabled": is_enabled}
+
+@app.post("/api/data/verify_mfa")
+async def api_verify_mfa(user_id: int, mfa_code: str, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    secret = database_functions.functions.get_mfa_secret(cnx, user_id)
+    if secret is None:
+        return {"verified": False}
+    else:
+        totp = TOTP(secret)
+        return {"verified": totp.verify(mfa_code)}
+
 
 
 if __name__ == '__main__':

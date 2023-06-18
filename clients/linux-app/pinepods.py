@@ -1442,6 +1442,9 @@ def main(page: ft.Page, session_value=None):
     def start_login(page):
         page.go("/login")
 
+    def open_mfa_login(e):
+        page.go("/mfalogin")
+
     def view_pop(e):
         page.views.pop()
         top_view = page.views[-1]
@@ -1472,9 +1475,6 @@ def main(page: ft.Page, session_value=None):
 
     def open_user_stats(e):
         page.go("/userstats")
-
-    def open_mfa_login(e):
-        page.go("/mfalogin")
 
     def open_currently_playing(e):
         page.go("/playing")
@@ -2139,7 +2139,7 @@ def main(page: ft.Page, session_value=None):
                     width=160,
                     height=40,
                     # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
+                    on_click=lambda e: active_user.mfa_log_values(login_username, login_password, retain_session.value)
                     # on_click=lambda e: go_homelogin(e)
                 )
             else:
@@ -2375,6 +2375,7 @@ def main(page: ft.Page, session_value=None):
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
 
+
             server_configpage = ft.Column(
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -2406,7 +2407,7 @@ def main(page: ft.Page, session_value=None):
                                         text_align="center",
                                     ),
                                     ft.Text(
-                                        "Welcome to PinePods. Let's begin by connecting to your server. Please enter your server name and API Key below. Keep in mind that if you setup Pinepods with a reverse proxy it's unlikely that you need a port number in your url",
+                                        "Please enter the MFA code for Pinepods from your authenticator app",
                                         size=14,
                                         weight="w700",
                                         text_align="center",
@@ -2415,15 +2416,10 @@ def main(page: ft.Page, session_value=None):
                                     ft.Container(
                                         padding=padding.only(bottom=20)
                                     ),
-                                    server_name,
+                                    mfa_prompt,
                                     ft.Container(
                                         padding=padding.only(bottom=10)
                                     ),
-                                    app_api_key,
-                                    ft.Container(
-                                        padding=padding.only(bottom=10)
-                                    ),
-                                    retain_session_contained,
                                     ft.Row(
                                         alignment="center",
                                         spacing=20,
@@ -2436,7 +2432,7 @@ def main(page: ft.Page, session_value=None):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: app_api.api_verify(server_name.value, app_api_key.value, retain_session.value)
+                                                on_click=lambda e: active_user.mfa_login(mfa_prompt.value)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
@@ -4635,6 +4631,42 @@ def main(page: ft.Page, session_value=None):
             else:
                 on_click_wronguser(page)
 
+        def mfa_log_values(self, username_field, password_field, retain_session):
+            username = username_field.value
+            password = password_field.value
+            username_field.value = ''
+            password_field.value = ''
+            username_field.update()
+            password_field.update()
+            if not username or not password:
+                on_click_novalues(page)
+                return
+            pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
+            if pass_correct == True:
+                login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
+                self.user_id = login_details['UserID']
+                self.fullname = login_details['Fullname']
+                self.username = login_details['Username']
+                self.email = login_details['Email']
+                self.retain_session = retain_session
+
+                open_mfa_login(page)
+            else:
+                on_click_wronguser(page)
+
+        def mfa_login(self, mfa_secret):
+            mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
+
+            if mfa_verify:            
+                if self.retain_session:
+                    session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                    if session_token:
+                        save_session_id_to_file(session_token)
+
+                    go_homelogin(page)
+                else:
+                    on_click_wronguser(page)
+
         def saved_login(self, user_id):
             login_details = api_functions.functions.call_get_user_details_id(app_api.url, app_api.headers, user_id)
             self.user_id = login_details['UserID']
@@ -4846,6 +4878,14 @@ def main(page: ft.Page, session_value=None):
         hint_text='Generate this from settings in PinePods',
         password=True,
         can_reveal_password=True,
+    )
+
+    mfa_prompt = ft.TextField(
+        label="MFA code",
+        border="underline",
+        hint_text="ex. 123456",
+        width=320,
+        text_size=14,
     )
 
     active_user = User(page)
