@@ -1473,6 +1473,9 @@ def main(page: ft.Page, session_value=None):
     def open_user_stats(e):
         page.go("/userstats")
 
+    def open_mfa_login(e):
+        page.go("/mfalogin")
+
     def open_currently_playing(e):
         page.go("/playing")
 
@@ -2122,10 +2125,35 @@ def main(page: ft.Page, session_value=None):
             ) 
 
         if page.route == "/login" or page.route == "/login":
+            check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, active_user.user_id)
             guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
+            if check_mfa_status:
+                login_button = ft.FilledButton(
+                    content=ft.Text(
+                        "Login",
+                        weight="w700",
+                    ),
+                    width=160,
+                    height=40,
+                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
+                    # on_click=lambda e: go_homelogin(e)
+                )
+            else:
+                login_button = ft.FilledButton(
+                    content=ft.Text(
+                        "Login",
+                        weight="w700",
+                    ),
+                    width=160,
+                    height=40,
+                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
+                    # on_click=lambda e: go_homelogin(e)
+                )
             if page.web:
                 retain_session.visible = False
             if guest_enabled == True:
@@ -2182,17 +2210,7 @@ def main(page: ft.Page, session_value=None):
                                             alignment="center",
                                             spacing=20,
                                             controls=[
-                                                ft.FilledButton(
-                                                    content=ft.Text(
-                                                        "Login",
-                                                        weight="w700",
-                                                    ),
-                                                    width=160,
-                                                    height=40,
-                                                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
-                                                    # on_click=lambda e: go_homelogin(e)
-                                                ),
+                                                login_button,
                                                 ft.FilledButton(
                                                     content=ft.Text(
                                                         "Guest Login",
@@ -2296,17 +2314,7 @@ def main(page: ft.Page, session_value=None):
                                         alignment="center",
                                         spacing=20,
                                         controls=[
-                                            ft.FilledButton(
-                                                content=Text(
-                                                    "Login",
-                                                    weight="w700",
-                                                ),
-                                                width=160,
-                                                height=40,
-                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
-                                                # on_click=lambda e: go_homelogin(e)
-                                            ),
+                                            login_button,
                                         ],
                                     ),
                                     ft.Row(
@@ -2359,6 +2367,100 @@ def main(page: ft.Page, session_value=None):
             # Create final page
             page.views.append(
                 login_startpage_view
+                
+            ) 
+
+        if page.route == "/mfalogin" or page.route == "/mfalogin":
+            retain_session = ft.Switch(label="Save API Key", value=False)
+            retain_session_contained = ft.Container(content=retain_session)
+            retain_session_contained.padding = padding.only(left=70)
+
+            server_configpage = ft.Column(
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Card(
+                        elevation=15,
+                        content=ft.Container(
+                            width=550,
+                            height=600,
+                            padding=padding.all(30),
+                            gradient=GradientGenerator(
+                                "#2f2937", "#251867"
+                            ),
+                            border_radius=border_radius.all(12),
+                            content=ft.Column(
+                                horizontal_alignment="center",
+                                alignment="start",
+                                controls=[
+                                    ft.Text(
+                                        "PinePods",
+                                        size=32,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
+                                        size=22,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "Welcome to PinePods. Let's begin by connecting to your server. Please enter your server name and API Key below. Keep in mind that if you setup Pinepods with a reverse proxy it's unlikely that you need a port number in your url",
+                                        size=14,
+                                        weight="w700",
+                                        text_align="center",
+                                        color="#64748b",
+                                    ),
+                                    ft.Container(
+                                        padding=padding.only(bottom=20)
+                                    ),
+                                    server_name,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    app_api_key,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    retain_session_contained,
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.FilledButton(
+                                                content=ft.Text(
+                                                    "Login",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click=lambda e: app_api.api_verify(server_name.value, app_api_key.value, retain_session.value)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    )
+                ],
+            )
+
+            # Create search view object
+            server_configpage_view = ft.View("/server_config",                
+                horizontal_alignment="center",
+                vertical_alignment="center",
+                    controls=[
+                        server_configpage
+                    ]
+                    
+                )
+            # search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                server_configpage
                 
             ) 
 
