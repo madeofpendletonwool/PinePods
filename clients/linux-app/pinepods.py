@@ -2125,35 +2125,21 @@ def main(page: ft.Page, session_value=None):
             ) 
 
         if page.route == "/login" or page.route == "/login":
-            check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, active_user.user_id)
             guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
-            if check_mfa_status:
-                login_button = ft.FilledButton(
-                    content=ft.Text(
-                        "Login",
-                        weight="w700",
-                    ),
-                    width=160,
-                    height=40,
-                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                    on_click=lambda e: active_user.mfa_log_values(login_username, login_password, retain_session.value)
-                    # on_click=lambda e: go_homelogin(e)
-                )
-            else:
-                login_button = ft.FilledButton(
-                    content=ft.Text(
-                        "Login",
-                        weight="w700",
-                    ),
-                    width=160,
-                    height=40,
-                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
-                    # on_click=lambda e: go_homelogin(e)
-                )
+            login_button = ft.FilledButton(
+                content=ft.Text(
+                    "Login",
+                    weight="w700",
+                ),
+                width=160,
+                height=40,
+                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
+                # on_click=lambda e: go_homelogin(e)
+            )
             if page.web:
                 retain_session.visible = False
             if guest_enabled == True:
@@ -2432,7 +2418,7 @@ def main(page: ft.Page, session_value=None):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: active_user.mfa_login(mfa_prompt.value)
+                                                on_click=lambda e: active_user.mfa_login(mfa_prompt)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
@@ -4606,55 +4592,43 @@ def main(page: ft.Page, session_value=None):
             self.initials = initials_lower.upper()
 
         def login(self, username_field, password_field, retain_session):
-            username = username_field.value
-            password = password_field.value
-            username_field.value = ''
-            password_field.value = ''
-            username_field.update()
-            password_field.update()
-            if not username or not password:
-                on_click_novalues(page)
-                return
-            pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
-            if pass_correct == True:
-                login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
-                self.user_id = login_details['UserID']
-                self.fullname = login_details['Fullname']
-                self.username = login_details['Username']
-                self.email = login_details['Email']
-                if retain_session:
-                    session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
-                    if session_token:
-                        save_session_id_to_file(session_token)
+                username = username_field.value
+                password = password_field.value
+                username_field.value = ''
+                password_field.value = ''
+                username_field.update()
+                password_field.update()
+                if not username or not password:
+                    on_click_novalues(page)
+                    return
+                pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
+                if pass_correct == True:
+                    login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
+                    self.user_id = login_details['UserID']
+                    self.fullname = login_details['Fullname']
+                    self.username = login_details['Username']
+                    self.email = login_details['Email']
 
-                go_homelogin(page)
-            else:
-                on_click_wronguser(page)
+                    check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, self.user_id)
+                    if check_mfa_status:
+                        self.retain_session = retain_session
+                        open_mfa_login(page)
 
-        def mfa_log_values(self, username_field, password_field, retain_session):
-            username = username_field.value
-            password = password_field.value
-            username_field.value = ''
-            password_field.value = ''
-            username_field.update()
-            password_field.update()
-            if not username or not password:
-                on_click_novalues(page)
-                return
-            pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
-            if pass_correct == True:
-                login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
-                self.user_id = login_details['UserID']
-                self.fullname = login_details['Fullname']
-                self.username = login_details['Username']
-                self.email = login_details['Email']
-                self.retain_session = retain_session
+                    else: 
+                        if retain_session:
+                            session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                            if session_token:
+                                save_session_id_to_file(session_token)
+                        go_homelogin(page)
+                else:
+                    on_click_wronguser(page)
+        # def mfa_log_values(self, username_field, password_field, retain_session):
 
-                open_mfa_login(page)
-            else:
-                on_click_wronguser(page)
 
-        def mfa_login(self, mfa_secret):
+        def mfa_login(self, mfa_prompt):
+            mfa_secret = int(mfa_prompt.value)
+            print(f'secret: {mfa_secret}')
+            print(f'userid: {self.user_id}')
             mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
 
             if mfa_verify:            

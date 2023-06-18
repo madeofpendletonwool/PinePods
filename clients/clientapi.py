@@ -576,14 +576,18 @@ async def api_check_mfa_enabled(user_id: int, cnx = Depends(get_database_connect
     is_enabled = database_functions.functions.check_mfa_enabled(cnx, user_id)
     return {"mfa_enabled": is_enabled}
 
+class VerifyMFABody(BaseModel):
+    user_id: int
+    mfa_code: str
+
 @app.post("/api/data/verify_mfa")
-async def api_verify_mfa(user_id: int, mfa_code: str, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    secret = database_functions.functions.get_mfa_secret(cnx, user_id)
+async def api_verify_mfa(body: VerifyMFABody, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    secret = database_functions.functions.get_mfa_secret(cnx, body.user_id)
     if secret is None:
         return {"verified": False}
     else:
         totp = TOTP(secret)
-        return {"verified": totp.verify(mfa_code)}
+        return {"verified": totp.verify(body.mfa_code)}
 
 
 
