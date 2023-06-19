@@ -468,6 +468,9 @@ def main(page: ft.Page, session_value=None):
 
         def complete_mfa(e):
             # Get the OTP entered by the user
+            close_validate_mfa_dlg(page)
+            page.update()
+
             entered_otp = mfa_confirm_box.value
 
             # Verify the OTP
@@ -487,6 +490,13 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456') 
+        mfa_validate_select_row = ft.Row(
+            controls=[
+                ft.TextButton("Confirm", on_click=complete_mfa),
+                ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
+            ],
+            alignment=ft.MainAxisAlignment.END
+        )
         validate_mfa_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(f"Confirm MFA:"),
@@ -496,8 +506,7 @@ def main(page: ft.Page, session_value=None):
                 # ], tight=True),
             mfa_confirm_box,
             # actions=[
-            ft.TextButton("Confirm", on_click=complete_mfa),
-            ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
+            mfa_validate_select_row
             ],
             tight=True),             
             actions_alignment=ft.MainAxisAlignment.END,
@@ -512,6 +521,13 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         img_data_url = setup_user_for_otp()
+        mfa_select_row = ft.Row(
+            controls=[
+                ft.TextButton("Continue", on_click=validate_mfa),
+                ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(page)))
+            ],
+            alignment=ft.MainAxisAlignment.END
+        )
         mfa_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(f"Setup MFA:"),
@@ -521,8 +537,7 @@ def main(page: ft.Page, session_value=None):
                 # ], tight=True),
             ft.Image(src=img_data_url, width=200, height=200),
             # actions=[
-            ft.TextButton("Continue", on_click=validate_mfa),
-            ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(page)))
+            mfa_select_row
             ],
             tight=True),             
             actions_alignment=ft.MainAxisAlignment.END,
@@ -2370,7 +2385,7 @@ def main(page: ft.Page, session_value=None):
                         elevation=15,
                         content=ft.Container(
                             width=550,
-                            height=600,
+                            height=450,
                             padding=padding.all(30),
                             gradient=GradientGenerator(
                                 "#2f2937", "#251867"
@@ -2419,6 +2434,23 @@ def main(page: ft.Page, session_value=None):
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
                                                 on_click=lambda e: active_user.mfa_login(mfa_prompt)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.FilledButton(
+                                                content=ft.Text(
+                                                    "Cancel",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click=active_user.logout_pinepods
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
@@ -2552,13 +2584,14 @@ def main(page: ft.Page, session_value=None):
 
             # MFA Setup
             check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, active_user.user_id)
+            mfa_warning = ft.Text('Note: when setting up MFA you have 1 minute to enter the code or it will expire. If it expires just cancel and try again.', color=active_user.font_color, size=12)
             if check_mfa_status:
                 mfa_text = ft.Text(f'Setup MFA: currently enabled', color=active_user.font_color, size=16)
                 mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
             else:
                 mfa_text = ft.Text(f'Setup MFA: currently disabled', color=active_user.font_color, size=16)
                 mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
-            mfa_column = ft.Column(controls=[mfa_text, mfa_button])
+            mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button])
             mfa_container = ft.Container(content=mfa_column)
             mfa_container.padding=padding.only(left=70, right=50)
 

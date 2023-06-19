@@ -326,6 +326,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close) Edit: I actually think this is truly fixed now. I rebuilt the way this works using async, no problems so far
 - [x] Rebuild image Pulling process. The current one is just unworkable (It runs a lot better now. It spawns 4 workers to handle image gathering. Though it still isn't perfect, it hangs a bit occationally but for the time being it's totally usable)
 - [x] Layout Settings page better
+- [x] MFA Logins
 
 ### Pre-beta version
 
@@ -336,6 +337,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] logout on client remove saved app cache
 - [ ] Occational gStreamer Breaks. ughhh
 - [ ] API documentation (Site Built with Docusaurus)
+
+- [ ] Small layout Improvments
 
 ### To be added after beta version (Listed in order they will be implemented)
 
