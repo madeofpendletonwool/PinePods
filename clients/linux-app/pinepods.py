@@ -438,7 +438,7 @@ def main(page: ft.Page, session_value=None):
         secret = pyotp.random_base32()
 
         # create a provisioning URL that the user can scan with their OTP app
-        provisioning_url = pyotp.totp.TOTP(secret, interval=60).provisioning_uri(name=active_user.email, issuer_name='PinePods')
+        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
 
 
         # convert this provisioning URL into a QR code and display it to the user
@@ -471,8 +471,8 @@ def main(page: ft.Page, session_value=None):
             entered_otp = mfa_confirm_box.value
 
             # Verify the OTP
-            totp = pyotp.TOTP(active_user.mfa_secret, interval=60)
-            if totp.verify(entered_otp):
+            totp = pyotp.TOTP(active_user.mfa_secret)
+            if totp.verify(entered_otp, valid_window=1):
                 # If the OTP is valid, save the MFA secret
                 api_functions.functions.call_save_mfa_secret(app_api.url, app_api.headers, active_user.user_id, active_user.mfa_secret)
 
@@ -4624,11 +4624,9 @@ def main(page: ft.Page, session_value=None):
                     on_click_wronguser(page)
         # def mfa_log_values(self, username_field, password_field, retain_session):
 
-
-        from datetime import datetime
-        import time
-
         def mfa_login(self, mfa_prompt):
+            from datetime import datetime
+            import time
             mfa_secret = mfa_prompt.value
             print(f'secret: {mfa_secret}')
             print(f'userid: {self.user_id}')
