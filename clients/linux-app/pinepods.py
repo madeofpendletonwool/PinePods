@@ -4625,10 +4625,16 @@ def main(page: ft.Page, session_value=None):
         # def mfa_log_values(self, username_field, password_field, retain_session):
 
 
+        from datetime import datetime
+        import time
+
         def mfa_login(self, mfa_prompt):
             mfa_secret = mfa_prompt.value
             print(f'secret: {mfa_secret}')
             print(f'userid: {self.user_id}')
+            
+            print(f"Client time before verification: {time.time()} or {datetime.now()}")
+
             mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
 
             print(f'after verify. Heres mfa_verify: {mfa_verify}')
@@ -4646,6 +4652,7 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA Code incorrect"))
                 page.snack_bar.open = True
                 self.page.update()
+
 
         def saved_login(self, user_id):
             login_details = api_functions.functions.call_get_user_details_id(app_api.url, app_api.headers, user_id)
