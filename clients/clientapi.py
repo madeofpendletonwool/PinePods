@@ -582,16 +582,13 @@ class VerifyMFABody(BaseModel):
 
 @app.post("/api/data/verify_mfa")
 async def api_verify_mfa(body: VerifyMFABody, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    print(f"Received MFA code: {body.mfa_code}")
     secret = database_functions.functions.get_mfa_secret(cnx, body.user_id)
-    print(f"Retrieved MFA secret: {secret}")
 
     if secret is None:
         return {"verified": False}
     else:
         totp = TOTP(secret)
         verification_result = totp.verify(body.mfa_code)
-        print(f"Verification result: {verification_result}")
         return {"verified": verification_result}
 
 
