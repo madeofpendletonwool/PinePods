@@ -67,3 +67,7 @@ clients/.DS_Store
 */pinepods.spec
 */generated
 clients/mac-app/pinepods.spec
+
+# env files
+*/env_file
+*/.env

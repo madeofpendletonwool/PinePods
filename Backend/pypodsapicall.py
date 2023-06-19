@@ -37,17 +37,22 @@ headers = {
 @app.route('/api/search', methods=['GET'])
 def search():
     query = request.args.get('query', '')
+    index = request.args.get('index', '')
     search_url = url + query
 
-    # update headers with new date and hash
-    epoch_time = int(time.time())
-    data_to_hash = api_key + api_secret + str(epoch_time)
-    sha_1 = hashlib.sha1(data_to_hash.encode()).hexdigest()
-    headers['X-Auth-Date'] = str(epoch_time)
-    headers['Authorization'] = sha_1
+    if index.lower() == 'itunes':
+        itunes_search_url = f"https://itunes.apple.com/search?term={query}&media=podcast"
+        r = requests.get(itunes_search_url)
+    else:  # default to podcast index
+        # update headers with new date and hash
+        epoch_time = int(time.time())
+        data_to_hash = api_key + api_secret + str(epoch_time)
+        sha_1 = hashlib.sha1(data_to_hash.encode()).hexdigest()
+        headers['X-Auth-Date'] = str(epoch_time)
+        headers['Authorization'] = sha_1
 
-    # perform the actual post request
-    r = requests.post(search_url, headers=headers)
+        # perform the actual post request
+        r = requests.post(search_url, headers=headers)
 
     # if it's successful, return the contents (in a prettified json-format)
     # else, return the error code we received
