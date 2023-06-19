@@ -1772,6 +1772,7 @@ def check_mfa_enabled(cnx, user_id):
 
 def get_mfa_secret(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
+    print(user_id)
 
     query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
 

@@ -36,7 +36,7 @@ import Auth.Passfunctions
 secret_key_middle = secrets.token_hex(32)
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 from database_functions import functions
 
@@ -583,11 +583,23 @@ class VerifyMFABody(BaseModel):
 @app.post("/api/data/verify_mfa")
 async def api_verify_mfa(body: VerifyMFABody, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     secret = database_functions.functions.get_mfa_secret(cnx, body.user_id)
+    
     if secret is None:
+        logging.debug(f"No secret found for user_id {body.user_id}")
         return {"verified": False}
     else:
+        logging.debug(f"Secret found for user_id {body.user_id}")
+        
         totp = TOTP(secret)
-        return {"verified": totp.verify(body.mfa_code)}
+        is_verified = totp.verify(body.mfa_code)
+
+        logging.debug(f"MFA code received: {body.mfa_code}")
+        logging.debug(f"MFA verification result: {is_verified}")
+
+        if not is_verified:
+            raise HTTPException(status_code=401, detail="MFA verification failed")
+        
+        return {"verified": is_verified}
 
 
 
