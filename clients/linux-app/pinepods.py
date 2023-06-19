@@ -40,6 +40,9 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
+from io import BytesIO
+import pyotp
+import qrcode
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -430,6 +433,121 @@ def main(page: ft.Page, session_value=None):
         disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
         page.update()
 
+    def setup_user_for_otp():
+        # generate a new secret for the user
+        secret = pyotp.random_base32()
+
+        # create a provisioning URL that the user can scan with their OTP app
+        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
+
+
+        # convert this provisioning URL into a QR code and display it to the user
+        # generate the QR code
+        img = qrcode.make(provisioning_url)
+
+        # # save it to a file
+        # img.save("mfa_qrcode.png")
+        # convert the QR code image to Base64
+        filename = f"{user_data_dir}/{active_user.user_id}_qrcode.png"  # for example
+        img.save(filename)
+        active_user.mfa_secret = secret
+
+        # get the URL for the image
+        # img_url = url_for(filename=filename)
+
+        return filename
+
+    def setup_mfa(e):
+        def close_mfa_dlg(page):
+            mfa_dlg.open = False
+            page.update()
+
+        def close_validate_mfa_dlg(page):
+            validate_mfa_dlg.open = False
+            page.update()
+
+        def complete_mfa(e):
+            # Get the OTP entered by the user
+            close_validate_mfa_dlg(page)
+            page.update()
+
+            entered_otp = mfa_confirm_box.value
+
+            # Verify the OTP
+            totp = pyotp.TOTP(active_user.mfa_secret)
+            if totp.verify(entered_otp, valid_window=1):
+                # If the OTP is valid, save the MFA secret
+                api_functions.functions.call_save_mfa_secret(app_api.url, app_api.headers, active_user.user_id, active_user.mfa_secret)
+
+                # Close the dialog and show a success message
+                close_validate_mfa_dlg(page)
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
+                page.snack_bar.open = True
+            else:
+                # If the OTP is not valid, show an error message
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"The entered OTP is incorrect. It also may have timed out before you entered it. Please cancel and try again."))
+                page.snack_bar.open = True
+            page.update()
+
+        mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456') 
+        mfa_validate_select_row = ft.Row(
+            controls=[
+                ft.TextButton("Confirm", on_click=complete_mfa),
+                ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
+            ],
+            alignment=ft.MainAxisAlignment.END
+        )
+        validate_mfa_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Confirm MFA:"),
+            content=ft.Column(controls=[
+        #     ft.Text(f"Setup MFA:", selectable=True),
+            ft.Text(f'Please confirm the code from your authenticator app.', selectable=True),
+                # ], tight=True),
+            mfa_confirm_box,
+            # actions=[
+            mfa_validate_select_row
+            ],
+            tight=True),             
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
+        def validate_mfa(e):
+            close_mfa_dlg(page)
+            page.update()
+
+            page.dialog = validate_mfa_dlg
+            validate_mfa_dlg.open = True
+            page.update()
+
+        img_data_url = setup_user_for_otp()
+        mfa_select_row = ft.Row(
+            controls=[
+                ft.TextButton("Continue", on_click=validate_mfa),
+                ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(page)))
+            ],
+            alignment=ft.MainAxisAlignment.END
+        )
+        mfa_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Setup MFA:"),
+            content=ft.Column(controls=[
+        #     ft.Text(f"Setup MFA:", selectable=True),
+            ft.Text(f'Scan the code below with your authenticator app and then click continue to validate your code.', selectable=True),
+                # ], tight=True),
+            ft.Image(src=img_data_url, width=200, height=200),
+            # actions=[
+            mfa_select_row
+            ],
+            tight=True),             
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.dialog = mfa_dlg
+        mfa_dlg.open = True
+        page.update()
+        # page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
+        # page.snack_bar.open = True
+        # page.update()
 
     def download_option_change(e):
         api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
@@ -1339,6 +1457,9 @@ def main(page: ft.Page, session_value=None):
     def start_login(page):
         page.go("/login")
 
+    def open_mfa_login(e):
+        page.go("/mfalogin")
+
     def view_pop(e):
         page.views.pop()
         top_view = page.views[-1]
@@ -2023,6 +2144,17 @@ def main(page: ft.Page, session_value=None):
             retain_session = ft.Switch(label="Stay Signed in", value=False)
             retain_session_contained = ft.Container(content=retain_session)
             retain_session_contained.padding = padding.only(left=70)
+            login_button = ft.FilledButton(
+                content=ft.Text(
+                    "Login",
+                    weight="w700",
+                ),
+                width=160,
+                height=40,
+                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
+                # on_click=lambda e: go_homelogin(e)
+            )
             if page.web:
                 retain_session.visible = False
             if guest_enabled == True:
@@ -2079,17 +2211,7 @@ def main(page: ft.Page, session_value=None):
                                             alignment="center",
                                             spacing=20,
                                             controls=[
-                                                ft.FilledButton(
-                                                    content=ft.Text(
-                                                        "Login",
-                                                        weight="w700",
-                                                    ),
-                                                    width=160,
-                                                    height=40,
-                                                    # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                    on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
-                                                    # on_click=lambda e: go_homelogin(e)
-                                                ),
+                                                login_button,
                                                 ft.FilledButton(
                                                     content=ft.Text(
                                                         "Guest Login",
@@ -2193,17 +2315,7 @@ def main(page: ft.Page, session_value=None):
                                         alignment="center",
                                         spacing=20,
                                         controls=[
-                                            ft.FilledButton(
-                                                content=Text(
-                                                    "Login",
-                                                    weight="w700",
-                                                ),
-                                                width=160,
-                                                height=40,
-                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
-                                                # on_click=lambda e: go_homelogin(e)
-                                            ),
+                                            login_button,
                                         ],
                                     ),
                                     ft.Row(
@@ -2256,6 +2368,113 @@ def main(page: ft.Page, session_value=None):
             # Create final page
             page.views.append(
                 login_startpage_view
+                
+            ) 
+
+        if page.route == "/mfalogin" or page.route == "/mfalogin":
+            retain_session = ft.Switch(label="Save API Key", value=False)
+            retain_session_contained = ft.Container(content=retain_session)
+            retain_session_contained.padding = padding.only(left=70)
+
+
+            server_configpage = ft.Column(
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Card(
+                        elevation=15,
+                        content=ft.Container(
+                            width=550,
+                            height=450,
+                            padding=padding.all(30),
+                            gradient=GradientGenerator(
+                                "#2f2937", "#251867"
+                            ),
+                            border_radius=border_radius.all(12),
+                            content=ft.Column(
+                                horizontal_alignment="center",
+                                alignment="start",
+                                controls=[
+                                    ft.Text(
+                                        "PinePods",
+                                        size=32,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
+                                        size=22,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "Please enter the MFA code for Pinepods from your authenticator app",
+                                        size=14,
+                                        weight="w700",
+                                        text_align="center",
+                                        color="#64748b",
+                                    ),
+                                    ft.Container(
+                                        padding=padding.only(bottom=20)
+                                    ),
+                                    mfa_prompt,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.FilledButton(
+                                                content=ft.Text(
+                                                    "Login",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click=lambda e: active_user.mfa_login(mfa_prompt)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.FilledButton(
+                                                content=ft.Text(
+                                                    "Cancel",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click=active_user.logout_pinepods
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    )
+                ],
+            )
+
+            # Create search view object
+            server_configpage_view = ft.View("/server_config",                
+                horizontal_alignment="center",
+                vertical_alignment="center",
+                    controls=[
+                        server_configpage
+                    ]
+                    
+                )
+            # search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                server_configpage
                 
             ) 
 
@@ -2362,6 +2581,20 @@ def main(page: ft.Page, session_value=None):
                             controls=[theme_column])
             theme_row_container = ft.Container(content=theme_row)
             theme_row_container.padding = padding.only(left=70, right=50)
+
+            # MFA Setup
+            check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, active_user.user_id)
+            mfa_warning = ft.Text('Note: when setting up MFA you have 1 minute to enter the code or it will expire. If it expires just cancel and try again.', color=active_user.font_color, size=12)
+            if check_mfa_status:
+                mfa_text = ft.Text(f'Setup MFA: currently enabled', color=active_user.font_color, size=16)
+                mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+            else:
+                mfa_text = ft.Text(f'Setup MFA: currently disabled', color=active_user.font_color, size=16)
+                mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+            mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button])
+            mfa_container = ft.Container(content=mfa_column)
+            mfa_container.padding=padding.only(left=70, right=50)
+
 
             # Admin Only Settings
 
@@ -2650,6 +2883,8 @@ def main(page: ft.Page, session_value=None):
                     [
                         user_setting_text,
                         theme_row_container,
+                        div_row,
+                        mfa_container,
                         div_row,
                         admin_setting_text,
                         user_row_container,
@@ -4071,6 +4306,7 @@ def main(page: ft.Page, session_value=None):
             self.new_user_valid = False
             self.invalid_value = False
             self.api_id = 0
+            self.mfa_secret = None
 
     # New User Stuff ----------------------------
 
@@ -4389,30 +4625,61 @@ def main(page: ft.Page, session_value=None):
             self.initials = initials_lower.upper()
 
         def login(self, username_field, password_field, retain_session):
-            username = username_field.value
-            password = password_field.value
-            username_field.value = ''
-            password_field.value = ''
-            username_field.update()
-            password_field.update()
-            if not username or not password:
-                on_click_novalues(page)
-                return
-            pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
-            if pass_correct == True:
-                login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
-                self.user_id = login_details['UserID']
-                self.fullname = login_details['Fullname']
-                self.username = login_details['Username']
-                self.email = login_details['Email']
-                if retain_session:
+                username = username_field.value
+                password = password_field.value
+                username_field.value = ''
+                password_field.value = ''
+                username_field.update()
+                password_field.update()
+                if not username or not password:
+                    on_click_novalues(page)
+                    return
+                pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username, password)
+                if pass_correct == True:
+                    login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
+                    self.user_id = login_details['UserID']
+                    self.fullname = login_details['Fullname']
+                    self.username = login_details['Username']
+                    self.email = login_details['Email']
+
+                    check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, self.user_id)
+                    if check_mfa_status:
+                        self.retain_session = retain_session
+                        open_mfa_login(page)
+
+                    else: 
+                        if retain_session:
+                            session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
+                            if session_token:
+                                save_session_id_to_file(session_token)
+                        go_homelogin(page)
+                else:
+                    on_click_wronguser(page)
+        # def mfa_log_values(self, username_field, password_field, retain_session):
+
+        def mfa_login(self, mfa_prompt):
+            from datetime import datetime
+            import time
+            mfa_secret = mfa_prompt.value
+            print(f'secret: {mfa_secret}')
+            print(f'userid: {self.user_id}')
+
+            mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
+
+            if mfa_verify:            
+                if self.retain_session:
                     session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
                     if session_token:
                         save_session_id_to_file(session_token)
 
-                go_homelogin(page)
+                    go_homelogin(page)
+                else:
+                    go_homelogin(page)
             else:
-                on_click_wronguser(page)
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA Code incorrect"))
+                page.snack_bar.open = True
+                self.page.update()
+
 
         def saved_login(self, user_id):
             login_details = api_functions.functions.call_get_user_details_id(app_api.url, app_api.headers, user_id)
@@ -4625,6 +4892,14 @@ def main(page: ft.Page, session_value=None):
         hint_text='Generate this from settings in PinePods',
         password=True,
         can_reveal_password=True,
+    )
+
+    mfa_prompt = ft.TextField(
+        label="MFA code",
+        border="underline",
+        hint_text="ex. 123456",
+        width=320,
+        text_size=14,
     )
 
     active_user = User(page)

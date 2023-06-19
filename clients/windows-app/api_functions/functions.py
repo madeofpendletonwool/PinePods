@@ -649,4 +649,43 @@ def call_get_episode_metadata(url, headers, episode_url, episode_title, user_id)
         print("Error fetching episode metadata:", response.status_code)
         return None
 
+def call_save_mfa_secret(url, headers, user_id, mfa_secret):
+    data = {
+        "user_id": user_id,
+        "mfa_secret": mfa_secret
+    }
+    response = requests.post(url + "/save_mfa_secret", headers=headers, json=data)
+    
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving MFA secret:", response.status_code)
+        print("Error message:", response.text)
+        return False
 
+
+def call_check_mfa_enabled(url, headers, user_id):
+    response = requests.get(url + f"/check_mfa_enabled/{user_id}", headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get('mfa_enabled', False)
+    else:
+        print("Error checking MFA status:", response.status_code)
+        print("Error message:", response.text)
+        return False
+
+def call_verify_mfa(url, headers, user_id, mfa_code):
+    data = {
+        "user_id": user_id,
+        "mfa_code": mfa_code
+    }
+    response = requests.post(url + "/verify_mfa", headers=headers, json=data)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get('verified', False)
+    else:
+        print("Error verifying MFA code:", response.status_code)
+        print("Error message:", response.text)
+        return False

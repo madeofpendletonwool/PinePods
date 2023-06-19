@@ -1734,3 +1734,55 @@ def get_episode_metadata(cnx, url, title, user_id):
         
     return row
 
+def save_mfa_secret(cnx, user_id, mfa_secret):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"UPDATE Users "
+             f"SET MFA_Secret = %s "
+             f"WHERE UserID = %s")
+    
+    try:
+        cursor.execute(query, (mfa_secret, user_id))
+        cnx.commit()
+        cursor.close()
+        return True
+    except Exception as e:
+        print("Error saving MFA secret:", e)
+        return False
+
+
+def check_mfa_enabled(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
+
+    try:
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        cursor.close()
+
+        # Check if MFA_Secret is NULL
+        if result['MFA_Secret']:
+            return True  # MFA is enabled
+        else:
+            return False  # MFA is disabled
+    except Exception as e:
+        print("Error checking MFA status:", e)
+        return False
+
+def get_mfa_secret(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+    print(user_id)
+
+    query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
+
+    try:
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        cursor.close()
+
+        return result['MFA_Secret']
+    except Exception as e:
+        print("Error retrieving MFA secret:", e)
+        return None
+

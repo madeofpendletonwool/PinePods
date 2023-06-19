@@ -24,3 +24,5 @@ werkzeug
 pillow
 pyinstaller
 fernet
+pyotp
+qrcode[pil]
