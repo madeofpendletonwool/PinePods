@@ -2503,6 +2503,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
             podcast_value = new_search.searchvalue
+            print(new_search.searchlocation)
             search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
             return_results = search_results['feeds']
             page.overlay.remove(progress_stack)
