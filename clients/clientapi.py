@@ -598,6 +598,8 @@ async def api_verify_mfa(body: VerifyMFABody, cnx = Depends(get_database_connect
 
     return False
 
+class UserIDBody(BaseModel):
+    user_id: int
 @app.delete("/api/data/delete_mfa")
 async def api_delete_mfa(body: UserIDBody, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     result = database_functions.functions.delete_mfa_secret(cnx, body.user_id)
