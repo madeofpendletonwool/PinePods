@@ -1766,6 +1766,12 @@ def main(page: ft.Page, session_value=None):
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
         search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
+        # search_location = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+        #      options=[
+        #         ft.dropdown.Option("podcastindex"),
+        #         ft.dropdown.Option("itunes"),
+        #      ]
+        #      )
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
         search_pods.color = active_user.accent_color
         search_pods.focused_bgcolor = active_user.accent_color
