@@ -67,3 +67,6 @@ clients/.DS_Store
 */pinepods.spec
 */generated
 clients/mac-app/pinepods.spec
+
+# pycharm
+.idea/*
