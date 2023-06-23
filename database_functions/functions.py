@@ -1786,3 +1786,17 @@ def get_mfa_secret(cnx, user_id):
         print("Error retrieving MFA secret:", e)
         return None
 
+def delete_mfa_secret(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"UPDATE Users SET MFA_Secret = NULL WHERE UserID = %s")
+
+    try:
+        cursor.execute(query, (user_id,))
+        cnx.commit()
+        cursor.close()
+
+        return True
+    except Exception as e:
+        print("Error deleting MFA secret:", e)
+        return False

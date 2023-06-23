@@ -445,25 +445,39 @@ def main(page: ft.Page, session_value=None):
         # generate the QR code
         img = qrcode.make(provisioning_url)
 
-        # # save it to a file
-        # img.save("mfa_qrcode.png")
-        # convert the QR code image to Base64
-        filename = f"{user_data_dir}/{active_user.user_id}_qrcode.png"  # for example
+        # Get current timestamp
+        active_user.mfa_timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+        # Save it to a file with a unique name
+        filename = f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png"  # for example
         img.save(filename)
         active_user.mfa_secret = secret
 
-        # get the URL for the image
-        # img_url = url_for(filename=filename)
-
         return filename
+
+    def remove_mfa(e):
+        delete_confirm = api_functions.functions.call_delete_mfa_secret(app_api.url, app_api.headers, active_user.user_id)
+        if delete_confirm:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now removed from your account. You'll no longer be prompted at login"))
+            page.snack_bar.open = True
+            page.update()
+        else:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Error removing MFA settings. Maybe it's not already setup?"))
+            page.snack_bar.open = True
+            page.update()
 
     def setup_mfa(e):
         def close_mfa_dlg(page):
             mfa_dlg.open = False
+            os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
             page.update()
 
         def close_validate_mfa_dlg(page):
             validate_mfa_dlg.open = False
+            try:
+                os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
+            except:
+                pass
             page.update()
 
         def complete_mfa(e):
@@ -515,6 +529,7 @@ def main(page: ft.Page, session_value=None):
         def validate_mfa(e):
             close_mfa_dlg(page)
             page.update()
+            time.sleep(.3)
 
             page.dialog = validate_mfa_dlg
             validate_mfa_dlg.open = True
@@ -1751,6 +1766,12 @@ def main(page: ft.Page, session_value=None):
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
         search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
+        # search_location = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+        #      options=[
+        #         ft.dropdown.Option("podcastindex"),
+        #         ft.dropdown.Option("itunes"),
+        #      ]
+        #      )
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
         search_pods.color = active_user.accent_color
         search_pods.focused_bgcolor = active_user.accent_color
@@ -2588,10 +2609,14 @@ def main(page: ft.Page, session_value=None):
             if check_mfa_status:
                 mfa_text = ft.Text(f'Setup MFA: currently enabled', color=active_user.font_color, size=16)
                 mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+                mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account', on_click=remove_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+                mfa_button_row = ft.Row(
+                            controls=[mfa_button, mfa_remove_button])
+                mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button_row])
             else:
                 mfa_text = ft.Text(f'Setup MFA: currently disabled', color=active_user.font_color, size=16)
                 mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
-            mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button])
+                mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button])
             mfa_container = ft.Container(content=mfa_column)
             mfa_container.padding=padding.only(left=70, right=50)
 
