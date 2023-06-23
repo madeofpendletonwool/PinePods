@@ -2603,11 +2603,14 @@ def main(page: ft.Page, session_value=None):
             if check_mfa_status:
                 mfa_text = ft.Text(f'Setup MFA: currently enabled', color=active_user.font_color, size=16)
                 mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
-                mfa_button = ft.ElevatedButton(f'Remove MFA for your account', on_click=remove_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+                mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account', on_click=remove_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
+                mfa_button_row = ft.Row(
+                            controls=[mfa_button, mfa_remove_button])
+                mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button_row])
             else:
                 mfa_text = ft.Text(f'Setup MFA: currently disabled', color=active_user.font_color, size=16)
                 mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
-            mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button])
+                mfa_column = ft.Column(controls=[mfa_text, mfa_warning, mfa_button])
             mfa_container = ft.Container(content=mfa_column)
             mfa_container.padding=padding.only(left=70, right=50)
 

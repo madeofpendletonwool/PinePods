@@ -690,9 +690,9 @@ def call_verify_mfa(url, headers, user_id, mfa_code):
         print("Error message:", response.text)
         return False
 
-def call_delete_mfa_secret(api_url, headers, user_id):
+def call_delete_mfa_secret(url, headers, user_id):
     response = requests.delete(
-        f"{api_url}/api/data/delete_mfa", 
+        f"{url}/delete_mfa",
         headers=headers,
         json={"user_id": user_id}
     )
