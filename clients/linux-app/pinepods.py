@@ -43,6 +43,7 @@ import base64
 from io import BytesIO
 import pyotp
 import qrcode
+import feedparser
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -2504,11 +2505,28 @@ def main(page: ft.Page, session_value=None):
             # Get Pod info
             podcast_value = new_search.searchvalue
             print(new_search.searchlocation)
+
+            def map_search_result(result, source):
+                mapped = {}
+
+                if source == 'itunes':
+                    mapped['title'] = result['collectionName']
+                    mapped['url'] = result['feedUrl']
+                    mapped['link'] = result['collectionViewUrl']
+                    mapped['description'] = ''  # iTunes API doesn't provide a description
+                    mapped['author'] = result['artistName']
+                    mapped['artwork'] = result['artworkUrl600']
+                    mapped['categories'] = result[
+                        'genres']  # not exactly the same as 'categories', but it's the closest match
+                    mapped['episodeCount'] = result['trackCount']
+                else:  # podcastindex
+                    mapped = result  # no mapping necessary, the attributes are already as expected
+
+                return mapped
+
             search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
-            if new_search.searchlocation == 'itunes':
-                return_results = search_results['results']
-            else:
-                return_results = search_results['feeds']
+            return_results = [map_search_result(result, new_search.searchlocation) for result in
+                              search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
             page.overlay.remove(progress_stack)
 
             # Get and format list
