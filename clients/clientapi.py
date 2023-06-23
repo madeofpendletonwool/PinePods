@@ -591,6 +591,18 @@ async def api_verify_mfa(body: VerifyMFABody, cnx = Depends(get_database_connect
         verification_result = totp.verify(body.mfa_code)
         return {"verified": verification_result}
 
+def call_delete_mfa_secret(api_url, headers, user_id):
+    response = requests.delete(
+        f"{api_url}/api/data/delete_mfa", 
+        headers=headers,
+        json={"user_id": user_id}
+    )
+
+    if response.status_code == 200:
+        return response.json().get('deleted', False)
+
+    return False
+
 
 
 

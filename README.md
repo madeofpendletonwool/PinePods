@@ -327,6 +327,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Rebuild image Pulling process. The current one is just unworkable (It runs a lot better now. It spawns 4 workers to handle image gathering. Though it still isn't perfect, it hangs a bit occationally but for the time being it's totally usable)
 - [x] Layout Settings page better
 - [x] MFA Logins
+- [x] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 
 ### Pre-beta version
 
@@ -345,7 +346,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Page refreshing to handle adding and removing of things better
 - [ ] Reload not needed to add and remove episodes from pages
-- [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 - [ ] Mass downloading episodes. Entire podcast at once
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Add Itunes podcast API
