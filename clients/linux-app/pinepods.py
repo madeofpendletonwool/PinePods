@@ -2605,6 +2605,7 @@ def main(page: ft.Page, session_value=None):
             theme_row_container.padding = padding.only(left=70, right=50)
 
             # MFA Setup
+            
             check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers, active_user.user_id)
             mfa_warning = ft.Text('Note: when setting up MFA you have 1 minute to enter the code or it will expire. If it expires just cancel and try again.', color=active_user.font_color, size=12)
             if check_mfa_status:
