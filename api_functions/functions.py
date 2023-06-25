@@ -351,8 +351,10 @@ def call_check_podcast(url, headers, user_id, podcast_name):
     if response.status_code == 200:
         return response.json()["exists"]
     else:
-        print("Error checking podcast:", response.status_code)
+        print(f"Error checking podcast: {response.status_code}, response: {response.text}")
         return False
+
+
 
 def call_remove_podcast(url, headers, podcast_name, user_id):
     data = {"podcast_name": podcast_name, "user_id": user_id}

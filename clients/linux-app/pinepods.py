@@ -43,6 +43,7 @@ import base64
 from io import BytesIO
 import pyotp
 import qrcode
+import feedparser
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -1737,7 +1738,7 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
-
+        page.session.clear()
         if current_episode.audio_playing == True:
             audio_container.visible == True
         else: 
@@ -1745,6 +1746,7 @@ def main(page: ft.Page, session_value=None):
 
         def open_search(e):
             new_search.searchvalue = search_pods.value
+            new_search.searchlocation = search_location.value
             pr = ft.ProgressRing()
             global progress_stack
             progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
@@ -1766,12 +1768,15 @@ def main(page: ft.Page, session_value=None):
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
         search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
-        # search_location = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
-        #      options=[
-        #         ft.dropdown.Option("podcastindex"),
-        #         ft.dropdown.Option("itunes"),
-        #      ]
-        #      )
+        search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+             prefix_icon=ft.icons.MANAGE_SEARCH,
+             options=[
+                ft.dropdown.Option("podcastindex"),
+                ft.dropdown.Option("itunes"),
+             ]
+             )
+        search_location.width = 130
+        search_location.height = 50
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
         search_pods.color = active_user.accent_color
         search_pods.focused_bgcolor = active_user.accent_color
@@ -1788,7 +1793,7 @@ def main(page: ft.Page, session_value=None):
             alignment=ft.alignment.top_left
         )
         settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[refresh_ctn, banner_button])
-        search_row = ft.Row(spacing=25, controls=[search_pods, search_btn])
+        search_row = ft.Row(spacing=25, controls=[search_pods, search_location, search_btn])
         top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START, controls=[settings_row, search_row])
         top_row_container = ft.Container(content=top_row, expand=True)
         top_row_container.padding=ft.padding.only(left=60)
@@ -2502,8 +2507,33 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/searchpod" or page.route == "/searchpod":
             # Get Pod info
             podcast_value = new_search.searchvalue
-            search_results = internal_functions.functions.searchpod(podcast_value, api_url)
-            return_results = search_results['feeds']
+            print(new_search.searchlocation)
+
+            def get_podcast_description(feed_url):
+                feed = feedparser.parse(feed_url)
+                return feed.feed.get('description', '')
+
+            def map_search_result(result, source):
+                mapped = {}
+
+                if source == 'itunes':
+                    mapped['title'] = result['collectionName']
+                    mapped['url'] = result['feedUrl']
+                    mapped['link'] = result['collectionViewUrl']
+                    mapped['description'] = get_podcast_description(result['feedUrl'])  # iTunes API doesn't provide a description
+                    mapped['author'] = result['artistName']
+                    mapped['artwork'] = result['artworkUrl600']
+                    mapped['categories'] = result[
+                        'genres']  # not exactly the same as 'categories', but it's the closest match
+                    mapped['episodeCount'] = result['trackCount']
+                else:  # podcastindex
+                    mapped = result  # no mapping necessary, the attributes are already as expected
+
+                return mapped
+
+            search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
+            return_results = [map_search_result(result, new_search.searchlocation) for result in
+                              search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
             page.overlay.remove(progress_stack)
 
             # Get and format list
@@ -4871,6 +4901,7 @@ def main(page: ft.Page, session_value=None):
     class SearchPods:
         def __init__(self, page):
             self.searchvalue = None
+            self.searchlocation = None
 
     new_search = SearchPods(page)
 
