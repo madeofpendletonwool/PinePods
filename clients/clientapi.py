@@ -378,8 +378,10 @@ class CheckPodcastData(BaseModel):
 
 @app.post("/api/data/check_podcast", response_model=Dict[str, bool])
 async def api_check_podcast(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), data: CheckPodcastData = Depends()):
+    print(f"Received data: {data}")
     exists = database_functions.functions.check_podcast(cnx, data.user_id, data.podcast_name)
     return {"exists": exists}
+
 
 @app.get("/api/data/user_admin_check/{user_id}")
 async def api_user_admin_check_route(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
