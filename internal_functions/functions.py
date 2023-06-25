@@ -32,9 +32,10 @@ def searchpod(podcast_value, api_url, search_index='podcastindex'):
 
 
 if __name__ == '__main__':
-    api_url = 'http://localhost:5000/api/search'
+    api_url = 'https://search.pinepods.online/api/search'
     podcast_value = 'my brother my brother and me'
     results = searchpod(podcast_value, api_url, 'itunes')
+    # results = searchpod(podcast_value, api_url, 'itunes')
     print(results)
     if isinstance(results, str):
         print(f"Error occurred: {results}")

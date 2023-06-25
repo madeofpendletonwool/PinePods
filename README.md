@@ -323,23 +323,24 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Default User Creation (Default User is now created if user vars aren't specified in compoose file)
 - [x] Issue with web search bar may be due to appbar (This was a rabbit hole. Turns out this was due to the way the top bar was created prior to the routes. I needed to rebuild how searching is done, but this is now fixed)
 - [x] Occasionally podcasts will put seconds value in mins (This was a bug due to duration parsing. Code fixed, everything now displays properly)
-- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close) Edit: I actually think this is truly fixed now. I rebuilt the way this works using async, no problems so far
+- [x] Fix client pooling issue (This is a tough issue. Pooling is occasionally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close) Edit: I actually think this is truly fixed now. I rebuilt the way this works using async, no problems so far
 - [x] Rebuild image Pulling process. The current one is just unworkable (It runs a lot better now. It spawns 4 workers to handle image gathering. Though it still isn't perfect, it hangs a bit occationally but for the time being it's totally usable)
 - [x] Layout Settings page better
 - [x] MFA Logins
 - [x] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
+- [x] Add Itunes podcast API
 
 ### Pre-beta version
 
+- [ ] MFA Logins on web version
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] Rework local images to run through the image proxy
 - [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [ ] logout on client remove saved app cache
-- [ ] Occational gStreamer Breaks. ughhh
+- [ ] Occasional gStreamer Breaks. ughhh
 - [ ] API documentation (Site Built with Docusaurus)
-
-- [ ] Small layout Improvments
+- [ ] Small layout Improvements
 
 ### To be added after beta version (Listed in order they will be implemented)
 
@@ -348,7 +349,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Reload not needed to add and remove episodes from pages
 - [ ] Mass downloading episodes. Entire podcast at once
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Add Itunes podcast API
 - [ ] Rotating currently playing
 - [ ] Add highlight to indicate which page you're on
 - [ ] Customizable login screens
@@ -361,7 +361,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [ ] Flatpak
   - [ ] Snap
 - [ ] Mobile Apps
-  - [ ] Sign in retention for moble editions
+  - [ ] Sign in retention for mobile editions
   - [ ] Android App
   - [ ] IOS App
   - [ ] Packaging and automation

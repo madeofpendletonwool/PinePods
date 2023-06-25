@@ -377,18 +377,24 @@ class CheckPodcastData(BaseModel):
     podcast_name: str
 
 @app.post("/api/data/check_podcast", response_model=Dict[str, bool])
-async def api_check_podcast(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), data: CheckPodcastData = Depends()):
+async def api_check_podcast(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), data: CheckPodcastData = Body(...)):
+    print(f"Received data: {data}")
     exists = database_functions.functions.check_podcast(cnx, data.user_id, data.podcast_name)
     return {"exists": exists}
+
 
 @app.get("/api/data/user_admin_check/{user_id}")
 async def api_user_admin_check_route(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     is_admin = database_functions.functions.user_admin_check(cnx, user_id)
     return {"is_admin": is_admin}
 
+class RemovePodcastData(BaseModel):
+    user_id: int
+    podcast_name: str
+
 @app.post("/api/data/remove_podcast")
-async def api_remove_podcast_route(podcast_name: str, user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    database_functions.functions.remove_podcast(cnx, podcast_name, user_id)
+async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    database_functions.functions.remove_podcast(cnx, data.podcast_name, data.user_id)
     return {"status": "Podcast removed"}
 
 @app.get("/api/data/return_pods/{user_id}")
