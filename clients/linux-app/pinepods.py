@@ -1738,7 +1738,7 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
-
+        page.session.clear()
         if current_episode.audio_playing == True:
             audio_container.visible == True
         else: 
@@ -1768,12 +1768,15 @@ def main(page: ft.Page, session_value=None):
         banner_button.bgcolor = active_user.accent_color
         banner_button.color = active_user.main_color
         search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=350)
-        search_location = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+        search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+             prefix_icon=ft.icons.MANAGE_SEARCH,
              options=[
                 ft.dropdown.Option("podcastindex"),
                 ft.dropdown.Option("itunes"),
              ]
              )
+        search_location.width = 130
+        search_location.height = 50
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
         search_pods.color = active_user.accent_color
         search_pods.focused_bgcolor = active_user.accent_color
@@ -2506,6 +2509,10 @@ def main(page: ft.Page, session_value=None):
             podcast_value = new_search.searchvalue
             print(new_search.searchlocation)
 
+            def get_podcast_description(feed_url):
+                feed = feedparser.parse(feed_url)
+                return feed.feed.get('description', '')
+
             def map_search_result(result, source):
                 mapped = {}
 
@@ -2513,7 +2520,7 @@ def main(page: ft.Page, session_value=None):
                     mapped['title'] = result['collectionName']
                     mapped['url'] = result['feedUrl']
                     mapped['link'] = result['collectionViewUrl']
-                    mapped['description'] = ''  # iTunes API doesn't provide a description
+                    mapped['description'] = get_podcast_description(result['feedUrl'])  # iTunes API doesn't provide a description
                     mapped['author'] = result['artistName']
                     mapped['artwork'] = result['artworkUrl600']
                     mapped['categories'] = result[
