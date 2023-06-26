@@ -24,7 +24,7 @@ ARG CACHEBUST=1
 
 # Put pinepods Files in place
 # Create structure for pinepods
-RUN git clone -b itunes-api https://github.com/madeofpendletonwool/pypods.git /pinepods && \
+RUN git clone -b MFA https://github.com/madeofpendletonwool/pypods.git /pinepods && \
     chmod -R 755 /pinepods
 
 # Begin pinepods Setup

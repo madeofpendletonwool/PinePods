@@ -832,6 +832,9 @@ def main(page: ft.Page, session_value=None):
                 self.loading_audio = False
                 self.local = False
                 self.name_truncated = 'placeholder'
+                # self.episode_name = self.name
+                self.queue = []
+                self.state = 'stopped'
                 self.fs_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_ARROW,
                     tooltip="Play Podcast",
@@ -844,9 +847,6 @@ def main(page: ft.Page, session_value=None):
                     icon_color="white",
                     on_click=lambda e: current_episode.fs_pause_episode()
                 )
-                # self.episode_name = self.name
-                self.queue = []
-                self.state = 'stopped'
 
         def run_function_every_60_seconds(self):
             while True:
@@ -1118,6 +1118,8 @@ def main(page: ft.Page, session_value=None):
             else:
                 self.volume_changed = False
 
+
+
                 
         def toggle_second_status(self, status):
             if self.state == 'playing':
@@ -1162,6 +1164,7 @@ def main(page: ft.Page, session_value=None):
 
         def delete_pod(self):
             api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
+
 
         def queue_pod(self, url):
             self.queue.append(url)
@@ -1738,7 +1741,6 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
-        page.session.clear()
         if current_episode.audio_playing == True:
             audio_container.visible == True
         else: 
@@ -1863,7 +1865,6 @@ def main(page: ft.Page, session_value=None):
                     home_ep_artwork = entry['EpisodeArtwork']
                     home_ep_url = entry['EpisodeURL']
                     home_ep_duration = entry['EpisodeDuration']
-
                     # do something with the episode information
                     home_entry_title_button = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
                     home_entry_title = ft.TextButton(content=home_entry_title_button, on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
@@ -1986,7 +1987,6 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/userstats" or page.route == "/userstats":
             user_stats = api_functions.functions.call_get_stats(app_api.url, app_api.headers, active_user.user_id)
 
-
             stats_created_date = user_stats['UserCreated']
             stats_pods_played = user_stats['PodcastsPlayed']
             stats_time_listened = user_stats['TimeListened']
@@ -2050,7 +2050,7 @@ def main(page: ft.Page, session_value=None):
             pine_contain = ft.Container(content=pinepods_img)
             pine_contain.alignment=alignment.bottom_center
             pine_div_row = ft.Divider(color=active_user.accent_color)
-            pine_contain.padding=padding.only(top=40)           
+            pine_contain.padding=padding.only(top=40)
 
 
             stats_view = ft.View("/userstats",
@@ -2796,7 +2796,6 @@ def main(page: ft.Page, session_value=None):
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
 
-
             # User Self Service PW Resets
 
             def auth_box_check(e):
@@ -2927,11 +2926,11 @@ def main(page: ft.Page, session_value=None):
                 admin_setting_text.visible = False
                 user_row_container.visible = False
                 user_edit_container.visible = False
+                pw_reset_container.visible = False
+                email_edit_container.visible = False
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
-                pw_reset_container.visible = False
-                email_edit_container.visible = False
                 div_row.visible = False
 
             # Create search view object
@@ -3115,7 +3114,6 @@ def main(page: ft.Page, session_value=None):
 
             # Get Pod info
             pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
-
 
             # Get and format list
             pod_list_number = 1
@@ -3681,9 +3679,7 @@ def main(page: ft.Page, session_value=None):
                 download_ep_number += 1
 
             else:
-
                 download_episode_list.reverse()
-
                 download_local_episode_list.reverse()
 
                 for entry in download_episode_list:
@@ -3798,7 +3794,6 @@ def main(page: ft.Page, session_value=None):
                     download_ep_row.padding=padding.only(left=70, right=50)
                     download_row_list.controls.append(download_ep_row)
                     download_pods_active = True
-                    # download_ep_number += 1
 
                 for entry in download_local_episode_list:
                     local_download_ep_title = entry['EpisodeTitle']
@@ -4548,7 +4543,6 @@ def main(page: ft.Page, session_value=None):
             self.email_password = password
             api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name, self.server_port, self.from_email, self.send_mode, self.encryption, self.auth_required, self.email_username, self.email_password)
 
-
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
             def close_modify_dlg(e):
@@ -4624,7 +4618,6 @@ def main(page: ft.Page, session_value=None):
                     salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                     api_functions.functions.call_set_password(app_api.url, app_api.headers, self.user_id, salt, hash_pw)
 
-
             if self.email is not None:
                 if not re.match(self.email_regex, self.email):
                     page.snack_bar = ft.SnackBar(content=ft.Text(f"This does not appear to be a properly formatted email"))
@@ -4642,7 +4635,6 @@ def main(page: ft.Page, session_value=None):
                     api_functions.functions.call_set_username(app_api.url, app_api.headers, self.user_id, self.username)
 
             api_functions.functions.call_set_isadmin(app_api.url, app_api.headers, self.user_id, self.isadmin)
-
             user_changed = True
 
             if user_changed == True:
@@ -4761,7 +4753,6 @@ def main(page: ft.Page, session_value=None):
         def clear_guest(self, e):
             if self.user_id == 1:
                 api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
-
 
     # Setup Theming-------------------------------------------------------
         def theme_select(self):
@@ -5068,7 +5059,6 @@ def main(page: ft.Page, session_value=None):
                     bgcolor=active_user.tertiary_color,
                     alignment=alignment.center,
                     content=user_content,
-                    # on_hover=display_hello,
                     on_click=open_user_stats
                 ),
                     ft.Divider(height=5, color="transparent"),
@@ -5233,7 +5223,6 @@ def main(page: ft.Page, session_value=None):
     page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
     audio_container.visible = False
 
-
     def play_selected_episode(url, title, artwork):
         current_episode.url = url
         current_episode.name = title
@@ -5287,7 +5276,6 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.overlay.remove(progress_stack)
                 page.update()
-
         
     def delete_selected_episode(url, title, page):
         current_episode.url = url
@@ -5343,7 +5331,6 @@ def main(page: ft.Page, session_value=None):
 
     def save_selected_episode(url, title, page):
         check_saved = api_functions.functions.call_check_saved(app_api.url, app_api.headers, active_user.user_id, title, url)
-
         if check_saved:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode is already saved!"))
             page.snack_bar.open = True
