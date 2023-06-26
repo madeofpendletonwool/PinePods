@@ -2598,6 +2598,10 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/settings" or page.route == "/settings":
 
+            class Settings:
+                def __int__(self):
+                    self.guest_info_button = ft.ElevatedButton()
+
             # User Settings
             user_setting = ft.Text(
             "Personal Settings:", color=active_user.font_color,

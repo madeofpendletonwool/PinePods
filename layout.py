@@ -3,20 +3,20 @@ from math import pi
 
 rotate_pos = False
 def main(page):
-    def button_clicked(e):
-        t.value = (
-            f"Switch values are:  {c1.value}, {c2.value}, {c3.value}, {c4.value}."
-        )
+
+    def button_press(e):
+        button.text = "testafter"
         page.update()
 
-    t = ft.Text()
-    c1 = ft.Switch(label="Unchecked switch", value=False)
-    c2 = ft.Switch(label="Checked switch", value=True)
-    c3 = ft.Switch(label="Disabled switch", disabled=True)
-    c4 = ft.Switch(
-        label="Switch with rendered label_position='left'", label_position=ft.LabelPosition.LEFT
-    )
-    b = ft.ElevatedButton(text="Submit", on_click=button_clicked)
+    button = ft.ElevatedButton("testing", on_click=button_press)
+
+    hidden_text = ft.Text('test')
+    hidden_cont = ft.Container(content=hidden_text,
+        offset=ft.transform.Offset(0, -5),
+        animate_offset=ft.animation.Animation(100),)
+    # hidden_cont.visible = False
+    double_cont = ft.Container(content=hidden_cont)
+    double_cont.clip_behavior = ft.ClipBehavior.HARD_EDGE
 
     rotate_button = ft.IconButton(
         icon=ft.icons.ARROW_FORWARD_IOS,
@@ -30,11 +30,16 @@ def main(page):
         global rotate_pos
         if not rotate_pos:
             rotate_pos = True
+            # hidden_cont.visible = True
             rotate_button.rotate.angle += pi / 2
+            hidden_cont.offset = ft.transform.Offset(0, 0)
+            # hidden_cont.update()
             page.update()
         else:
+            # hidden_cont.visible = False
             rotate_button.rotate.angle -= pi / 2
             rotate_pos = False
+            hidden_cont.offset = ft.transform.Offset(0, 0)
             page.update()
 
     rotate_button.on_click = animate
@@ -43,7 +48,7 @@ def main(page):
         [rotate_button]
     )
 
-    page.add(c1, c2, c3, c4, b, t, rotate_row
+    page.add(button, rotate_row, double_cont
              )
 
 ft.app(target=main)
