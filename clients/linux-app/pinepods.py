@@ -44,6 +44,8 @@ from io import BytesIO
 import pyotp
 import qrcode
 import feedparser
+from collections import defaultdict
+from math import pi
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -225,6 +227,24 @@ metadata_dir = os.path.join(user_data_dir, 'metadata')
 def main(page: ft.Page, session_value=None):
 
 #---Flet Various Functions---------------------------------------------------------------
+
+    class AnimatedButton:
+        def __init__(self, rotate_button, download_ep_row_content):
+            self.rotate_button = rotate_button
+            self.download_ep_row_content = download_ep_row_content
+            self.rotate_pos = False
+
+        def animate(self, e):
+            if not self.rotate_pos:
+                self.rotate_pos = True
+                self.download_ep_row_content.visible = True
+                self.rotate_button.rotate.angle += pi / 2
+                page.update()
+            else:
+                self.download_ep_row_content.visible = False
+                self.rotate_button.rotate.angle -= pi / 2
+                self.rotate_pos = False
+                page.update()
 
     class API:
         def __init__(self, page):
@@ -3684,127 +3704,173 @@ def main(page: ft.Page, session_value=None):
                 if download_episode_list:
                     download_episode_list.reverse()
 
+                    podcasts_by_name = defaultdict(list)
+
                     for entry in download_episode_list:
-                        download_ep_title = entry['EpisodeTitle']
-                        download_pod_name = entry['PodcastName']
-                        download_pod_artwork = entry['ArtworkURL']
-                        download_pub_date = entry['EpisodePubDate']
-                        download_ep_desc = entry['EpisodeDescription']
-                        download_ep_artwork = entry['EpisodeArtwork']
-                        download_ep_url = entry['EpisodeURL']
-                        download_ep_local_url = entry['DownloadedLocation']
-                        download_ep_duration = entry['EpisodeDuration']
+                        podcasts_by_name[entry['PodcastName']].append(entry)
 
-                        # do something with the episode information
-                        download_entry_title_button = ft.Text(f'{download_pod_name} - {download_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                        download_entry_title = ft.TextButton(content=download_entry_title_button, on_click=lambda x, url=download_ep_url, title=download_ep_title: open_episode_select(page, url, title))
-                        download_entry_row = ft.ResponsiveRow([
-        ft.Column(col={"sm": 6}, controls=[download_entry_title]),
-    ])
+                    for podcast_name, podcasts in podcasts_by_name.items():
 
-                        num_lines = download_ep_desc.count('\n')
-                        if num_lines > 15:
-                            if is_html(download_ep_desc):
-                                # convert HTML to Markdown
-                                markdown_desc = html2text.html2text(download_ep_desc)
-                                if num_lines > 15:
-                                    # Split into lines, truncate to 15 lines, and join back into a string
-                                    lines = markdown_desc.splitlines()[:15]
-                                    markdown_desc = '\n'.join(lines)
-                                # add inline style to change font color
-                                download_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                                download_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=download_ep_url, title=download_ep_title: open_episode_select(page, url, title))
-                            else:
-                                if num_lines > 15:
-                                    # Split into lines, truncate to 15 lines, and join back into a string
-                                    lines = download_ep_desc.splitlines()[:15]
-                                    download_ep_desc = '\n'.join(lines)
-                                # display plain text
-                                download_entry_description = ft.Text(download_ep_desc)
+                        download_pod_art_no = random.randint(1, 12)
+                        download_pod_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                                                                 f"{download_pod_art_no}.jpeg")
 
-                        else:
-                            if is_html(download_ep_desc):
-                                # convert HTML to Markdown
-                                markdown_desc = html2text.html2text(download_ep_desc)
-                                # add inline style to change font color
-                                download_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                            else:
-                                # display plain text
-                                markdown_desc = download_ep_desc
-                                download_entry_description = ft.Text(download_ep_desc)
-                        download_entry_audio_url = ft.Text(download_ep_url, color=active_user.font_color)
-                        check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, download_ep_title, download_ep_url)
-                        download_entry_released = ft.Text(f'Released on: {download_pub_date}', color=active_user.font_color)
+                        download_pod_art_url = podcasts[0]['ArtworkURL'] if podcasts[0][
+                            'ArtworkURL'] else download_pod_art_fallback
+                        download_pod_art_parsed = check_image(download_pod_art_url)
+                        download_pod_entry_artwork_url = ft.Image(src=download_pod_art_parsed, width=150, height=150)
+                        download_pod_entry_title = ft.Text(f'{podcast_name}',
+                            style=ft.TextThemeStyle.TITLE_MEDIUM,
+                            color=active_user.font_color,
+                            size=18)
+                        for podcast in podcasts:
+                            # do something with the episode information
+                            download_ep_title = podcast['EpisodeTitle']
+                            download_ep_url = podcast['EpisodeURL']
+                            download_ep_desc = podcast['EpisodeDescription']
+                            download_ep_artwork = podcast['EpisodeArtwork']
+                            download_ep_local_url = podcast['DownloadedLocation']
+                            download_ep_duration = podcast['EpisodeDuration']
+                            download_pub_date = podcast['EpisodePubDate']
 
+                            download_entry_title_button = ft.Text(f'{podcast_name} - {download_ep_title}',
+                                                                  style=ft.TextThemeStyle.TITLE_MEDIUM,
+                                                                  color=active_user.font_color)
+                            # ...
 
-                        download_art_no = random.randint(1, 12)
-                        download_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{download_art_no}.jpeg")
-                        download_art_url = download_ep_artwork if download_ep_artwork else download_art_fallback
-                        download_art_parsed = check_image(download_art_url)
-                        download_entry_artwork_url = ft.Image(src=download_art_parsed, width=150, height=150)
-                        download_ep_play_button = ft.IconButton(
-                            icon=ft.icons.NOT_STARTED,
-                            icon_color=active_user.accent_color,
-                            icon_size=40,
-                            tooltip="Play Episode",
-                            on_click=lambda x, url=download_ep_local_url, title=download_ep_title, artwork=download_ep_artwork: play_selected_episode(url, title, artwork)
-                        )
-                        download_ep_resume_button = ft.IconButton(
-                            icon=ft.icons.PLAY_CIRCLE,
-                            icon_color=active_user.accent_color,
-                            icon_size=40,
-                            tooltip="Resume Episode",
-                            on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=download_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
-                        )
-                        download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"),
-                            items=[
-                                ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=download_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Downloaded Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title, page)),
-                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: save_selected_episode(url, title, page))
-                            ]
-                        )
-                        hidden_flavor = ft.Container(
-                            bgcolor=active_user.accent_color,
-                            width=4,
-                            height=12
-                        )
-                        if check_episode_playback == True:
-                            listen_prog = seconds_to_time(listen_duration)
-                            download_ep_prog = seconds_to_time(download_ep_duration)
-                            progress_value = get_progress(listen_duration, download_ep_duration)
-                            download_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(download_ep_prog, color=active_user.font_color)])
+                            download_entry_title = ft.TextButton(content=download_entry_title_button, on_click=lambda x, url=download_ep_url, title=download_ep_title: open_episode_select(page, url, title))
+                            download_entry_row = ft.ResponsiveRow([
+            ft.Column(col={"sm": 6}, controls=[download_entry_title]),
+        ])
+
+                            num_lines = download_ep_desc.count('\n')
                             if num_lines > 15:
-                                download_ep_row_content = ft.ResponsiveRow([
-                                    ft.Column(col={"md": 1}, controls=[hidden_flavor]),
-                                    ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                    ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
-                                ])
+                                if is_html(download_ep_desc):
+                                    # convert HTML to Markdown
+                                    markdown_desc = html2text.html2text(download_ep_desc)
+                                    if num_lines > 15:
+                                        # Split into lines, truncate to 15 lines, and join back into a string
+                                        lines = markdown_desc.splitlines()[:15]
+                                        markdown_desc = '\n'.join(lines)
+                                    # add inline style to change font color
+                                    download_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                                    download_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=download_ep_url, title=download_ep_title: open_episode_select(page, url, title))
+                                else:
+                                    if num_lines > 15:
+                                        # Split into lines, truncate to 15 lines, and join back into a string
+                                        lines = download_ep_desc.splitlines()[:15]
+                                        download_ep_desc = '\n'.join(lines)
+                                    # display plain text
+                                    download_entry_description = ft.Text(download_ep_desc)
+
                             else:
-                                download_ep_row_content = ft.ResponsiveRow([
-                                    ft.Column(col={"md": 1}, controls=[hidden_flavor]),
-                                    ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                    ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
-                                ])
-                        else:
-                            download_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
-                            if num_lines > 15:
-                                download_ep_row_content = ft.ResponsiveRow([
-                                    ft.Column(col={"md": 1}, controls=[hidden_flavor]),
-                                    ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                    ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
-                                ])
+                                if is_html(download_ep_desc):
+                                    # convert HTML to Markdown
+                                    markdown_desc = html2text.html2text(download_ep_desc)
+                                    # add inline style to change font color
+                                    download_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                                else:
+                                    # display plain text
+                                    markdown_desc = download_ep_desc
+                                    download_entry_description = ft.Text(download_ep_desc)
+                            download_entry_audio_url = ft.Text(download_ep_url, color=active_user.font_color)
+                            check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, download_ep_title, download_ep_url)
+                            download_entry_released = ft.Text(f'Released on: {download_pub_date}', color=active_user.font_color)
+
+                            download_art_no = random.randint(1, 12)
+                            download_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{download_art_no}.jpeg")
+                            download_art_url = download_ep_artwork if download_ep_artwork else download_art_fallback
+                            download_art_parsed = check_image(download_art_url)
+                            download_entry_artwork_url = ft.Image(src=download_art_parsed, width=150, height=150)
+                            hidden_flavor = ft.Container(
+                                bgcolor=active_user.accent_color,
+                                width=4,
+                                height=150
+                            )
+                            download_art_row = ft.Row(controls=[hidden_flavor, download_entry_artwork_url])
+                            download_ep_play_button = ft.IconButton(
+                                icon=ft.icons.NOT_STARTED,
+                                icon_color=active_user.accent_color,
+                                icon_size=40,
+                                tooltip="Play Episode",
+                                on_click=lambda x, url=download_ep_local_url, title=download_ep_title, artwork=download_ep_artwork: play_selected_episode(url, title, artwork)
+                            )
+                            download_ep_resume_button = ft.IconButton(
+                                icon=ft.icons.PLAY_CIRCLE,
+                                icon_color=active_user.accent_color,
+                                icon_size=40,
+                                tooltip="Resume Episode",
+                                on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=download_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
+                            )
+                            download_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"),
+                                items=[
+                                    ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=download_ep_url, title=download_ep_title, artwork=download_ep_artwork: queue_selected_episode(url, title, artwork, page)),
+                                    ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Downloaded Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: delete_selected_episode(url, title, page)),
+                                    ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: save_selected_episode(url, title, page))
+                                ]
+                            )
+                            if check_episode_playback == True:
+                                listen_prog = seconds_to_time(listen_duration)
+                                download_ep_prog = seconds_to_time(download_ep_duration)
+                                progress_value = get_progress(listen_duration, download_ep_duration)
+                                download_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(download_ep_prog, color=active_user.font_color)])
+                                if num_lines > 15:
+                                    download_ep_row_content = ft.ResponsiveRow([
+                                        ft.Column(col={"md": 2}, controls=[download_art_row]),
+                                        ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
+                                    ])
+                                else:
+                                    download_ep_row_content = ft.ResponsiveRow([
+                                        ft.Column(col={"md": 2}, controls=[download_art_row]),
+                                        ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
+                                    ])
                             else:
-                                download_ep_row_content = ft.ResponsiveRow([
-                                    ft.Column(col={"md": 1}, controls=[hidden_flavor]),
-                                    ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                    ft.Column(col={"md": 9}, controls=[download_entry_title, download_entry_description, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
-                                ])
-                    download_div_row = ft.Divider(color=active_user.accent_color)
-                    download_ep_column = ft.Column(controls=[download_ep_row_content, download_div_row])
-                    download_ep_row = ft.Container(content=download_ep_column)
-                    download_ep_row.padding=padding.only(left=70, right=50)
-                    download_row_list.controls.append(download_ep_row)
-                    download_pods_active = True
+                                download_dur_display = ft.Text(f'Episode Duration: {download_ep_duration}', color=active_user.font_color)
+                                if num_lines > 15:
+                                    download_ep_row_content = ft.ResponsiveRow([
+                                        ft.Column(col={"md": 2}, controls=[download_art_row]),
+                                        ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
+                                    ])
+                                else:
+                                    download_ep_row_content = ft.ResponsiveRow([
+                                        ft.Column(col={"md": 2}, controls=[download_art_row]),
+                                        ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
+                                    ])
+                            rotate_button = ft.IconButton(
+                                icon=ft.icons.ARROW_FORWARD_IOS,
+                                icon_color="blue400",
+                                tooltip="Pause record",
+                                rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
+                                animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
+                            )
+
+                            rotate_iteration = AnimatedButton(rotate_button, download_ep_row_content)
+                            rotate_button.on_click=rotate_iteration.animate
+                        # def animate(e):
+                        #     if not rotate_iteration.rotate_pos:
+                        #         rotate_iteration.rotate_pos = True
+                        #         # hidden_cont.visible = True
+                        #         download_ep_row_content.visible = True
+                        #         rotate_button.rotate.angle += pi / 2
+                        #         # hidden_cont.update()
+                        #         page.update()
+                        #     else:
+                        #         # hidden_cont.visible = False
+                        #         download_ep_row_content.visible = False
+                        #         rotate_button.rotate.angle -= pi / 2
+                        #         rotate_iteration.rotate_pos = False
+                        #         page.update()
+
+                        download_div_row = ft.Divider(color=active_user.accent_color)
+                        download_pod_data_group = ft.Row(controls=[download_pod_entry_artwork_url, download_pod_entry_title])
+
+                        download_ep_row_content.visible=False
+                        download_pod_group = ft.Row(controls=[download_pod_data_group, rotate_button])
+                        download_ep_column = ft.Column(controls=[download_pod_group, download_ep_row_content, download_div_row])
+                        download_ep_row = ft.Container(content=download_ep_column)
+                        download_ep_row.padding=padding.only(left=70, right=50)
+                        download_row_list.controls.append(download_ep_row)
+                        download_pods_active = True
 
                 if download_local_episode_list:
                     download_local_episode_list.reverse()
