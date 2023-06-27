@@ -414,8 +414,14 @@ async def api_saved_episode_list(user_id: int, cnx = Depends(get_database_connec
 
 @app.post("/api/data/download_episode_list")
 async def api_download_episode_list(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Form(...)):
-    downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
-    return {"downloaded_episodes": downloaded_episodes}
+    try:
+        downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
+        return {"downloaded_episodes": downloaded_episodes}
+    except Exception as e:
+        # Replace this with your preferred logging method
+        print(f"Error: {e}")
+        raise
+
 
 
 @app.post("/api/data/get_queue_list")
