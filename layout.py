@@ -11,10 +11,17 @@ def main(page):
     button = ft.ElevatedButton("testing", on_click=button_press)
 
     hidden_text = ft.Text('test')
-    hidden_cont = ft.Container(content=hidden_text,
-        offset=ft.transform.Offset(0, -5),
-        animate_offset=ft.animation.Animation(100),)
-    # hidden_cont.visible = False
+    hidden_flavor = ft.Container(
+        bgcolor=ft.colors.AMBER,
+        width=4,
+        height=12
+    )
+    hidden_row = ft.Row(controls=[hidden_flavor, hidden_text])
+    hidden_cont = ft.Container(content=hidden_row,
+        # offset=ft.transform.Offset(0, -5),
+        # animate_offset=ft.animation.Animation(100),
+                               )
+    hidden_cont.visible = False
     double_cont = ft.Container(content=hidden_cont)
     double_cont.clip_behavior = ft.ClipBehavior.HARD_EDGE
 
@@ -32,14 +39,14 @@ def main(page):
             rotate_pos = True
             # hidden_cont.visible = True
             rotate_button.rotate.angle += pi / 2
-            hidden_cont.offset = ft.transform.Offset(0, 0)
+            hidden_cont.visible = True
             # hidden_cont.update()
             page.update()
         else:
             # hidden_cont.visible = False
             rotate_button.rotate.angle -= pi / 2
             rotate_pos = False
-            hidden_cont.offset = ft.transform.Offset(0, 0)
+            hidden_cont.visible = False
             page.update()
 
     rotate_button.on_click = animate
@@ -48,7 +55,7 @@ def main(page):
         [rotate_button]
     )
 
-    page.add(button, rotate_row, double_cont
+    page.add(button, rotate_row, double_cont, ft.Text('Testing again')
              )
 
 ft.app(target=main)

@@ -3689,6 +3689,7 @@ def main(page: ft.Page, session_value=None):
                 for entry in download_episode_list:
                     download_ep_title = entry['EpisodeTitle']
                     download_pod_name = entry['PodcastName']
+                    download_pod_artwork = entry['ArtworkURL']
                     download_pub_date = entry['EpisodePubDate']
                     download_ep_desc = entry['EpisodeDescription']
                     download_ep_artwork = entry['EpisodeArtwork']
@@ -3764,6 +3765,11 @@ def main(page: ft.Page, session_value=None):
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=download_ep_url, title=download_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
+                    hidden_flavor = ft.Container(
+                        bgcolor=active_user.accent_color,
+                        width=4,
+                        height=12
+                    )
                     if check_episode_playback == True:
                         listen_prog = seconds_to_time(listen_duration)
                         download_ep_prog = seconds_to_time(download_ep_duration)
@@ -3771,11 +3777,13 @@ def main(page: ft.Page, session_value=None):
                         download_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(download_ep_prog, color=active_user.font_color)])
                         if num_lines > 15:
                             download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 1}, controls=[hidden_flavor]),
                                 ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                                 ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
                             ])
                         else:
                             download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 1}, controls=[hidden_flavor]),
                                 ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                                 ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
                             ]) 
@@ -3784,13 +3792,15 @@ def main(page: ft.Page, session_value=None):
                         download_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 1}, controls=[hidden_flavor]),
                                 ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                                 ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_seemore, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
                             ])
                         else:
                             download_ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 1}, controls=[hidden_flavor]),
                                 ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
+                                ft.Column(col={"md": 9}, controls=[download_entry_title, download_entry_description, download_entry_released, download_dur_display, ft.Row(controls=[download_ep_play_button, download_popup_button])]),
                             ]) 
                     download_div_row = ft.Divider(color=active_user.accent_color)
                     download_ep_column = ft.Column(controls=[download_ep_row_content, download_div_row])
