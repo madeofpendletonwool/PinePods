@@ -3786,7 +3786,6 @@ def main(page: ft.Page, session_value=None):
                                     ft.Column(col={"md": 10}, controls=[download_entry_title, download_entry_description, download_entry_released, download_entry_progress, ft.Row(controls=[download_ep_play_button, download_ep_resume_button, download_popup_button])]),
                                 ])
                         else:
-                            download_ep_dur = seconds_to_time(home_ep_duration)
                             download_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                             if num_lines > 15:
                                 download_ep_row_content = ft.ResponsiveRow([
