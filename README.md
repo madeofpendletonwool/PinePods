@@ -341,6 +341,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Occasional gStreamer Breaks. ughhh
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
+- [ ] Do something when search results aren't found - Currently Blank screen
 
 ### To be added after beta version (Listed in order they will be implemented)
 
