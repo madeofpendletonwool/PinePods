@@ -26,3 +26,5 @@ pyinstaller
 fernet
 pyotp
 qrcode[pil]
+eyed3
+mutagen

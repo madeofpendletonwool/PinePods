@@ -46,6 +46,7 @@ import qrcode
 import feedparser
 from collections import defaultdict
 from math import pi
+import eyed3
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -893,6 +894,14 @@ def main(page: ft.Page, session_value=None):
                 if self.local == False:
                     # Preload the audio file and cache it
                     global cache
+                    # Test mp3 chapter
+                    # Load an MP3 file
+                    # audiofile = eyed3.load(self.url)
+                    #
+                    # # Print chapters
+                    # for chapter in audiofile.tag.chapters:
+                    #     print(chapter.id, chapter.start_time, chapter.end_time, chapter.title)
+
                     preload_audio_file(self.url, proxy_url, cache)
 
                     self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
