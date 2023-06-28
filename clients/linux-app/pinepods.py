@@ -3654,10 +3654,14 @@ def main(page: ft.Page, session_value=None):
             download_episode_list = api_functions.functions.call_download_episode_list(app_api.url, app_api.headers, active_user.user_id)
             download_local_episode_list = load_local_downloaded_episodes(active_user.user_id)
 
-            server_text = ft.Text("Server Downloaded Episodes:", size=16, color=active_user.font_color)
-            local_text = ft.Text("Locally Downloaded Episodes:", size=16, color=active_user.font_color)
-            download_title_row = ft.Row(controls=[server_text], alignment=ft.MainAxisAlignment.CENTER)
-            local_download_title_row = ft.Row(controls=[local_text], alignment=ft.MainAxisAlignment.CENTER)
+            server_text = ft.Text("Server Downloaded Episodes:", size=18, color=active_user.font_color)
+            local_text = ft.Text("Locally Downloaded Episodes:", size=18, color=active_user.font_color)
+            download_title_row = ft.Row(controls=[server_text])
+            download_title_row_container = ft.Container(content=download_title_row)
+            download_title_row_container.padding=padding.only(left=70, right=50)
+            local_download_title_row = ft.Row(controls=[local_text])
+            local_download_title_row_container = ft.Container(content=local_download_title_row)
+            local_download_title_row_container.padding=padding.only(left=70, right=50)
 
             download_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
             local_download_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
@@ -3892,6 +3896,7 @@ def main(page: ft.Page, session_value=None):
                             local_download_ep_desc = podcast['EpisodeDescription']
                             local_download_ep_artwork = podcast['EpisodeArtwork']
                             # download_ep_local_url = podcast['DownloadedLocation']
+                            local_download_ep_id = podcast['EpisodeID']
                             local_download_ep_duration = podcast['EpisodeDuration']
                             local_download_ep_local_url = entry['EpisodeLocalPath']
                             local_download_pub_date = podcast['EpisodePubDate']
@@ -4001,21 +4006,21 @@ def main(page: ft.Page, session_value=None):
                                         ft.Column(col={"md": 3}, controls=[local_download_entry_artwork_url]),
                                         ft.Column(col={"md": 9}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
                                     ])
-                            rotate_button = ft.IconButton(
+                            local_rotate_button = ft.IconButton(
                                 icon=ft.icons.ARROW_FORWARD_IOS,
                                 icon_color=active_user.accent_color,
                                 tooltip="Pause record",
                                 rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
                                 animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
                             )
-                            rotate_iteration = AnimatedButton(rotate_button, download_ep_row_content)
-                            rotate_button.on_click=rotate_iteration.animate
+                            local_rotate_iteration = AnimatedButton(local_rotate_button, local_download_ep_row_content)
+                            local_rotate_button.on_click=local_rotate_iteration.animate
 
                         download_pod_data_group = ft.Row(controls=[download_pod_entry_artwork_url, download_pod_entry_title])
                         local_download_div_row = ft.Divider(color=active_user.accent_color)
 
                         local_download_ep_row_content.visible=False
-                        local_download_pod_group = ft.Row(controls=[download_pod_data_group, rotate_button])
+                        local_download_pod_group = ft.Row(controls=[download_pod_data_group, local_rotate_button])
                         local_download_ep_column = ft.Column(controls=[local_download_pod_group, local_download_ep_row_content, local_download_div_row])
                         local_download_ep_row = ft.Container(content=local_download_ep_column)
                         local_download_ep_row.padding=padding.only(left=70, right=50)
@@ -4031,9 +4036,9 @@ def main(page: ft.Page, session_value=None):
             ep_download_view = ft.View("/downloads",
                     [
                         top_bar,
-                        download_title_row,
+                        download_title_row_container,
                         download_row_contain,
-                        local_download_title_row,
+                        local_download_title_row_container,
                         local_download_row_contain
                     ]
                     
