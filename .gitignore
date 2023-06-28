@@ -75,3 +75,4 @@ clients/mac-app/pinepods.spec
 
 # pycharm
 .idea/*
+.idea/misc.xml
