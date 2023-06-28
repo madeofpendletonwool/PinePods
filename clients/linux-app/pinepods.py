@@ -1963,6 +1963,15 @@ def main(page: ft.Page, session_value=None):
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
                         ]
                     )
+
+                    rotate_button = ft.IconButton(
+                        icon=ft.icons.ARROW_FORWARD_IOS,
+                        icon_color=active_user.accent_color,
+                        tooltip="Show Description",
+                        rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
+                        animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
+                    )
+
                     if check_episode_playback == True:
                         listen_prog = seconds_to_time(listen_duration)
                         home_ep_prog = seconds_to_time(home_ep_duration)
@@ -1971,26 +1980,35 @@ def main(page: ft.Page, session_value=None):
                         if num_lines > 15:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
+                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
                             ])
                         else:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
-                            ]) 
+                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
+                            ])
                     else:
                         home_ep_dur = seconds_to_time(home_ep_duration)
                         home_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
                         if num_lines > 15:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
                             ])
                         else:
                             home_ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[home_entry_title, home_entry_description, home_entry_released, home_dur_display ,ft.Row(controls=[home_ep_play_button, home_popup_button])]),
-                            ]) 
+                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
+                            ])
+
+                    home_entry_description.visible= False
+                    rotate_iteration = AnimatedButton(rotate_button, home_entry_description)
+                    rotate_button.on_click = rotate_iteration.animate
+
                     home_div_row = ft.Divider(color=active_user.accent_color)
                     home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
                     home_ep_row = ft.Container(content=home_ep_column)
@@ -3676,22 +3694,25 @@ def main(page: ft.Page, session_value=None):
             local_download_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
             if not download_episode_list and not download_local_episode_list:
-                download_ep_number = 1
-                download_ep_rows = []
-                download_ep_row_dict = {}
+                print("no eps")
                 download_pod_name = "No Podcasts added yet"
                 download_ep_title = "Podcasts you download will display here."
                 download_pub_date = ""
-                download_ep_desc = "Click the dropdown on podcasts and select download. This will download the podcast to the server for local storage."
+                download_ep_desc = "Click the dropdown on podcasts and select server download. This will download the podcast to the server for local storage. Good for when you'd like to archive episodes. You can even mount the storage location to a nas or other network storage option. See the wiki for more details."
+                local_download_ep_desc = "Click the dropdown on podcasts and select local download. This will download the podcast to your local computer for offline and local listening. Great in situations when you don't have a solid internet connection"
                 download_ep_url = ""
                 download_entry_title = ft.Text(f'{download_pod_name} - {download_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                 download_entry_description = ft.Text(download_ep_desc, width=800)
-                download_entry_audio_url = ft.Text(download_ep_url)
+                local_download_entry_description = ft.Text(local_download_ep_desc, width=800)
                 download_entry_released = ft.Text(download_pub_date)
                 artwork_no = random.randint(1, 12)
+                local_artwork_no = random.randint(1, 12)
                 download_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                local_download_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{local_artwork_no}.jpeg")
                 download_artwork_url_parsed = check_image(download_artwork_url)
+                local_download_artwork_url_parsed = check_image(local_download_artwork_url)
                 download_entry_artwork_url = ft.Image(src=download_artwork_url_parsed, width=150, height=150)
+                local_download_entry_artwork_url = ft.Image(src=local_download_artwork_url_parsed, width=150, height=150)
                 download_ep_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_DISABLED,
                     icon_color=active_user.accent_color,
@@ -3702,16 +3723,26 @@ def main(page: ft.Page, session_value=None):
                 download_ep_column = ft.Column(
                     controls=[download_entry_title, download_entry_description, download_entry_released]
                 )
+                local_download_ep_column = ft.Column(
+                    controls=[download_entry_title, local_download_entry_description, download_entry_released]
+                )
                 download_ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[download_entry_artwork_url]),
                     ft.Column(col={"md": 10}, controls=[download_ep_column, download_ep_play_button]),
                 ])
-                download_ep_row = ft.Container(content=download_ep_row_content)
-                download_ep_row.padding=padding.only(left=70, right=50)
-                download_ep_rows.append(download_ep_row)
-                download_ep_row_dict[f'search_row{download_ep_number}'] = download_ep_row
-                download_pods_active = True
-                download_ep_number += 1
+                local_download_ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[local_download_ep_column, download_ep_play_button]),
+                ])
+                download_div_row = ft.Divider(color=active_user.accent_color)
+                download_ep_column = ft.Column(controls=[download_ep_row_content, download_div_row])
+                local_download_ep_column = ft.Column(controls=[local_download_ep_row_content, download_div_row])
+                download_ep_row = ft.Container(content=download_ep_column)
+                local_download_ep_row = ft.Container(content=local_download_ep_column)
+                download_ep_row.padding = padding.only(left=70, right=50)
+                local_download_ep_row.padding = padding.only(left=70, right=50)
+                download_row_list.controls.append(download_ep_row)
+                local_download_row_list.controls.append(local_download_ep_row)
 
             else:
                 if download_episode_list:
