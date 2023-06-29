@@ -439,21 +439,7 @@ def main(page: ft.Page, session_value=None):
     def launch_pod_site(e):
         page.launch_url(clicked_podcast.website)
 
-    def guest_user_change(e):
-        api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
-        page.snack_bar.open = True
-        guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
-        if guest_status_bool == True:
-            guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-        else:
-            guest_info_button = ft.ElevatedButton(f'Enable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-        if guest_status_bool == True:
-            guest_status = 'enabled'
-        else:
-            guest_status = 'disabled'
-        disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
-        page.update()
+
 
     def setup_user_for_otp():
         # generate a new secret for the user
@@ -2646,8 +2632,49 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/settings" or page.route == "/settings":
 
             class Settings:
-                def __int__(self):
-                    self.guest_info_button = ft.ElevatedButton()
+                def __init__(self, page):
+                    self.page = page
+                    self.app_api = app_api
+                    self.guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
+                    self.guest_check()
+
+                def guest_check(self):
+                    if self.guest_status_bool:
+                        self.guest_status = 'enabled'
+                        self.guest_info_button = self.ft.ElevatedButton(f'Disable Guest User',
+                                                                        on_click=self.guest_user_change,
+                                                                        bgcolor=active_user.main_color,
+                                                                        color=active_user.accent_color)
+                    else:
+                        self.guest_status = 'disabled'
+                        self.guest_info_button = ft.ElevatedButton(f'Enable Guest User',
+                                                                        on_click=self.guest_user_change,
+                                                                        bgcolor=active_user.main_color,
+                                                                        color=active_user.accent_color)
+
+                def guest_user_change(self):
+                    api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
+                    self.page.snack_bar.open = True
+                    self.guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
+                    if self.guest_status_bool == True:
+                        settings_data.guest_info_button = ft.ElevatedButton(f'Disable Guest User',
+                                                                            on_click=self.guest_user_change,
+                                                                            bgcolor=active_user.main_color,
+                                                                            color=active_user.accent_color)
+                    else:
+                        settings_data.guest_info_button = ft.ElevatedButton(f'Enable Guest User', on_click=self.guest_user_change,
+                                                              bgcolor=active_user.main_color,
+                                                              color=active_user.accent_color)
+                    if self.guest_status_bool == True:
+                        self.guest_status = 'enabled'
+                    else:
+                        self.guest_status = 'disabled'
+                    self.disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
+                    page.update()
+
+
+            settings_data = Settings(page)
 
             # User Settings
             user_setting = ft.Text(
@@ -2813,20 +2840,10 @@ def main(page: ft.Page, session_value=None):
             download_info = ft.Container(content=download_info_col)
             download_info.padding=padding.only(left=70, right=50)
 
-            # Guest User Settings 
-            guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
-            if guest_status_bool == True:
-                guest_status = 'enabled'
-            else:
-                guest_status = 'disabled'
-            disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
-            disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
-            if guest_status_bool == True:
-                guest_info_button = ft.ElevatedButton(f'Disable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-            else:
-                guest_info_button = ft.ElevatedButton(f'Enable Guest User', on_click=guest_user_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-
-            guest_info_col = ft.Column(controls=[disable_guest_text, disable_guest_notify, guest_info_button])
+            # Guest User Settings
+            settings_data.disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
+            settings_data.disable_guest_notify = ft.Text(f'Guest user is currently {settings_data.guest_status}')
+            guest_info_col = ft.Column(controls=[settings_data.disable_guest_text, settings_data.disable_guest_notify, settings_data.guest_info_button])
             guest_info = ft.Container(content=guest_info_col)
             guest_info.padding=padding.only(left=70, right=50)
 
@@ -3109,6 +3126,13 @@ def main(page: ft.Page, session_value=None):
                     # display plain text
                     markdown_desc = parsed_description
                     entry_description = ft.Text(markdown_desc)
+                rotate_button = ft.IconButton(
+                    icon=ft.icons.ARROW_FORWARD_IOS,
+                    icon_color=active_user.accent_color,
+                    tooltip="Show Description",
+                    rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
+                    animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
+                )
                 if podcast_status == True:
                     ep_resume_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
@@ -3120,14 +3144,15 @@ def main(page: ft.Page, session_value=None):
                     ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=display_art_entry_parsed: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=entry_audio_url, title=entry_title: locally_download_episode(url, title, page)),
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=entry_audio_url, title=entry_title: save_selected_episode(url, title, page))
                         ]
                     )
                     ep_controls_row = ft.Row(controls=[ep_resume_button, ep_popup_button])
                     ep_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                    ft.Column(col={"md": 8}, controls=[entry_title, entry_description, entry_released]),
+                    ft.Column(col={"md": 8}, controls=[entry_title, rotate_button, entry_description, entry_released]),
                     ft.Column(col={"md": 2}, controls=[ep_controls_row])
                     ])
                 else:
@@ -3135,6 +3160,10 @@ def main(page: ft.Page, session_value=None):
                         ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                         ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
                         ])
+
+                entry_description.visible = False
+                rotate_iteration = AnimatedButton(rotate_button, entry_description)
+                rotate_button.on_click = rotate_iteration.animate
                 
                 div_row = ft.Divider(color=active_user.accent_color)
                 ep_row_final = ft.Column(controls=[ep_row_content, div_row])
