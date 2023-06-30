@@ -571,25 +571,6 @@ def main(page: ft.Page, session_value=None):
         # page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
         # page.snack_bar.open = True
         # page.update()
-
-    def download_option_change(e):
-        api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
-        page.snack_bar.open = True
-        page.update()
-
-    def self_service_change(e):
-        api_functions.functions.call_enable_disable_self_service(app_api.url, app_api.headers)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
-        page.snack_bar.open = True
-        page.update()
-
-    def display_hello(e):
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Hello {active_user.fullname}! Click profile icon for stats!"))
-        page.snack_bar.open = True
-        page.update()
-
-
     def seconds_to_time(seconds):
         minutes, seconds = divmod(seconds, 60)
         hours, minutes = divmod(minutes, 60)
@@ -1756,6 +1737,227 @@ def main(page: ft.Page, session_value=None):
         page.go("/")
 
     def route_change(e):
+        class Pod_View:
+            def __init__(self, page):
+                # self.view_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+                self.page = page
+                self.ep_number = 1
+                self.page_type = "None"
+
+            def define_values(self, episodes):
+                row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+                for values in episodes:
+                    ep_title = values['EpisodeTitle']
+                    pod_name = values['PodcastName']
+                    pub_date = values['EpisodePubDate']
+                    ep_desc = values['EpisodeDescription']
+                    ep_artwork = values['EpisodeArtwork']
+                    ep_url = values['EpisodeURL']
+                    if self.page_type == "history":
+                        ep_listen_date = values['ListenDate']
+                    ep_duration = values['EpisodeDuration']
+                    # do something with the episode information
+                    entry_title_button = ft.Text(f'{pod_name} - {ep_title}',
+                                                      style=ft.TextThemeStyle.TITLE_MEDIUM,
+                                                      color=active_user.font_color)
+                    entry_title = ft.TextButton(content=entry_title_button,
+                                                     on_click=lambda x, url=ep_url,
+                                                                     title=ep_title: open_episode_select(page, url,
+                                                                                                              title))
+                    entry_row = ft.ResponsiveRow([
+                        ft.Column(col={"sm": 6}, controls=[entry_title]),
+                    ])
+
+                    num_lines = ep_desc.count('\n')
+                    if num_lines > 15:
+                        if is_html(ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(ep_desc)
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = markdown_desc.splitlines()[:15]
+                                markdown_desc = '\n'.join(lines)
+                            # add inline style to change font color
+                            entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                            entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=ep_url,
+                                                                                                   title=ep_title: open_episode_select(
+                                page, url, title))
+                        else:
+                            if num_lines > 15:
+                                # Split into lines, truncate to 15 lines, and join back into a string
+                                lines = ep_desc.splitlines()[:15]
+                                ep_desc = '\n'.join(lines)
+                            # display plain text
+                            entry_description = ft.Text(ep_desc)
+
+                    else:
+                        if is_html(ep_desc):
+                            # convert HTML to Markdown
+                            markdown_desc = html2text.html2text(ep_desc)
+                            # add inline style to change font color
+                            entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                        else:
+                            # display plain text
+                            markdown_desc = ep_desc
+                            entry_description = ft.Text(ep_desc)
+
+                    entry_audio_url = ft.Text(ep_url)
+                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
+                        app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
+                    art_no = random.randint(1, 12)
+                    art_fallback = os.path.join(script_dir, "images", "logo_random", f"{art_no}.jpeg")
+                    art_url = ep_artwork if ep_artwork else art_fallback
+                    art_url_parsed = check_image(art_url)
+                    entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
+                    ep_play_button = ft.IconButton(
+                        icon=ft.icons.NOT_STARTED,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Start Episode From Beginning",
+                        on_click=lambda x, url=ep_url, title=ep_title,
+                                        artwork=ep_artwork: play_selected_episode(url, title, artwork)
+                    )
+                    ep_resume_button = ft.IconButton(
+                        icon=ft.icons.PLAY_CIRCLE,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Resume Episode",
+                        on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork,
+                                        listen_duration=listen_duration: resume_selected_episode(url, title, artwork,
+                                                                                                 listen_duration)
+                    )
+                    popup_button = ft.PopupMenuButton(
+                        content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
+                                        size=40, tooltip="Play Episode"),
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
+                                             on_click=lambda x, url=ep_url, title=ep_title,
+                                                             artwork=ep_artwork: queue_selected_episode(url, title,
+                                                                                                             artwork,
+                                                                                                             page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download",
+                                             on_click=lambda x, url=ep_url,
+                                                             title=ep_title: download_selected_episode(url, title,
+                                                                                                            page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
+                                             on_click=lambda x, url=ep_url,
+                                                             title=ep_title: save_selected_episode(url, title,
+                                                                                                        page))
+                        ]
+                        )
+
+                    rotate_button = ft.IconButton(
+                        icon=ft.icons.ARROW_FORWARD_IOS,
+                        icon_color=active_user.accent_color,
+                        tooltip="Show Description",
+                        rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
+                        animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
+                    )
+
+                    if check_episode_playback == True:
+                        listen_prog = seconds_to_time(listen_duration)
+                        ep_prog = seconds_to_time(ep_duration)
+                        progress_value = get_progress(listen_duration, ep_duration)
+                        entry_listened = ft.Text(f'Listened on: {ep_listen_date}',
+                                                      color=active_user.font_color)
+                        entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color),
+                                                               ft.ProgressBar(expand=True, value=progress_value,
+                                                                              color=active_user.main_color),
+                                                               ft.Text(ep_prog, color=active_user.font_color)])
+                        if num_lines > 15:
+                            ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                                ft.Column(col={"md": 9},
+                                          controls=[entry_title, entry_description, entry_seemore,
+                                                    entry_listened, entry_progress, ft.Row(
+                                                  controls=[ep_play_button, ep_resume_button,
+                                                            popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
+                            ])
+                        else:
+                            ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                                ft.Column(col={"md": 9},
+                                          controls=[entry_title, entry_description, entry_listened,
+                                                    entry_progress, ft.Row(
+                                                  controls=[ep_play_button, ep_resume_button,
+                                                            popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
+                            ])
+                    else:
+                        ep_dur = seconds_to_time(ep_duration)
+                        dur_display = ft.Text(f'Episode Duration: {ep_dur}', color=active_user.font_color)
+                        if num_lines > 15:
+                            ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                                ft.Column(col={"md": 9},
+                                          controls=[entry_title, entry_description, entry_seemore,
+                                                    entry_listened, dur_display,
+                                                    ft.Row(controls=[ep_play_button, popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
+                            ])
+                        else:
+                            ep_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                                ft.Column(col={"md": 9},
+                                          controls=[entry_title, entry_description, entry_listened,
+                                                    dur_display,
+                                                    ft.Row(controls=[ep_play_button, popup_button])]),
+                                ft.Column(col={"md": 1}, controls=[rotate_button]),
+                            ])
+                    entry_description.visible = False
+                    rotate_iteration = AnimatedButton(rotate_button, entry_description)
+                    rotate_button.on_click = rotate_iteration.animate
+
+                    div_row = ft.Divider(color=active_user.accent_color)
+                    ep_column = ft.Column(controls=[ep_row_content, div_row])
+                    ep_row = ft.Container(content=ep_column)
+                    ep_row.padding = padding.only(left=70, right=50)
+                    row_list.controls.append(ep_row)
+                    self.ep_number += 1
+                return row_list
+
+            def define_empty_values(self, title_text, desc_text):
+                ep_number = 1
+                ep_rows = []
+                ep_row_dict = {}
+                row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+
+                pod_name = "No Podcasts history yet"
+                ep_title = title_text
+                pub_date = ""
+                ep_desc = desc_text
+                ep_url = ""
+                entry_title = ft.Text(f'{pod_name} - {ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
+                entry_description = ft.Text(ep_desc, width=800)
+                entry_released = ft.Text(pub_date)
+                artwork_no = random.randint(1, 12)
+                artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                art_url_parsed = check_image(artwork_url)
+                entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
+                ep_play_button = ft.IconButton(
+                    icon=ft.icons.PLAY_DISABLED,
+                    icon_color=active_user.accent_color,
+                    icon_size=40,
+                    tooltip="No Episodes Listened to yet"
+                )
+                # Creating column and row for home layout
+                ep_column = ft.Column(
+                    controls=[entry_title, entry_description, entry_released]
+                )
+
+                ep_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                    ft.Column(col={"md": 10}, controls=[ep_column, ep_play_button]),
+                ])
+                div_row = ft.Divider(color=active_user.accent_color)
+                ep_column = ft.Column(controls=[ep_row_content, div_row])
+                ep_row = ft.Container(content=ep_column)
+                ep_row.padding=padding.only(left=70, right=50)
+                row_list.controls.append(ep_row)
+                return row_list
+
+
         if current_episode.audio_playing == True:
             audio_container.visible == True
         else: 
@@ -2635,43 +2837,112 @@ def main(page: ft.Page, session_value=None):
                 def __init__(self, page):
                     self.page = page
                     self.app_api = app_api
+                    # Guest login Setup
                     self.guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
+                    self.disable_guest_notify = ft.Text(f'Guest user is currently {"enabled" if self.guest_status_bool else "disabled"}')
                     self.guest_check()
+                    # Self Service user create setup
+                    self.self_service_bool = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
+                    self.self_service_notify = ft.Text(f'Self Service user creation is currently {"enabled" if self.self_service_bool else "disabled"}')
+                    self.self_service_check()
+                    # Email Server Setup
+
+                    # Server Downloads Setup
+                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+                    self.disable_download_notify = ft.Text(f'Downloads are currently {"enabled" if self.download_status_bool else "disabled"}')
+                    self.downloads_check()
+
+                    # MFA Settings Setup
+
+                    # New User Creation Setup
 
                 def guest_check(self):
                     if self.guest_status_bool:
                         self.guest_status = 'enabled'
-                        self.guest_info_button = self.ft.ElevatedButton(f'Disable Guest User',
+                        # self.disable_guest_notify.text = f'Guest user is currently {self.guest_status}'
+                        self.guest_info_button = ft.ElevatedButton(f'Disable Guest User',
                                                                         on_click=self.guest_user_change,
                                                                         bgcolor=active_user.main_color,
                                                                         color=active_user.accent_color)
                     else:
                         self.guest_status = 'disabled'
+                        # self.disable_guest_notify.text = f'Guest user is currently {self.guest_status}'
                         self.guest_info_button = ft.ElevatedButton(f'Enable Guest User',
                                                                         on_click=self.guest_user_change,
                                                                         bgcolor=active_user.main_color,
                                                                         color=active_user.accent_color)
-
-                def guest_user_change(self):
+                def self_service_check(self):
+                    if self.self_service_bool:
+                        self.self_service_status = 'enabled'
+                        self.self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation',
+                                                                on_click=self.self_service_change,
+                                                                bgcolor=active_user.main_color,
+                                                                color=active_user.accent_color)
+                    else:
+                        self.self_service_status = 'disabled'
+                        self.self_service_button = ft.ElevatedButton(f'Enable Self Service User Creation',
+                                                                        on_click=self.self_service_change,
+                                                                        bgcolor=active_user.main_color,
+                                                                        color=active_user.accent_color)
+                def downloads_check(self):
+                    if self.download_status_bool:
+                        self.download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads',
+                                                                      on_click=self.download_option_change,
+                                                                      bgcolor=active_user.main_color,
+                                                                      color=active_user.accent_color)
+                    else:
+                        self.download_info_button = ft.ElevatedButton(f'Enable Podcast Downloads',
+                                                                 on_click=self.download_option_change,
+                                                                 bgcolor=active_user.main_color,
+                                                                 color=active_user.accent_color)
+                def guest_user_change(self, e):
                     api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
                     self.page.snack_bar.open = True
                     self.guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
-                    if self.guest_status_bool == True:
-                        settings_data.guest_info_button = ft.ElevatedButton(f'Disable Guest User',
-                                                                            on_click=self.guest_user_change,
-                                                                            bgcolor=active_user.main_color,
-                                                                            color=active_user.accent_color)
-                    else:
-                        settings_data.guest_info_button = ft.ElevatedButton(f'Enable Guest User', on_click=self.guest_user_change,
-                                                              bgcolor=active_user.main_color,
-                                                              color=active_user.accent_color)
-                    if self.guest_status_bool == True:
+                    if self.guest_status_bool:
+                        self.guest_info_button.text = 'Disable Guest User'
+                        self.guest_info_button.on_click = self.guest_user_change
                         self.guest_status = 'enabled'
                     else:
+                        self.guest_info_button.text = 'Enable Guest User'
+                        self.guest_info_button.on_click = self.guest_user_change
                         self.guest_status = 'disabled'
-                    self.disable_guest_notify = ft.Text(f'Guest user is currently {guest_status}')
-                    page.update()
+
+                    self.disable_guest_notify.visible = False
+                    self.page.update()
+
+                def self_service_change(self, e):
+                    api_functions.functions.call_enable_disable_self_service(app_api.url, app_api.headers)
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
+                    self.page.snack_bar.open = True
+                    self.self_service_bool = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
+                    if self.self_service_bool:
+                        self.self_service_button.text = 'Disable Self Service User Creation'
+                        self.self_service_button.on_click = self.self_service_change
+                        self.self_service_status = 'enabled'
+                    else:
+                        self.self_service_button.text = 'Enable Self Service User Creation'
+                        self.self_service_button.on_click = self.self_service_change
+                        self.self_service_status = 'disabled'
+
+                    self.self_service_notify.visible = False
+                    self.page.update()
+
+                def download_option_change(self, e):
+                    api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
+                    self.page.snack_bar.open = True
+                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+                    if self.download_status_bool:
+                        self.download_info_button.text = 'Disable Podcast Server Downloads'
+                        self.download_info_button.on_click = self.download_option_change
+                    else:
+                        self.download_info_button.text = 'Enable Podcast Server Downloads'
+                        self.download_info_button.on_click = self.download_option_change
+
+                    self.disable_download_notify.visible = False
+                    self.page.update()
 
 
             settings_data = Settings(page)
@@ -2824,43 +3095,25 @@ def main(page: ft.Page, session_value=None):
             user_edit_container.padding=padding.only(left=70, right=50)
 
             # Download Enable/Disable
-            download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
-            if download_status_bool == True:
-                download_status = 'enabled'
-            else:
-                download_status = 'disabled'
-            disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):', color=active_user.font_color, size=16)
-            disable_download_notify = ft.Text(f'Downloads are currently {download_status}')
-            if download_status_bool == True:
-                download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-            else:
-                download_info_button = ft.ElevatedButton(f'Enable Podcast Downloads', on_click=download_option_change, bgcolor=active_user.main_color, color=active_user.accent_color)
 
-            download_info_col = ft.Column(controls=[disable_download_text, disable_download_notify, download_info_button])
+            # if download_status_bool == True:
+            #     download_status = 'enabled'
+            # else:
+            #     download_status = 'disabled'
+            settings_data.disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):', color=active_user.font_color, size=16)
+            download_info_col = ft.Column(controls=[settings_data.disable_download_text, settings_data.disable_download_notify, settings_data.download_info_button])
             download_info = ft.Container(content=download_info_col)
             download_info.padding=padding.only(left=70, right=50)
 
             # Guest User Settings
             settings_data.disable_guest_text = ft.Text('Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
-            settings_data.disable_guest_notify = ft.Text(f'Guest user is currently {settings_data.guest_status}')
             guest_info_col = ft.Column(controls=[settings_data.disable_guest_text, settings_data.disable_guest_notify, settings_data.guest_info_button])
             guest_info = ft.Container(content=guest_info_col)
             guest_info.padding=padding.only(left=70, right=50)
 
             # User Self Service Creation
-            self_service_bool = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
-            if self_service_bool == True:
-                self_service_status = 'enabled'
-            else:
-                self_service_status = 'disabled'
-            self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
-            self_service_notify = ft.Text(f'Self Service user creation is currently {self_service_status}')
-            if self_service_bool == True:
-                self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-            else:
-                self_service_button = ft.ElevatedButton(f'Enable Self Service User Creation', on_click=self_service_change, bgcolor=active_user.main_color, color=active_user.accent_color)
-
-            self_service_info_col = ft.Column(controls=[self_service_text, self_service_notify, self_service_button])
+            settings_data.self_service_text = ft.Text('Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):', color=active_user.font_color, size=16)
+            self_service_info_col = ft.Column(controls=[settings_data.self_service_text, settings_data.self_service_notify, settings_data.self_service_button])
             self_service_info = ft.Container(content=self_service_info_col)
             self_service_info.padding=padding.only(left=70, right=50)
 
@@ -2886,7 +3139,7 @@ def main(page: ft.Page, session_value=None):
             pw_reset_send_mode = ft.Dropdown(width=250, label="Send Mode",    
                 options=[
                     ft.dropdown.Option("SMTP"),
-                    ft.dropdown.Option("Sendmail"),
+                    # ft.dropdown.Option("Sendmail"),
                 ],icon=ft.icons.SEND, border_color=active_user.accent_color, color=active_user.accent_color, focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color, focused_border_color=active_user.accent_color)
             pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",    
                 options=[
@@ -3325,165 +3578,20 @@ def main(page: ft.Page, session_value=None):
             # Get Pod info
             hist_episodes = api_functions.functions.call_user_history(app_api.url, app_api.headers, active_user.user_id)
             hist_episodes.reverse()
+            hist_layout = Pod_View(page)
+            hist_layout.page_type = "history"
 
             if hist_episodes is None:
-                hist_ep_number = 1
-                hist_ep_rows = []
-                hist_ep_row_dict = {}
-
-                hist_pod_name = "No Podcasts history yet"
-                hist_ep_title = "Podcasts you add will display here after you listen to them."
-                hist_pub_date = ""
-                hist_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts. Once you listen to episodes they will appear here."
-                hist_ep_url = ""
-                hist_entry_title = ft.Text(f'{hist_pod_name} - {hist_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                hist_entry_description = ft.Text(hist_ep_desc, width=800)
-                hist_entry_audio_url = ft.Text(hist_ep_url)
-                hist_entry_released = ft.Text(hist_pub_date)
-                hist_artwork_no = random.randint(1, 12)
-                hist_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{hist_artwork_no}.jpeg")
-                hist_art_url_parsed = check_image(hist_artwork_url)
-                hist_entry_artwork_url = ft.Image(src=hist_art_url_parsed, width=150, height=150)
-                hist_ep_play_button = ft.IconButton(
-                    icon=ft.icons.PLAY_DISABLED,
-                    icon_color=active_user.accent_color,
-                    icon_size=40,
-                    tooltip="No Episodes Listened to yet"
-                )
-                # Creating column and row for home layout
-                hist_ep_column = ft.Column(
-                    controls=[hist_entry_title, hist_entry_description, hist_entry_released]
+                hist_row_list = hist_layout.define_empty_values(
+                    "Podcasts you add will display here after you listen to them.",
+                    "You can search podcasts in the upper right. Then click the plus button to add podcasts. Once you listen to episodes they will appear here."
                 )
 
-                hist_ep_row_content = ft.ResponsiveRow([
-                    ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                    ft.Column(col={"md": 10}, controls=[hist_ep_column, hist_ep_play_button]),
-                ])
-                hist_ep_row = ft.Container(content=hist_ep_row_content)
-                hist_ep_row.padding=padding.only(left=70, right=50)
-                hist_ep_rows.append(hist_ep_row)
-                hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
-                hist_pods_active = True
-                hist_ep_number += 1
             else:
                 hist_ep_number = 1
-                hist_ep_rows = []
-                hist_ep_row_dict = {}
+                hist_row_list = hist_layout.define_values(hist_episodes)
 
-                for entry in hist_episodes:
-                    hist_ep_title = entry['EpisodeTitle']
-                    hist_pod_name = entry['PodcastName']
-                    hist_pub_date = entry['EpisodePubDate']
-                    hist_ep_desc = entry['EpisodeDescription']
-                    hist_ep_artwork = entry['EpisodeArtwork']
-                    hist_ep_url = entry['EpisodeURL']
-                    hist_ep_listen_date = entry['ListenDate']
-                    hist_ep_duration = entry['EpisodeDuration']
-                    # do something with the episode information
-                    hist_entry_title_button = ft.Text(f'{hist_pod_name} - {hist_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                    hist_entry_title = ft.TextButton(content=hist_entry_title_button, on_click=lambda x, url=hist_ep_url, title=hist_ep_title: open_episode_select(page, url, title))
-                    hist_entry_row = ft.ResponsiveRow([
-    ft.Column(col={"sm": 6}, controls=[hist_entry_title]),
-])
-
-                    num_lines = hist_ep_desc.count('\n')
-                    if num_lines > 15:
-                        if is_html(hist_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(hist_ep_desc)
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = markdown_desc.splitlines()[:15]
-                                markdown_desc = '\n'.join(lines)
-                            # add inline style to change font color                            
-                            hist_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                            hist_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: open_episode_select(page, url, title))
-                        else:
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = hist_ep_desc.splitlines()[:15]
-                                hist_ep_desc = '\n'.join(lines)
-                            # display plain text
-                            hist_entry_description = ft.Text(hist_ep_desc)
-
-                    else:
-                        if is_html(hist_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(hist_ep_desc)
-                            # add inline style to change font color
-                            hist_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                        else:
-                            # display plain text
-                            markdown_desc = hist_ep_desc
-                            hist_entry_description = ft.Text(hist_ep_desc)
-
-                    hist_entry_audio_url = ft.Text(hist_ep_url)
-                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, hist_ep_title, hist_ep_url)
-                    hist_art_no = random.randint(1, 12)
-                    hist_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{hist_art_no}.jpeg")
-                    hist_art_url = hist_ep_artwork if hist_ep_artwork else hist_art_fallback
-                    hist_art_url_parsed = check_image(hist_art_url)
-                    hist_entry_artwork_url = ft.Image(src=hist_art_url_parsed, width=150, height=150)
-                    hist_ep_play_button = ft.IconButton(
-                        icon=ft.icons.NOT_STARTED,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Start Episode From Beginning",
-                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork: play_selected_episode(url, title, artwork)
-                    )
-                    hist_ep_resume_button = ft.IconButton(
-                        icon=ft.icons.PLAY_CIRCLE,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Resume Episode",
-                        on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
-                    )
-                    hist_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
-                        items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=hist_ep_url, title=hist_ep_title, artwork=hist_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: download_selected_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=hist_ep_url, title=hist_ep_title: save_selected_episode(url, title, page))
-                        ]
-                    )
-                    
-                    if check_episode_playback == True:
-                        listen_prog = seconds_to_time(listen_duration)
-                        hist_ep_prog = seconds_to_time(hist_ep_duration)
-                        progress_value = get_progress(listen_duration, hist_ep_duration)
-                        hist_entry_listened = ft.Text(f'Listened on: {hist_ep_listen_date}', color=active_user.font_color)
-                        hist_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(hist_ep_prog, color=active_user.font_color)])
-                        if num_lines > 15:
-                            hist_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_seemore, hist_entry_listened, hist_entry_progress, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
-                            ])
-                        else:
-                            hist_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, hist_entry_progress, ft.Row(controls=[hist_ep_play_button, hist_ep_resume_button, hist_popup_button])]),
-                            ]) 
-                    else:
-                        hist_ep_dur = seconds_to_time(home_ep_duration)
-                        hist_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
-                        if num_lines > 15:
-                            hist_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_seemore, hist_entry_listened, hist_dur_display, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
-                            ])
-                        else:
-                            hist_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[hist_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[hist_entry_title, hist_entry_description, hist_entry_listened, hist_dur_display, ft.Row(controls=[hist_ep_play_button, hist_popup_button])]),
-                            ]) 
-                    hist_div_row = ft.Divider(color=active_user.accent_color)
-                    hist_ep_column = ft.Column(controls=[hist_ep_row_content, hist_div_row])
-                    hist_ep_row = ft.Container(content=hist_ep_column)
-                    hist_ep_row.padding=padding.only(left=70, right=50)
-                    hist_ep_rows.append(hist_ep_row)
-                    # hist_ep_rows.append(ft.Text('test'))
-                    hist_ep_row_dict[f'search_row{hist_ep_number}'] = hist_ep_row
-                    hist_pods_active = True
-                    hist_ep_number += 1
+            hist_row_contain = ft.Container(content=hist_row_list)
 
             history_title = ft.Text(
             "Listen History:",
@@ -3499,7 +3607,7 @@ def main(page: ft.Page, session_value=None):
                     [
                         top_bar,
                         history_title_row,
-                        *[hist_ep_row_dict.get(f'search_row{i+1}') for i in range(len(hist_ep_rows))]
+                        hist_row_contain
 
                     ]
                     

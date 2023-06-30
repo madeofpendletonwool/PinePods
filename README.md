@@ -344,6 +344,10 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Small layout Improvements
 - [ ] Do something when search results aren't found - Currently Blank screen
 - [ ] On top bar cutoff add a search button that opens a search prompt
+- [ ] Add mfa to dynamic settings class
+- [ ] Add new users to dynamic settings class
+- [ ] Add Email settings to dynamic users class
+- [ ] Option to remove from history
 
 ### To be added after beta version (Listed in order they will be implemented)
 
