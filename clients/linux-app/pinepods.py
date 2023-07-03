@@ -2426,8 +2426,7 @@ def main(page: ft.Page, session_value=None):
 
             # Get and format list
             pod_list_number = 1
-            pod_list_rows = []
-            pod_list_dict = {}
+            pod_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
             def on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website):
                 evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
@@ -2472,8 +2471,7 @@ def main(page: ft.Page, session_value=None):
                 ])
                 pod_list_row = ft.Container(content=pod_list_row_content)
                 pod_list_row.padding = padding.only(left=70, right=50)
-                pod_list_rows.append(pod_list_row)
-                pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
+                pod_row_list.controls.append(pod_list_row)
 
             else:
 
@@ -2528,10 +2526,11 @@ def main(page: ft.Page, session_value=None):
                         ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
                         ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
                     ])
-                    pod_list_row = ft.Container(content=pod_list_row_content)
+                    div_row = ft.Divider(color=active_user.accent_color)
+                    pod_row_column = ft.Column(controls=[pod_list_row_content, div_row])
+                    pod_list_row = ft.Container(content=pod_row_column)
                     pod_list_row.padding = padding.only(left=70, right=50)
-                    pod_list_rows.append(pod_list_row)
-                    pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
+                    pod_row_list.controls.append(pod_list_row)
                     pod_list_number += 1
             pod_view_title = ft.Text(
                 "Added Podcasts:",
@@ -2546,7 +2545,7 @@ def main(page: ft.Page, session_value=None):
                                     [
                                         top_bar,
                                         pod_view_row,
-                                        *[pod_list_dict[f'pod_list_row{i + 1}'] for i in range(len(pod_list_rows))]
+                                        pod_row_list
 
                                     ]
 
@@ -2592,61 +2591,69 @@ def main(page: ft.Page, session_value=None):
                               search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
             page.overlay.remove(progress_stack)
 
-            # Get and format list
-            pod_number = 1
-            search_rows = []
-            search_row_dict = {}
-            for d in return_results:
-                for k, v in d.items():
-                    if k == 'title':
-                        # Parse webpages needed to extract podcast artwork
-                        search_art_no = random.randint(1, 12)
-                        search_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{search_art_no}.jpeg")
-                        search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
-                        podimage_parsed = check_image(search_art_url)
-                        pod_image = ft.Image(src=podimage_parsed, width=150, height=150)
+            if search_results['feeds']:
+                # Get and format list
+                pod_number = 1
+                search_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+                for d in return_results:
+                    for k, v in d.items():
+                        if k == 'title':
+                            # Parse webpages needed to extract podcast artwork
+                            search_art_no = random.randint(1, 12)
+                            search_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{search_art_no}.jpeg")
+                            search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
+                            podimage_parsed = check_image(search_art_url)
+                            pod_image = ft.Image(src=podimage_parsed, width=150, height=150)
 
-                        # Defining the attributes of each podcast that will be displayed on screen
-                        pod_title_button = ft.Text(d['title'], style=ft.TextThemeStyle.TITLE_MEDIUM,
+                            # Defining the attributes of each podcast that will be displayed on screen
+                            pod_title_button = ft.Text(d['title'], style=ft.TextThemeStyle.TITLE_MEDIUM,
+                                                       color=active_user.font_color)
+                            pod_title = ft.TextButton(
+                                content=pod_title_button,
+                                on_click=lambda x, d=d: (
+                                evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'],
+                                                 d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
+                            )
+                            pod_desc = ft.Text(d['description'])
+                            # Episode Count and subtitle
+                            pod_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD,
                                                    color=active_user.font_color)
-                        pod_title = ft.TextButton(
-                            content=pod_title_button,
-                            on_click=lambda x, d=d: (
-                            evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'],
-                                             d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
-                        )
-                        pod_desc = ft.Text(d['description'])
-                        # Episode Count and subtitle
-                        pod_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD,
-                                               color=active_user.font_color)
-                        pod_ep_count = ft.Text(d['episodeCount'], color=active_user.font_color)
-                        pod_ep_info = ft.Row(controls=[pod_ep_title, pod_ep_count])
-                        add_pod_button = ft.IconButton(
-                            icon=ft.icons.ADD_BOX,
-                            icon_color=active_user.accent_color,
-                            icon_size=40,
-                            tooltip="Add Podcast",
-                            on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'],
-                                                                 d['description'], d['episodeCount'], d['url'],
-                                                                 d['link'], page)
-                        )
-                        # Creating column and row for search layout
-                        search_column = ft.Column(
-                            controls=[pod_title, pod_desc, pod_ep_info]
-                        )
-                        search_row_content = ft.ResponsiveRow([
-                            ft.Column(col={"md": 2}, controls=[pod_image]),
-                            ft.Column(col={"md": 10}, controls=[search_column, add_pod_button]),
-                        ])
-                        search_row = ft.Container(content=search_row_content)
-                        search_row.padding = padding.only(left=70, right=50)
-                        search_rows.append(search_row)
-                        search_row_dict[f'search_row{pod_number}'] = search_row
-                        pod_number += 1
+                            pod_ep_count = ft.Text(d['episodeCount'], color=active_user.font_color)
+                            pod_ep_info = ft.Row(controls=[pod_ep_title, pod_ep_count])
+                            add_pod_button = ft.IconButton(
+                                icon=ft.icons.ADD_BOX,
+                                icon_color=active_user.accent_color,
+                                icon_size=40,
+                                tooltip="Add Podcast",
+                                on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'],
+                                                                     d['description'], d['episodeCount'], d['url'],
+                                                                     d['link'], page)
+                            )
+                            # Creating column and row for search layout
+                            search_column = ft.Column(
+                                controls=[pod_title, pod_desc, pod_ep_info]
+                            )
+                            search_row_content = ft.ResponsiveRow([
+                                ft.Column(col={"md": 2}, controls=[pod_image]),
+                                ft.Column(col={"md": 10}, controls=[search_column, add_pod_button]),
+                            ])
+                            div_row = ft.Divider(color=active_user.accent_color)
+                            search_row_column = ft.Column(controls=[search_row_content, div_row])
+                            search_row = ft.Container(content=search_row_column)
+                            search_row.padding = padding.only(left=70, right=50)
+                            search_row_list.controls.append(search_row)
+                            pod_number += 1
+            else:
+                print('running none')
+                search_row_text = ft.Text("No results found. Please adjust your query and try again", size=18)
+                search_row_column = ft.Column(controls=[search_row_text])
+                search_row = ft.Container(content=search_row_column)
+                search_row.padding = padding.only(left=70, right=50)
+                search_row_list = search_row
             # Create search view object
             search_view = ft.View("/searchpod",
                                   [
-                                      *[search_row_dict[f'search_row{i + 1}'] for i in range(len(search_rows))]
+                                      search_row_list
                                   ]
 
                                   )

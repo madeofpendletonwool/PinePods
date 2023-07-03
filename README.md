@@ -330,19 +330,19 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 - [x] Add Itunes podcast API
 - [x] MFA Logins on web version
+- [x] Do something when search results aren't found - Currently Blank screen
+- [x] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 
 ### Pre-beta version
 
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] Rework local images to run through the image proxy
-- [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [ ] logout on client remove saved app cache
 - [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
 - [ ] Queue currently somewhat broken
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
-- [ ] Do something when search results aren't found - Currently Blank screen
 - [ ] On top bar cutoff add a search button that opens a search prompt
 - [ ] Add mfa to dynamic settings class
 - [ ] Add new users to dynamic settings class
