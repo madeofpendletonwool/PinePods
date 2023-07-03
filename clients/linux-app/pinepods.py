@@ -1764,9 +1764,6 @@ def main(page: ft.Page, session_value=None):
                                                      on_click=lambda x, url=ep_url,
                                                                      title=ep_title: open_episode_select(page, url,
                                                                                                               title))
-                    entry_row = ft.ResponsiveRow([
-                        ft.Column(col={"sm": 6}, controls=[entry_title]),
-                    ])
 
                     num_lines = ep_desc.count('\n')
                     if num_lines > 15:
@@ -1779,9 +1776,8 @@ def main(page: ft.Page, session_value=None):
                                 markdown_desc = '\n'.join(lines)
                             # add inline style to change font color
                             entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                            entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=ep_url,
-                                                                                                   title=ep_title: open_episode_select(
-                                page, url, title))
+                            entry_seemore = ft.TextButton(text="See More...", on_click=lambda x,
+                                url=ep_url, title=ep_title: open_episode_select(page, url, title))
                         else:
                             if num_lines > 15:
                                 # Split into lines, truncate to 15 lines, and join back into a string
@@ -1795,15 +1791,14 @@ def main(page: ft.Page, session_value=None):
                             # convert HTML to Markdown
                             markdown_desc = html2text.html2text(ep_desc)
                             # add inline style to change font color
-                            entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                            entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url, selectable=True)
                         else:
                             # display plain text
-                            markdown_desc = ep_desc
-                            entry_description = ft.Text(ep_desc)
+                            entry_description = ft.Text(ep_desc, selectable=True)
 
-                    entry_audio_url = ft.Text(ep_url)
                     check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
                         app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
+                    entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
                     art_no = random.randint(1, 12)
                     art_fallback = os.path.join(script_dir, "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
@@ -1826,25 +1821,43 @@ def main(page: ft.Page, session_value=None):
                                         listen_duration=listen_duration: resume_selected_episode(url, title, artwork,
                                                                                                  listen_duration)
                     )
-                    popup_button = ft.PopupMenuButton(
-                        content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
-                                        size=40, tooltip="Play Episode"),
-                        items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
-                                             on_click=lambda x, url=ep_url, title=ep_title,
-                                                             artwork=ep_artwork: queue_selected_episode(url, title,
-                                                                                                             artwork,
-                                                                                                             page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download",
-                                             on_click=lambda x, url=ep_url,
-                                                             title=ep_title: download_selected_episode(url, title,
-                                                                                                            page)),
-                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
-                                             on_click=lambda x, url=ep_url,
-                                                             title=ep_title: save_selected_episode(url, title,
-                                                                                                        page))
-                        ]
-                        )
+                    if self.page_type == "saved":
+                        popup_button = ft.PopupMenuButton(
+                            content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
+                                            size=40, tooltip="Play Episode"),
+                            items=[
+                                ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
+                                                 on_click=lambda x, url=ep_url, title=ep_title,
+                                                                 artwork=ep_artwork: queue_selected_episode(url,
+                                                                                                                  title,
+                                                                                                                  artwork,
+                                                                                                                  page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=ep_url, title=ep_title: locally_download_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
+                                                 on_click=lambda x, url=ep_url,
+                                                                 title=ep_title: remove_saved_episode(url, title,
+                                                                                                            page))
+                            ]
+                            )
+                    else:
+                        popup_button = ft.PopupMenuButton(
+                            content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
+                                            size=40, tooltip="Play Episode"),
+                            items=[
+                                ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
+                                                 on_click=lambda x, url=ep_url, title=ep_title,
+                                                                 artwork=ep_artwork: queue_selected_episode(url, title,
+                                                                                                                 artwork,
+                                                                                                                 page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=ep_url, title=ep_title: locally_download_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
+                                                 on_click=lambda x, url=ep_url,
+                                                                 title=ep_title: save_selected_episode(url, title,
+                                                                                                            page))
+                            ]
+                            )
 
                     rotate_button = ft.IconButton(
                         icon=ft.icons.ARROW_FORWARD_IOS,
@@ -1858,8 +1871,11 @@ def main(page: ft.Page, session_value=None):
                         listen_prog = seconds_to_time(listen_duration)
                         ep_prog = seconds_to_time(ep_duration)
                         progress_value = get_progress(listen_duration, ep_duration)
-                        entry_listened = ft.Text(f'Listened on: {ep_listen_date}',
+                        if self.page_type == "history":
+                            entry_released = ft.Text(f'Listened on: {ep_listen_date}',
                                                       color=active_user.font_color)
+                        else:
+                            continue
                         entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color),
                                                                ft.ProgressBar(expand=True, value=progress_value,
                                                                               color=active_user.main_color),
@@ -1869,7 +1885,7 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                                 ft.Column(col={"md": 9},
                                           controls=[entry_title, entry_description, entry_seemore,
-                                                    entry_listened, entry_progress, ft.Row(
+                                                    entry_released, entry_progress, ft.Row(
                                                   controls=[ep_play_button, ep_resume_button,
                                                             popup_button])]),
                                 ft.Column(col={"md": 1}, controls=[rotate_button]),
@@ -1878,7 +1894,7 @@ def main(page: ft.Page, session_value=None):
                             ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                                 ft.Column(col={"md": 9},
-                                          controls=[entry_title, entry_description, entry_listened,
+                                          controls=[entry_title, entry_description, entry_released,
                                                     entry_progress, ft.Row(
                                                   controls=[ep_play_button, ep_resume_button,
                                                             popup_button])]),
@@ -1892,7 +1908,7 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                                 ft.Column(col={"md": 9},
                                           controls=[entry_title, entry_description, entry_seemore,
-                                                    entry_listened, dur_display,
+                                                    entry_released, dur_display,
                                                     ft.Row(controls=[ep_play_button, popup_button])]),
                                 ft.Column(col={"md": 1}, controls=[rotate_button]),
                             ])
@@ -1900,7 +1916,7 @@ def main(page: ft.Page, session_value=None):
                             ep_row_content = ft.ResponsiveRow([
                                 ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
                                 ft.Column(col={"md": 9},
-                                          controls=[entry_title, entry_description, entry_listened,
+                                          controls=[entry_title, entry_description, entry_released,
                                                     dur_display,
                                                     ft.Row(controls=[ep_play_button, popup_button])]),
                                 ft.Column(col={"md": 1}, controls=[rotate_button]),
@@ -1917,13 +1933,10 @@ def main(page: ft.Page, session_value=None):
                     self.ep_number += 1
                 return row_list
 
-            def define_empty_values(self, title_text, desc_text):
-                ep_number = 1
-                ep_rows = []
-                ep_row_dict = {}
+            def define_empty_values(self, name_text, title_text, desc_text):
                 row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
-                pod_name = "No Podcasts history yet"
+                pod_name = name_text
                 ep_title = title_text
                 pub_date = ""
                 ep_desc = desc_text
@@ -2030,180 +2043,17 @@ def main(page: ft.Page, session_value=None):
             # Home Screen Podcast Layout (Episodes in Newest order)
 
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers, active_user.user_id)
+            home_layout = Pod_View(page)
+            home_layout.page_type = "home"
 
             if home_episodes is None:
-                home_ep_number = 1
-                home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
-
-                home_pod_name = "No Podcasts added yet"
-                home_ep_title = "Podcasts you add will display new episodes here."
-                home_pub_date = ""
-                home_ep_desc = "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
-                home_ep_url = ""
-                home_entry_title = ft.Text(f'{home_pod_name} - {home_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                home_entry_description = ft.Text(home_ep_desc, width=800)
-                home_entry_audio_url = ft.Text(home_ep_url)
-                home_entry_released = ft.Text(home_pub_date)
-                home_artwork_no = random.randint(1, 12)
-                home_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{home_artwork_no}.jpeg")
-                home_art_url_parsed = check_image(home_artwork_url)
-                home_entry_artwork_url = ft.Image(src=home_art_url_parsed, width=150, height=150)
-                home_ep_play_button = ft.IconButton(
-                    icon=ft.icons.PLAY_DISABLED,
-                    icon_color=active_user.accent_color,
-                    icon_size=40,
-                    tooltip="No Episodes Listened to yet"
+                home_row_list = home_layout.define_empty_values(
+                    "No Podcasts added yet",
+                    "Podcasts you add will display new episodes here.",
+                    "You can search podcasts in the upper right. Then click the plus button to add podcasts to the add. Click around on the navbar to manage podcasts you've added. Enjoy the listening!"
                 )
-                # Creating column and row for home layout
-                home_ep_column = ft.Column(
-                    controls=[home_entry_title, home_entry_description, home_entry_released]
-                )
-
-                home_ep_row_content = ft.ResponsiveRow([
-                    ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                    ft.Column(col={"md": 10}, controls=[home_ep_column, home_ep_play_button]),
-                ])
-                home_div_row = ft.Divider(color=active_user.accent_color)
-                home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
-                home_ep_row = ft.Container(content=home_ep_column)
-                home_ep_row.padding=padding.only(left=70, right=50)
-                home_row_list.controls.append(home_ep_row)
-                home_pods_active = True
-                home_ep_number += 1
             else:
-                home_ep_number = 1
-                home_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
-
-                for entry in home_episodes:
-                    home_ep_title = entry['EpisodeTitle']
-                    home_pod_name = entry['PodcastName']
-                    home_pub_date = entry['EpisodePubDate']
-                    home_ep_desc = entry['EpisodeDescription']
-                    home_ep_artwork = entry['EpisodeArtwork']
-                    home_ep_url = entry['EpisodeURL']
-                    home_ep_duration = entry['EpisodeDuration']
-                    # do something with the episode information
-                    home_entry_title_button = ft.Text(f'{home_pod_name} - {home_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                    home_entry_title = ft.TextButton(content=home_entry_title_button, on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
-                    home_entry_row = ft.ResponsiveRow([
-    ft.Column(col={"sm": 6}, controls=[home_entry_title]),
-])
-
-                    num_lines = home_ep_desc.count('\n')
-                    if num_lines > 15:
-                        if is_html(home_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(home_ep_desc)
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = markdown_desc.splitlines()[:15]
-                                markdown_desc = '\n'.join(lines)
-                            # add inline style to change font color                            
-                            home_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                            home_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=home_ep_url, title=home_ep_title: open_episode_select(page, url, title))
-                        else:
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = home_ep_desc.splitlines()[:15]
-                                home_ep_desc = '\n'.join(lines)
-                            # display plain text
-                            home_entry_description = ft.Text(home_ep_desc)
-
-                    else:
-                        if is_html(home_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(home_ep_desc)
-                            # add inline style to change font color
-                            home_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                        else:
-                            # display plain text
-                            markdown_desc = home_ep_desc
-                            home_entry_description = ft.Text(home_ep_desc)
-
-                    home_entry_audio_url = ft.Text(home_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, home_ep_title, home_ep_url)
-                    home_entry_released = ft.Text(f'Released on: {home_pub_date}', color=active_user.font_color)
-
-                    home_art_no = random.randint(1, 12)
-                    home_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{home_art_no}.jpeg")
-                    home_art_url = home_ep_artwork if home_ep_artwork else home_art_fallback
-                    home_art_parsed = check_image(home_art_url)
-                    home_entry_artwork_url = ft.Image(src=home_art_parsed, width=150, height=150)
-                    home_ep_play_button = ft.IconButton(
-                        icon=ft.icons.NOT_STARTED,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Play Episode",
-                        on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: play_selected_episode(url, title, artwork)
-                    )
-                    home_ep_resume_button = ft.IconButton(
-                        icon=ft.icons.PLAY_CIRCLE,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Resume Episode",
-                        on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
-                    )
-                    home_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
-                        items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=home_ep_url, title=home_ep_title, artwork=home_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: download_selected_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=home_ep_url, title=home_ep_title: locally_download_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=home_ep_url, title=home_ep_title: save_selected_episode(url, title, page))
-                        ]
-                    )
-
-                    rotate_button = ft.IconButton(
-                        icon=ft.icons.ARROW_FORWARD_IOS,
-                        icon_color=active_user.accent_color,
-                        tooltip="Show Description",
-                        rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
-                        animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
-                    )
-
-                    if check_episode_playback == True:
-                        listen_prog = seconds_to_time(listen_duration)
-                        home_ep_prog = seconds_to_time(home_ep_duration)
-                        progress_value = get_progress(listen_duration, home_ep_duration)
-                        home_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(home_ep_prog, color=active_user.font_color)])
-                        if num_lines > 15:
-                            home_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
-                        else:
-                            home_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_released, home_entry_progress, ft.Row(controls=[home_ep_play_button, home_ep_resume_button, home_popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
-                    else:
-                        home_ep_dur = seconds_to_time(home_ep_duration)
-                        home_dur_display = ft.Text(f'Episode Duration: {home_ep_dur}', color=active_user.font_color)
-                        if num_lines > 15:
-                            home_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_seemore, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
-                        else:
-                            home_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[home_entry_artwork_url]),
-                                ft.Column(col={"md": 9}, controls=[home_entry_title, home_entry_description, home_entry_released, home_dur_display, ft.Row(controls=[home_ep_play_button, home_popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
-
-                    home_entry_description.visible= False
-                    rotate_iteration = AnimatedButton(rotate_button, home_entry_description)
-                    rotate_button.on_click = rotate_iteration.animate
-
-                    home_div_row = ft.Divider(color=active_user.accent_color)
-                    home_ep_column = ft.Column(controls=[home_ep_row_content, home_div_row])
-                    home_ep_row = ft.Container(content=home_ep_column)
-                    home_ep_row.padding=padding.only(left=70, right=50)
-                    home_row_list.controls.append(home_ep_row)
-                    home_pods_active = True
-                    home_ep_number += 1
+                home_row_list = home_layout.define_values(home_episodes)
 
             home_row_contain = ft.Container(content=home_row_list)
 
@@ -2217,6 +2067,472 @@ def main(page: ft.Page, session_value=None):
             home_view.scroll = ft.ScrollMode.AUTO
             page.views.append(
                     home_view
+            )
+
+        if page.route == "/saved" or page.route == "/saved":
+
+            # Get Pod info
+            saved_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
+                                                                                 active_user.user_id)
+            saved_layout = Pod_View(page)
+            saved_layout.page_type = "saved"
+
+            if saved_episode_list is None:
+                saved_row_list = saved_layout.define_empty_values(
+                    "No podcasts saved yet",
+                    "Podcasts you save will display here.",
+                    "Click the dropdown on podcasts and select save. This will save the podcast in order to easily find them for later listening. Think of this like a permanent queue."
+                )
+            else:
+                saved_episode_list.reverse()
+                saved_row_list = saved_layout.define_values(saved_episode_list)
+
+            saved_row_contain = ft.Container(content=saved_row_list)
+            saved_title = ft.Text(
+                "Saved Episodes:",
+                size=30,
+                font_family="RobotoSlab",
+                color=active_user.font_color,
+                weight=ft.FontWeight.W_300,
+            )
+            saved_title_row = ft.Row(controls=[saved_title], alignment=ft.MainAxisAlignment.CENTER)
+
+            # Create search view object
+            ep_saved_view = ft.View("/saved",
+                                    [
+                                        top_bar,
+                                        saved_title_row,
+                                        saved_row_contain
+
+                                    ]
+
+                                    )
+            ep_saved_view.bgcolor = active_user.bgcolor
+            ep_saved_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                ep_saved_view
+
+            )
+
+        if page.route == "/poddisplay" or page.route == "/poddisplay":
+            # Check if podcast is already in database for user
+            podcast_status = api_functions.functions.call_check_podcast(app_api.url, app_api.headers,
+                                                                        active_user.user_id, clicked_podcast.name)
+            # Creating attributes for page layout
+            # First Podcast Info
+            display_pod_art_no = random.randint(1, 12)
+            display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
+            display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
+            display_pod_art_parsed = check_image(display_pod_art_url)
+            pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
+            pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+            pod_feed_desc = ft.Text(clicked_podcast.description)
+            pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
+            pod_feed_add_button = ft.IconButton(
+                icon=ft.icons.ADD_BOX,
+                icon_color=active_user.accent_color,
+                icon_size=40,
+                tooltip="Add Podcast",
+                on_click=lambda x: send_podcast(clicked_podcast.name, clicked_podcast.artwork, clicked_podcast.author,
+                                                clicked_podcast.categories, clicked_podcast.description,
+                                                clicked_podcast.episode_count, clicked_podcast.feedurl,
+                                                clicked_podcast.website, page)
+            )
+            pod_feed_remove_button = ft.IconButton(
+                icon=ft.icons.INDETERMINATE_CHECK_BOX,
+                icon_color="red400",
+                icon_size=40,
+                tooltip="Remove Podcast",
+                on_click=lambda x, title=clicked_podcast.name: api_functions.functions.call_remove_podcast(app_api.url,
+                                                                                                           app_api.headers,
+                                                                                                           title,
+                                                                                                           active_user.user_id)
+            )
+            if podcast_status == True:
+                feed_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 4}, controls=[pod_image]),
+                    ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
+                    ft.Column(col={"md": 1}, controls=[pod_feed_remove_button]),
+                ])
+            else:
+                feed_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 4}, controls=[pod_image]),
+                    ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
+                    ft.Column(col={"md": 1}, controls=[pod_feed_add_button]),
+                ])
+            feed_row = ft.Container(content=feed_row_content)
+            feed_row.padding = padding.only(left=70, right=50)
+
+            # Episode Info
+            # Run Function to get episode data
+            ep_number = 1
+            ep_rows = []
+            ep_row_dict = {}
+            ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
+
+            episode_results = app_functions.functions.parse_feed(clicked_podcast.feedurl)
+
+            for entry in episode_results.entries:
+                if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
+                    # get the episode title
+                    parsed_title = entry.title
+
+                    # get the episode description
+                    parsed_description = entry.summary
+
+                    # get the URL of the audio file for the episode
+                    if entry.enclosures:
+                        parsed_audio_url = entry.enclosures[0].href
+                    else:
+                        parsed_audio_url = ""
+
+                    # get the release date of the episode
+                    parsed_release_date = entry.published
+
+                    # get the URL of the episode artwork, or use the podcast image URL if not available
+                    parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get(
+                        'href', None)
+                    if parsed_artwork_url == None:
+                        parsed_artwork_url = clicked_podcast.artwork
+                    display_art_no = random.randint(1, 12)
+                    display_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_art_no}.jpeg")
+                    display_art_url = parsed_artwork_url if parsed_artwork_url else display_art_fallback
+
+                else:
+                    print("Skipping entry without required attributes or enclosures")
+                entry_title = ft.Text(f'{parsed_title}', style=ft.TextThemeStyle.TITLE_MEDIUM,
+                                      color=active_user.font_color)
+                entry_audio_url = ft.Text(parsed_audio_url)
+                entry_released = ft.Text(parsed_release_date)
+                display_art_entry_parsed = check_image(display_art_url)
+                entry_artwork_url = ft.Image(src=display_art_entry_parsed, width=150, height=150)
+
+                if is_html(parsed_description):
+                    # convert HTML to Markdown
+                    markdown_desc = html2text.html2text(parsed_description)
+                    # add inline style to change font color
+                    entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
+                else:
+                    # display plain text
+                    markdown_desc = parsed_description
+                    entry_description = ft.Text(markdown_desc)
+                rotate_button = ft.IconButton(
+                    icon=ft.icons.ARROW_FORWARD_IOS,
+                    icon_color=active_user.accent_color,
+                    tooltip="Show Description",
+                    rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
+                    animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
+                )
+                if podcast_status == True:
+                    ep_resume_button = ft.IconButton(
+                        icon=ft.icons.NOT_STARTED,
+                        icon_color=active_user.accent_color,
+                        icon_size=40,
+                        tooltip="Play Episode",
+                        on_click=lambda x, url=entry_audio_url, title=entry_title,
+                                        artwork=display_art_entry_parsed: play_selected_episode(url, title, artwork)
+                    )
+                    ep_popup_button = ft.PopupMenuButton(
+                        content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
+                                        size=40, tooltip="Play Episode"),
+                        items=[
+                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
+                                             on_click=lambda x, url=entry_audio_url, title=entry_title,
+                                                             artwork=display_art_entry_parsed: queue_selected_episode(
+                                                 url, title, artwork, page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download",
+                                             on_click=lambda x, url=entry_audio_url,
+                                                             title=entry_title: download_selected_episode(url, title,
+                                                                                                          page)),
+                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download",
+                                             on_click=lambda x, url=entry_audio_url,
+                                                             title=entry_title: locally_download_episode(url, title,
+                                                                                                         page)),
+                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
+                                             on_click=lambda x, url=entry_audio_url,
+                                                             title=entry_title: save_selected_episode(url, title, page))
+                        ]
+                        )
+                    ep_controls_row = ft.Row(controls=[ep_resume_button, ep_popup_button])
+                    ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                        ft.Column(col={"md": 8},
+                                  controls=[entry_title, rotate_button, entry_description, entry_released]),
+                        ft.Column(col={"md": 2}, controls=[ep_controls_row])
+                    ])
+                else:
+                    ep_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                        ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
+                    ])
+
+                entry_description.visible = False
+                rotate_iteration = AnimatedButton(rotate_button, entry_description)
+                rotate_button.on_click = rotate_iteration.animate
+
+                div_row = ft.Divider(color=active_user.accent_color)
+                ep_row_final = ft.Column(controls=[ep_row_content, div_row])
+                ep_row_list.controls.append(ep_row_final)
+                ep_number += 1
+
+            ep_row_contain = ft.Container(content=ep_row_list)
+            ep_row_contain.padding = padding.only(left=70, right=50)
+
+            page.overlay.remove(progress_stack)
+            # Create search view object
+            pod_view = ft.View(
+                "/poddisplay",
+                [
+                    feed_row,
+                    ep_row_contain
+                ]
+
+            )
+            pod_view.bgcolor = active_user.bgcolor
+            pod_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                pod_view
+            )
+
+        if page.route == "/pod_list" or page.route == "/pod_list":
+
+            # Get Pod info
+            pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
+
+            # Get and format list
+            pod_list_number = 1
+            pod_list_rows = []
+            pod_list_dict = {}
+
+            def on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website):
+                evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
+                open_poddisplay(e)
+
+            if pod_list_data is None:
+                pod_list_title = 'No Podcasts added yet'
+                artwork_no = random.randint(1, 12)
+                pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
+                pod_list_ep_count = 'Start Searching!'
+                pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
+                pod_list_feed = ""
+                pod_list_author = "PinePods"
+                pod_list_categories = ""
+
+                # Parse webpages needed to extract podcast artwork
+                pod_list_art_parsed = check_image(pod_list_artwork)
+                pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
+
+                # Defining the attributes of each podcast that will be displayed on screen
+                pod_list_title_display = ft.Text(pod_list_title)
+                pod_list_desc_display = ft.Text(pod_list_desc)
+                # Episode Count and subtitle
+                pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
+                pod_list_ep_count_display = ft.Text(pod_list_ep_count)
+                pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
+                remove_pod_button = ft.IconButton(
+                    icon=ft.icons.EMOJI_EMOTIONS,
+                    icon_color=active_user.accent_color,
+                    icon_size=40,
+                    tooltip="Start Adding Podcasts!"
+                )
+
+                # Creating column and row for search layout
+                pod_list_column = ft.Column(
+                    controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
+                )
+                pod_list_row_content = ft.ResponsiveRow([
+                    ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
+                    ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
+                ])
+                pod_list_row = ft.Container(content=pod_list_row_content)
+                pod_list_row.padding = padding.only(left=70, right=50)
+                pod_list_rows.append(pod_list_row)
+                pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
+
+            else:
+
+                for entry in pod_list_data:
+                    pod_list_title = entry['PodcastName']
+                    pod_list_artwork = entry['ArtworkURL']
+                    pod_list_desc = entry['Description']
+                    pod_list_ep_count = entry['EpisodeCount']
+                    pod_list_website = entry['WebsiteURL']
+                    pod_list_feed = entry['FeedURL']
+                    pod_list_author = entry['Author']
+                    pod_list_categories = entry['Categories']
+
+                    # Parse webpages needed to extract podcast artwork
+                    pod_list_art_parsed = check_image(pod_list_artwork)
+                    pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
+
+                    # Defining the attributes of each podcast that will be displayed on screen
+                    pod_list_title_display = ft.TextButton(
+                        text=pod_list_title,
+                        on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork, author=pod_list_author,
+                                        categories=pod_list_categories, desc=pod_list_desc, ep_count=pod_list_ep_count,
+                                        feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e, title,
+                                                                                                              artwork,
+                                                                                                              author,
+                                                                                                              categories,
+                                                                                                              desc,
+                                                                                                              ep_count,
+                                                                                                              feed,
+                                                                                                              website)
+                    )
+                    pod_list_desc_display = ft.Text(pod_list_desc)
+                    # Episode Count and subtitle
+                    pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD,
+                                                color=active_user.font_color)
+                    pod_list_ep_count_display = ft.Text(pod_list_ep_count, color=active_user.font_color)
+                    pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
+                    remove_pod_button = ft.IconButton(
+                        icon=ft.icons.INDETERMINATE_CHECK_BOX,
+                        icon_color="red400",
+                        icon_size=40,
+                        tooltip="Remove Podcast",
+                        on_click=lambda x, title=pod_list_title: remove_selected_podcast(title)
+                    )
+
+                    # Creating column and row for search layout
+                    pod_list_column = ft.Column(
+                        controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
+                    )
+
+                    pod_list_row_content = ft.ResponsiveRow([
+                        ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
+                        ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
+                    ])
+                    pod_list_row = ft.Container(content=pod_list_row_content)
+                    pod_list_row.padding = padding.only(left=70, right=50)
+                    pod_list_rows.append(pod_list_row)
+                    pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
+                    pod_list_number += 1
+            pod_view_title = ft.Text(
+                "Added Podcasts:",
+                size=30,
+                font_family="RobotoSlab",
+                color=active_user.font_color,
+                weight=ft.FontWeight.W_300,
+            )
+            pod_view_row = ft.Row(controls=[pod_view_title], alignment=ft.MainAxisAlignment.CENTER)
+            # Create search view object
+            pod_list_view = ft.View("/pod_list",
+                                    [
+                                        top_bar,
+                                        pod_view_row,
+                                        *[pod_list_dict[f'pod_list_row{i + 1}'] for i in range(len(pod_list_rows))]
+
+                                    ]
+
+                                    )
+            pod_list_view.bgcolor = active_user.bgcolor
+            pod_list_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                pod_list_view
+
+            )
+
+        if page.route == "/searchpod" or page.route == "/searchpod":
+            # Get Pod info
+            podcast_value = new_search.searchvalue
+            print(new_search.searchlocation)
+
+            def get_podcast_description(feed_url):
+                feed = feedparser.parse(feed_url)
+                return feed.feed.get('description', '')
+
+            def map_search_result(result, source):
+                mapped = {}
+
+                if source == 'itunes':
+                    mapped['title'] = result['collectionName']
+                    mapped['url'] = result['feedUrl']
+                    mapped['link'] = result['collectionViewUrl']
+                    mapped['description'] = get_podcast_description(
+                        result['feedUrl'])  # iTunes API doesn't provide a description
+                    mapped['author'] = result['artistName']
+                    mapped['artwork'] = result['artworkUrl600']
+                    mapped['categories'] = result[
+                        'genres']  # not exactly the same as 'categories', but it's the closest match
+                    mapped['episodeCount'] = result['trackCount']
+                else:  # podcastindex
+                    mapped = result  # no mapping necessary, the attributes are already as expected
+
+                return mapped
+
+            search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
+            return_results = [map_search_result(result, new_search.searchlocation) for result in
+                              search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
+            page.overlay.remove(progress_stack)
+
+            # Get and format list
+            pod_number = 1
+            search_rows = []
+            search_row_dict = {}
+            for d in return_results:
+                for k, v in d.items():
+                    if k == 'title':
+                        # Parse webpages needed to extract podcast artwork
+                        search_art_no = random.randint(1, 12)
+                        search_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{search_art_no}.jpeg")
+                        search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
+                        podimage_parsed = check_image(search_art_url)
+                        pod_image = ft.Image(src=podimage_parsed, width=150, height=150)
+
+                        # Defining the attributes of each podcast that will be displayed on screen
+                        pod_title_button = ft.Text(d['title'], style=ft.TextThemeStyle.TITLE_MEDIUM,
+                                                   color=active_user.font_color)
+                        pod_title = ft.TextButton(
+                            content=pod_title_button,
+                            on_click=lambda x, d=d: (
+                            evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'],
+                                             d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
+                        )
+                        pod_desc = ft.Text(d['description'])
+                        # Episode Count and subtitle
+                        pod_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD,
+                                               color=active_user.font_color)
+                        pod_ep_count = ft.Text(d['episodeCount'], color=active_user.font_color)
+                        pod_ep_info = ft.Row(controls=[pod_ep_title, pod_ep_count])
+                        add_pod_button = ft.IconButton(
+                            icon=ft.icons.ADD_BOX,
+                            icon_color=active_user.accent_color,
+                            icon_size=40,
+                            tooltip="Add Podcast",
+                            on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'],
+                                                                 d['description'], d['episodeCount'], d['url'],
+                                                                 d['link'], page)
+                        )
+                        # Creating column and row for search layout
+                        search_column = ft.Column(
+                            controls=[pod_title, pod_desc, pod_ep_info]
+                        )
+                        search_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[pod_image]),
+                            ft.Column(col={"md": 10}, controls=[search_column, add_pod_button]),
+                        ])
+                        search_row = ft.Container(content=search_row_content)
+                        search_row.padding = padding.only(left=70, right=50)
+                        search_rows.append(search_row)
+                        search_row_dict[f'search_row{pod_number}'] = search_row
+                        pod_number += 1
+            # Create search view object
+            search_view = ft.View("/searchpod",
+                                  [
+                                      *[search_row_dict[f'search_row{i + 1}'] for i in range(len(search_rows))]
+                                  ]
+
+                                  )
+            search_view.bgcolor = active_user.bgcolor
+            search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                search_view
+
             )
 
         if page.route == "/userstats" or page.route == "/userstats":
@@ -2739,98 +3055,6 @@ def main(page: ft.Page, session_value=None):
                 
             ) 
 
-        if page.route == "/searchpod" or page.route == "/searchpod":
-            # Get Pod info
-            podcast_value = new_search.searchvalue
-            print(new_search.searchlocation)
-
-            def get_podcast_description(feed_url):
-                feed = feedparser.parse(feed_url)
-                return feed.feed.get('description', '')
-
-            def map_search_result(result, source):
-                mapped = {}
-
-                if source == 'itunes':
-                    mapped['title'] = result['collectionName']
-                    mapped['url'] = result['feedUrl']
-                    mapped['link'] = result['collectionViewUrl']
-                    mapped['description'] = get_podcast_description(result['feedUrl'])  # iTunes API doesn't provide a description
-                    mapped['author'] = result['artistName']
-                    mapped['artwork'] = result['artworkUrl600']
-                    mapped['categories'] = result[
-                        'genres']  # not exactly the same as 'categories', but it's the closest match
-                    mapped['episodeCount'] = result['trackCount']
-                else:  # podcastindex
-                    mapped = result  # no mapping necessary, the attributes are already as expected
-
-                return mapped
-
-            search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
-            return_results = [map_search_result(result, new_search.searchlocation) for result in
-                              search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
-            page.overlay.remove(progress_stack)
-
-            # Get and format list
-            pod_number = 1
-            search_rows = []
-            search_row_dict = {}
-            for d in return_results:
-                for k, v in d.items():
-                    if k == 'title':
-                        # Parse webpages needed to extract podcast artwork
-                        search_art_no = random.randint(1, 12)
-                        search_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{search_art_no}.jpeg")
-                        search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
-                        podimage_parsed = check_image(search_art_url)
-                        pod_image = ft.Image(src=podimage_parsed, width=150, height=150)
-                        
-                        # Defining the attributes of each podcast that will be displayed on screen
-                        pod_title_button = ft.Text(d['title'], style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                        pod_title = ft.TextButton(
-                            content=pod_title_button,
-                            on_click=lambda x, d=d: (evaluate_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link']), open_poddisplay(e))
-                        )
-                        pod_desc = ft.Text(d['description'])
-                        # Episode Count and subtitle
-                        pod_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD, color=active_user.font_color)
-                        pod_ep_count = ft.Text(d['episodeCount'], color=active_user.font_color)
-                        pod_ep_info = ft.Row(controls=[pod_ep_title, pod_ep_count])
-                        add_pod_button = ft.IconButton(
-                            icon=ft.icons.ADD_BOX,
-                            icon_color=active_user.accent_color,
-                            icon_size=40,
-                            tooltip="Add Podcast",
-                            on_click=lambda x, d=d: send_podcast(d['title'], d['artwork'], d['author'], d['categories'], d['description'], d['episodeCount'], d['url'], d['link'], page)
-                        )
-                        # Creating column and row for search layout
-                        search_column = ft.Column(
-                            controls=[pod_title, pod_desc, pod_ep_info]
-                        )
-                        search_row_content = ft.ResponsiveRow([
-                            ft.Column(col={"md": 2}, controls=[pod_image]),
-                            ft.Column(col={"md": 10}, controls=[search_column, add_pod_button]),
-                        ])
-                        search_row = ft.Container(content=search_row_content)
-                        search_row.padding=padding.only(left=70, right=50)
-                        search_rows.append(search_row)
-                        search_row_dict[f'search_row{pod_number}'] = search_row
-                        pod_number += 1
-            # Create search view object
-            search_view = ft.View("/searchpod",
-                    [
-                        *[search_row_dict[f'search_row{i+1}'] for i in range(len(search_rows))]
-                    ]
-                    
-                )
-            search_view.bgcolor = active_user.bgcolor
-            search_view.scroll = ft.ScrollMode.AUTO
-            # Create final page
-            page.views.append(
-                search_view
-                
-            )
-
         if page.route == "/settings" or page.route == "/settings":
 
             class Settings:
@@ -3285,294 +3509,6 @@ def main(page: ft.Page, session_value=None):
                     
                 )
 
-        if page.route == "/poddisplay" or page.route == "/poddisplay":
-            # Check if podcast is already in database for user
-            podcast_status = api_functions.functions.call_check_podcast(app_api.url, app_api.headers, active_user.user_id, clicked_podcast.name)
-            # Creating attributes for page layout
-            # First Podcast Info
-            display_pod_art_no = random.randint(1, 12)
-            display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
-            display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
-            display_pod_art_parsed = check_image(display_pod_art_url)
-            pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
-            pod_feed_title = ft.Text(clicked_podcast.name, style=ft.TextThemeStyle.HEADLINE_MEDIUM)
-            pod_feed_desc = ft.Text(clicked_podcast.description)
-            pod_feed_site = ft.ElevatedButton(text=clicked_podcast.website, on_click=launch_pod_site)
-            pod_feed_add_button = ft.IconButton(
-                icon=ft.icons.ADD_BOX,
-                icon_color=active_user.accent_color,
-                icon_size=40,
-                tooltip="Add Podcast",
-                on_click=lambda x: send_podcast(clicked_podcast.name, clicked_podcast.artwork, clicked_podcast.author, clicked_podcast.categories, clicked_podcast.description, clicked_podcast.episode_count, clicked_podcast.feedurl, clicked_podcast.website, page)
-            )
-            pod_feed_remove_button = ft.IconButton(
-                icon=ft.icons.INDETERMINATE_CHECK_BOX,
-                icon_color="red400",
-                icon_size=40,
-                tooltip="Remove Podcast",
-                on_click=lambda x, title=clicked_podcast.name: api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
-            )
-            if podcast_status == True:
-                feed_row_content = ft.ResponsiveRow([
-                ft.Column(col={"md": 4}, controls=[pod_image]),
-                ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
-                ft.Column(col={"md": 1}, controls=[pod_feed_remove_button]),
-                ])
-            else:
-                feed_row_content = ft.ResponsiveRow([
-                ft.Column(col={"md": 4}, controls=[pod_image]),
-                ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
-                ft.Column(col={"md": 1}, controls=[pod_feed_add_button]),
-                ])
-            feed_row = ft.Container(content=feed_row_content)
-            feed_row.padding=padding.only(left=70, right=50)
-
-            # Episode Info
-            # Run Function to get episode data
-            ep_number = 1
-            ep_rows = []
-            ep_row_dict = {}
-            ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
-
-            episode_results = app_functions.functions.parse_feed(clicked_podcast.feedurl)
-
-            for entry in episode_results.entries:
-                if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
-                    # get the episode title
-                    parsed_title = entry.title
-
-                    # get the episode description
-                    parsed_description = entry.summary
-
-                    # get the URL of the audio file for the episode
-                    if entry.enclosures:
-                        parsed_audio_url = entry.enclosures[0].href
-                    else:
-                        parsed_audio_url = ""
-
-
-                    # get the release date of the episode
-                    parsed_release_date = entry.published
-
-                    # get the URL of the episode artwork, or use the podcast image URL if not available
-                    parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
-                    if parsed_artwork_url == None:
-                        parsed_artwork_url = clicked_podcast.artwork
-                    display_art_no = random.randint(1, 12)
-                    display_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_art_no}.jpeg")
-                    display_art_url = parsed_artwork_url if parsed_artwork_url else display_art_fallback
-
-                else:
-                    print("Skipping entry without required attributes or enclosures")
-                entry_title = ft.Text(f'{parsed_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                entry_audio_url = ft.Text(parsed_audio_url)
-                entry_released = ft.Text(parsed_release_date)
-                display_art_entry_parsed = check_image(display_art_url)
-                entry_artwork_url = ft.Image(src=display_art_entry_parsed, width=150, height=150)
-
-                if is_html(parsed_description):
-                    # convert HTML to Markdown
-                    markdown_desc = html2text.html2text(parsed_description)
-                    # add inline style to change font color
-                    entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                else:
-                    # display plain text
-                    markdown_desc = parsed_description
-                    entry_description = ft.Text(markdown_desc)
-                rotate_button = ft.IconButton(
-                    icon=ft.icons.ARROW_FORWARD_IOS,
-                    icon_color=active_user.accent_color,
-                    tooltip="Show Description",
-                    rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
-                    animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
-                )
-                if podcast_status == True:
-                    ep_resume_button = ft.IconButton(
-                        icon=ft.icons.NOT_STARTED,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Play Episode",
-                        on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=display_art_entry_parsed: play_selected_episode(url, title, artwork)
-                    )
-                    ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
-                        items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=entry_audio_url, title=entry_title, artwork=display_art_entry_parsed: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=entry_audio_url, title=entry_title: download_selected_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=entry_audio_url, title=entry_title: locally_download_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=entry_audio_url, title=entry_title: save_selected_episode(url, title, page))
-                        ]
-                    )
-                    ep_controls_row = ft.Row(controls=[ep_resume_button, ep_popup_button])
-                    ep_row_content = ft.ResponsiveRow([
-                    ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                    ft.Column(col={"md": 8}, controls=[entry_title, rotate_button, entry_description, entry_released]),
-                    ft.Column(col={"md": 2}, controls=[ep_controls_row])
-                    ])
-                else:
-                    ep_row_content = ft.ResponsiveRow([
-                        ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                        ft.Column(col={"md": 10}, controls=[entry_title, entry_description, entry_released]),
-                        ])
-
-                entry_description.visible = False
-                rotate_iteration = AnimatedButton(rotate_button, entry_description)
-                rotate_button.on_click = rotate_iteration.animate
-                
-                div_row = ft.Divider(color=active_user.accent_color)
-                ep_row_final = ft.Column(controls=[ep_row_content, div_row])
-                ep_row_list.controls.append(ep_row_final)
-                ep_number += 1
-
-            ep_row_contain = ft.Container(content=ep_row_list)
-            ep_row_contain.padding = padding.only(left=70, right=50)
-
-            page.overlay.remove(progress_stack)
-            # Create search view object
-            pod_view = ft.View(
-                    "/poddisplay",
-                    [
-                        feed_row,
-                        # *[ep_row_dict[f'search_row{i+1}'] for i in range(len(ep_rows))]
-                        ep_row_contain
-                    ]
-                    
-                )
-            pod_view.bgcolor = active_user.bgcolor
-            pod_view.scroll = ft.ScrollMode.AUTO
-            # Create final page
-            page.views.append(
-                    pod_view
-        )
-        if page.route == "/pod_list" or page.route == "/pod_list":
-
-            # Get Pod info
-            pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
-
-            # Get and format list
-            pod_list_number = 1
-            pod_list_rows = []
-            pod_list_dict = {}
-
-            def on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website):
-                evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
-                open_poddisplay(e)
-        
-            if pod_list_data is None:
-                pod_list_title = 'No Podcasts added yet'
-                artwork_no = random.randint(1, 12)
-                pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-                pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
-                pod_list_ep_count = 'Start Searching!'
-                pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
-                pod_list_feed = ""
-                pod_list_author = "PinePods"
-                pod_list_categories = ""
-
-                # Parse webpages needed to extract podcast artwork
-                pod_list_art_parsed = check_image(pod_list_artwork)
-                pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
-
-                # Defining the attributes of each podcast that will be displayed on screen
-                pod_list_title_display = ft.Text(pod_list_title)
-                pod_list_desc_display = ft.Text(pod_list_desc)
-                # Episode Count and subtitle
-                pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
-                pod_list_ep_count_display = ft.Text(pod_list_ep_count)
-                pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
-                remove_pod_button = ft.IconButton(
-                    icon=ft.icons.EMOJI_EMOTIONS,
-                    icon_color=active_user.accent_color,
-                    icon_size=40,
-                    tooltip="Start Adding Podcasts!"
-                )
-
-                # Creating column and row for search layout
-                pod_list_column = ft.Column(
-                    controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
-                )
-                pod_list_row_content = ft.ResponsiveRow([
-                    ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
-                    ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
-                ])
-                pod_list_row = ft.Container(content=pod_list_row_content)
-                pod_list_row.padding=padding.only(left=70, right=50)
-                pod_list_rows.append(pod_list_row)
-                pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
-
-            else:
-
-                for entry in pod_list_data:
-                    pod_list_title = entry['PodcastName']
-                    pod_list_artwork = entry['ArtworkURL']
-                    pod_list_desc = entry['Description']
-                    pod_list_ep_count = entry['EpisodeCount']
-                    pod_list_website = entry['WebsiteURL']
-                    pod_list_feed = entry['FeedURL']
-                    pod_list_author = entry['Author']
-                    pod_list_categories = entry['Categories']
-
-                    # Parse webpages needed to extract podcast artwork
-                    pod_list_art_parsed = check_image(pod_list_artwork)
-                    pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
-
-                    # Defining the attributes of each podcast that will be displayed on screen
-                    pod_list_title_display = ft.TextButton(
-                        text=pod_list_title,
-                        on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork, author=pod_list_author, categories=pod_list_categories, desc=pod_list_desc, ep_count=pod_list_ep_count, feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website)
-                    )
-                    pod_list_desc_display = ft.Text(pod_list_desc)
-                    # Episode Count and subtitle
-                    pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD, color=active_user.font_color)
-                    pod_list_ep_count_display = ft.Text(pod_list_ep_count, color=active_user.font_color)
-                    pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
-                    remove_pod_button = ft.IconButton(
-                        icon=ft.icons.INDETERMINATE_CHECK_BOX,
-                        icon_color="red400",
-                        icon_size=40,
-                        tooltip="Remove Podcast",
-                        on_click=lambda x, title=pod_list_title: remove_selected_podcast(title)
-                    )
-
-                    # Creating column and row for search layout
-                    pod_list_column = ft.Column(
-                        controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
-                    )
-
-                    pod_list_row_content = ft.ResponsiveRow([
-                        ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
-                        ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
-                    ])
-                    pod_list_row = ft.Container(content=pod_list_row_content)
-                    pod_list_row.padding=padding.only(left=70, right=50)
-                    pod_list_rows.append(pod_list_row)
-                    pod_list_dict[f'pod_list_row{pod_list_number}'] = pod_list_row
-                    pod_list_number += 1
-            pod_view_title = ft.Text(
-            "Added Podcasts:",
-            size=30,
-            font_family="RobotoSlab",
-            color=active_user.font_color,
-            weight=ft.FontWeight.W_300,
-        )
-            pod_view_row = ft.Row(controls=[pod_view_title], alignment=ft.MainAxisAlignment.CENTER)
-            # Create search view object
-            pod_list_view = ft.View("/pod_list",
-                    [
-                        top_bar,
-                        pod_view_row,
-                        *[pod_list_dict[f'pod_list_row{i+1}'] for i in range(len(pod_list_rows))]
-
-                    ]
-                    
-                )
-            pod_list_view.bgcolor = active_user.bgcolor
-            pod_list_view.scroll = ft.ScrollMode.AUTO
-            # Create final page
-            page.views.append(
-                pod_list_view
-                    
-                )
-
         if page.route == "/history" or page.route == "/history":
 
             # Get Pod info
@@ -3583,12 +3519,12 @@ def main(page: ft.Page, session_value=None):
 
             if hist_episodes is None:
                 hist_row_list = hist_layout.define_empty_values(
+                    "No Podcasts history yet",
                     "Podcasts you add will display here after you listen to them.",
                     "You can search podcasts in the upper right. Then click the plus button to add podcasts. Once you listen to episodes they will appear here."
                 )
 
             else:
-                hist_ep_number = 1
                 hist_row_list = hist_layout.define_values(hist_episodes)
 
             hist_row_contain = ft.Container(content=hist_row_list)
@@ -3620,197 +3556,7 @@ def main(page: ft.Page, session_value=None):
                     
                 )
 
-        if page.route == "/saved" or page.route == "/saved":
 
-            # Get Pod info
-            saved_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers, active_user.user_id)
-
-            if saved_episode_list is None:
-                saved_ep_number = 1
-                saved_ep_rows = []
-                saved_ep_row_dict = {}
-                saved_pod_name = "No podcasts saved yet"
-                saved_ep_title = "Podcasts you save will display here."
-                saved_pub_date = ""
-                saved_ep_desc = "Click the dropdown on podcasts and select save. This will save the podcast in order to easily find them for later listening. Think of this like a permanant queue."
-                saved_ep_url = ""
-                saved_entry_title = ft.Text(f'{saved_pod_name} - {saved_ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
-                saved_entry_description = ft.Text(saved_ep_desc, width=800)
-                saved_entry_audio_url = ft.Text(saved_ep_url)
-                saved_entry_released = ft.Text(saved_pub_date)
-                artwork_no = random.randint(1, 12)
-                saved_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-                saved_artwork_url_parsed = check_image(saved_artwork_url)
-                saved_entry_artwork_url = ft.Image(src=saved_artwork_url_parsed, width=150, height=150)
-                saved_ep_play_button = ft.IconButton(
-                    icon=ft.icons.PLAY_DISABLED,
-                    icon_color=active_user.accent_color,
-                    icon_size=40,
-                    tooltip="No Episodes Added Yet"
-                )
-                # Creating column and row for saved layout
-                saved_ep_column = ft.Column(
-                    controls=[saved_entry_title, saved_entry_description, saved_entry_released]
-                )
-                saved_ep_row_content = ft.ResponsiveRow([
-                    ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                    ft.Column(col={"md": 10}, controls=[saved_ep_column, saved_ep_play_button]),
-                ])
-                saved_ep_row = ft.Container(content=saved_ep_row_content)
-                saved_ep_row.padding=padding.only(left=70, right=50)
-                saved_ep_rows.append(saved_ep_row)
-                saved_ep_row_dict[f'search_row{saved_ep_number}'] = saved_ep_row
-                saved_pods_active = True
-                saved_ep_number += 1
-
-            else:
-                saved_episode_list.reverse()
-                saved_ep_number = 1
-                saved_ep_rows = []
-                saved_ep_row_dict = {}
-
-                for entry in saved_episode_list:
-                    saved_ep_title = entry['EpisodeTitle']
-                    saved_pod_name = entry['PodcastName']
-                    saved_pub_date = entry['EpisodePubDate']
-                    saved_ep_desc = entry['EpisodeDescription']
-                    saved_ep_artwork = entry['EpisodeArtwork']
-                    saved_ep_url = entry['EpisodeURL']
-                    saved_ep_duration = entry['EpisodeDuration']
-                    
-                    # do something with the episode information
-                    saved_entry_title_button = ft.Text(f'{saved_pod_name} - {saved_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                    saved_entry_title = ft.TextButton(content=saved_entry_title_button, on_click=lambda x, url=saved_ep_url, title=saved_ep_title: open_episode_select(page, url, title))
-                    saved_entry_row = ft.ResponsiveRow([
-    ft.Column(col={"sm": 6}, controls=[saved_entry_title]),
-])
-
-                    num_lines = saved_ep_desc.count('\n')
-                    if num_lines > 15:
-                        if is_html(saved_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(saved_ep_desc)
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = markdown_desc.splitlines()[:15]
-                                markdown_desc = '\n'.join(lines)
-                            # add inline style to change font color                            
-                            saved_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                            saved_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=saved_ep_url, title=saved_ep_title: open_episode_select(page, url, title))
-                        else:
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = saved_ep_desc.splitlines()[:15]
-                                saved_ep_desc = '\n'.join(lines)
-                            # display plain text
-                            saved_entry_description = ft.Text(saved_ep_desc)
-
-                    else:
-                        if is_html(saved_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(saved_ep_desc)
-                            # add inline style to change font color
-                            saved_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                        else:
-                            # display plain text
-                            markdown_desc = saved_ep_desc
-                            saved_entry_description = ft.Text(saved_ep_desc)
-                    saved_entry_audio_url = ft.Text(saved_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, saved_ep_title, saved_ep_url)
-                    saved_entry_released = ft.Text(f'Released on: {saved_pub_date}', color=active_user.font_color)
-
-
-                    saved_art_no = random.randint(1, 12)
-                    saved_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{saved_art_no}.jpeg")
-                    saved_art_url = saved_ep_artwork if saved_ep_artwork else saved_art_fallback
-                    saved_art_parsed = check_image(saved_art_url)
-                    saved_entry_artwork_url = ft.Image(src=saved_art_parsed, width=150, height=150)
-                    saved_ep_play_button = ft.IconButton(
-                        icon=ft.icons.NOT_STARTED,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Play Episode",
-                        on_click=lambda x, url=saved_ep_url, title=saved_ep_title, artwork=saved_ep_artwork: play_selected_episode(url, title, artwork)
-                    )
-                    saved_ep_resume_button = ft.IconButton(
-                        icon=ft.icons.PLAY_CIRCLE,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Resume Episode",
-                        on_click=lambda x, url=saved_ep_url, title=saved_ep_title, artwork=saved_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
-                    )
-                    saved_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
-                        items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=saved_ep_url, title=saved_ep_title, artwork=saved_ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=saved_ep_url, title=saved_ep_title: download_selected_episode(url, title, page)),         
-                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode", on_click=lambda x, url=saved_ep_url, title=saved_ep_title: remove_saved_episode(url, title, page))
-                        ]
-                    )
-                    if check_episode_playback == True:
-                        listen_prog = seconds_to_time(listen_duration)
-                        saved_ep_prog = seconds_to_time(saved_ep_duration)
-                        progress_value = get_progress(listen_duration, saved_ep_duration)
-                        saved_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(saved_ep_prog, color=active_user.font_color)])
-                        if num_lines > 15:
-                            saved_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_seemore, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
-                            ])
-                        else:
-                            saved_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_entry_progress, ft.Row(controls=[saved_ep_play_button, saved_ep_resume_button, saved_popup_button])]),
-                            ]) 
-                    else:
-                        saved_ep_dur = seconds_to_time(saved_ep_duration)
-                        saved_dur_display = ft.Text(f'Episode Duration: {saved_ep_dur}', color=active_user.font_color)
-                        if num_lines > 15:
-                            saved_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_seemore, saved_entry_released, saved_dur_display, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
-                            ])
-                        else:
-                            saved_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[saved_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[saved_entry_title, saved_entry_description, saved_entry_released, saved_dur_display, ft.Row(controls=[saved_ep_play_button, saved_popup_button])]),
-                            ]) 
-                    saved_div_row = ft.Divider(color=active_user.accent_color)
-                    saved_ep_column = ft.Column(controls=[saved_ep_row_content, saved_div_row])
-                    saved_ep_row = ft.Container(content=saved_ep_column)
-                    saved_ep_row.padding=padding.only(left=70, right=50)
-                    saved_ep_rows.append(saved_ep_row)
-                    # saved_ep_rows.append(ft.Text('test'))
-                    saved_ep_row_dict[f'search_row{saved_ep_number}'] = saved_ep_row
-                    saved_pods_active = True
-                    saved_ep_number += 1
-
-            saved_title = ft.Text(
-            "Saved Episodes:",
-            size=30,
-            font_family="RobotoSlab",
-            color=active_user.font_color,
-            weight=ft.FontWeight.W_300,
-        )
-            saved_title_row = ft.Row(controls=[saved_title], alignment=ft.MainAxisAlignment.CENTER)
-
-
-            # Create search view object
-            ep_saved_view = ft.View("/saved",
-                    [
-                        top_bar,
-                        saved_title_row,
-                        *[saved_ep_row_dict.get(f'search_row{i+1}') for i in range(len(saved_ep_rows))]
-
-                    ]
-                    
-                )
-            ep_saved_view.bgcolor = active_user.bgcolor
-            ep_saved_view.scroll = ft.ScrollMode.AUTO
-            # Create final page
-            page.views.append(
-                ep_saved_view
-                    
-                )
 
         if page.route == "/downloads" or page.route == "/downloads":
 

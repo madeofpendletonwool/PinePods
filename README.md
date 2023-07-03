@@ -348,20 +348,19 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add new users to dynamic settings class
 - [ ] Add Email settings to dynamic users class
 - [ ] Option to remove from history
+- [ ] Mass downloading episodes. Entire podcast at once
 
 ### To be added after beta version (Listed in order they will be implemented)
 
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Page refreshing to handle adding and removing of things better
 - [ ] Reload not needed to add and remove episodes from pages
-- [ ] Mass downloading episodes. Entire podcast at once
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Rotating currently playing
 - [ ] Add highlight to indicate which page you're on
 - [ ] Customizable login screens
 - [ ] Allow for episodes to be played without being added
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] Option to run the client app with local config. Not connected to a server
 - [ ] MFA Logins - Github integration and local MFA (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
 - [ ] Linux App    
