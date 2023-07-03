@@ -47,8 +47,15 @@ import feedparser
 from collections import defaultdict
 from math import pi
 import eyed3
+import traceback
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def handle_thread_exception(args):
+    tb = traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)
+    print(''.join(tb))
+
+threading.excepthook = handle_thread_exception
 
 #--- Encryption functions and file retrieval for saved sessions/api keys-------------------------
 
@@ -1162,8 +1169,14 @@ def main(page: ft.Page, session_value=None):
             api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
 
-        def queue_pod(self, url):
-            self.queue.append(url)
+        def queue_pod(self, url, title, page):
+            if self.audio_playing == False:
+                self.play_episode()
+            else:
+                print(self.queue)
+                print(url)
+                self.queue.append(url)
+                time.sleep(.2)
 
         def remove_queued_pod(self):
             try:
@@ -1760,6 +1773,8 @@ def main(page: ft.Page, session_value=None):
                     if self.page_type == "local_downloads":
                         ep_local_url = values['EpisodeLocalPath']
                         ep_id = values['EpisodeID']
+                    if self.page_type == "queue":
+                        ep_queue_date == values['QueueDate']
                     ep_duration = values['EpisodeDuration']
                     # do something with the episode information
                     entry_title_button = ft.Text(f'{pod_name} - {ep_title}',
@@ -1889,7 +1904,23 @@ def main(page: ft.Page, session_value=None):
                                                                                                             page))
                             ]
                             )
-
+                    elif self.page_type == "queue":
+                        popup_button = ft.PopupMenuButton(
+                            content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
+                                            size=40, tooltip="Play Episode"),
+                            items=[
+                                ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From Queue",
+                                                 on_click=lambda x, url=queue_ep_url,
+                                                                 title=queue_ep_title: episode_remove_queue(url, title,
+                                                                                                            page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=ep_url, title=ep_title: locally_download_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
+                                                 on_click=lambda x, url=ep_url,
+                                                                 title=ep_title: save_selected_episode(url, title,
+                                                                                                            page))
+                            ]
+                            )
                     else:
                         popup_button = ft.PopupMenuButton(
                             content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
@@ -2209,6 +2240,52 @@ def main(page: ft.Page, session_value=None):
             # Create final page
             page.views.append(
                 ep_hist_view
+
+            )
+
+        if page.route == "/queue" or page.route == "/queue":
+
+            current_queue_list = current_episode.get_queue()
+            episode_queue_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
+                                                                             current_queue_list)
+            queue_layout = Pod_View(page)
+            queue_layout.page_type = "queue"
+
+            if episode_queue_list is None:
+                queue_row_list = queue_layout.define_empty_values(
+                    "No Podcasts added yet",
+                    "Podcasts you queue will display here.",
+                    "Click the dropdown on podcasts and select queue. This will queue the podcast to play next. If you queue a podcast while nothing is playing it will just play the podcast."
+                )
+
+            else:
+                queue_row_list = hist_layout.define_values(hist_episodes)
+
+            queue_row_contain = ft.Container(content=queue_row_list)
+
+            queue_title = ft.Text(
+                "Current Listen Queue:",
+                size=30,
+                font_family="RobotoSlab",
+                weight=ft.FontWeight.W_300,
+            )
+            queue_title_row = ft.Row(controls=[queue_title], alignment=ft.MainAxisAlignment.CENTER)
+
+            # Create search view object
+            ep_queue_view = ft.View("/queue",
+                                    [
+                                        top_bar,
+                                        queue_title_row,
+                                        queue_row_contain
+
+                                    ]
+
+                                    )
+            ep_queue_view.bgcolor = active_user.bgcolor
+            ep_queue_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                ep_queue_view
 
             )
 
@@ -3687,200 +3764,6 @@ def main(page: ft.Page, session_value=None):
                     
                 )
 
-        if page.route == "/queue" or page.route == "/queue":
-
-            current_queue_list = current_episode.get_queue()
-            episode_queue_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers, current_queue_list)
-
-            if episode_queue_list is None:
-                queue_ep_number = 1
-                queue_ep_rows = []
-                queue_ep_row_dict = {}
-                queue_pod_name = "No Podcasts added yet"
-                queue_ep_title = "Podcasts you queue will display here."
-                queue_pub_date = ""
-                queue_ep_desc = "Click the dropdown on podcasts and select queue. This will queue the podcast to play next."
-                queue_ep_url = ""
-                queue_entry_title = ft.Text(f'{queue_pod_name} - {queue_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM)
-                queue_entry_description = ft.Text(queue_ep_desc)
-                queue_entry_audio_url = ft.Text(queue_ep_url)
-                queue_entry_released = ft.Text(queue_pub_date)
-                artwork_no = random.randint(1, 12)
-                queue_artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
-                queue_artwork_url_parsed = check_image(queue_artwork_url)
-                queue_entry_artwork_url = ft.Image(src=queue_artwork_url_parsed, width=150, height=150)
-                queue_ep_play_button = ft.IconButton(
-                    icon=ft.icons.PLAY_DISABLED,
-                    icon_color=active_user.accent_color,
-                    icon_size=40,
-                    tooltip="No Episodes Added Yet"
-                )
-                # Creating column and row for queue layout
-                queue_ep_column = ft.Column(
-                    controls=[queue_entry_title, queue_entry_description, queue_entry_released]
-                )
-                queue_ep_row_content = ft.ResponsiveRow([
-                    ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                    ft.Column(col={"md": 10}, controls=[queue_ep_column, queue_ep_play_button]),
-                ])
-                queue_ep_row = ft.Container(content=queue_ep_row_content)
-                queue_ep_row.padding=padding.only(left=70, right=50)
-                queue_ep_rows.append(queue_ep_row)
-                queue_ep_row_dict[f'search_row{queue_ep_number}'] = queue_ep_row
-                queue_pods_active = True
-                queue_ep_number += 1
-
-
-            else:
-                queue_ep_number = 1
-                queue_ep_rows = []
-                queue_ep_row_dict = {}
-
-                for entry in episode_queue_list:
-                    queue_ep_title = entry['EpisodeTitle']
-                    queue_pod_name = entry['PodcastName']
-                    queue_pub_date = entry['EpisodePubDate']
-                    queue_ep_desc = entry['EpisodeDescription']
-                    queue_ep_artwork = entry['EpisodeArtwork']
-                    queue_ep_url = entry['EpisodeURL']
-                    queue_ep_date = entry['QueueDate']
-                    queue_ep_duration = entry['EpisodeDuration']
-                    
-                    # do something with the episode information
-                    queue_entry_title_button = ft.Text(f'{queue_pod_name} - {queue_ep_title}', style=ft.TextThemeStyle.TITLE_MEDIUM, color=active_user.font_color)
-                    queue_entry_title = ft.TextButton(content=queue_entry_title_button, on_click=lambda x, url=queue_ep_url, title=queue_ep_title: open_episode_select(page, url, title))
-                    queue_entry_row = ft.ResponsiveRow([
-    ft.Column(col={"sm": 6}, controls=[queue_entry_title]),
-])
-
-                    num_lines = queue_ep_desc.count('\n')
-                    if num_lines > 15:
-                        if is_html(queue_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(queue_ep_desc)
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = markdown_desc.splitlines()[:15]
-                                markdown_desc = '\n'.join(lines)
-                            # add inline style to change font color                            
-                            queue_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                            queue_entry_seemore = ft.TextButton(text="See More...", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: open_episode_select(page, url, title))
-                        else:
-                            if num_lines > 15:
-                                # Split into lines, truncate to 15 lines, and join back into a string
-                                lines = queue_ep_desc.splitlines()[:15]
-                                queue_ep_desc = '\n'.join(lines)
-                            # display plain text
-                            queue_entry_description = ft.Text(queue_ep_desc)
-
-                    else:
-                        if is_html(queue_ep_desc):
-                            # convert HTML to Markdown
-                            markdown_desc = html2text.html2text(queue_ep_desc)
-                            # add inline style to change font color
-                            queue_entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
-                        else:
-                            # display plain text
-                            markdown_desc = queue_ep_desc
-                            queue_entry_description = ft.Text(queue_ep_desc)
-                    queue_entry_audio_url = ft.Text(queue_ep_url, color=active_user.font_color)
-                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(app_api.url, app_api.headers, active_user.user_id, queue_ep_title, queue_ep_url)
-                    queue_entry_released = ft.Text(queue_pub_date, color=active_user.font_color)
-
-                    queue_art_no = random.randint(1, 12)
-                    queue_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{queue_art_no}.jpeg")
-                    queue_art_url = queue_ep_artwork if queue_ep_artwork else queue_art_fallback
-                    queue_art_parsed = check_image(queue_art_url)
-                    queue_entry_artwork_url = ft.Image(src=queue_art_parsed, width=150, height=150)
-                    queue_ep_play_button = ft.IconButton(
-                        icon=ft.icons.PLAY_CIRCLE,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Play Episode",
-                        on_click=lambda x, url=queue_ep_url, title=queue_ep_title, artwork=queue_ep_artwork: play_selected_episode(url, title, artwork)
-                    )
-                    queue_ep_resume_button = ft.IconButton(
-                        icon=ft.icons.PLAY_CIRCLE,
-                        icon_color=active_user.accent_color,
-                        icon_size=40,
-                        tooltip="Resume Episode",
-                        on_click=lambda x, url=queue_ep_url, title=queue_ep_title, artwork=queue_ep_artwork, listen_duration=listen_duration: resume_selected_episode(url, title, artwork, listen_duration)
-                    )
-                    queue_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
-                    # icon_size=40, icon_color="blue400", tooltip="Options",
-                        items=[
-                            ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From Queue", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: episode_remove_queue(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: download_selected_episode(url, title, page)),
-                            ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=queue_ep_url, title=queue_ep_title: save_selected_episode(url, title, page))
-                        ]
-                    )
-                    if check_episode_playback == True:
-                        listen_prog = seconds_to_time(listen_duration)
-                        queue_ep_prog = seconds_to_time(queue_ep_duration)
-                        progress_value = get_progress(listen_duration, queue_ep_duration)
-                        queue_entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color), ft.ProgressBar(expand=True, value=progress_value, color=active_user.main_color), ft.Text(queue_ep_prog, color=active_user.font_color)])
-                        if num_lines > 15:
-                            queue_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_seemore, queue_entry_released, queue_entry_progress, ft.Row(controls=[queue_ep_play_button, queue_ep_resume_button, queue_popup_button])]),
-                            ])
-                        else:
-                            queue_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_entry_progress, ft.Row(controls=[queue_ep_play_button, queue_ep_resume_button, queue_popup_button])]),
-                            ]) 
-                    else:
-                        queue_ep_dur = seconds_to_time(queue_ep_duration)
-                        queue_dur_display = ft.Text(f'Episode Duration: {queue_ep_dur}', color=active_user.font_color)
-                        if num_lines > 15:
-                            queue_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_seemore, queue_entry_released, queue_dur_display, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
-                            ])
-                        else:
-                            queue_ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[queue_entry_artwork_url]),
-                                ft.Column(col={"md": 10}, controls=[queue_entry_title, queue_entry_description, queue_entry_released, queue_dur_display, ft.Row(controls=[queue_ep_play_button, queue_popup_button])]),
-                            ]) 
-                    queue_div_row = ft.Divider(color=active_user.accent_color)
-                    queue_ep_column = ft.Column(controls=[queue_ep_row_content, queue_div_row])
-                    queue_ep_row = ft.Container(content=queue_ep_column)
-                    queue_ep_row.padding=padding.only(left=70, right=50)
-                    queue_ep_rows.append(queue_ep_row)
-                    # queue_ep_rows.append(ft.Text('test'))
-                    queue_ep_row_dict[f'search_row{queue_ep_number}'] = queue_ep_row
-                    queue_pods_active = True
-                    queue_ep_number += 1
-
-            queue_title = ft.Text(
-            "Current Listen Queue:",
-            size=30,
-            font_family="RobotoSlab",
-            weight=ft.FontWeight.W_300,
-        )
-            queue_title_row = ft.Row(controls=[queue_title], alignment=ft.MainAxisAlignment.CENTER)
-
-
-
-            # Create search view object
-            ep_queue_view = ft.View("/queue",
-                    [
-                        top_bar,
-                        queue_title_row,
-                        *[queue_ep_row_dict.get(f'search_row{i+1}') for i in range(len(queue_ep_rows))]
-
-                    ]
-                    
-                )
-            ep_queue_view.bgcolor = active_user.bgcolor
-            ep_queue_view.scroll = ft.ScrollMode.AUTO
-            # Create final page
-            page.views.append(
-                ep_queue_view
-                    
-                )
-
-
         if page.route == "/episode_display" or page.route == "/episode_display":
             # Creating attributes for page layout
             episode_info = api_functions.functions.call_return_selected_episode(app_api.url, app_api.headers, active_user.user_id, current_episode.title, current_episode.url)
@@ -5070,9 +4953,7 @@ def main(page: ft.Page, session_value=None):
         current_episode.title = title
         current_episode.artwork = artwork
         current_episode.name = title
-        current_episode.queue_pod(url)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been added to the queue!"))
-        page.snack_bar.open = True
+        current_episode.queue_pod(url, title, page)
         page.update()
 
     def episode_remove_queue(url, title, page):
