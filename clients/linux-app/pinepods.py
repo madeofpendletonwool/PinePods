@@ -1774,7 +1774,7 @@ def main(page: ft.Page, session_value=None):
                         ep_local_url = values['EpisodeLocalPath']
                         ep_id = values['EpisodeID']
                     if self.page_type == "queue":
-                        ep_queue_date == values['QueueDate']
+                        ep_queue_date = values['QueueDate']
                     ep_duration = values['EpisodeDuration']
                     # do something with the episode information
                     entry_title_button = ft.Text(f'{pod_name} - {ep_title}',
@@ -1910,8 +1910,8 @@ def main(page: ft.Page, session_value=None):
                                             size=40, tooltip="Play Episode"),
                             items=[
                                 ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From Queue",
-                                                 on_click=lambda x, url=queue_ep_url,
-                                                                 title=queue_ep_title: episode_remove_queue(url, title,
+                                                 on_click=lambda x, url=ep_url,
+                                                                 title=ep_title: episode_remove_queue(url, title,
                                                                                                             page)),
                                 ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
                                 ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=ep_url, title=ep_title: locally_download_episode(url, title, page)),
@@ -2259,7 +2259,7 @@ def main(page: ft.Page, session_value=None):
                 )
 
             else:
-                queue_row_list = hist_layout.define_values(hist_episodes)
+                queue_row_list = queue_layout.define_values(episode_queue_list)
 
             queue_row_contain = ft.Container(content=queue_row_list)
 
