@@ -615,7 +615,13 @@ async def api_delete_mfa(body: UserIDBody, cnx = Depends(get_database_connection
     result = database_functions.functions.delete_mfa_secret(cnx, body.user_id)
     return {"deleted": result}
 
+class AllEpisodes(BaseModel):
+    pod_feed: str
 
+@app.post("/api/data/get_all_episodes")
+async def api_get_episodes(data: AllEpisodes, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    episodes = database_functions.functions.get_all_episodes(cnx, data.pod_feed)
+    return {"episodes": episodes}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

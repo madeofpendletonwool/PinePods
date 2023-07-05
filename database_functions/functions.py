@@ -1772,7 +1772,6 @@ def check_mfa_enabled(cnx, user_id):
 
 def get_mfa_secret(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
-    print(user_id)
 
     query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
 
@@ -1800,3 +1799,18 @@ def delete_mfa_secret(cnx, user_id):
     except Exception as e:
         print("Error deleting MFA secret:", e)
         return False
+
+def get_all_episodes(cnx, pod_feed):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s")
+
+    try:
+        cursor.execute(query, (pod_feed,))
+        result = cursor.fetchall()
+        cursor.close()
+
+        return result
+    except Exception as e:
+        print("Error retrieving Podcast Episodes:", e)
+        return None

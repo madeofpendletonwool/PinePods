@@ -656,6 +656,76 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
 
+def download_full_podcast(podcast_name, pod_feed, page):
+    # First, get the list of all episodes in the podcast from the feed
+    episode_list = api_functions.functions.call_get_all_episodes(app_api.url, app_api.headers, pod_feed)
+
+    # If there are no episodes, return early
+    if not episode_list:
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found for podcast: {podcast_name}"))
+        page.snack_bar.open = True
+        page.update()
+        return
+
+    # Check if downloads are enabled
+    download_status = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+    if not download_status:
+        page.snack_bar = ft.SnackBar(content=ft.Text(
+            f"Downloads are currently disabled! If you'd like to download episodes ask your administrator to enable the option."))
+        page.snack_bar.open = True
+        page.update()
+        return
+
+    # Create a progress ring and add it to the page
+    pr = ft.ProgressRing()
+    progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+    page.overlay.append(progress_stack)
+    page.update()
+
+    # For each episode in the podcast, try to download it
+    for episode in episode_list:
+        url = episode['EpisodeURL']
+        title = episode['EpisodeTitle']
+
+        # Check if the episode is already downloaded
+        check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers,
+                                                                        active_user.user_id, title, url)
+        if check_downloads:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} is already downloaded!"))
+            page.snack_bar.open = True
+            page.update()
+            continue
+
+        # If it's not already downloaded, download the episode
+        current_episode.url = url
+        current_episode.title = title
+        current_episode.download_pod()
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+        page.snack_bar.open = True
+        page.update()
+
+    # When all episodes are downloaded, remove the progress ring
+    page.overlay.remove(progress_stack)
+    page.update()
+
+    def download_full_podcast_locally(podcast_name, pod_feed):
+        download_dir = os.path.join(metadata_dir, 'downloads', podcast_name)
+        os.makedirs(download_dir, exist_ok=True)
+
+        response = requests.get(episode_url, stream=True)
+
+        # The filename will be the last part of the URL
+        filename = episode_url.split('/')[-1]
+        file_path = os.path.join(download_dir, filename)
+
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:  # filter out keep-alive new chunks
+                    f.write(chunk)
+
+        return file_path
+
+
     def load_local_downloaded_episodes(user_id):
         downloaded_episodes = []
 
@@ -2272,11 +2342,27 @@ def main(page: ft.Page, session_value=None):
                                                                                                            title,
                                                                                                            active_user.user_id)
             )
+            pod_download_button = ft.IconButton(
+                icon=ft.icons.CLOUD_DOWNLOAD,
+                icon_color=active_user.accent_color,
+                icon_size=40,
+                tooltip="Remove Podcast",
+                on_click=lambda x, title=clicked_podcast.name, url=clicked_podcast.feedurl: download_full_podcast(title,
+                                                                                                           url)
+            )
+            pod_local_download_button = ft.IconButton(
+                icon=ft.icons.DOWNLOAD,
+                icon_color=active_user.accent_color,
+                icon_size=40,
+                tooltip="Remove Podcast",
+                on_click=lambda x, title=clicked_podcast.name, url=clicked_podcast.feedurl: download_full_podcast_locally(title,
+                                                                                                           url)
+            )
             if podcast_status == True:
                 feed_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 4}, controls=[pod_image]),
                     ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
-                    ft.Column(col={"md": 1}, controls=[pod_feed_remove_button]),
+                    ft.Column(col={"md": 1}, controls=[pod_feed_remove_button, pod_local_download_button, pod_download_button]),
                 ])
             else:
                 feed_row_content = ft.ResponsiveRow([
