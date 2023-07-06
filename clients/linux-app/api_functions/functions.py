@@ -703,3 +703,14 @@ def call_delete_mfa_secret(url, headers, user_id):
         return response.json().get('deleted', False)
 
     return False
+
+def call_get_all_episodes(url, headers, pod_feed):
+    data = {"pod_feed": pod_feed}
+    response = requests.post(url + "/get_all_episodes", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["episodes"]
+    else:
+        print("Error getting Podcast Episodes:", response.status_code)
+        print("Error message:", response.text)
+        return None
