@@ -1828,9 +1828,9 @@ def main(page: ft.Page, session_value=None):
                                                                  title=ep_title: delete_selected_episode(url,
                                                                                                                   title,
                                                                                                                   page)),
-                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
                                                  on_click=lambda x, url=ep_url,
-                                                                 title=ep_title: remove_saved_episode(url, title,
+                                                                 title=ep_title: save_selected_episode(url, title,
                                                                                                             page))
                             ]
                             )
@@ -1850,9 +1850,9 @@ def main(page: ft.Page, session_value=None):
                                                                  title=ep_title,
                                                                  episode_id=ep_id: delete_local_selected_episode(
                                                      url, title, episode_id, page)),
-                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
                                                  on_click=lambda x, url=ep_url,
-                                                                 title=ep_title: remove_saved_episode(url, title,
+                                                                 title=ep_title: save_selected_episode(url, title,
                                                                                                             page))
                             ]
                             )
@@ -1872,14 +1872,11 @@ def main(page: ft.Page, session_value=None):
                                                                                                                   title,
                                                                                                                   artwork,
                                                                                                                   page)),
-                                ft.PopupMenuItem(icon=ft.icons.DELETE, text="Delete Downloaded Episode",
-                                                 on_click=lambda x, url=ep_local_url,
-                                                                 title=ep_title,
-                                                                 episode_id=ep_id: delete_local_selected_episode(
-                                                     url, title, episode_id, page)),
-                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download", on_click=lambda x, url=ep_url, title=ep_title: locally_download_episode(url, title, page)),
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
                                                  on_click=lambda x, url=ep_url,
-                                                                 title=ep_title: remove_saved_episode(url, title,
+                                                                 title=ep_title: save_selected_episode(url, title,
                                                                                                             page))
                             ]
                             )
