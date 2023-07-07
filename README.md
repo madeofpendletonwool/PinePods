@@ -333,6 +333,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Do something when search results aren't found - Currently Blank screen
 - [x] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [x] Option to remove from history
+- [x] Queue currently somewhat broken
 
 ### Pre-beta version
 
@@ -341,7 +342,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Rework local images to run through the image proxy
 - [ ] logout on client remove saved app cache
 - [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
-- [ ] Queue currently somewhat broken
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
 - [ ] On top bar cutoff add a search button that opens a search prompt

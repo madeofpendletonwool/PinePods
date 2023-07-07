@@ -2033,24 +2033,79 @@ def main(page: ft.Page, session_value=None):
             audio_container.visible == False
 
         def open_search(e):
-            new_search.searchvalue = search_pods.value
-            new_search.searchlocation = search_location.value
-            pr = ft.ProgressRing()
-            global progress_stack
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
-            page.update()
+            print(search_pods.value)
+            if search_pods.value:
+                if page.width > 768:
+                    new_search.searchvalue = search_pods.value
+                    new_search.searchlocation = search_location.value
+                    pr = ft.ProgressRing()
+                    global progress_stack
+                    progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
+                    page.overlay.append(progress_stack)
+                    page.update()
+                    # Run the test_connection function
+                    connection_test_result = internal_functions.functions.test_connection(api_url)
+                    if connection_test_result is not True:
+                        page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
+                        page.snack_bar.open = True
+                        page.overlay.remove(progress_stack)
+                        page.update()
+                        return  # Do not proceed further if the connection test failed
 
-            # Run the test_connection function
-            connection_test_result = internal_functions.functions.test_connection(api_url)
-            if connection_test_result is not True:
-                page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
+                    page.go("/searchpod")
+                else:
+                    def close_search_dlg(page):
+                        search_dlg.open = False
+                        page.update()
+                    def search_podcast_small(e):
+                        close_search_dlg(page)
+                        connection_test_result = internal_functions.functions.test_connection(api_url)
+                        if connection_test_result is not True:
+                            page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
+                            page.snack_bar.open = True
+                            page.overlay.remove(progress_stack)
+                            page.update()
+                            return  # Do not proceed further if the connection test failed
+
+                        page.go("/searchpod")
+                    search_value_small = ft.TextField(label="Podcast", icon=ft.icons.CARD_MEMBERSHIP,
+                                                    hint_text='My Brother My Brother and Me')
+                    search_location_small = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
+                                                  focused_border_color=active_user.accent_color,
+                                                  focused_color=active_user.accent_color,
+                                                  prefix_icon=ft.icons.MANAGE_SEARCH,
+                                                  options=[
+                                                      ft.dropdown.Option("podcastindex"),
+                                                      ft.dropdown.Option("itunes"),
+                                                  ]
+                                                  )
+
+                    search_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Search Podcast:"),
+                        content=ft.Column(controls=[
+                            ft.Text(f"Enter a podcast to search for:", selectable=True),
+                            ft.Text(
+                                f'.',
+                                selectable=True),
+                            search_value_small,
+                            search_location_small
+                        ], tight=True),
+                        actions=[
+                            ft.TextButton("Search!", on_click=search_podcast_small),
+                            ft.TextButton("Close", on_click=close_search_dlg)
+                        ],
+                        actions_alignment=ft.MainAxisAlignment.END
+                    )
+                    page.dialog = search_dlg
+                    search_dlg.open = True
+                    page.update()
+
+
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text("Please enter a podcast to search for"))
                 page.snack_bar.open = True
-                page.overlay.remove(progress_stack)
                 page.update()
-                return  # Do not proceed further if the connection test failed
-
-            page.go("/searchpod")
 
         banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
         banner_button.bgcolor = active_user.accent_color
