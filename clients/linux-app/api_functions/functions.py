@@ -714,3 +714,14 @@ def call_get_all_episodes(url, headers, pod_feed):
         print("Error getting Podcast Episodes:", response.status_code)
         print("Error message:", response.text)
         return None
+
+def call_remove_episode_history(url, headers, ep_url, title, user_id):
+    data = {"url": ep_url, "title": title, "user_id": user_id}
+    response = requests.post(url + "/remove_episode_history", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["success"]
+    else:
+        print("Error removing episode from history:", response.status_code)
+        print("Error message:", response.text)
+        return None

@@ -623,6 +623,16 @@ async def api_get_episodes(data: AllEpisodes, cnx = Depends(get_database_connect
     episodes = database_functions.functions.get_all_episodes(cnx, data.pod_feed)
     return {"episodes": episodes}
 
+class EpisodeToRemove(BaseModel):
+    url: str
+    title: str
+    user_id: int
+
+@app.post("/api/data/remove_episode_history")
+async def api_remove_episode_from_history(data: EpisodeToRemove, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    success = database_functions.functions.remove_episode_history(cnx, data.url, data.title, data.user_id)
+    return {"success": success}
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')

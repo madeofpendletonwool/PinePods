@@ -1814,3 +1814,23 @@ def get_all_episodes(cnx, pod_feed):
     except Exception as e:
         print("Error retrieving Podcast Episodes:", e)
         return None
+
+def remove_episode_history(cnx, url, title, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"""DELETE FROM UserEpisodeHistory 
+                WHERE UserID = %s AND EpisodeID IN (
+                    SELECT EpisodeID FROM Episodes 
+                    WHERE EpisodeURL = %s AND EpisodeTitle = %s
+                )""")
+
+    try:
+        cursor.execute(query, (user_id, url, title))
+        cnx.commit()
+        cursor.close()
+
+        return True
+    except Exception as e:
+        print("Error removing episode from history:", e)
+        return False
+

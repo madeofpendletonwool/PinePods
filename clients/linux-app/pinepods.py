@@ -1856,6 +1856,33 @@ def main(page: ft.Page, session_value=None):
                                                                                                             page))
                             ]
                             )
+                    elif self.page_type == "history":
+                        popup_button = ft.PopupMenuButton(
+                            content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
+                                            size=40, tooltip="Play Episode"),
+                            items=[
+                                ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From History",
+                                                 on_click=lambda x, url=ep_url, title=ep_title: episode_remove_history(url,
+                                                                                                            title,
+                                                                                                            artwork,
+                                                                                                            page)),
+                                ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
+                                                 on_click=lambda x, url=ep_url, title=ep_title,
+                                                                 artwork=ep_artwork: queue_selected_episode(url,
+                                                                                                                  title,
+                                                                                                                  artwork,
+                                                                                                                  page)),
+                                ft.PopupMenuItem(icon=ft.icons.DELETE, text="Delete Downloaded Episode",
+                                                 on_click=lambda x, url=ep_local_url,
+                                                                 title=ep_title,
+                                                                 episode_id=ep_id: delete_local_selected_episode(
+                                                     url, title, episode_id, page)),
+                                ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
+                                                 on_click=lambda x, url=ep_url,
+                                                                 title=ep_title: remove_saved_episode(url, title,
+                                                                                                            page))
+                            ]
+                            )
                     elif self.page_type == "queue":
                         popup_button = ft.PopupMenuButton(
                             content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color,
@@ -4214,7 +4241,14 @@ def main(page: ft.Page, session_value=None):
             ep_popup_button = ft.PopupMenuButton(content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED, color=active_user.accent_color, size=40, tooltip="Play Episode"), 
                     items=[
                     ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue", on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork: queue_selected_episode(url, title, artwork, page)),
-                    ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Download", on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url, title, page)),
+                        ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download",
+                                         on_click=lambda x, url=ep_url, title=ep_title: download_selected_episode(url,
+                                                                                                                  title,
+                                                                                                                  page)),
+                        ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download",
+                                         on_click=lambda x, url=ep_url, title=ep_title: locally_download_episode(url,
+                                                                                                                 title,
+                                                                                                                 page)),
                     ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode", on_click=lambda x, url=ep_url, title=ep_title: save_selected_episode(url, title, page))
                 ]
             )
@@ -5374,6 +5408,12 @@ def main(page: ft.Page, session_value=None):
         current_episode.title = title
         current_episode.remove_queued_pod()
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from the queue!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def episode_remove_history(url, title, page):
+        api_functions.functions.call_remove_episode_history(app_api.url, app_api.headers, url, title, active_user.user_id)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from history!"))
         page.snack_bar.open = True
         page.update()
 
