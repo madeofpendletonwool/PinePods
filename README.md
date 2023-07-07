@@ -332,6 +332,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] MFA Logins on web version
 - [x] Do something when search results aren't found - Currently Blank screen
 - [x] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
+- [x] Option to remove from history
 
 ### Pre-beta version
 
@@ -347,8 +348,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add mfa to dynamic settings class
 - [ ] Add new users to dynamic settings class
 - [ ] Add Email settings to dynamic users class
-- [ ] Option to remove from history
-- [ ] Mass downloading episodes. Entire podcast at once
+- [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 
 ### To be added after beta version (Listed in order they will be implemented)
 

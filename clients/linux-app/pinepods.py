@@ -1864,7 +1864,6 @@ def main(page: ft.Page, session_value=None):
                                 ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Remove From History",
                                                  on_click=lambda x, url=ep_url, title=ep_title: episode_remove_history(url,
                                                                                                             title,
-                                                                                                            artwork,
                                                                                                             page)),
                                 ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
                                                  on_click=lambda x, url=ep_url, title=ep_title,
