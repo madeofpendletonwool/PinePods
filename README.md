@@ -350,6 +350,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add Email settings to dynamic users class
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [ ] Reload not needed to add and remove episodes from pages (Solution found. Currently implemented on saved and pod layout)
+- [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow
 
 ### To be added after beta version (Listed in order they will be implemented)
 
