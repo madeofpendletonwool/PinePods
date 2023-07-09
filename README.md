@@ -349,12 +349,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add new users to dynamic settings class
 - [ ] Add Email settings to dynamic users class
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
+- [ ] Reload not needed to add and remove episodes from pages (Solution found. Currently implemented on saved and pod layout)
 
 ### To be added after beta version (Listed in order they will be implemented)
 
 - [ ] Offline mode for playing locally downloaded episodes
-- [ ] Page refreshing to handle adding and removing of things better
-- [ ] Reload not needed to add and remove episodes from pages
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Rotating currently playing
 - [ ] Add highlight to indicate which page you're on
