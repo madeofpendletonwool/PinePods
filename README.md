@@ -333,7 +333,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Do something when search results aren't found - Currently Blank screen
 - [x] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [x] Option to remove from history
-- [x] Queue currently somewhat broken
+- [x] Reload not needed to add and remove episodes from pages
 
 ### Pre-beta version
 
@@ -349,17 +349,18 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add new users to dynamic settings class
 - [ ] Add Email settings to dynamic users class
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
-- [ ] Reload not needed to add and remove episodes from pages (Solution found. Currently implemented on saved and pod layout)
+- [ ] Queue currently somewhat broken
 - [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow
 
 ### To be added after beta version (Listed in order they will be implemented)
 
 - [ ] Offline mode for playing locally downloaded episodes
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Rotating currently playing
-- [ ] Add highlight to indicate which page you're on
-- [ ] Customizable login screens
 - [ ] Allow for episodes to be played without being added
+- [ ] Add highlight to indicate which page you're on
+- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
+- [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
+- [ ] Rotating currently playing
+- [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] MFA Logins - Github integration and local MFA (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
