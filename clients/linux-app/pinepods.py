@@ -470,114 +470,6 @@ def main(page: ft.Page, session_value=None):
 
         return filename
 
-    def remove_mfa(e):
-        delete_confirm = api_functions.functions.call_delete_mfa_secret(app_api.url, app_api.headers, active_user.user_id)
-        if delete_confirm:
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now removed from your account. You'll no longer be prompted at login"))
-            page.snack_bar.open = True
-            page.update()
-        else:
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Error removing MFA settings. Maybe it's not already setup?"))
-            page.snack_bar.open = True
-            page.update()
-
-    def setup_mfa(e):
-        def close_mfa_dlg(page):
-            mfa_dlg.open = False
-            os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
-            page.update()
-
-        def close_validate_mfa_dlg(page):
-            validate_mfa_dlg.open = False
-            try:
-                os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
-            except:
-                pass
-            page.update()
-
-        def complete_mfa(e):
-            # Get the OTP entered by the user
-            close_validate_mfa_dlg(page)
-            page.update()
-
-            entered_otp = mfa_confirm_box.value
-
-            # Verify the OTP
-            totp = pyotp.TOTP(active_user.mfa_secret)
-            if totp.verify(entered_otp, valid_window=1):
-                # If the OTP is valid, save the MFA secret
-                api_functions.functions.call_save_mfa_secret(app_api.url, app_api.headers, active_user.user_id, active_user.mfa_secret)
-
-                # Close the dialog and show a success message
-                close_validate_mfa_dlg(page)
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
-                page.snack_bar.open = True
-            else:
-                # If the OTP is not valid, show an error message
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"The entered OTP is incorrect. It also may have timed out before you entered it. Please cancel and try again."))
-                page.snack_bar.open = True
-            page.update()
-
-        mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456')
-        mfa_validate_select_row = ft.Row(
-            controls=[
-                ft.TextButton("Confirm", on_click=complete_mfa),
-                ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
-            ],
-            alignment=ft.MainAxisAlignment.END
-        )
-        validate_mfa_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Confirm MFA:"),
-            content=ft.Column(controls=[
-        #     ft.Text(f"Setup MFA:", selectable=True),
-            ft.Text(f'Please confirm the code from your authenticator app.', selectable=True),
-                # ], tight=True),
-            mfa_confirm_box,
-            # actions=[
-            mfa_validate_select_row
-            ],
-            tight=True),
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-
-        def validate_mfa(e):
-            close_mfa_dlg(page)
-            page.update()
-            time.sleep(.3)
-
-            page.dialog = validate_mfa_dlg
-            validate_mfa_dlg.open = True
-            page.update()
-
-        img_data_url = setup_user_for_otp()
-        mfa_select_row = ft.Row(
-            controls=[
-                ft.TextButton("Continue", on_click=validate_mfa),
-                ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(page)))
-            ],
-            alignment=ft.MainAxisAlignment.END
-        )
-        mfa_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Setup MFA:"),
-            content=ft.Column(controls=[
-        #     ft.Text(f"Setup MFA:", selectable=True),
-            ft.Text(f'Scan the code below with your authenticator app and then click continue to validate your code.', selectable=True),
-                # ], tight=True),
-            ft.Image(src=img_data_url, width=200, height=200),
-            # actions=[
-            mfa_select_row
-            ],
-            tight=True),
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-        page.dialog = mfa_dlg
-        mfa_dlg.open = True
-        page.update()
-        # page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
-        # page.snack_bar.open = True
-        # page.update()
     def seconds_to_time(seconds):
         minutes, seconds = divmod(seconds, 60)
         hours, minutes = divmod(minutes, 60)
@@ -3748,9 +3640,148 @@ def main(page: ft.Page, session_value=None):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
                                                                                       active_user.user_id)
                     self.mfa_check()
-                    self.mfa_container = ft.Container(content=self.mfa_column)
-                    self.mfa_container.padding = padding.only(left=70, right=50)
                     # New User Creation Setup
+
+                def update_mfa_status(self):
+                    self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
+                        self.app_api.url, self.app_api.headers, active_user.user_id
+                    )
+                    if self.check_mfa_status:
+                        self.mfa_button.text = f'Re-Setup MFA for your account'
+                        self.mfa_button.on_click = self.mfa_option_change
+                        if 'mfa_remove_button' not in dir(self):  # create mfa_remove_button if it doesn't exist
+                            self.mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account',
+                                                                       on_click=self.remove_mfa,
+                                                                       bgcolor=active_user.main_color,
+                                                                       color=active_user.accent_color)
+                        if self.mfa_button_row is None:
+                            self.mfa_button_row = ft.Row()
+                        self.mfa_button_row.controls = [self.mfa_button, self.mfa_remove_button]
+                    else:
+                        self.mfa_button.text = f'Setup MFA for your account'
+                        self.mfa_button.on_click = self.setup_mfa
+                        if 'mfa_remove_button' in dir(
+                                self):  # remove mfa_remove_button from mfa_button_row.controls if it exists
+                            self.mfa_button_row.controls = [self.mfa_button]
+                    self.mfa_container.content = self.mfa_column
+                    self.page.update()
+
+                def remove_mfa(self, e):
+                    delete_confirm = api_functions.functions.call_delete_mfa_secret(app_api.url, app_api.headers,
+                                                                                    active_user.user_id)
+                    if delete_confirm:
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(
+                            f"MFA now removed from your account. You'll no longer be prompted at login"))
+                        self.page.snack_bar.open = True
+                        self.update_mfa_status()
+                        self.page.update()
+                    else:
+                        self.page.snack_bar = ft.SnackBar(
+                            content=ft.Text(f"Error removing MFA settings. Maybe it's not already setup?"))
+                        self.page.snack_bar.open = True
+                        self.page.update()
+
+                def setup_mfa(self, e):
+                    def close_mfa_dlg(e):
+                        mfa_dlg.open = False
+                        os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
+                        self.page.update()
+
+                    def close_validate_mfa_dlg(page):
+                        validate_mfa_dlg.open = False
+                        try:
+                            os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
+                        except:
+                            pass
+                        self.page.update()
+
+                    def complete_mfa(e):
+                        # Get the OTP entered by the user
+                        close_validate_mfa_dlg(self.page)
+                        self.page.update()
+
+                        entered_otp = mfa_confirm_box.value
+
+                        # Verify the OTP
+                        totp = pyotp.TOTP(active_user.mfa_secret)
+                        if totp.verify(entered_otp, valid_window=1):
+                            # If the OTP is valid, save the MFA secret
+                            api_functions.functions.call_save_mfa_secret(app_api.url, app_api.headers,
+                                                                         active_user.user_id, active_user.mfa_secret)
+
+                            # Close the dialog and show a success message
+                            close_validate_mfa_dlg(self.page)
+                            self.page.snack_bar = ft.SnackBar(
+                                content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
+                            self.page.snack_bar.open = True
+                            self.update_mfa_status()
+                            return True
+                        else:
+                            # If the OTP is not valid, show an error message
+                            self.page.snack_bar = ft.SnackBar(content=ft.Text(
+                                f"The entered OTP is incorrect. It also may have timed out before you entered it. Please cancel and try again."))
+                            self.page.snack_bar.open = True
+                        self.page.update()
+
+                    mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456')
+                    mfa_validate_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Confirm", on_click=complete_mfa),
+                            ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
+                        ],
+                        alignment=ft.MainAxisAlignment.END
+                    )
+                    validate_mfa_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Confirm MFA:"),
+                        content=ft.Column(controls=[
+                            #     ft.Text(f"Setup MFA:", selectable=True),
+                            ft.Text(f'Please confirm the code from your authenticator app.', selectable=True),
+                            # ], tight=True),
+                            mfa_confirm_box,
+                            # actions=[
+                            mfa_validate_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+
+                    def validate_mfa(e):
+                        close_mfa_dlg(self.page)
+                        self.page.update()
+                        time.sleep(.3)
+
+                        self.page.dialog = validate_mfa_dlg
+                        validate_mfa_dlg.open = True
+                        self.page.update()
+
+                    img_data_url = setup_user_for_otp()
+                    mfa_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Continue", on_click=validate_mfa),
+                            ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(self.page)))
+                        ],
+                        alignment=ft.MainAxisAlignment.END
+                    )
+                    mfa_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Setup MFA:"),
+                        content=ft.Column(controls=[
+                            #     ft.Text(f"Setup MFA:", selectable=True),
+                            ft.Text(
+                                f'Scan the code below with your authenticator app and then click continue to validate your code.',
+                                selectable=True),
+                            # ], tight=True),
+                            ft.Image(src=img_data_url, width=200, height=200),
+                            # actions=[
+                            mfa_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    self.page.dialog = mfa_dlg
+                    mfa_dlg.open = True
+                    self.page.update()
 
                 def guest_check(self):
                     if self.guest_status_bool:
@@ -3798,19 +3829,33 @@ def main(page: ft.Page, session_value=None):
                         color=active_user.font_color, size=12)
 
                     if self.check_mfa_status:
-                        self.mfa_text = ft.Text(f'Setup MFA: currently enabled', color=active_user.font_color, size=16)
-                        self.mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account', on_click=setup_mfa, bgcolor=active_user.main_color, color=active_user.accent_color)
-                        self.mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account', on_click=remove_mfa,
-                                                              bgcolor=active_user.main_color,
-                                                              color=active_user.accent_color)
+                        self.mfa_text = ft.Text(f'Setup MFA', color=active_user.font_color,
+                                                size=16)
+                        self.mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account',
+                                                            on_click=self.mfa_option_change,
+                                                            bgcolor=active_user.main_color,
+                                                            color=active_user.accent_color)
+                        self.mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account',
+                                                                   on_click=self.remove_mfa,
+                                                                   bgcolor=active_user.main_color,
+                                                                   color=active_user.accent_color)
                         self.mfa_button_row = ft.Row(
                             controls=[self.mfa_button, self.mfa_remove_button])
                         self.mfa_column = ft.Column(controls=[self.mfa_text, self.mfa_warning, self.mfa_button_row])
                     else:
-                        self.mfa_text = ft.Text(f'Setup MFA: currently disabled', color=active_user.font_color, size=16)
-                        self.mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=setup_mfa,
-                                                       bgcolor=active_user.main_color, color=active_user.accent_color)
+                        self.mfa_text = ft.Text(f'Setup MFA', color=active_user.font_color,
+                                                size=16)
+                        self.mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=self.setup_mfa,
+                                                            bgcolor=active_user.main_color,
+                                                            color=active_user.accent_color)
                         self.mfa_column = ft.Column(controls=[self.mfa_text, self.mfa_warning, self.mfa_button])
+
+                    # Update mfa_container content
+                    self.mfa_container = ft.Container(content=self.mfa_column)
+                    self.mfa_container.padding = padding.only(left=70, right=50)
+                    self.mfa_container.content = self.mfa_column
+                    # self.mfa_container.controls.add(self.mfa_column)
+                    self.page.update()
                 def guest_user_change(self, e):
                     api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
@@ -3859,34 +3904,16 @@ def main(page: ft.Page, session_value=None):
 
                     self.disable_download_notify.visible = False
                     self.page.update()
-                def download_option_change(self, e):
-                    api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
-                    self.page.snack_bar.open = True
-                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
-                    if self.download_status_bool:
-                        self.download_info_button.text = 'Disable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
-                    else:
-                        self.download_info_button.text = 'Enable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
 
-                    self.disable_download_notify.visible = False
-                    self.page.update()
                 def mfa_option_change(self, e):
-                    api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
-                    self.page.snack_bar.open = True
-                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
-                    if self.download_status_bool:
-                        self.download_info_button.text = 'Disable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
-                    else:
-                        self.download_info_button.text = 'Enable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
+                   mfa_setup_check = self.setup_mfa()
+                   print(mfa_setup_check)
+                   if mfa_setup_check == True:
+                       self.mfa_check()
+                       self.page.update()
+                   else:
+                       self.page.update()
 
-                    self.disable_download_notify.visible = False
-                    self.page.update()
 
 
             settings_data = Settings(page)
