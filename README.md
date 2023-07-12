@@ -337,17 +337,17 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Add mfa to dynamic settings class
 - [x] Add new users to dynamic settings class
 - [x] Add Email settings to dynamic users class
+- [x] logout on client remove saved app cache (Implemented button in settings to clear cache)
+- [x] On top bar cutoff add a search button that opens a search prompt (There's a small version of the search button now)
 
 ### Pre-beta version
 
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] Rework local images to run through the image proxy
-- [ ] logout on client remove saved app cache
 - [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
-- [ ] On top bar cutoff add a search button that opens a search prompt
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [ ] Queue currently somewhat broken
 - [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow

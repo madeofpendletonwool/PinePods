@@ -1556,6 +1556,32 @@ def main(page: ft.Page, session_value=None):
         page.update()
         page.go("/")
 
+    class PR:
+        def __init__(self, page):
+            self.pr = ft.ProgressRing()
+            self.progress_stack = ft.Stack([self.pr], bottom=25, right=30, left=20, expand=True)
+            self.page = page
+
+        def touch_stack(self):
+            self.page.overlay.append(self.progress_stack)
+
+        def rm_stack(self):
+            self.page.overlay.remove(self.progress_stack)
+
+    pr_instance = PR(page)
+    class Page_Vars:
+        def __init__(self, page):
+            self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
+            self.search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
+                                          focused_border_color=active_user.accent_color,
+                                          focused_color=active_user.accent_color,
+                                          prefix_icon=ft.icons.MANAGE_SEARCH,
+                                          options=[
+                                              ft.dropdown.Option("podcastindex"),
+                                              ft.dropdown.Option("itunes"),
+                                          ]
+                                          )
+
     def route_change(e):
         class Pod_View:
             def __init__(self, page):
@@ -1576,7 +1602,7 @@ def main(page: ft.Page, session_value=None):
                 self.banner_button.color = active_user.main_color
                 self.settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                            controls=[self.refresh_ctn, self.banner_button])
-                self.search_row = ft.Row(spacing=25, controls=[search_pods, search_location, search_btn])
+                self.search_row = ft.Row(spacing=25, controls=[page_items.search_pods, page_items.search_location, search_btn])
                 self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                       vertical_alignment=ft.CrossAxisAlignment.START,
                                       controls=[self.settings_row, self.search_row])
@@ -1971,31 +1997,39 @@ def main(page: ft.Page, session_value=None):
             audio_container.visible == False
 
         def open_search(e):
-            if search_pods.value:
-                if page.width > 768:
-                    new_search.searchvalue = search_pods.value
-                    new_search.searchlocation = search_location.value
-                    pr = ft.ProgressRing()
-                    global progress_stack
-                    progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-                    page.overlay.append(progress_stack)
+            if page.width > 768:
+                if page_items.search_pods.value:
+                    new_search.searchvalue = page_items.search_pods.value
+                    new_search.searchlocation = page_items.search_location.value
+                    pr_instance.touch_stack()
                     page.update()
                     # Run the test_connection function
                     connection_test_result = internal_functions.functions.test_connection(api_url)
                     if connection_test_result is not True:
                         page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
                         page.snack_bar.open = True
-                        page.overlay.remove(progress_stack)
+                        pr_instance.rm_stack()
                         page.update()
                         return  # Do not proceed further if the connection test failed
 
                     page.go("/searchpod")
                 else:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("Please enter a podcast to search for"))
+                    page.snack_bar.open = True
+                    page.update()
+
+
+            else:
                     def close_search_dlg(page):
+                        search_dlg.open = False
+                        page.update()
+                    def close_search_dlg_auto(e):
                         search_dlg.open = False
                         page.update()
                     def search_podcast_small(e):
                         close_search_dlg(page)
+                        pr_instance.touch_stack()
+                        page.update()
                         connection_test_result = internal_functions.functions.test_connection(api_url)
                         if connection_test_result is not True:
                             page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
@@ -2005,8 +2039,7 @@ def main(page: ft.Page, session_value=None):
                             return  # Do not proceed further if the connection test failed
 
                         page.go("/searchpod")
-                    search_value_small = ft.TextField(label="Podcast", icon=ft.icons.CARD_MEMBERSHIP,
-                                                    hint_text='My Brother My Brother and Me')
+                    search_value_small = ft.TextField(label="Podcast", hint_text='Darknet Diaries')
                     search_location_small = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
                                                   focused_border_color=active_user.accent_color,
                                                   focused_color=active_user.accent_color,
@@ -2022,15 +2055,12 @@ def main(page: ft.Page, session_value=None):
                         title=ft.Text(f"Search Podcast:"),
                         content=ft.Column(controls=[
                             ft.Text(f"Enter a podcast to search for:", selectable=True),
-                            ft.Text(
-                                f'.',
-                                selectable=True),
                             search_value_small,
                             search_location_small
                         ], tight=True),
                         actions=[
                             ft.TextButton("Search!", on_click=search_podcast_small),
-                            ft.TextButton("Close", on_click=close_search_dlg)
+                            ft.TextButton("Close", on_click=close_search_dlg_auto)
                         ],
                         actions_alignment=ft.MainAxisAlignment.END
                     )
@@ -2038,29 +2068,15 @@ def main(page: ft.Page, session_value=None):
                     search_dlg.open = True
                     page.update()
 
-
-            else:
-                page.snack_bar = ft.SnackBar(content=ft.Text("Please enter a podcast to search for"))
-                page.snack_bar.open = True
-                page.update()
-
-        search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
-        search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
-             prefix_icon=ft.icons.MANAGE_SEARCH,
-             options=[
-                ft.dropdown.Option("podcastindex"),
-                ft.dropdown.Option("itunes"),
-             ]
-             )
-        search_location.width = 130
-        search_location.height = 50
+        page_items.search_location.width = 130
+        page_items.search_location.height = 50
         search_btn = ft.ElevatedButton("Search!", on_click=open_search)
-        search_pods.color = active_user.accent_color
-        search_pods.focused_bgcolor = active_user.accent_color
-        search_pods.focused_border_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.focused_color = active_user.accent_color
-        search_pods.cursor_color = active_user.accent_color
+        page_items.search_pods.color = active_user.accent_color
+        page_items.search_pods.focused_bgcolor = active_user.accent_color
+        page_items.search_pods.focused_border_color = active_user.accent_color
+        page_items.search_pods.focused_color = active_user.accent_color
+        page_items.search_pods.focused_color = active_user.accent_color
+        page_items.search_pods.cursor_color = active_user.accent_color
         search_btn.bgcolor = active_user.accent_color
         search_btn.color = active_user.main_color
 
@@ -2259,7 +2275,7 @@ def main(page: ft.Page, session_value=None):
                     self.banner_button.color = active_user.main_color
                     self.settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                                controls=[self.refresh_ctn, self.banner_button])
-                    self.search_row = ft.Row(spacing=25, controls=[search_pods, search_location, search_btn])
+                    self.search_row = ft.Row(spacing=25, controls=[page_items.search_pods, page_items.search_location, search_btn])
                     self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                           vertical_alignment=ft.CrossAxisAlignment.START,
                                           controls=[self.settings_row, self.search_row])
@@ -2815,7 +2831,7 @@ def main(page: ft.Page, session_value=None):
                     self.banner_button.color = active_user.main_color
                     self.settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                                controls=[self.refresh_ctn, self.banner_button])
-                    self.search_row = ft.Row(spacing=25, controls=[search_pods, search_location, search_btn])
+                    self.search_row = ft.Row(spacing=25, controls=[page_items.search_pods, page_items.search_location, search_btn])
                     self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                           vertical_alignment=ft.CrossAxisAlignment.START,
                                           controls=[self.settings_row, self.search_row])
@@ -3020,7 +3036,7 @@ def main(page: ft.Page, session_value=None):
             search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
             return_results = [map_search_result(result, new_search.searchlocation) for result in
                               search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
-            page.overlay.remove(progress_stack)
+            pr_instance.rm_stack()
 
             if search_results['feeds']:
                 # Get and format list
@@ -3629,8 +3645,8 @@ def main(page: ft.Page, session_value=None):
                     self.self_service_bool = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
                     self.self_service_notify = ft.Text(f'Self Service user creation is currently {"enabled" if self.self_service_bool else "disabled"}')
                     self.self_service_check()
-                    # Email Server Setup
-
+                    # local settings clear
+                    self.settings_clear_options()
                     # Server Downloads Setup
                     self.download_status_bool = api_functions.functions.call_download_status(app_api.url, app_api.headers)
                     self.disable_download_notify = ft.Text(f'Downloads are currently {"enabled" if self.download_status_bool else "disabled"}')
@@ -3647,6 +3663,17 @@ def main(page: ft.Page, session_value=None):
                     self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
                     self.email_table_rows = []
                     self.email_table_load()
+
+                def settings_clear_options(self):
+                    setting_option_text = Text('Clear existing client data:', color=active_user.font_color, size=16)
+                    setting_option_desc = Text("Note: This will clear all your local client data. If you have locally downloaded episodes they will be deleted and your saved configuration will be removed. You'll need to setup both your server configuration and your user login", color=active_user.font_color)
+                    self.settings_clear_button = ft.ElevatedButton(f'Clear Client',
+                                                               on_click=active_user.logout_pinepods_clear_local,
+                                                               bgcolor=active_user.main_color,
+                                                               color=active_user.accent_color)
+                    setting_option_col = ft.Column(controls=[setting_option_text, setting_option_desc, self.settings_clear_button])
+                    self.setting_option_con = ft.Container(content=setting_option_col)
+                    self.setting_option_con.padding = padding.only(left=70, right=50)
 
                 def update_mfa_status(self):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
@@ -4300,59 +4327,6 @@ def main(page: ft.Page, session_value=None):
             pw_reset_container = ft.Container(content=pw_reset_row)
             pw_reset_container.padding=padding.only(left=70, right=50)
 
-            #Email Table Setup - Admin only
-
-            #
-            # server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
-            # from_email = email_information['From_Email']
-            # send_mode = email_information['Send_Mode']
-            # encryption = email_information['Encryption']
-            # auth = email_information['Auth_Required']
-            #
-            # if auth == 1:
-            #     auth_user = email_information['Username']
-            # else:
-            #     auth_user = 'Auth not defined!'
-            #
-            #
-            #
-            # # Create a new data row with the user information
-            # row = ft.DataRow(
-            #     cells=[
-            #         ft.DataCell(ft.Text(server_info)),
-            #         ft.DataCell(ft.Text(from_email)),
-            #         ft.DataCell(ft.Text(send_mode)),
-            #         ft.DataCell(ft.Text(encryption)),
-            #         ft.DataCell(ft.Text(auth_user))
-            #     ]
-            # )
-            #
-            # # Append the row to the list of data rows
-            # email_table_rows.append(row)
-            #
-            # email_table = ft.DataTable(
-            #     bgcolor=active_user.main_color,
-            #     border=ft.border.all(2, active_user.main_color),
-            #     border_radius=10,
-            #     vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-            #     horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-            #     heading_row_color=active_user.nav_color1,
-            #     heading_row_height=100,
-            #     data_row_color={"hovered": active_user.font_color},
-            #     # show_checkbox_column=True,
-            #     columns=[
-            #     ft.DataColumn(ft.Text("Server Name"), numeric=True),
-            #     ft.DataColumn(ft.Text("From Email")),
-            #     ft.DataColumn(ft.Text("Send Mode")),
-            #     ft.DataColumn(ft.Text("Encryption?")),
-            #     ft.DataColumn(ft.Text("Username"))
-            # ],
-            #     rows=email_table_rows
-            #     )
-            # email_edit_column = ft.Column(controls=[pw_reset_current, email_table])
-            # email_edit_container = ft.Container(content=email_edit_column)
-            # email_edit_container.padding=padding.only(left=70, right=50)
-
             # Check if admin settings should be displayed 
             div_row = ft.Divider(color=active_user.accent_color)
             user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
@@ -4376,6 +4350,8 @@ def main(page: ft.Page, session_value=None):
                         theme_row_container,
                         div_row,
                         settings_data.mfa_container,
+                        div_row,
+                        settings_data.setting_option_con,
                         div_row,
                         admin_setting_text,
                         user_row_container,
@@ -5038,6 +5014,30 @@ def main(page: ft.Page, session_value=None):
                 active_user.fullname = 'Guest User'
                 go_homelogin(page)
 
+        def logout_pinepods_clear_local(self, e):
+            active_user = User(page)
+            page.overlay.remove(self.navbar_stack)
+            login_username.visible = True
+            login_password.visible = True
+            if login_screen == True:
+                app_name = 'pinepods'
+                data_dir = appdirs.user_data_dir(app_name)
+                for filename in os.listdir(data_dir):
+                    file_path = os.path.join(data_dir, filename)
+                    try:
+                        if os.path.isfile(file_path) or os.path.islink(file_path):
+                            os.unlink(file_path)
+                        elif os.path.isdir(file_path):
+                            shutil.rmtree(file_path)
+                    except Exception as e:
+                        print(f'Failed to delete {file_path}. Reason: {e}')
+
+                start_config(page)
+            else:
+                active_user.user_id = 1
+                active_user.fullname = 'Guest User'
+                go_homelogin(page)
+
         def clear_guest(self, e):
             if self.user_id == 1:
                 api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
@@ -5444,6 +5444,10 @@ def main(page: ft.Page, session_value=None):
     audio_container_row = ft.Container(content=audio_container_row_landing)
     audio_container_row.padding=ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing], alignment=ft.MainAxisAlignment.CENTER)
+
+
+    page_items = Page_Vars(page)
+
     def page_checksize(e):
         max_chars = character_limit(int(page.width))
         current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
@@ -5451,6 +5455,8 @@ def main(page: ft.Page, session_value=None):
         if page.width <= 768:
             ep_height = 100
             ep_width = 4000
+            page_items.search_pods.visible = False
+            page_items.search_location.visible = False
             audio_container.height = ep_height
             audio_container.content = ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,          
@@ -5461,12 +5467,16 @@ def main(page: ft.Page, session_value=None):
         else:
             ep_height = 50
             ep_width = 4000
+            page_items.search_pods.visible = True
+            page_items.search_location.visible = True
             audio_container.height = ep_height
             audio_container.content = audio_container_row
             currently_playing.update()
             audio_container.update()
             page.update() 
     if page.width <= 768 and page.width != 0:
+        page_items.search_pods.visible = False
+        page_items.search_location.visible = False
         ep_height = 100
         ep_width = 4000
         audio_container = ft.Container(
@@ -5563,40 +5573,6 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.overlay.remove(progress_stack)
                 page.update()
-
-    # def delete_selected_episode(url, title, page):
-    #     current_episode.url = url
-    #     current_episode.title = title
-    #     current_episode.delete_pod()
-    #     page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
-    #     page.snack_bar.open = True
-    #     page.update()
-    #
-    # def delete_local_selected_episode(url, title, episode_id, page):
-    #     current_episode.url = url
-    #     current_episode.title = title
-    #     #delete parts here
-    #     try:
-    #         os.remove(url)
-    #     except OSError as e:
-    #         page.snack_bar = ft.SnackBar(content=ft.Text("Error: %s : %s" % (url, e.strerror)))
-    #         page.snack_bar.open = True
-    #         page.update()
-    #         return
-    #
-    #     metadata_path = os.path.join(metadata_dir, f"{episode_id}.json")
-    #     try:
-    #         os.remove(metadata_path)
-    #     except OSError as e:
-    #         page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: %s : %s" % (metadata_path, e.strerror)))
-    #         page.snack_bar.open = True
-    #         page.update()
-    #         return
-    #
-    #     page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
-    #     page.snack_bar.open = True
-    #     page.update()
-    #     page.go("/downloads")
 
     def queue_selected_episode(url, title, artwork, page):
         current_episode.url = url
