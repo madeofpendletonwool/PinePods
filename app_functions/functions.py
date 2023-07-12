@@ -97,8 +97,8 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
 
         elif send_mode == "Sendmail":
             pass
-    except smtplib.SMTPException as e:
-        return f'Failed to send email: {str(e)}'
+    except ssl.SSLError:
+        return 'SSL Wrong Version Number. Try another ssl type?'
     except smtplib.SMTPAuthenticationError:
         return 'Authentication Error: Invalid username or password.'
     except smtplib.SMTPRecipientsRefused:
@@ -113,8 +113,8 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
         return 'Connection Refused: The server refused the connection.'
     except TimeoutError:
         return 'Timeout Error: The connection to the server timed out.'
-    except ssl.SSLError:
-        return 'SSL Wrong Version Number. Try another ssl type?'
+    except smtplib.SMTPException as e:
+        return f'Failed to send email: {str(e)}'
 
 
 if __name__ == "__main__":
