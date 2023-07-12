@@ -446,8 +446,12 @@ class UserValues(BaseModel):
 
 @app.post("/api/data/add_user")
 async def api_add_user(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_values: UserValues = Body(...)):
-    database_functions.functions.add_user(cnx, (user_values.fullname, user_values.username, user_values.email, user_values.hash_pw, user_values.salt))
+    # Convert base64 strings back to bytes
+    hash_pw_bytes = base64.b64decode(user_values.hash_pw)
+    salt_bytes = base64.b64decode(user_values.salt)
+    database_functions.functions.add_user(cnx, (user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
     return {"detail": "User added."}
+
 
 
 @app.put("/api/data/set_fullname/{user_id}")

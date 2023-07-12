@@ -4684,8 +4684,10 @@ def main(page: ft.Page, session_value=None):
         def create_user(self):
             if self.new_user_valid == True:
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
+                hash_pw_str = base64.b64encode(hash_pw).decode()
+                salt_str = base64.b64encode(salt).decode()
                 api_functions.functions.call_add_user(app_api.url, app_api.headers, self.fullname, self.username,
-                                                      self.email, hash_pw, salt)
+                                                      self.email, hash_pw_str, salt_str)
 
         def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required, username=None, password=None):
             def close_email_dlg(e):
