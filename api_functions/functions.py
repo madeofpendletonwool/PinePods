@@ -488,12 +488,13 @@ def call_check_usernames(url, headers, username):
         return False
 
 
-def call_add_user(url, headers, user_values):
-    response = requests.post(url + "/add_user", headers=headers, json=user_values)  # Send user_values directly
+def call_add_user(url, headers, user_values: UserValues):
+    response = requests.post(url + "/add_user", headers=headers, json=user_values.dict())  # Send user_values directly
     if response.status_code == 200:
         print("User added successfully.")
     else:
         print("Error adding user:", response.status_code)
+
 
 def call_set_fullname(url, headers, user_id, new_name):
     params = {"new_name": new_name}

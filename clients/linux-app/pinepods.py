@@ -3641,6 +3641,8 @@ def main(page: ft.Page, session_value=None):
                                                                                       active_user.user_id)
                     self.mfa_check()
                     # New User Creation Setup
+                    self.user_table_rows = []
+                    self.user_table_load()
 
                 def update_mfa_status(self):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
@@ -3856,6 +3858,103 @@ def main(page: ft.Page, session_value=None):
                     self.mfa_container.content = self.mfa_column
                     # self.mfa_container.controls.add(self.mfa_column)
                     self.page.update()
+
+                def user_table_load(self):
+                    edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):',
+                                             color=active_user.font_color, size=16)
+                    user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
+
+                    for entry in user_information:
+                        user_id = entry['UserID']
+                        fullname = entry['Fullname']
+                        username = entry['Username']
+                        email = entry['Email']
+                        is_admin_numeric = entry['IsAdmin']
+                        if is_admin_numeric == 1:
+                            is_admin = 'yes'
+                        else:
+                            is_admin = 'no'
+
+                        # Create a new data row with the user information
+                        row = ft.DataRow(
+                            cells=[
+                                ft.DataCell(ft.Text(user_id)),
+                                ft.DataCell(ft.Text(fullname)),
+                                ft.DataCell(ft.Text(username)),
+                                ft.DataCell(ft.Text(email)),
+                                ft.DataCell(ft.Text(str(is_admin))),
+                            ],
+                            on_select_changed=(
+                                lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
+                                lambda x: (modify_user.open_edit_user(username_copy, is_admin_numeric_copy,
+                                                                     fullname_copy, email_copy, user_id_copy),
+                                self.user_table_update)
+                                )(username, is_admin_numeric, fullname, email, user_id)
+                        )
+
+                        # Append the row to the list of data rows
+                        self.user_table_rows.append(row)
+
+                    self.user_table = ft.DataTable(
+                        bgcolor=active_user.main_color,
+                        border=ft.border.all(2, active_user.main_color),
+                        border_radius=10,
+                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                        heading_row_color=active_user.nav_color1,
+                        heading_row_height=100,
+                        data_row_color={"hovered": active_user.font_color},
+                        # show_checkbox_column=True,
+                        columns=[
+                            ft.DataColumn(ft.Text("User ID"), numeric=True),
+                            ft.DataColumn(ft.Text("Fullname")),
+                            ft.DataColumn(ft.Text("Username")),
+                            ft.DataColumn(ft.Text("Email")),
+                            ft.DataColumn(ft.Text("Admin User"))
+                        ],
+                        rows=self.user_table_rows
+                    )
+                    self.user_edit_column = ft.Column(controls=[edit_user_text, self.user_table])
+                    self.user_edit_container = ft.Container(content=self.user_edit_column)
+                    self.user_edit_container.padding = padding.only(left=70, right=50)
+
+                def user_table_update(self, e):
+                    user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
+                    self.user_table_rows.clear()
+                    self.user_table.rows.clear()
+
+                    for entry in user_information:
+                        user_id = entry['UserID']
+                        fullname = entry['Fullname']
+                        username = entry['Username']
+                        email = entry['Email']
+                        is_admin_numeric = entry['IsAdmin']
+                        if is_admin_numeric == 1:
+                            is_admin = 'yes'
+                        else:
+                            is_admin = 'no'
+
+                        # Create a new data row with the user information
+                        row = ft.DataRow(
+                            cells=[
+                                ft.DataCell(ft.Text(user_id)),
+                                ft.DataCell(ft.Text(fullname)),
+                                ft.DataCell(ft.Text(username)),
+                                ft.DataCell(ft.Text(email)),
+                                ft.DataCell(ft.Text(str(is_admin))),
+                            ],
+                            on_select_changed=(
+                                lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
+                                lambda x: (modify_user.open_edit_user(username_copy, is_admin_numeric_copy,
+                                                                     fullname_copy, email_copy, user_id_copy),
+                                self.user_table_update)
+                                )(username, is_admin_numeric, fullname, email, user_id)
+                        )
+
+                        self.user_table_rows.append(row)
+                    self.user_table.rows=self.user_table_rows
+                    self.page.update()
+
                 def guest_user_change(self, e):
                     api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
@@ -3979,7 +4078,8 @@ def main(page: ft.Page, session_value=None):
                 new_user.verify_user_values(),
                 # new_user.popup_user_values(e),
                 new_user.create_user(), 
-                new_user.user_created_prompt()))
+                new_user.user_created_prompt(),
+                settings_data.user_table_update))
             user_column = ft.Column(
                             controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
                         )
@@ -3990,61 +4090,61 @@ def main(page: ft.Page, session_value=None):
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
             #User Table Setup - Admin only
-            edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=16)
-
-            user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
-            user_table_rows = []
-
-            for entry in user_information:
-                user_id = entry['UserID']
-                fullname = entry['Fullname']
-                username = entry['Username']
-                email = entry['Email']
-                is_admin_numeric = entry['IsAdmin']
-                if is_admin_numeric == 1:
-                    is_admin = 'yes'
-                else: is_admin = 'no'
-
-                
-                # Create a new data row with the user information
-                row = ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(user_id)),
-                        ft.DataCell(ft.Text(fullname)),
-                        ft.DataCell(ft.Text(username)),
-                        ft.DataCell(ft.Text(email)),
-                        ft.DataCell(ft.Text(str(is_admin))),
-                    ],
-                    on_select_changed=(lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy: 
-                        lambda x: modify_user.open_edit_user(username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy)
-                    )(username, is_admin_numeric, fullname, email, user_id)
-                )
-                
-                # Append the row to the list of data rows
-                user_table_rows.append(row)
-
-            user_table = ft.DataTable(
-                bgcolor=active_user.main_color, 
-                border=ft.border.all(2, active_user.main_color),
-                border_radius=10,
-                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                heading_row_color=active_user.nav_color1,
-                heading_row_height=100,
-                data_row_color={"hovered": active_user.font_color},
-                # show_checkbox_column=True,
-                columns=[
-                ft.DataColumn(ft.Text("User ID"), numeric=True),
-                ft.DataColumn(ft.Text("Fullname")),
-                ft.DataColumn(ft.Text("Username")),
-                ft.DataColumn(ft.Text("Email")),
-                ft.DataColumn(ft.Text("Admin User"))
-            ],
-                rows=user_table_rows
-                )
-            user_edit_column = ft.Column(controls=[edit_user_text, user_table])
-            user_edit_container = ft.Container(content=user_edit_column)
-            user_edit_container.padding=padding.only(left=70, right=50)
+            # edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=16)
+            #
+            # user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
+            # user_table_rows = []
+            #
+            # for entry in user_information:
+            #     user_id = entry['UserID']
+            #     fullname = entry['Fullname']
+            #     username = entry['Username']
+            #     email = entry['Email']
+            #     is_admin_numeric = entry['IsAdmin']
+            #     if is_admin_numeric == 1:
+            #         is_admin = 'yes'
+            #     else: is_admin = 'no'
+            #
+            #
+            #     # Create a new data row with the user information
+            #     row = ft.DataRow(
+            #         cells=[
+            #             ft.DataCell(ft.Text(user_id)),
+            #             ft.DataCell(ft.Text(fullname)),
+            #             ft.DataCell(ft.Text(username)),
+            #             ft.DataCell(ft.Text(email)),
+            #             ft.DataCell(ft.Text(str(is_admin))),
+            #         ],
+            #         on_select_changed=(lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
+            #             lambda x: modify_user.open_edit_user(username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy)
+            #         )(username, is_admin_numeric, fullname, email, user_id)
+            #     )
+            #
+            #     # Append the row to the list of data rows
+            #     user_table_rows.append(row)
+            #
+            # user_table = ft.DataTable(
+            #     bgcolor=active_user.main_color,
+            #     border=ft.border.all(2, active_user.main_color),
+            #     border_radius=10,
+            #     vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+            #     horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+            #     heading_row_color=active_user.nav_color1,
+            #     heading_row_height=100,
+            #     data_row_color={"hovered": active_user.font_color},
+            #     # show_checkbox_column=True,
+            #     columns=[
+            #     ft.DataColumn(ft.Text("User ID"), numeric=True),
+            #     ft.DataColumn(ft.Text("Fullname")),
+            #     ft.DataColumn(ft.Text("Username")),
+            #     ft.DataColumn(ft.Text("Email")),
+            #     ft.DataColumn(ft.Text("Admin User"))
+            # ],
+            #     rows=user_table_rows
+            #     )
+            # user_edit_column = ft.Column(controls=[edit_user_text, user_table])
+            # user_edit_container = ft.Container(content=user_edit_column)
+            # user_edit_container.padding=padding.only(left=70, right=50)
 
             # Download Enable/Disable
 
@@ -4216,7 +4316,7 @@ def main(page: ft.Page, session_value=None):
                         div_row,
                         admin_setting_text,
                         user_row_container,
-                        user_edit_container,
+                        settings_data.user_edit_container,
                         div_row,
                         pw_reset_container,
                         email_edit_container,
@@ -4759,6 +4859,7 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Changed! Leave the page and return to see changes."))
                 page.snack_bar.open = True
                 page.update()
+
 
         def delete_user(self, user_id):
             admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)

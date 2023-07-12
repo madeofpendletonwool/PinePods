@@ -437,9 +437,12 @@ async def api_check_usernames(cnx = Depends(get_database_connection), api_key: s
     result = database_functions.functions.check_usernames(cnx, username)
     return {"username_exists": result}
 
+class UserValues(BaseModel):
+    user_values: List[str]
+
 @app.post("/api/data/add_user")
-async def api_add_user(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_values: List[str] = Body(...)):
-    database_functions.functions.add_user(cnx, tuple(user_values))
+async def api_add_user(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_values: UserValues = Body(...)):
+    database_functions.functions.add_user(cnx, tuple(user_values.user_values))
     return {"detail": "User added."}
 
 @app.put("/api/data/set_fullname/{user_id}")
