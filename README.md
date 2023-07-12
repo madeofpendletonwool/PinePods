@@ -334,6 +334,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
 - [x] Option to remove from history
 - [x] Reload not needed to add and remove episodes from pages
+- [x] Add mfa to dynamic settings class
+- [x] Add new users to dynamic settings class
+- [x] Add Email settings to dynamic users class
 
 ### Pre-beta version
 
@@ -345,9 +348,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
 - [ ] On top bar cutoff add a search button that opens a search prompt
-- [ ] Add mfa to dynamic settings class
-- [ ] Add new users to dynamic settings class
-- [ ] Add Email settings to dynamic users class
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [ ] Queue currently somewhat broken
 - [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow

@@ -3643,6 +3643,10 @@ def main(page: ft.Page, session_value=None):
                     # New User Creation Setup
                     self.user_table_rows = []
                     self.user_table_load()
+                    # Email Settings Setup
+                    self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+                    self.email_table_rows = []
+                    self.email_table_load()
 
                 def update_mfa_status(self):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
@@ -3859,6 +3863,107 @@ def main(page: ft.Page, session_value=None):
                     # self.mfa_container.controls.add(self.mfa_column)
                     self.page.update()
 
+                def email_table_load(self):
+                    server_info = self.email_information['Server_Name'] + ':' + str(self.email_information['Server_Port'])
+                    from_email = self.email_information['From_Email']
+                    send_mode = self.email_information['Send_Mode']
+                    encryption = self.email_information['Encryption']
+                    auth = self.email_information['Auth_Required']
+
+                    if auth == 1:
+                        auth_user = self.email_information['Username']
+                    else:
+                        auth_user = 'Auth not defined!'
+
+                    # Create a new data row with the user information
+                    row = ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(server_info)),
+                            ft.DataCell(ft.Text(from_email)),
+                            ft.DataCell(ft.Text(send_mode)),
+                            ft.DataCell(ft.Text(encryption)),
+                            ft.DataCell(ft.Text(auth_user))
+                        ]
+                    )
+
+                    # Append the row to the list of data rows
+                    self.email_table_rows.append(row)
+
+                    self.email_table = ft.DataTable(
+                        bgcolor=active_user.main_color,
+                        border=ft.border.all(2, active_user.main_color),
+                        border_radius=10,
+                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                        heading_row_color=active_user.nav_color1,
+                        heading_row_height=100,
+                        data_row_color={"hovered": active_user.font_color},
+                        # show_checkbox_column=True,
+                        columns=[
+                            ft.DataColumn(ft.Text("Server Name"), numeric=True),
+                            ft.DataColumn(ft.Text("From Email")),
+                            ft.DataColumn(ft.Text("Send Mode")),
+                            ft.DataColumn(ft.Text("Encryption?")),
+                            ft.DataColumn(ft.Text("Username"))
+                        ],
+                        rows=self.email_table_rows
+                    )
+                    pw_reset_current = Text('Existing Email Server Values:', color=active_user.font_color, size=16)
+                    self.email_edit_column = ft.Column(controls=[pw_reset_current, self.email_table])
+                    self.email_edit_container = ft.Container(content=self.email_edit_column)
+                    self.email_edit_container.padding = padding.only(left=70, right=50)
+
+                def create_email_table(self):
+                    return ft.DataTable(
+                        bgcolor=active_user.main_color,
+                        border=ft.border.all(2, active_user.main_color),
+                        border_radius=10,
+                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                        heading_row_color=active_user.nav_color1,
+                        heading_row_height=100,
+                        data_row_color={"hovered": active_user.font_color},
+                        # show_checkbox_column=True,
+                        columns=[
+                            ft.DataColumn(ft.Text("Server Name"), numeric=True),
+                            ft.DataColumn(ft.Text("From Email")),
+                            ft.DataColumn(ft.Text("Send Mode")),
+                            ft.DataColumn(ft.Text("Encryption?")),
+                            ft.DataColumn(ft.Text("Username"))
+                        ],
+                        rows=self.email_table_rows
+                    )
+
+                def email_table_update(self):
+                    self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+                    self.email_table_rows.clear()
+                    server_info = self.email_information['Server_Name'] + ':' + str(self.email_information['Server_Port'])
+                    from_email = self.email_information['From_Email']
+                    send_mode = self.email_information['Send_Mode']
+                    encryption = self.email_information['Encryption']
+                    auth = self.email_information['Auth_Required']
+
+                    if auth == 1:
+                        auth_user = self.email_information['Username']
+                    else:
+                        auth_user = 'Auth not defined!'
+
+                    # Create a new data row with the user information
+                    row = ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(server_info)),
+                            ft.DataCell(ft.Text(from_email)),
+                            ft.DataCell(ft.Text(send_mode)),
+                            ft.DataCell(ft.Text(encryption)),
+                            ft.DataCell(ft.Text(auth_user))
+                        ]
+                    )
+                    # Append the row to the list of data rows
+                    self.email_table_rows.append(row)
+                    self.email_table = self.create_email_table()
+                    self.page.update()
+
+
                 def user_table_load(self):
                     edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):',
                                              color=active_user.font_color, size=16)
@@ -3885,11 +3990,12 @@ def main(page: ft.Page, session_value=None):
                                 ft.DataCell(ft.Text(str(is_admin))),
                             ],
                             on_select_changed=(
-                                lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
+                                lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy,
+                                       user_id_copy:
                                 lambda x: (modify_user.open_edit_user(username_copy, is_admin_numeric_copy,
-                                                                     fullname_copy, email_copy, user_id_copy),
-                                self.user_table_update)
-                                )(username, is_admin_numeric, fullname, email, user_id)
+                                                                      fullname_copy, email_copy, user_id_copy),
+                                           self.user_table_update())
+                            )(username, is_admin_numeric, fullname, email, user_id)
                         )
 
                         # Append the row to the list of data rows
@@ -3918,10 +4024,9 @@ def main(page: ft.Page, session_value=None):
                     self.user_edit_container = ft.Container(content=self.user_edit_column)
                     self.user_edit_container.padding = padding.only(left=70, right=50)
 
-                def user_table_update(self, e):
+                def user_table_update(self):
                     user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
                     self.user_table_rows.clear()
-                    self.user_table.rows.clear()
 
                     for entry in user_information:
                         user_id = entry['UserID']
@@ -3947,13 +4052,34 @@ def main(page: ft.Page, session_value=None):
                                 lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
                                 lambda x: (modify_user.open_edit_user(username_copy, is_admin_numeric_copy,
                                                                      fullname_copy, email_copy, user_id_copy),
-                                self.user_table_update)
+                                self.user_table_update())
                                 )(username, is_admin_numeric, fullname, email, user_id)
                         )
 
                         self.user_table_rows.append(row)
-                    self.user_table.rows=self.user_table_rows
+                    self.user_table = self.create_user_table()
                     self.page.update()
+
+                def create_user_table(self):
+                    return ft.DataTable(
+                        bgcolor=active_user.main_color,
+                        border=ft.border.all(2, active_user.main_color),
+                        border_radius=10,
+                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                        heading_row_color=active_user.nav_color1,
+                        heading_row_height=100,
+                        data_row_color={"hovered": active_user.font_color},
+                        columns=[
+                            ft.DataColumn(ft.Text("User ID"), numeric=True),
+                            ft.DataColumn(ft.Text("Fullname")),
+                            ft.DataColumn(ft.Text("Username")),
+                            ft.DataColumn(ft.Text("Email")),
+                            ft.DataColumn(ft.Text("Admin User"))
+                        ],
+                        rows=self.user_table_rows
+                    )
+
 
                 def guest_user_change(self, e):
                     api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
@@ -4079,7 +4205,7 @@ def main(page: ft.Page, session_value=None):
                 # new_user.popup_user_values(e),
                 new_user.create_user(), 
                 new_user.user_created_prompt(),
-                settings_data.user_table_update))
+                settings_data.user_table_update()))
             user_column = ft.Column(
                             controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
                         )
@@ -4089,69 +4215,7 @@ def main(page: ft.Page, session_value=None):
                             controls=[user_column])
             user_row_container = ft.Container(content=user_row)
             user_row_container.padding=padding.only(left=70, right=50)
-            #User Table Setup - Admin only
-            # edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):', color=active_user.font_color, size=16)
-            #
-            # user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
-            # user_table_rows = []
-            #
-            # for entry in user_information:
-            #     user_id = entry['UserID']
-            #     fullname = entry['Fullname']
-            #     username = entry['Username']
-            #     email = entry['Email']
-            #     is_admin_numeric = entry['IsAdmin']
-            #     if is_admin_numeric == 1:
-            #         is_admin = 'yes'
-            #     else: is_admin = 'no'
-            #
-            #
-            #     # Create a new data row with the user information
-            #     row = ft.DataRow(
-            #         cells=[
-            #             ft.DataCell(ft.Text(user_id)),
-            #             ft.DataCell(ft.Text(fullname)),
-            #             ft.DataCell(ft.Text(username)),
-            #             ft.DataCell(ft.Text(email)),
-            #             ft.DataCell(ft.Text(str(is_admin))),
-            #         ],
-            #         on_select_changed=(lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
-            #             lambda x: modify_user.open_edit_user(username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy)
-            #         )(username, is_admin_numeric, fullname, email, user_id)
-            #     )
-            #
-            #     # Append the row to the list of data rows
-            #     user_table_rows.append(row)
-            #
-            # user_table = ft.DataTable(
-            #     bgcolor=active_user.main_color,
-            #     border=ft.border.all(2, active_user.main_color),
-            #     border_radius=10,
-            #     vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-            #     horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-            #     heading_row_color=active_user.nav_color1,
-            #     heading_row_height=100,
-            #     data_row_color={"hovered": active_user.font_color},
-            #     # show_checkbox_column=True,
-            #     columns=[
-            #     ft.DataColumn(ft.Text("User ID"), numeric=True),
-            #     ft.DataColumn(ft.Text("Fullname")),
-            #     ft.DataColumn(ft.Text("Username")),
-            #     ft.DataColumn(ft.Text("Email")),
-            #     ft.DataColumn(ft.Text("Admin User"))
-            # ],
-            #     rows=user_table_rows
-            #     )
-            # user_edit_column = ft.Column(controls=[edit_user_text, user_table])
-            # user_edit_container = ft.Container(content=user_edit_column)
-            # user_edit_container.padding=padding.only(left=70, right=50)
-
-            # Download Enable/Disable
-
-            # if download_status_bool == True:
-            #     download_status = 'enabled'
-            # else:
-            #     download_status = 'disabled'
+            # Download Disable Settings
             settings_data.disable_download_text = ft.Text('Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):', color=active_user.font_color, size=16)
             download_info_col = ft.Column(controls=[settings_data.disable_download_text, settings_data.disable_download_notify, settings_data.download_info_button])
             download_info = ft.Container(content=download_info_col)
@@ -4205,7 +4269,8 @@ def main(page: ft.Page, session_value=None):
             pw_reset_auth_user.disabled = True
             pw_reset_auth_pw.disabled = True
             pw_reset_test = ft.ElevatedButton(text="Test Send and Submit", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (
-                new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value)
+                new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value, pw_reset_send_mode.value, pw_reset_encryption.value, pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value),
+                settings_data.email_table_update()
                 ))
             pw_reset_server_row = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -4219,7 +4284,6 @@ def main(page: ft.Page, session_value=None):
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             alignment=ft.MainAxisAlignment.START,
                             controls=[pw_reset_auth_user, pw_reset_auth_pw])
-            pw_reset_current = Text('Existing Email Server Values:', color=active_user.font_color, size=16)
 
             pw_reset_buttons = ft.Row(
                             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -4237,58 +4301,57 @@ def main(page: ft.Page, session_value=None):
             pw_reset_container.padding=padding.only(left=70, right=50)
 
             #Email Table Setup - Admin only
-            email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-            email_table_rows = []
 
-            server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
-            from_email = email_information['From_Email']
-            send_mode = email_information['Send_Mode']
-            encryption = email_information['Encryption']
-            auth = email_information['Auth_Required']
-
-            if auth == 1:
-                auth_user = email_information['Username']
-            else:
-                auth_user = 'Auth not defined!'
-
-
-                
-            # Create a new data row with the user information
-            row = ft.DataRow(
-                cells=[
-                    ft.DataCell(ft.Text(server_info)),
-                    ft.DataCell(ft.Text(from_email)),
-                    ft.DataCell(ft.Text(send_mode)),
-                    ft.DataCell(ft.Text(encryption)),
-                    ft.DataCell(ft.Text(auth_user))
-                ]
-            )
-            
-            # Append the row to the list of data rows
-            email_table_rows.append(row)
-
-            email_table = ft.DataTable(
-                bgcolor=active_user.main_color, 
-                border=ft.border.all(2, active_user.main_color),
-                border_radius=10,
-                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                heading_row_color=active_user.nav_color1,
-                heading_row_height=100,
-                data_row_color={"hovered": active_user.font_color},
-                # show_checkbox_column=True,
-                columns=[
-                ft.DataColumn(ft.Text("Server Name"), numeric=True),
-                ft.DataColumn(ft.Text("From Email")),
-                ft.DataColumn(ft.Text("Send Mode")),
-                ft.DataColumn(ft.Text("Encryption?")),
-                ft.DataColumn(ft.Text("Username"))
-            ],
-                rows=email_table_rows
-                )
-            email_edit_column = ft.Column(controls=[pw_reset_current, email_table])
-            email_edit_container = ft.Container(content=email_edit_column)
-            email_edit_container.padding=padding.only(left=70, right=50)
+            #
+            # server_info = email_information['Server_Name'] + ':' + str(email_information['Server_Port'])
+            # from_email = email_information['From_Email']
+            # send_mode = email_information['Send_Mode']
+            # encryption = email_information['Encryption']
+            # auth = email_information['Auth_Required']
+            #
+            # if auth == 1:
+            #     auth_user = email_information['Username']
+            # else:
+            #     auth_user = 'Auth not defined!'
+            #
+            #
+            #
+            # # Create a new data row with the user information
+            # row = ft.DataRow(
+            #     cells=[
+            #         ft.DataCell(ft.Text(server_info)),
+            #         ft.DataCell(ft.Text(from_email)),
+            #         ft.DataCell(ft.Text(send_mode)),
+            #         ft.DataCell(ft.Text(encryption)),
+            #         ft.DataCell(ft.Text(auth_user))
+            #     ]
+            # )
+            #
+            # # Append the row to the list of data rows
+            # email_table_rows.append(row)
+            #
+            # email_table = ft.DataTable(
+            #     bgcolor=active_user.main_color,
+            #     border=ft.border.all(2, active_user.main_color),
+            #     border_radius=10,
+            #     vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+            #     horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+            #     heading_row_color=active_user.nav_color1,
+            #     heading_row_height=100,
+            #     data_row_color={"hovered": active_user.font_color},
+            #     # show_checkbox_column=True,
+            #     columns=[
+            #     ft.DataColumn(ft.Text("Server Name"), numeric=True),
+            #     ft.DataColumn(ft.Text("From Email")),
+            #     ft.DataColumn(ft.Text("Send Mode")),
+            #     ft.DataColumn(ft.Text("Encryption?")),
+            #     ft.DataColumn(ft.Text("Username"))
+            # ],
+            #     rows=email_table_rows
+            #     )
+            # email_edit_column = ft.Column(controls=[pw_reset_current, email_table])
+            # email_edit_container = ft.Container(content=email_edit_column)
+            # email_edit_container.padding=padding.only(left=70, right=50)
 
             # Check if admin settings should be displayed 
             div_row = ft.Divider(color=active_user.accent_color)
@@ -4298,9 +4361,9 @@ def main(page: ft.Page, session_value=None):
             else:
                 admin_setting_text.visible = False
                 user_row_container.visible = False
-                user_edit_container.visible = False
+                settings_data.user_edit_container.visible = False
                 pw_reset_container.visible = False
-                email_edit_container.visible = False
+                settings_data.email_edit_container.visible = False
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
@@ -4319,7 +4382,7 @@ def main(page: ft.Page, session_value=None):
                         settings_data.user_edit_container,
                         div_row,
                         pw_reset_container,
-                        email_edit_container,
+                        settings_data.email_edit_container,
                         div_row,
                         guest_info,
                         div_row,
@@ -4576,6 +4639,7 @@ def main(page: ft.Page, session_value=None):
             self.api_id = 0
             self.mfa_secret = None
             self.downloading = []
+            self.auth_enabled = 0
 
     # New User Stuff ----------------------------
 
@@ -4765,7 +4829,11 @@ def main(page: ft.Page, session_value=None):
 
     # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
-            def close_modify_dlg(e):
+            def close_modify_dlg():
+                modify_user_dlg.open = False
+                self.page.update()
+
+            def close_modify_dlg_auto(e):
                 modify_user_dlg.open = False
                 page.update()
 
@@ -4806,7 +4874,7 @@ def main(page: ft.Page, session_value=None):
                 actions=[
                     ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
                         modify_user.delete_user(user_id),
-                        close_modify_dlg
+                        close_modify_dlg()
                         )),
                     ft.TextButton("Confirm Changes", on_click=lambda x: (
                     modify_user.set_username(user_modify_username.value), 
@@ -4814,10 +4882,11 @@ def main(page: ft.Page, session_value=None):
                     modify_user.set_email(user_modify_email.value),
                     modify_user.set_name(user_modify_name.value),
                     modify_user.set_admin(user_modify_admin.value),
-                    modify_user.change_user_attributes()
+                    modify_user.change_user_attributes(),
+                    close_modify_dlg()
                     )),
 
-                    ft.TextButton("Cancel", on_click=close_modify_dlg)
+                    ft.TextButton("Cancel", on_click=close_modify_dlg_auto)
                     ],
                 actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
             )
@@ -4858,7 +4927,7 @@ def main(page: ft.Page, session_value=None):
             user_changed = True
 
             if user_changed == True:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Changed! Leave the page and return to see changes."))
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Changed!"))
                 page.snack_bar.open = True
                 page.update()
 

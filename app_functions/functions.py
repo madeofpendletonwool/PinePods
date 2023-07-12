@@ -113,6 +113,8 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
         return 'Connection Refused: The server refused the connection.'
     except TimeoutError:
         return 'Timeout Error: The connection to the server timed out.'
+    except ssl.SSLError:
+        return 'SSL Wrong Version Number. Try another ssl type?'
 
 
 if __name__ == "__main__":
