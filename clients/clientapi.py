@@ -26,6 +26,7 @@ from typing import Any
 import argparse
 import sys
 from pyotp import TOTP
+import base64
 
 # Internal Modules
 sys.path.append('/pinepods')
