@@ -1222,12 +1222,6 @@ def main(page: ft.Page, session_value=None):
             """
             self.player.set_time(int(second * 1000))
 
-
-
-
-
-
-
 #---Flet Various Elements----------------------------------------------------------------
     def close_invalid_dlg(e):
         username_invalid_dlg.open = False
