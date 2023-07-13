@@ -262,9 +262,7 @@ def main(page: ft.Page, session_value=None):
             self.page = page
 
         def api_verify(self, server_name, api_value, retain_session=False):
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            self.page.overlay.append(progress_stack)
+            # pr_instance.touch_stack()
             self.page.update()
             url = server_name + "/api/data"
             check_url = server_name + "/api/pinepods_check"
@@ -280,7 +278,7 @@ def main(page: ft.Page, session_value=None):
                 check_response = requests.get(check_url, timeout=10)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    self.page.overlay.remove(progress_stack)
+                    pr_instance.rm_stack()
                     self.page.update()
                     return
 
@@ -288,7 +286,7 @@ def main(page: ft.Page, session_value=None):
 
                 if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    self.page.overlay.remove(progress_stack)
+                    pr_instance.rm_stack()
                     self.page.update()
                     return
 
@@ -341,7 +339,7 @@ def main(page: ft.Page, session_value=None):
                     start_config(self.page)
                 else:
                     self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
-            self.page.overlay.remove(progress_stack)
+            # pr_instance.rm_stack()
             self.page.update()
 
         def show_error_snackbar(self, message):
@@ -357,14 +355,12 @@ def main(page: ft.Page, session_value=None):
     app_api = API(page)
 
     def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count, pod_feed_url, pod_website, page):
-        pr = ft.ProgressRing()
-        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-        page.overlay.append(progress_stack)
+        pr_instance.touch_stack()
         page.update()
         categories = json.dumps(pod_categories)
         podcast_values = (pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url, pod_website, active_user.user_id)
         return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values, active_user.user_id)
-        page.overlay.remove(progress_stack)
+        pr_instance.rm_stack()
         if return_value == True:
             page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
             page.snack_bar.open = True
@@ -528,9 +524,7 @@ def main(page: ft.Page, session_value=None):
 
 
     def locally_download_episode(url, title, page):
-        pr = ft.ProgressRing()
-        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-        page.overlay.append(progress_stack)
+        pr_instance.touch_stack()
         page.update()
         # First, retrieve the episode's metadata from the database
         episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title, active_user.user_id)
@@ -544,7 +538,7 @@ def main(page: ft.Page, session_value=None):
         save_episode_metadata(episode)
         page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode Downloaded!"))
         page.snack_bar.open = True
-        page.overlay.remove(progress_stack)
+        pr_instance.rm_stack()
         page.update()
 
 
@@ -573,9 +567,7 @@ def main(page: ft.Page, session_value=None):
             active_user.downloading.append(episode['EpisodeURL'])
 
         # Create a progress ring and add it to the page
-        pr = ft.ProgressRing()
-        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-        page.overlay.append(progress_stack)
+        pr_instance.touch_stack()
         page.update()
 
         # For each episode in the podcast, try to download it
@@ -605,7 +597,8 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         # When all episodes are downloaded, remove the progress ring
-        page.overlay.remove(progress_stack)
+        if pr_instance.active_pr == True:
+            pr_instance.rm_stack()
         page.update()
 
     def download_full_podcast_locally(podcast_name, pod_feed, page):
@@ -617,9 +610,7 @@ def main(page: ft.Page, session_value=None):
             for episode in episodes:
                 active_user.downloading.append(episode['EpisodeURL'])
 
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
+            pr_instance.touch_stack()
             page.update()
 
             # Loop over each episode and download it
@@ -642,7 +633,7 @@ def main(page: ft.Page, session_value=None):
 
             page.snack_bar = ft.SnackBar(content=ft.Text(f"All episodes of {podcast_name} downloaded!"))
             page.snack_bar.open = True
-            page.overlay.remove(progress_stack)
+            pr_instance.rm_stack()
             page.update()
         else:
             print(f"No episodes found for podcast {podcast_name}")
@@ -848,9 +839,7 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
             else:
                 self.loading_audio = True
-                pr = ft.ProgressRing()
-                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-                page.overlay.append(progress_stack)
+                pr_instance.touch_stack()
                 page.update()
                 # release audio_element if it exists
                 if self.audio_element:
@@ -899,7 +888,7 @@ def main(page: ft.Page, session_value=None):
                 if tries == max_retries:
                     page.snack_bar = ft.SnackBar(content=ft.Text(f"Unable to load episode. Perhaps it no longer exists?"))
                     page.snack_bar.open = True
-                    page.overlay.remove(progress_stack)
+                    pr_instance.rm_stack()
                     self.audio_element.release()
                     self.page.update()
                     return
@@ -924,7 +913,7 @@ def main(page: ft.Page, session_value=None):
                 self.length = total_length
                 self.toggle_current_status()
 
-                page.overlay.remove(progress_stack)
+                pr_instance.rm_stack()
                 page.update()
                 self.loading_audio = False
                 self.local = False
@@ -1295,11 +1284,7 @@ def main(page: ft.Page, session_value=None):
         page.go(top_view.route)
 
     def open_poddisplay(e):
-        pr = ft.ProgressRing()
-        global progress_stack
-        progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-        page.overlay.append(progress_stack)
-        page.update()
+        pr_instance.touch_stack()
         page.go("/poddisplay")
 
     def open_settings(e):
@@ -1447,9 +1432,7 @@ def main(page: ft.Page, session_value=None):
                         page.snack_bar.open = True
                         page.update()
                 # Create a progress ring while email sends
-                pr = ft.ProgressRing()
-                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-                page.overlay.append(progress_stack)
+                pr_instance.touch_stack()
                 create_self_service_pw_dlg.open = False
                 page.update()
                 # Send the reset code via email
@@ -1487,7 +1470,7 @@ def main(page: ft.Page, session_value=None):
                 )
                 page.dialog = code_pw_dlg
                 code_pw_dlg.open = True
-                page.overlay.remove(progress_stack)
+                pr_instance.rm_stack()
                 page.update()
 
             else:
@@ -1555,12 +1538,16 @@ def main(page: ft.Page, session_value=None):
             self.pr = ft.ProgressRing()
             self.progress_stack = ft.Stack([self.pr], bottom=25, right=30, left=20, expand=True)
             self.page = page
+            self.active_pr = False
 
         def touch_stack(self):
             self.page.overlay.append(self.progress_stack)
+            self.active_pr = True
 
         def rm_stack(self):
-            self.page.overlay.remove(self.progress_stack)
+            if self.active_pr:
+                self.page.overlay.remove(self.progress_stack)
+                self.active_pr = False
 
     pr_instance = PR(page)
     class Page_Vars:
@@ -1577,6 +1564,8 @@ def main(page: ft.Page, session_value=None):
                                           )
 
     def route_change(e):
+        if pr_instance.active_pr == True:
+            pr_instance.rm_stack()
         class Pod_View:
             def __init__(self, page):
                 # self.view_list = ft.ListView(divider_thickness=3, auto_scroll=True)
@@ -1647,12 +1636,10 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
             def refresh_podcasts(self, e):
-                pr = ft.ProgressRing()
-                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-                self.page.overlay.append(progress_stack)
+                pr_instance.touch_stack()
                 self.page.update()
                 api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
-                self.page.overlay.remove(progress_stack)
+                pr_instance.rm_stack()
                 if self.page_type == "saved":
                     page_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
                                                                                         active_user.user_id)
@@ -2028,7 +2015,7 @@ def main(page: ft.Page, session_value=None):
                         if connection_test_result is not True:
                             page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
                             page.snack_bar.open = True
-                            page.overlay.remove(progress_stack)
+                            pr_instance.rm_stack()
                             page.update()
                             return  # Do not proceed further if the connection test failed
 
@@ -2281,9 +2268,7 @@ def main(page: ft.Page, session_value=None):
                         audio_container.visible = True
 
                 def refresh_podcasts(self, e):
-                    pr = ft.ProgressRing()
-                    progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-                    self.page.overlay.append(progress_stack)
+                    pr_instance.touch_stack()
                     self.page.update()
                     download_episode_list = api_functions.functions.call_download_episode_list(app_api.url,
                                                                                                app_api.headers,
@@ -2592,14 +2577,69 @@ def main(page: ft.Page, session_value=None):
             download_row_contain = ft.Container(content=download_list.local_download_row_list)
             local_download_row_contain = ft.Container(content=local_list.local_download_row_list)
 
+            # Current Downloads Display
+            class DownloadingDisplay:
+
+                def __init__(self, page):
+                    self.page = page
+                    self.previous_list = None
+                    self.stop_thread = False
+                    self.active_downloader = ft.Text()
+                    self.active_download_count = ft.Text()
+                    self.active_download_column = ft.Column()
+                    self.active_download_container = ft.Container(content=self.active_download_column)
+                    self.active_download_container.padding = padding.only(left=80, right=50)
+
+                    # Start the monitoring thread
+                    self.monitor_thread = threading.Thread(target=self.monitor_changes)
+                    self.monitor_thread.start()
+
+                    # Create initial layout
+                    self.create_downloading_layout()
+
+                def create_downloading_layout(self):
+                    self.active_downloader.value = active_user.downloading[0] if active_user.downloading else "No active downloads"
+                    self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
+                    self.active_download_column.controls.append(self.active_downloader)
+                    self.active_download_column.controls.append(self.active_download_count)
+                    return self.active_download_container
+                    self.page.update()
+
+                def update_downloading_layout(self):
+                    # Update the text elements
+                    self.active_downloader.value = active_user.downloading[
+                        0] if active_user.downloading else "No active downloads"
+                    self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
+                    self.active_downloader.update()
+                    self.active_download_count.update()
+
+                def monitor_changes(self):
+                    while not self.stop_thread:
+                        # If the list has changed, update the downloading list
+                        if active_user.downloading != self.previous_list:
+                            self.update_downloading_layout()
+                            self.previous_list = active_user.downloading.copy()  # make sure to copy the list
+                        time.sleep(1)  # sleep for a while before checking again
+
+                def stop_monitoring(self):
+                    self.stop_thread = True
+
+            current_download_text = ft.Text('Currently Downloading Episodes')
+            current_download_text_con = ft.Container(content=current_download_text)
+            current_download_text_con.padding = padding.only(left=70, right=50)
+            current_downloads = DownloadingDisplay(page)
+            downloading_row = current_downloads.create_downloading_layout()
             # Create search view object
             ep_download_view = ft.View("/downloads",
                                        [
                                            download_list.top_bar,
+                                           current_download_text_con,
+                                           downloading_row,
                                            download_title_row_container,
                                            download_row_contain,
                                            local_download_title_row_container,
-                                           local_download_row_contain
+                                           local_download_row_contain,
+
                                        ]
 
                                        )
@@ -2791,8 +2831,7 @@ def main(page: ft.Page, session_value=None):
             ep_row_contain = ft.Container(content=ep_row_list)
             ep_row_contain.padding = padding.only(left=70, right=50)
 
-            page.overlay.remove(progress_stack)
-            # Create search view object
+            pr_instance.rm_stack()            # Create search view object
             pod_view = ft.View(
                 "/poddisplay",
                 [
@@ -2906,7 +2945,7 @@ def main(page: ft.Page, session_value=None):
                         ])
                         pod_list_row = ft.Container(content=pod_list_row_content)
                         pod_list_row.padding = padding.only(left=70, right=50)
-                        pod_row_list.controls.append(pod_list_row)
+                        self.pod_row_list.controls.append(pod_list_row)
 
                     else:
 
@@ -3013,6 +3052,7 @@ def main(page: ft.Page, session_value=None):
 
                 if source == 'itunes':
                     mapped['title'] = result['collectionName']
+                    mapped['url'] = result['feedUrl']
                     mapped['url'] = result['feedUrl']
                     mapped['link'] = result['collectionViewUrl']
                     mapped['description'] = get_podcast_description(
@@ -4728,9 +4768,7 @@ def main(page: ft.Page, session_value=None):
                 send_email_dlg.open = False
                 page.update()
 
-            pr = ft.ProgressRing()
-            progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-            page.overlay.append(progress_stack)
+            pr_instance.touch_stack()
             page.update()
 
             def save_email_settings(e):
@@ -4767,8 +4805,7 @@ def main(page: ft.Page, session_value=None):
             to_email = active_user.email
             email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body)
 
-            page.overlay.remove(progress_stack)
-
+            pr_instance.rm_stack()
             send_email_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(f"Email Send Test"),
@@ -4997,7 +5034,7 @@ def main(page: ft.Page, session_value=None):
 
         def logout_pinepods(self, e):
             active_user = User(page)
-            page.overlay.remove(self.navbar_stack)
+            pr_instance.rm_stack()
             login_username.visible = True
             login_password.visible = True
             if login_screen == True:
@@ -5010,7 +5047,7 @@ def main(page: ft.Page, session_value=None):
 
         def logout_pinepods_clear_local(self, e):
             active_user = User(page)
-            page.overlay.remove(self.navbar_stack)
+            pr_instance.rm_stack()
             login_username.visible = True
             login_password.visible = True
             if login_screen == True:
@@ -5556,16 +5593,14 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.update()
             else:
-                pr = ft.ProgressRing()
-                progress_stack = ft.Stack([pr], bottom=25, right=30, left=20, expand=True)
-                page.overlay.append(progress_stack)
+                pr_instance.touch_stack()
                 page.update()
                 current_episode.url = url
                 current_episode.title = title
                 current_episode.download_pod()
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
                 page.snack_bar.open = True
-                page.overlay.remove(progress_stack)
+                pr_instance.rm_stack()
                 page.update()
 
     def queue_selected_episode(url, title, artwork, page):
