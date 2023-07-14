@@ -920,7 +920,13 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
                    JOIN Podcasts p ON e.PodcastID = p.PodcastID
                    WHERE e.EpisodeTitle = %s AND e.EpisodeURL = %s AND p.UserID = %s"""
         cursor.execute(query, (episode_title, episode_url, user_id))
-        episode_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
+
+        # Check if the EpisodeID is None
+        if result is None:
+            return False, 0
+
+        episode_id = result[0]
 
         # Check if the user has played the episode before
         query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"

@@ -2589,13 +2589,14 @@ def main(page: ft.Page, session_value=None):
                     self.active_download_column = ft.Column()
                     self.active_download_container = ft.Container(content=self.active_download_column)
                     self.active_download_container.padding = padding.only(left=80, right=50)
+                    self.layout_created = False
+
+                    # Create initial layout
+                    self.create_downloading_layout()
 
                     # Start the monitoring thread
                     self.monitor_thread = threading.Thread(target=self.monitor_changes)
                     self.monitor_thread.start()
-
-                    # Create initial layout
-                    self.create_downloading_layout()
 
                 def create_downloading_layout(self):
                     self.active_downloader.value = active_user.downloading[0] if active_user.downloading else "No active downloads"
@@ -2603,15 +2604,28 @@ def main(page: ft.Page, session_value=None):
                     self.active_download_column.controls.append(self.active_downloader)
                     self.active_download_column.controls.append(self.active_download_count)
                     return self.active_download_container
+                    self.layout_created = True
                     self.page.update()
 
                 def update_downloading_layout(self):
-                    # Update the text elements
-                    self.active_downloader.value = active_user.downloading[
-                        0] if active_user.downloading else "No active downloads"
-                    self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
-                    self.active_downloader.update()
-                    self.active_download_count.update()
+                    if not self.layout_created:
+                        return
+                    else:
+
+                        # Update the text elements
+                        self.active_downloader.value = active_user.downloading[
+                            0] if active_user.downloading else "No active downloads"
+                        self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
+
+                        self.active_downloader.update()
+                        self.active_download_count.update()
+
+                        # Add this line
+                        self.active_download_container.update()
+
+                        # Update the page
+                        time.sleep(0.1)  # Add a slight delay
+                        self.page.update()
 
                 def monitor_changes(self):
                     while not self.stop_thread:
@@ -2628,7 +2642,7 @@ def main(page: ft.Page, session_value=None):
             current_download_text_con = ft.Container(content=current_download_text)
             current_download_text_con.padding = padding.only(left=70, right=50)
             current_downloads = DownloadingDisplay(page)
-            downloading_row = current_downloads.create_downloading_layout()
+            downloading_row = current_downloads.active_download_container
             # Create search view object
             ep_download_view = ft.View("/downloads",
                                        [
