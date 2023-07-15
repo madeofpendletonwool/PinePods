@@ -755,8 +755,8 @@ def call_first_login_done(url, headers, user_id):
     response = requests.post(url + "/first_login_done", headers=headers, json=data)
 
     if response.status_code == 200:
-        return response.json()["success"]
+        return response.json()["FirstLogin"]
     else:
-        print("Error updating first login status:", response.status_code)
+        print("Error fetching first login status:", response.status_code)
         print("Error message:", response.text)
         return None

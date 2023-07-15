@@ -1864,7 +1864,7 @@ def get_time_info(cnx, user_id):
     cursor.close()
 
     if result:
-        return result['Timezone'], result['HourPref']
+        return result['Timezone'], result['TimeFormat']
     else:
         return None
 
