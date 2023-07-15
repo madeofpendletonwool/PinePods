@@ -2498,12 +2498,12 @@ def main(page: ft.Page, session_value=None):
                                 if num_lines > 15:
                                     local_download_ep_row_content = ft.ResponsiveRow([
                                         ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
-                                        ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button]), episode_check]),
+                                        ft.Column(col={"md": 10}, controls=[episode_check, local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
                                     ])
                                 else:
                                     local_download_ep_row_content = ft.ResponsiveRow([
                                         ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
-                                        ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
+                                        ft.Column(col={"md": 10}, controls=[episode_check, local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
                                     ])
                             else:
                                 local_download_ep_dur = seconds_to_time(local_download_ep_duration)
@@ -2511,12 +2511,12 @@ def main(page: ft.Page, session_value=None):
                                 if num_lines > 15:
                                     local_download_ep_row_content = ft.ResponsiveRow([
                                         ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
-                                        ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
+                                        ft.Column(col={"md": 10}, controls=[episode_check, local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
                                     ])
                                 else:
                                     local_download_ep_row_content = ft.ResponsiveRow([
                                         ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
-                                        ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
+                                        ft.Column(col={"md": 10}, controls=[episode_check, local_download_entry_title, local_download_entry_description, local_download_entry_released, local_download_dur_display, ft.Row(controls=[local_download_ep_play_button, local_download_popup_button])]),
                                     ])
                             local_download_ep_column = ft.Column(
                                 controls=[local_download_ep_row_content, local_download_div_row])
