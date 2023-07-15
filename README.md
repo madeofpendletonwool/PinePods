@@ -339,6 +339,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Add Email settings to dynamic users class
 - [x] logout on client remove saved app cache (Implemented button in settings to clear cache)
 - [x] On top bar cutoff add a search button that opens a search prompt (There's a small version of the search button now)
+- [x] custom timezone entry
+- [x] MFA Display totp secret
+- [x] Fix guest with timezone stuff
 
 ### Pre-beta version
 
@@ -351,12 +354,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [ ] Queue currently somewhat broken
 - [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow
-- [ ] MFA Display totp secret
-- [ ] custom timezone entry
-- [ ] Fix guest with timezone stuff
+- [ ] Fix logout - It's shows navbar still
+- [ ] Allow description view on podcasts not added
+
 
 ### To be added after beta version (Listed in order they will be implemented)
 
+- [ ] Speed up database queries
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
 - [ ] Add highlight to indicate which page you're on

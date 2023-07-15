@@ -50,6 +50,7 @@ from math import pi
 import eyed3
 import traceback
 import pytz
+import shutil
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -452,7 +453,6 @@ def main(page: ft.Page, session_value=None):
 
         # create a provisioning URL that the user can scan with their OTP app
         provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
-
 
         # convert this provisioning URL into a QR code and display it to the user
         # generate the QR code
@@ -1343,12 +1343,7 @@ def main(page: ft.Page, session_value=None):
             ft.ElevatedButton('Open PinePods Documentation Site', on_click=open_doc_site, bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        navbar = NavBar(page).create_navbar()
-        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        active_user.navbar_stack = ft.Stack([navbar], expand=True)
-        page.overlay.append(active_user.navbar_stack)
-        page.update()
-        page.go("/")
+        page.go("/first_time_config")
 
     def go_homelogin(page):
         # navbar.visible = True
@@ -1671,7 +1666,12 @@ def main(page: ft.Page, session_value=None):
                 for values in episodes:
                     ep_title = values['EpisodeTitle']
                     pod_name = values['PodcastName']
-                    pub_date = values['EpisodePubDate']
+                    print(values['EpisodePubDate'])
+                    unfilt_pub_date = values['EpisodePubDate']
+                    # Parse the string into a datetime object
+                    dt = datetime.datetime.strptime(unfilt_pub_date, "%Y-%m-%d")
+                    # Format it in your desired format
+                    pub_date = dt.strftime("%b %d, %Y")
                     ep_desc = values['EpisodeDescription']
                     ep_artwork = values['EpisodeArtwork']
                     ep_url = values['EpisodeURL']
@@ -2412,7 +2412,11 @@ def main(page: ft.Page, session_value=None):
                             local_download_ep_url = podcast['EpisodeURL']
                             local_download_ep_desc = podcast['EpisodeDescription']
                             local_download_ep_artwork = podcast['EpisodeArtwork']
-                            local_download_pub_date = podcast['EpisodePubDate']
+                            unfilt_download_pub_date = podcast['EpisodePubDate']
+                            # Parse the string into a datetime object
+                            dt = datetime.datetime.strptime(unfilt_download_pub_date, "%Y-%m-%d")
+                            # Format it in your desired format
+                            local_download_pub_date = dt.strftime("%b %d, %Y")
                             local_download_ep_duration = podcast['EpisodeDuration']
                             if self.download_type == "server":
                                 local_download_ep_local_url = podcast['DownloadedLocation']
@@ -2777,14 +2781,14 @@ def main(page: ft.Page, session_value=None):
                     dt = parser.parse(entry.published)
 
                     # Convert it to the user's timezone
-                    user_tz = timezone(active_user.timezone)
+                    user_tz = pytz.timezone(active_user.timezone)
                     dt = dt.astimezone(user_tz)
 
                     # Format it in 12-hour or 24-hour format based on the user's preference
                     if active_user.hour_pref == 12:
-                        parsed_release_date = dt.strftime("%I:%M %p")  # 12-hour format
+                        parsed_release_date = dt.strftime("%b %d, %Y %I:%M %p")  # 12-hour format with date
                     else:
-                        parsed_release_date = dt.strftime("%H:%M")  # 24-hour format
+                        parsed_release_date = dt.strftime("%b %d, %Y %H:%M")  # 24-hour format with date
 
                     # get the URL of the episode artwork, or use the podcast image URL if not available
                     parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get(
@@ -3988,6 +3992,8 @@ def main(page: ft.Page, session_value=None):
                                 selectable=True),
                             # ], tight=True),
                             ft.Image(src=img_data_url, width=200, height=200),
+                            ft.Text(f'MFA Secret for manual entry: {active_user.mfa_secret}', selectable=True),
+                            ft.Text('Enter TOTP as the type if doing manual entry', selectable=True),
                             # actions=[
                             mfa_select_row
                         ],
@@ -4511,6 +4517,7 @@ def main(page: ft.Page, session_value=None):
 
             # Check if admin settings should be displayed 
             div_row = ft.Divider(color=active_user.accent_color)
+            user_div_row = ft.Divider(color=active_user.accent_color)
             user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers, int(active_user.user_id))
             if user_is_admin == True:
                 pass
@@ -4525,14 +4532,17 @@ def main(page: ft.Page, session_value=None):
                 self_service_info.visible = False
                 div_row.visible = False
 
+            if active_user.user_id == 0:
+                settings_data.mfa_container.visible = False
+
             # Create search view object
             settings_view = ft.View("/settings",
                     [
                         user_setting_text,
                         theme_row_container,
-                        div_row,
+                        user_div_row,
                         settings_data.mfa_container,
-                        div_row,
+                        user_div_row,
                         settings_data.setting_option_con,
                         div_row,
                         admin_setting_text,
@@ -4632,12 +4642,12 @@ def main(page: ft.Page, session_value=None):
                 pod_feed_desc = ft.Text(ep_desc, color=active_user.font_color)
                 desc_row = ft.Container(content=pod_feed_desc)
                 desc_row.padding=padding.only(left=70, right=50)
-
+            ep_display_defaults = Pod_View(page)
             # Create search view object
             pod_view = ft.View(
                     "/poddisplay",
                     [
-                        top_bar,
+                        ep_display_defaults.top_bar,
                         podcast_row,
                         feed_row,
                         desc_row
@@ -5118,7 +5128,15 @@ def main(page: ft.Page, session_value=None):
                 self.hour_pref = 24
             self.timezone = tz
             api_functions.functions.call_setup_time_info(app_api.url, app_api.headers, self.user_id, self.timezone, self.hour_pref)
-            go_homelogin(page)
+            if self.user_id == 1:
+                navbar = NavBar(page).create_navbar()
+                navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+                self.navbar_stack = ft.Stack([navbar], expand=True)
+                page.overlay.append(self.navbar_stack)
+                page.update()
+                page.go("/")
+            else:
+                go_homelogin(page)
 
         def get_timezone(self):
             self.timezone, self.hour_pref = api_functions.functions.call_get_time_info(app_api.url, app_api.headers, self.user_id)
