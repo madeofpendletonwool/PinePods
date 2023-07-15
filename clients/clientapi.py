@@ -15,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 import secrets
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -671,6 +671,23 @@ async def first_login_done(data: UserLoginUpdate, cnx = Depends(get_database_con
     first_login_status = database_functions.functions.first_login_done(cnx, data.user_id)
     return {"FirstLogin": first_login_status}
 
+class SelectedEpisodesDelete(BaseModel):
+    selected_episodes: List[int] = Field(..., title="List of Episode IDs")
+    user_id: int = Field(..., title="User ID")
+
+@app.post("/api/data/delete_selected_episodes")
+async def delete_selected_episodes(data: SelectedEpisodesDelete, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    status = database_functions.functions.delete_selected_episodes(cnx, data.selected_episodes, data.user_id)
+    return {"status": status}
+
+class SelectedPodcastsDelete(BaseModel):
+    delete_list: List[int] = Field(..., title="List of Podcast IDs")
+    user_id: int = Field(..., title="User ID")
+
+@app.post("/api/data/delete_selected_podcasts")
+async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    status = database_functions.functions.delete_selected_podcasts(cnx, data.delete_list, data.user_id)
+    return {"status": status}
 
 
 if __name__ == '__main__':

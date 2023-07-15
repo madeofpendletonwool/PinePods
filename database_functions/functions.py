@@ -1860,3 +1860,74 @@ def first_login_done(cnx, user_id):
     except Exception as e:
         print("Error fetching first login status:", e)
         return False
+
+
+def delete_selected_episodes(cnx, selected_episodes, user_id):
+    cursor = cnx.cursor()
+    for episode_id in selected_episodes:
+        # Get the download ID and location from the DownloadedEpisodes table
+        query = ("SELECT DownloadID, DownloadedLocation "
+                 "FROM DownloadedEpisodes "
+                 "WHERE EpisodeID = %s AND UserID = %s")
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        if not result:
+            print(f"No matching download found for episode ID {episode_id}")
+            continue
+
+        download_id, downloaded_location = result
+
+        # Delete the downloaded file
+        os.remove(downloaded_location)
+
+        # Remove the entry from the DownloadedEpisodes table
+        query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+        cursor.execute(query, (download_id,))
+        cnx.commit()
+        print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+        # Update UserStats table to decrement EpisodesDownloaded count
+        query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+                 "WHERE UserID = %s")
+        cursor.execute(query, (user_id,))
+
+    cursor.close()
+
+    return "success"
+
+def delete_selected_podcasts(cnx, delete_list, user_id):
+    cursor = cnx.cursor()
+    for podcast_id in delete_list:
+        # Get the download IDs and locations from the DownloadedEpisodes table
+        query = ("SELECT DownloadedEpisodes.DownloadID, DownloadedEpisodes.DownloadedLocation "
+                 "FROM DownloadedEpisodes "
+                 "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
+                 "WHERE Episodes.PodcastID = %s AND DownloadedEpisodes.UserID = %s")
+        cursor.execute(query, (podcast_id, user_id))
+
+        results = cursor.fetchall()
+
+        if not results:
+            print(f"No matching downloads found for podcast ID {podcast_id}")
+            continue
+
+        for result in results:
+            download_id, downloaded_location = result
+
+            # Delete the downloaded file
+            os.remove(downloaded_location)
+
+            # Remove the entry from the DownloadedEpisodes table
+            query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+            cursor.execute(query, (download_id,))
+            cnx.commit()
+            print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+            # Update UserStats table to decrement EpisodesDownloaded count
+            query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+                     "WHERE UserID = %s")
+            cursor.execute(query, (user_id,))
+
+    cursor.close()
+    return "success"

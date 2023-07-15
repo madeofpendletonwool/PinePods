@@ -2302,6 +2302,51 @@ def main(page: ft.Page, session_value=None):
                     self.refresh_downloaded_episodes()
                     self.page.update()
 
+                def delete_local_selected_podcasts(self, podcast_list):
+                    for podcast in podcast_list:
+                        podcast_id = podcast['podcast_id']
+                        episode_list = self.get_episode_list_of_podcast(podcast_id)
+                        self.delete_local_selected_episodes(episode_list)
+
+                    # Refresh the podcast list
+                    self.refresh_downloaded_episodes()
+                    self.page.update()
+
+                def get_episode_list_of_podcast(self, podcast_id):
+                    episode_list = []
+                    for episode in self.download_local_episode_list:
+                        if episode['podcast_id'] == podcast_id:
+                            episode_list.append(episode)
+                    return episode_list
+
+                def delete_local_selected_episodes(self, episode_list):
+                    for episode in episode_list:
+                        url, title, episode_id = episode['url'], episode['title'], episode['episode_id']
+                        try:
+                            os.remove(url)
+                        except OSError as e:
+                            self.page.snack_bar = ft.SnackBar(content=ft.Text("Error: %s : %s" % (url, e.strerror)))
+                            self.page.snack_bar.open = True
+                            self.page.update()
+                            continue
+
+                        metadata_path = os.path.join(metadata_dir, f"{episode_id}.json")
+                        try:
+                            os.remove(metadata_path)
+                        except OSError as e:
+                            self.page.snack_bar = ft.SnackBar(
+                                content=ft.Text(f"Error: %s : %s" % (metadata_path, e.strerror)))
+                            self.page.snack_bar.open = True
+                            self.page.update()
+                            continue
+
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
+                        self.page.snack_bar.open = True
+
+                    # Refresh the podcast list
+                    self.refresh_downloaded_episodes()
+                    self.page.update()
+
                 def define_empty_values(self, name_text, title_text, desc_text):
                     pod_name = name_text
                     ep_title = title_text
@@ -2610,7 +2655,13 @@ def main(page: ft.Page, session_value=None):
                         print(f'local episodes to delete: {local_list.selected_episodes}')
                         print(f'server downloads to delete: {download_list.delete_list}')
                         print(f'server episodes to delete: {download_list.selected_episodes}')
-                        self.selective_delete()
+
+                        # only call selective_delete if there is something to delete
+                        if local_list.delete_list or local_list.selected_episodes or download_list.delete_list or download_list.selected_episodes:
+                            self.selective_delete()
+                        else:
+                            print("No downloads, episodes, or podcasts selected for deletion.")
+
                         self.mass_delete_button.visible = True
                         self.mass_delete_button_perm.visible = False
                         self.mass_delete_button_cancel.visible = False
@@ -2652,15 +2703,32 @@ def main(page: ft.Page, session_value=None):
 
                 def selective_delete(self):
                     # delete selected episodes first
-                    api_functions.functions.call_delete_selected_episodes(app_api.url, app_api.headers,
-                                                                          download_list.selected_episodes,
-                                                                          active_user.user_id)
+                    if download_list.selected_episodes or download_list.delete_list:
+                        # delete selected episodes first
+                        if download_list.selected_episodes:
+                            api_functions.functions.call_delete_selected_episodes(app_api.url, app_api.headers,
+                                                                                  download_list.selected_episodes,
+                                                                                  active_user.user_id)
 
-                    # then delete the entire podcast (if needed)
-                    for podcast in delete_list:
-                        api_functions.functions.call_delete_selected_podcasts(app_api.url, app_api.headers,
-                                                                              download_list.delete_list,
-                                                                              active_user.user_id)
+                        # then delete the entire podcast (if needed)
+                        if download_list.delete_list:
+                            api_functions.functions.call_delete_selected_podcasts(app_api.url, app_api.headers,
+                                                                                  download_list.delete_list,
+                                                                                  active_user.user_id)
+                    else:
+                        print("No episodes or podcasts selected for deletion.")
+
+                    if local_list.selected_episodes or local_list.delete_list:
+                        # delete selected episodes first
+                        if local_list.selected_episodes:
+                            local_list.delete_local_selected_episodes(local_list.selected_episodes)
+
+                        # then delete the entire podcast (if needed)
+                        if local_list.delete_list:
+                            local_list.delete_local_selected_podcasts(local_list.delete_list)
+
+                    else:
+                        print("No episodes or podcasts selected for deletion.")
 
                 def create_downloading_layout(self):
                     self.active_downloader.value = active_user.downloading[

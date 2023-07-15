@@ -761,3 +761,26 @@ def call_first_login_done(url, headers, user_id):
         print("Error fetching first login status:", response.status_code)
         print("Error message:", response.text)
         return None
+
+def call_delete_selected_episodes(url, headers, selected_episodes, user_id):
+    data = {"selected_episodes": selected_episodes, "user_id": user_id}
+    response = requests.post(url + "/delete_selected_episodes", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["status"]
+    else:
+        print("Error deleting selected episodes:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_delete_selected_podcasts(url, headers, delete_list, user_id):
+    data = {"delete_list": delete_list, "user_id": user_id}
+    response = requests.post(url + "/api/data/delete_selected_podcasts", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["status"]
+    else:
+        print("Error deleting selected podcasts:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
