@@ -775,7 +775,7 @@ def call_delete_selected_episodes(url, headers, selected_episodes, user_id):
 
 def call_delete_selected_podcasts(url, headers, delete_list, user_id):
     data = {"delete_list": delete_list, "user_id": user_id}
-    response = requests.post(url + "/api/data/delete_selected_podcasts", headers=headers, json=data)
+    response = requests.post(url + "/delete_selected_podcasts", headers=headers, json=data)
 
     if response.status_code == 200:
         return response.json()["status"]

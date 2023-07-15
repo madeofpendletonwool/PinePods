@@ -356,6 +356,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow
 - [ ] Fix logout - It's shows navbar still
 - [ ] Allow description view on podcasts not added
+- [ ] Check local downloads if already downloaded
 
 
 ### To be added after beta version (Listed in order they will be implemented)
