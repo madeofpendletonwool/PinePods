@@ -642,6 +642,7 @@ def call_clear_guest_data(url, headers):
 
 
 def call_get_episode_metadata(url, headers, episode_url, episode_title, user_id):
+    print(episode_url, episode_title, user_id)
     data = {
         "episode_url": episode_url,
         "episode_title": episode_title,

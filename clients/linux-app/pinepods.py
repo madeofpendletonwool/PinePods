@@ -519,6 +519,12 @@ def main(page: ft.Page, session_value=None):
     def locally_download_episode(url, title, page):
         pr_instance.touch_stack()
         page.update()
+
+        print(type(app_api.url), app_api.url)
+        print(type(app_api.headers), app_api.headers)
+        print(type(active_user.user_id), active_user.user_id)
+        print(type(title), title)
+        print(type(url), url)
         # First, retrieve the episode's metadata from the database
         episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title, active_user.user_id)
         
@@ -743,6 +749,7 @@ def main(page: ft.Page, session_value=None):
                 self.go_home = go_home
                 self.url = url
                 self.name = name or ""
+                self.title = ""
                 self.artwork = ""
                 self.audio_playing = False
                 self.episode_file = url
@@ -787,6 +794,7 @@ def main(page: ft.Page, session_value=None):
                 self.go_home = go_home
                 self.url = url
                 self.name = name or ""
+                self.title = ""
                 self.artwork = ""
                 self.audio_playing = False
                 self.active_pod = self.name
@@ -1137,14 +1145,10 @@ def main(page: ft.Page, session_value=None):
             self.audio_element.seek(time_ms)
 
         def record_history(self):
-            api_functions.functions.call_record_podcast_history(app_api.url, app_api.headers, self.name, active_user.user_id, 0)
+            api_functions.functions.call_record_podcast_history(app_api.url, app_api.headers, self.title, active_user.user_id, 0)
 
         def download_pod(self):
-            api_functions.functions.call_download_podcast(app_api.url, app_api.headers, self.url, self.name, active_user.user_id)
-
-        def delete_pod(self):
-            api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, self.url, self.name, active_user.user_id)
-
+            api_functions.functions.call_download_podcast(app_api.url, app_api.headers, self.url, self.title, active_user.user_id)
 
         def queue_pod(self, url, title, page):
             if self.audio_playing == False:
@@ -2214,7 +2218,8 @@ def main(page: ft.Page, session_value=None):
                                                controls=[self.refresh_ctn, self.banner_button])
                     self.search_row = ft.Row(spacing=25, controls=[page_items.search_pods, page_items.search_location, search_btn])
                     self.delete_list = []
-                    self.download_pod_entry_check = ft.Checkbox()
+                    self.checkboxes = []
+                    self.selected_episodes = []
                     self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                           vertical_alignment=ft.CrossAxisAlignment.START,
                                           controls=[self.settings_row, self.search_row])
@@ -2332,12 +2337,12 @@ def main(page: ft.Page, session_value=None):
                     self.local_download_row_list.controls.append(ep_row)
 
                 def generate_layout(self, episode_list):
-                    def append_deletion(e):
-                        if self.download_pod_entry_check.value:
-                            self.delete_list.append(podcast_name)
-                        else:
-                            self.delete_list.remove(podcast_name)
-                        print(self.delete_list)
+                    # def append_deletion(e):
+                    #     if download_pod_entry_check.value:
+                    #         self.delete_list.append(podcast_id)
+                    #     else:
+                    #         self.delete_list.remove(podcast_id)
+                    #     print(self.delete_list)
 
                     self.local_download_row_list.controls.clear()
                     episode_list.reverse()
@@ -2361,11 +2366,39 @@ def main(page: ft.Page, session_value=None):
                             color=active_user.font_color,
                             size=18)
                         local_download_div_row = ft.Divider(color=active_user.accent_color)
-                        self.download_pod_entry_check.on_change = append_deletion
-                        self.download_pod_entry_check.visible = False
+                        download_pod_entry_check = ft.Checkbox()
+                        self.checkboxes.append(download_pod_entry_check)
+
+                        def append_deletion(e, podcast_id=podcast_id,
+                                            download_pod_entry_check=download_pod_entry_check):
+                            if download_pod_entry_check.value:
+                                self.delete_list.append(podcast_id)
+                            else:
+                                if podcast_id in self.delete_list:  # check if podcast_id is in the list
+                                    self.delete_list.remove(podcast_id)
+                            print(self.delete_list)
+
+                        download_pod_entry_check.on_change = append_deletion
+                        download_pod_entry_check.visible = False
+                        # self.download_pod_entry_check.on_change = append_deletion
+                        # self.download_pod_entry_check.visible = False
 
                         episode_column = ft.Column()
                         for podcast in podcasts:
+                            episode_check = ft.Checkbox()
+                            self.checkboxes.append(episode_check)
+
+                            def toggle_episode(e, episode_id=podcast['EpisodeID'], episode_check=episode_check):
+                                if episode_check.value:
+                                    self.selected_episodes.append(episode_id)
+                                else:
+                                    if episode_id in self.selected_episodes:  # check if episode_id is in the list
+                                        self.selected_episodes.remove(episode_id)
+                                print(self.selected_episodes)
+
+                            episode_check.on_change = toggle_episode
+                            episode_check.visible = False
+
                             # do something with the episode information
                             local_download_ep_title = podcast['EpisodeTitle']
                             local_download_ep_url = podcast['EpisodeURL']
@@ -2465,7 +2498,7 @@ def main(page: ft.Page, session_value=None):
                                 if num_lines > 15:
                                     local_download_ep_row_content = ft.ResponsiveRow([
                                         ft.Column(col={"md": 2}, controls=[local_download_entry_artwork_url]),
-                                        ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button])]),
+                                        ft.Column(col={"md": 10}, controls=[local_download_entry_title, local_download_entry_description, local_download_entry_seemore, local_download_entry_released, local_download_entry_progress, ft.Row(controls=[local_download_ep_play_button, local_download_ep_resume_button, local_download_popup_button]), episode_check]),
                                     ])
                                 else:
                                     local_download_ep_row_content = ft.ResponsiveRow([
@@ -2507,7 +2540,7 @@ def main(page: ft.Page, session_value=None):
                         local_rotate_button.on_click = local_rotate_iteration.animate
 
                         download_pod_data_group = ft.Row(
-                            controls=[download_pod_entry_artwork_url, download_pod_entry_title, local_rotate_button, self.download_pod_entry_check])
+                            controls=[download_pod_entry_artwork_url, download_pod_entry_title, local_rotate_button, download_pod_entry_check])
 
 
                         podcast_group = ft.Column(
@@ -2564,21 +2597,37 @@ def main(page: ft.Page, session_value=None):
                         self.mass_delete_button.visible = False
                         self.mass_delete_button_perm.visible = True
                         self.mass_delete_button_cancel.visible = True
-                        local_list.download_pod_entry_check.visible = True
-                        download_list.download_pod_entry_check.visible = True
+                        for checkbox in local_list.checkboxes:  # assuming local_list is an instance of DownloadLayout
+                            checkbox.visible = True
+                        for checkbox in download_list.checkboxes:  # assuming local_list is an instance of DownloadLayout
+                            checkbox.visible = True
+                        # download_list.download_pod_entry_check.visible = True
                         self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Entered delete mode. Select podcasts or episodes to delete en mass, then confirm your select by clicking the trash can."))
                         self.page.snack_bar.open = True
                         self.page.update()
 
                     def mass_delete_confirm(e):
-                        pass
+                        print(f'local downloads to delete: {local_list.delete_list}')
+                        print(f'local episodes to delete: {local_list.selected_episodes}')
+                        print(f'server downloads to delete: {download_list.delete_list}')
+                        print((f'server episodes to delete: {download_list.selected_episodes}'))
+                        self.mass_delete_button.visible = True
+                        self.mass_delete_button_perm.visible = False
+                        self.mass_delete_button_cancel.visible = False
+                        for checkbox in local_list.checkboxes:  # assuming local_list is an instance of DownloadLayout
+                            checkbox.visible = False
+                        for checkbox in download_list.checkboxes:  # assuming local_list is an instance of DownloadLayout
+                            checkbox.visible = False
+                        self.page.update()
 
                     def mass_delete_cancel(e):
                         self.mass_delete_button.visible = True
                         self.mass_delete_button_perm.visible = False
                         self.mass_delete_button_cancel.visible = False
-                        local_list.download_pod_entry_check.visible = False
-                        download_list.download_pod_entry_check.visible = False
+                        for checkbox in local_list.checkboxes:  # assuming local_list is an instance of DownloadLayout
+                            checkbox.visible = False
+                        for checkbox in download_list.checkboxes:  # assuming local_list is an instance of DownloadLayout
+                            checkbox.visible = False
                         self.page.update()
 
                     self.mass_delete_button = ft.IconButton(icon=ft.icons.DELETE, on_click=mass_delete_mode, bgcolor=active_user.main_color, tooltip="Enter Delete Mode")
@@ -2588,6 +2637,7 @@ def main(page: ft.Page, session_value=None):
                     self.mass_delete_button_cancel = ft.IconButton(icon=ft.icons.CANCEL, on_click=mass_delete_cancel,
                                                             bgcolor=active_user.main_color, tooltip='Cancel Selection and return to normal mode')
                     self.mass_delete_button_cancel.visible = False
+                    self.mass_delete_row = ft.Row(controls=[self.mass_delete_button, self.mass_delete_button_perm, self.mass_delete_button_cancel])
                     self.active_download_row = ft.Row()
                     self.active_download_container = ft.Container(content=self.active_download_column)
                     self.active_download_container.padding = padding.only(left=80, right=50)
@@ -2606,7 +2656,8 @@ def main(page: ft.Page, session_value=None):
                     self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
                     self.active_download_column.controls.append(self.active_downloader)
                     self.active_download_column.controls.append(self.active_download_count)
-                    self.active_download_row.controls.extend([self.active_download_container, self.mass_delete_button, self.mass_delete_button_perm, self.mass_delete_button_cancel])
+                    self.active_download_row.controls.extend([self.active_download_container, self.mass_delete_row])
+                    self.active_download_row.alignment= ft.MainAxisAlignment.SPACE_BETWEEN
 
                     # Set this flag true before calling the page update method
                     self.layout_created = True
@@ -2820,7 +2871,7 @@ def main(page: ft.Page, session_value=None):
                         icon_color=active_user.accent_color,
                         icon_size=40,
                         tooltip="Play Episode",
-                        on_click=lambda x, url=entry_audio_url, title=entry_title,
+                        on_click=lambda x, url=entry_audio_url.value, title=entry_title.value,
                                         artwork=display_art_entry_parsed: play_selected_episode(url, title, artwork)
                     )
                     ep_popup_button = ft.PopupMenuButton(
@@ -2828,7 +2879,7 @@ def main(page: ft.Page, session_value=None):
                                         size=40, tooltip="Play Episode"),
                         items=[
                             ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
-                                             on_click=lambda x, url=entry_audio_url, title=entry_title,
+                                             on_click=lambda x, url=entry_audio_url.value, title=entry_title.value,
                                                              artwork=display_art_entry_parsed: queue_selected_episode(
                                                  url, title, artwork, page)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download",
@@ -2836,12 +2887,12 @@ def main(page: ft.Page, session_value=None):
                                                              title=entry_title: download_selected_episode(url, title,
                                                                                                           page)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download",
-                                             on_click=lambda x, url=entry_audio_url,
-                                                             title=entry_title: locally_download_episode(url, title,
+                                             on_click=lambda x, url=entry_audio_url.value,
+                                                             title=entry_title.value: locally_download_episode(url, title,
                                                                                                          page)),
                             ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
-                                             on_click=lambda x, url=entry_audio_url,
-                                                             title=entry_title: save_selected_episode(url, title, page))
+                                             on_click=lambda x, url=entry_audio_url.value,
+                                                             title=entry_title.value: save_selected_episode(url, title, page))
                         ]
                         )
                     ep_controls_row = ft.Row(controls=[ep_resume_button, ep_popup_button])
