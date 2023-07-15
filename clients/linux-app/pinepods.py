@@ -2303,8 +2303,8 @@ def main(page: ft.Page, session_value=None):
                     self.page.update()
 
                 def delete_local_selected_podcasts(self, podcast_list):
-                    for podcast in podcast_list:
-                        podcast_id = podcast['podcast_id']
+                    for podcast_id in podcast_list:
+                        # podcast_id = podcast['podcast_id']
                         episode_list = self.get_episode_list_of_podcast(podcast_id)
                         self.delete_local_selected_episodes(episode_list)
 
@@ -2314,14 +2314,24 @@ def main(page: ft.Page, session_value=None):
 
                 def get_episode_list_of_podcast(self, podcast_id):
                     episode_list = []
-                    for episode in self.download_local_episode_list:
-                        if episode['podcast_id'] == podcast_id:
+                    for episode in download_local_episode_list:
+                        if episode['PodcastID'] == podcast_id:
                             episode_list.append(episode)
                     return episode_list
 
+                def get_episode_by_id(self, episode_id):
+                    metadata_path = os.path.join(metadata_dir, f"{episode_id}.json")
+                    try:
+                        with open(metadata_path, 'r') as f:
+                            episode_data = json.load(f)
+                        return episode_data
+                    except FileNotFoundError:
+                        print(f"No metadata found for episode with ID {episode_id}.")
+                        return None
+
                 def delete_local_selected_episodes(self, episode_list):
                     for episode in episode_list:
-                        url, title, episode_id = episode['url'], episode['title'], episode['episode_id']
+                        url, title, episode_id = episode['EpisodeLocalPath'], episode['EpisodeTitle'], episode['EpisodeID']
                         try:
                             os.remove(url)
                         except OSError as e:
@@ -2340,7 +2350,7 @@ def main(page: ft.Page, session_value=None):
                             self.page.update()
                             continue
 
-                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episodes have been deleted!"))
                         self.page.snack_bar.open = True
 
                     # Refresh the podcast list
@@ -2660,7 +2670,9 @@ def main(page: ft.Page, session_value=None):
                         if local_list.delete_list or local_list.selected_episodes or download_list.delete_list or download_list.selected_episodes:
                             self.selective_delete()
                         else:
-                            print("No downloads, episodes, or podcasts selected for deletion.")
+                            self.page.snack_bar = ft.SnackBar(content=ft.Text("No downloads, episodes, or podcasts selected for deletion."))
+                            self.page.snack_bar.open = True
+                            self.page.update()
 
                         self.mass_delete_button.visible = True
                         self.mass_delete_button_perm.visible = False
@@ -2721,7 +2733,9 @@ def main(page: ft.Page, session_value=None):
                     if local_list.selected_episodes or local_list.delete_list:
                         # delete selected episodes first
                         if local_list.selected_episodes:
-                            local_list.delete_local_selected_episodes(local_list.selected_episodes)
+                            episode_list = local_list.get_episode_by_id(local_list.selected_episodes)
+                            print(episode_list)
+                            local_list.delete_local_selected_episodes(episode_list)
 
                         # then delete the entire podcast (if needed)
                         if local_list.delete_list:
