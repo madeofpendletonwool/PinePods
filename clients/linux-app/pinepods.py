@@ -2592,7 +2592,6 @@ def main(page: ft.Page, session_value=None):
                     self.active_downloader = ft.Text(color=active_user.font_color)
                     self.active_download_count = ft.Text(color=active_user.font_color)
                     self.active_download_column = ft.Column()
-
                     def mass_delete_mode(e):
                         self.mass_delete_button.visible = False
                         self.mass_delete_button_perm.visible = True
@@ -2611,6 +2610,7 @@ def main(page: ft.Page, session_value=None):
                         print(f'local episodes to delete: {local_list.selected_episodes}')
                         print(f'server downloads to delete: {download_list.delete_list}')
                         print(f'server episodes to delete: {download_list.selected_episodes}')
+                        self.selective_delete()
                         self.mass_delete_button.visible = True
                         self.mass_delete_button_perm.visible = False
                         self.mass_delete_button_cancel.visible = False
@@ -2649,6 +2649,18 @@ def main(page: ft.Page, session_value=None):
                     # Start the monitoring thread
                     self.monitor_thread = threading.Thread(target=self.monitor_changes)
                     self.monitor_thread.start()
+
+                def selective_delete(self):
+                    # delete selected episodes first
+                    api_functions.functions.call_delete_selected_episodes(app_api.url, app_api.headers,
+                                                                          download_list.selected_episodes,
+                                                                          active_user.user_id)
+
+                    # then delete the entire podcast (if needed)
+                    for podcast in delete_list:
+                        api_functions.functions.call_delete_selected_podcasts(app_api.url, app_api.headers,
+                                                                              download_list.delete_list,
+                                                                              active_user.user_id)
 
                 def create_downloading_layout(self):
                     self.active_downloader.value = active_user.downloading[

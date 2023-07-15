@@ -714,41 +714,10 @@ def get_email_settings(cnx):
         return None
 
 
-def delete_podcast(cnx, url, title, user_id):
-
-    cursor = cnx.cursor()
-
-    # Get the download ID from the DownloadedEpisodes table
-    query = ("SELECT DownloadID, DownloadedLocation "
-             "FROM DownloadedEpisodes "
-             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
-    cursor.execute(query, (title, url, user_id))
-    result = cursor.fetchone()
-
-    if not result:
-        print("No matching download found.")
-        return
-
-    download_id, downloaded_location = result
-
-    # Delete the downloaded file
-    os.remove(downloaded_location)
-
-    # Remove the entry from the DownloadedEpisodes table
-    query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
-    cursor.execute(query, (download_id,))
-    cnx.commit()
-    print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
-
-    # Update UserStats table to increment EpisodesDownloaded count
-    query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
-             "WHERE UserID = %s")
-    cursor.execute(query, (user_id,))
-    
-    cursor.close()
-    # cnx.close()
+def delete_selected_episodes(cnx, user_id, selected_episodes):
+    pass
+def delete_selected_podcasts(cnx, user_id, selected_episodes):
+    pass
 
 def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     cursor = cnx.cursor()
