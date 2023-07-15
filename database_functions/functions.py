@@ -645,7 +645,7 @@ def check_downloaded(cnx, user_id, title, url):
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
              f"Podcasts.WebsiteURL, DownloadedEpisodes.DownloadedLocation "
              f"FROM DownloadedEpisodes "
@@ -1723,7 +1723,7 @@ def get_episode_metadata(cnx, url, title, user_id):
     print(episode_id)
     episode_id = episode_id['EpisodeID']
 
-    query = (f"SELECT Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
              f"Podcasts.WebsiteURL "
              f"FROM Episodes "
