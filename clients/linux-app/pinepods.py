@@ -2610,7 +2610,7 @@ def main(page: ft.Page, session_value=None):
                         print(f'local downloads to delete: {local_list.delete_list}')
                         print(f'local episodes to delete: {local_list.selected_episodes}')
                         print(f'server downloads to delete: {download_list.delete_list}')
-                        print((f'server episodes to delete: {download_list.selected_episodes}'))
+                        print(f'server episodes to delete: {download_list.selected_episodes}')
                         self.mass_delete_button.visible = True
                         self.mass_delete_button_perm.visible = False
                         self.mass_delete_button_cancel.visible = False
