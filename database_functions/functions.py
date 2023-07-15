@@ -1871,14 +1871,23 @@ def get_time_info(cnx, user_id):
 def first_login_done(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
-    query = (f"""UPDATE Users SET FirstLoginDone = 1 WHERE UserID = %s""")
+    # Query to fetch the FirstLogin status
+    query = "SELECT FirstLogin FROM Users WHERE UserID = %s"
 
     try:
+        # Execute the query
         cursor.execute(query, (user_id,))
-        cnx.commit()
+
+        # Fetch the result
+        result = cursor.fetchone()
         cursor.close()
 
-        return True
+        # Check if the FirstLogin value is 1
+        if result['FirstLogin'] == 1:
+            return True
+        else:
+            return False
+
     except Exception as e:
-        print("Error updating first login status:", e)
+        print("Error fetching first login status:", e)
         return False

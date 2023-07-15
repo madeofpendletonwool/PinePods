@@ -741,7 +741,7 @@ def call_setup_time_info(url, headers, user_id, timezone, hour_pref):
         return None
 
 def call_get_time_info(url, headers, user_id):
-    response = requests.get(url + "/api/data/get_time_info", headers=headers, params={"user_id": user_id})
+    response = requests.get(url + "/get_time_info", headers=headers, params={"user_id": user_id})
 
     if response.status_code == 200:
         return response.json()["timezone"], response.json()["hour_pref"]
@@ -752,7 +752,7 @@ def call_get_time_info(url, headers, user_id):
 
 def call_first_login_done(url, headers, user_id):
     data = {"user_id": user_id}
-    response = requests.post(url + "/api/data/first_login_done", headers=headers, json=data)
+    response = requests.post(url + "/first_login_done", headers=headers, json=data)
 
     if response.status_code == 200:
         return response.json()["success"]

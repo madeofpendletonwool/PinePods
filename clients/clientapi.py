@@ -668,8 +668,9 @@ class UserLoginUpdate(BaseModel):
 
 @app.post("/api/data/first_login_done")
 async def first_login_done(data: UserLoginUpdate, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    success = database_functions.functions.first_login_done(cnx, data.user_id)
-    return {"success": success}
+    first_login_status = database_functions.functions.first_login_done(cnx, data.user_id)
+    return {"FirstLogin": first_login_status}
+
 
 
 if __name__ == '__main__':

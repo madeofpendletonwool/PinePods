@@ -5203,6 +5203,7 @@ def main(page: ft.Page, session_value=None):
             self.fullname = login_details['Fullname']
             self.username = login_details['Username']
             self.email = login_details['Email']
+            self.first_login_done()
             if self.first_login_finished == 1:
                 self.get_timezone()
                 go_homelogin(page)
