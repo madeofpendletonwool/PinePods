@@ -58,7 +58,7 @@ cursor.execute("""
         Reset_Expiry DATETIME,
         MFA_Secret VARCHAR(50),
         TimeZone VARCHAR(50) DEFAULT 'UTC',
-        TimeFormat VARCHAR(5) DEFAULT '24',
+        TimeFormat INT  DEFAULT 24,
         FirstLogin TINYINT(1) DEFAULT 0
     )
 """)

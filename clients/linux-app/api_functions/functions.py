@@ -728,3 +728,35 @@ def call_remove_episode_history(url, headers, ep_url, title, user_id):
         print("Error removing episode from history:", response.status_code)
         print("Error message:", response.text)
         return None
+
+def call_setup_time_info(url, headers, user_id, timezone, hour_pref):
+    data = {"user_id": user_id, "timezone": timezone, "hour_pref": hour_pref}
+    response = requests.post(url + "/setup_time_info", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["success"]
+    else:
+        print("Error setting up time info:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_get_time_info(url, headers, user_id):
+    response = requests.get(url + "/api/data/get_time_info", headers=headers, params={"user_id": user_id})
+
+    if response.status_code == 200:
+        return response.json()["timezone"], response.json()["hour_pref"]
+    else:
+        print("Error getting time info:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_first_login_done(url, headers, user_id):
+    data = {"user_id": user_id}
+    response = requests.post(url + "/api/data/first_login_done", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["success"]
+    else:
+        print("Error updating first login status:", response.status_code)
+        print("Error message:", response.text)
+        return None

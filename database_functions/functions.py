@@ -1843,7 +1843,7 @@ def remove_episode_history(cnx, url, title, user_id):
 def setup_timezone_info(cnx, user_id, timezone, hour_pref):
     cursor = cnx.cursor(dictionary=True)
 
-    query = f"""UPDATE Users SET Timezone = %s, HourPref = %s, FirstLogin = %s WHERE UserID = %s"""
+    query = f"""UPDATE Users SET Timezone = %s, TimeFormat = %s, FirstLogin = %s WHERE UserID = %s"""
 
     try:
         cursor.execute(query, (timezone, hour_pref, 1, user_id))
@@ -1857,7 +1857,7 @@ def setup_timezone_info(cnx, user_id, timezone, hour_pref):
 
 def get_time_info(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
-    query = (f"""SELECT Timezone, HourPref FROM Users WHERE UserID = %s""")
+    query = (f"""SELECT Timezone, TimeFormat FROM Users WHERE UserID = %s""")
 
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()

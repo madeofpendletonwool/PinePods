@@ -4799,7 +4799,7 @@ def main(page: ft.Page, session_value=None):
             self.downloading = []
             self.downloading_name = []
             self.auth_enabled = 0
-            self.timezone = UTC
+            self.timezone = 'UTC'
             self.hour_pref = 24
             self.first_login_finished = 0
 
@@ -5112,8 +5112,11 @@ def main(page: ft.Page, session_value=None):
     # Active User Stuff --------------------------
 
         def setup_timezone(self, tz, hour_pref):
+            if hour_pref == '12-hour':
+                self.hour_pref = 12
+            else:
+                self.hour_pref = 24
             self.timezone = tz
-            self.hour_pref = hour_pref
             api_functions.functions.call_setup_time_info(app_api.url, app_api.headers, self.user_id, self.timezone, self.hour_pref)
             go_homelogin(page)
 
@@ -5200,7 +5203,11 @@ def main(page: ft.Page, session_value=None):
             self.fullname = login_details['Fullname']
             self.username = login_details['Username']
             self.email = login_details['Email']
-            go_homelogin(page)
+            if self.first_login_finished == 1:
+                self.get_timezone()
+                go_homelogin(page)
+            else:
+                first_time_config(page)
 
         def logout_pinepods(self, e):
             active_user = User(page)
