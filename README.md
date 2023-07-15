@@ -351,6 +351,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [ ] Queue currently somewhat broken
 - [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow
+- [ ] MFA Display totp secret
+- [ ] custom timezone entry
+- [ ] Fix guest with timezone stuff
 
 ### To be added after beta version (Listed in order they will be implemented)
 

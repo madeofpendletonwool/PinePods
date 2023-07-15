@@ -45,18 +45,23 @@ cnx = mysql.connector.connect(
 cursor = cnx.cursor()
 
 # create tables
-cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
-                    UserID INT AUTO_INCREMENT PRIMARY KEY,
-                    Fullname TEXT,
-                    Username TEXT UNIQUE,
-                    Email VARCHAR(255),
-                    Hashed_PW CHAR(60),
-                    Salt CHAR(60),
-                    IsAdmin TINYINT(1),
-                    Reset_Code TEXT,
-                    Reset_Expiry DATETIME,
-                    MFA_Secret VARCHAR(50)
-                )""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Users (
+        UserID INT AUTO_INCREMENT PRIMARY KEY,
+        Fullname TEXT,
+        Username TEXT UNIQUE,
+        Email VARCHAR(255),
+        Hashed_PW CHAR(60),
+        Salt CHAR(60),
+        IsAdmin TINYINT(1),
+        Reset_Code TEXT,
+        Reset_Expiry DATETIME,
+        MFA_Secret VARCHAR(50),
+        TimeZone VARCHAR(50) DEFAULT 'UTC',
+        TimeFormat VARCHAR(5) DEFAULT '24',
+        FirstLogin TINYINT(1) DEFAULT 0
+    )
+""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                     APIKeyID INT AUTO_INCREMENT PRIMARY KEY,

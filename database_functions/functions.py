@@ -1840,3 +1840,45 @@ def remove_episode_history(cnx, url, title, user_id):
         print("Error removing episode from history:", e)
         return False
 
+def setup_timezone_info(cnx, user_id, timezone, hour_pref):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = f"""UPDATE Users SET Timezone = %s, HourPref = %s, FirstLogin = %s WHERE UserID = %s"""
+
+    try:
+        cursor.execute(query, (timezone, hour_pref, 1, user_id))
+        cnx.commit()
+        cursor.close()
+
+        return True
+    except Exception as e:
+        print("Error setting up time info:", e)
+        return False
+
+def get_time_info(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+    query = (f"""SELECT Timezone, HourPref FROM Users WHERE UserID = %s""")
+
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return result['Timezone'], result['HourPref']
+    else:
+        return None
+
+def first_login_done(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"""UPDATE Users SET FirstLoginDone = 1 WHERE UserID = %s""")
+
+    try:
+        cursor.execute(query, (user_id,))
+        cnx.commit()
+        cursor.close()
+
+        return True
+    except Exception as e:
+        print("Error updating first login status:", e)
+        return False

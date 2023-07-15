@@ -28,3 +28,4 @@ pyotp
 qrcode[pil]
 eyed3
 mutagen
+pytz

@@ -26,6 +26,7 @@ import time
 import random
 import string
 import datetime
+from dateutil import parser
 import html2text
 import threading
 from html.parser import HTMLParser
@@ -48,6 +49,7 @@ from collections import defaultdict
 from math import pi
 import eyed3
 import traceback
+import pytz
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -565,6 +567,7 @@ def main(page: ft.Page, session_value=None):
         # Add all episode URLs to the downloading list
         for episode in episode_list:
             active_user.downloading.append(episode['EpisodeURL'])
+            active_user.downloading_name.append(episode['EpisodeTitle'])
 
         # Create a progress ring and add it to the page
         pr_instance.touch_stack()
@@ -591,6 +594,7 @@ def main(page: ft.Page, session_value=None):
 
             # Remove the downloaded episode URL from the downloading list
             active_user.downloading.remove(url)
+            active_user.downloading_name.remove(title)
 
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
             page.snack_bar.open = True
@@ -609,6 +613,7 @@ def main(page: ft.Page, session_value=None):
             # Add all episode URLs to the downloading list
             for episode in episodes:
                 active_user.downloading.append(episode['EpisodeURL'])
+                active_user.downloading_name.append(episode['EpisodeTitle'])
 
             pr_instance.touch_stack()
             page.update()
@@ -624,6 +629,7 @@ def main(page: ft.Page, session_value=None):
 
                 # Remove the downloaded episode URL from the downloading list
                 active_user.downloading.remove(url)
+                active_user.downloading_name.remove(title)
 
                 # Add the local path to the episode metadata
                 episode['EpisodeLocalPath'] = episode_local_path
@@ -1271,6 +1277,9 @@ def main(page: ft.Page, session_value=None):
 
     def start_config(page):
         page.go("/server_config")
+
+    def first_time_config(page):
+        page.go("/first_time_config")
 
     def start_login(page):
         page.go("/login")
@@ -2584,8 +2593,8 @@ def main(page: ft.Page, session_value=None):
                     self.page = page
                     self.previous_list = None
                     self.stop_thread = False
-                    self.active_downloader = ft.Text()
-                    self.active_download_count = ft.Text()
+                    self.active_downloader = ft.Text(color=active_user.font_color)
+                    self.active_download_count = ft.Text(color=active_user.font_color)
                     self.active_download_column = ft.Column()
                     self.active_download_container = ft.Container(content=self.active_download_column)
                     self.active_download_container.padding = padding.only(left=80, right=50)
@@ -2599,13 +2608,20 @@ def main(page: ft.Page, session_value=None):
                     self.monitor_thread.start()
 
                 def create_downloading_layout(self):
-                    self.active_downloader.value = active_user.downloading[0] if active_user.downloading else "No active downloads"
+                    self.active_downloader.value = active_user.downloading[
+                        0] if active_user.downloading else "No active downloads"
                     self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
                     self.active_download_column.controls.append(self.active_downloader)
                     self.active_download_column.controls.append(self.active_download_count)
-                    return self.active_download_container
+
+                    # Set this flag true before calling the page update method
                     self.layout_created = True
+
+                    # Ensure that the active download container is added to the page before trying to update it
+                    self.page.controls.append(self.active_download_container)
                     self.page.update()
+
+                    return self.active_download_container
 
                 def update_downloading_layout(self):
                     if not self.layout_created:
@@ -2613,8 +2629,8 @@ def main(page: ft.Page, session_value=None):
                     else:
 
                         # Update the text elements
-                        self.active_downloader.value = active_user.downloading[
-                            0] if active_user.downloading else "No active downloads"
+                        self.active_downloader.value = active_user.downloading_name[
+                            0] if active_user.downloading_name else "No active downloads"
                         self.active_download_count.value = f'Number of other Podcasts currently downloading: {len(active_user.downloading) - 1 if len(active_user.downloading) > 1 else 0}'
 
                         self.active_downloader.update()
@@ -2631,14 +2647,17 @@ def main(page: ft.Page, session_value=None):
                     while not self.stop_thread:
                         # If the list has changed, update the downloading list
                         if active_user.downloading != self.previous_list:
+                            # print(f'List changed, updating layout: {active_user.downloading}')  # Debugging line
                             self.update_downloading_layout()
                             self.previous_list = active_user.downloading.copy()  # make sure to copy the list
+                        # else:
+                        #     print(f'List not changed: {active_user.downloading}')  # Debugging line
                         time.sleep(1)  # sleep for a while before checking again
 
                 def stop_monitoring(self):
                     self.stop_thread = True
 
-            current_download_text = ft.Text('Currently Downloading Episodes')
+            current_download_text = ft.Text('Currently Downloading Episodes:', size=18, color=active_user.font_color)
             current_download_text_con = ft.Container(content=current_download_text)
             current_download_text_con.padding = padding.only(left=70, right=50)
             current_downloads = DownloadingDisplay(page)
@@ -2649,6 +2668,7 @@ def main(page: ft.Page, session_value=None):
                                            download_list.top_bar,
                                            current_download_text_con,
                                            downloading_row,
+                                           ft.Divider(color=active_user.accent_color),
                                            download_title_row_container,
                                            download_row_contain,
                                            local_download_title_row_container,
@@ -2753,8 +2773,18 @@ def main(page: ft.Page, session_value=None):
                     else:
                         parsed_audio_url = ""
 
-                    # get the release date of the episode
-                    parsed_release_date = entry.published
+                    # Parse the date string into a datetime object
+                    dt = parser.parse(entry.published)
+
+                    # Convert it to the user's timezone
+                    user_tz = timezone(active_user.timezone)
+                    dt = dt.astimezone(user_tz)
+
+                    # Format it in 12-hour or 24-hour format based on the user's preference
+                    if active_user.hour_pref == 12:
+                        parsed_release_date = dt.strftime("%I:%M %p")  # 12-hour format
+                    else:
+                        parsed_release_date = dt.strftime("%H:%M")  # 24-hour format
 
                     # get the URL of the episode artwork, or use the podcast image URL if not available
                     parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get(
@@ -3677,7 +3707,111 @@ def main(page: ft.Page, session_value=None):
             page.views.append(
                 server_configpage
                 
-            ) 
+            )
+
+        if page.route == "/first_time_config" or page.route == "/first_time_config":
+            tz_text = ft.Text('Select TimeZone:', color=active_user.font_color, size=16)
+            timezones = pytz.all_timezones
+            tz_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+             options=[ft.dropdown.Option(tz) for tz in timezones]
+             )
+            clock_text = ft.Text('Select Time Preference:', color=active_user.font_color, size=16)
+            clock_drop = ft.Dropdown(border_color=active_user.accent_color, color=active_user.font_color, focused_bgcolor=active_user.main_color, focused_border_color=active_user.accent_color, focused_color=active_user.accent_color,
+             options=[
+                ft.dropdown.Option("12-hour"),
+                ft.dropdown.Option("24-hour"),
+             ]
+             )
+
+            first_time_page = ft.Column(
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Card(
+                        elevation=15,
+                        content=ft.Container(
+                            width=550,
+                            height=600,
+                            padding=padding.all(30),
+                            gradient=GradientGenerator(
+                                "#2f2937", "#251867"
+                            ),
+                            border_radius=border_radius.all(12),
+                            content=ft.Column(
+                                horizontal_alignment="center",
+                                alignment="start",
+                                controls=[
+                                    ft.Text(
+                                        "PinePods",
+                                        size=32,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting",
+                                        size=22,
+                                        weight="w700",
+                                        text_align="center",
+                                    ),
+                                    ft.Text(
+                                        "Hello! This appears to be your first time logging in. Let's get some basic information so that we can display podcasts in the way you prefer. This information is stored on your own server only.",
+                                        size=14,
+                                        weight="w700",
+                                        text_align="center",
+                                        color="#64748b",
+                                    ),
+                                    ft.Container(
+                                        padding=padding.only(bottom=20)
+                                    ),
+                                    tz_text,
+                                    tz_drop,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    clock_text,
+                                    clock_drop,
+                                    ft.Container(
+                                        padding=padding.only(bottom=10)
+                                    ),
+                                    ft.Row(
+                                        alignment="center",
+                                        spacing=20,
+                                        controls=[
+                                            ft.FilledButton(
+                                                content=ft.Text(
+                                                    "Submit",
+                                                    weight="w700",
+                                                ),
+                                                width=160,
+                                                height=40,
+                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
+                                                on_click=lambda e: active_user.setup_timezone(tz_drop.value, clock_drop.value)
+                                                # on_click=lambda e: go_homelogin(e)
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    )
+                ],
+            )
+
+            # Create search view object
+            first_time_view = ft.View("/first_time_config",
+                                             horizontal_alignment="center",
+                                             vertical_alignment="center",
+                                             controls=[
+                                                 first_time_page
+                                             ]
+
+                                             )
+            # search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                first_time_view
+
+            )
 
         if page.route == "/settings" or page.route == "/settings":
 
@@ -4663,7 +4797,11 @@ def main(page: ft.Page, session_value=None):
             self.api_id = 0
             self.mfa_secret = None
             self.downloading = []
+            self.downloading_name = []
             self.auth_enabled = 0
+            self.timezone = UTC
+            self.hour_pref = 24
+            self.first_login_finished = 0
 
     # New User Stuff ----------------------------
 
@@ -4973,6 +5111,17 @@ def main(page: ft.Page, session_value=None):
 
     # Active User Stuff --------------------------
 
+        def setup_timezone(self, tz, hour_pref):
+            self.timezone = tz
+            self.hour_pref = hour_pref
+            api_functions.functions.call_setup_time_info(app_api.url, app_api.headers, self.user_id, self.timezone, self.hour_pref)
+            go_homelogin(page)
+
+        def get_timezone(self):
+            self.timezone, self.hour_pref = api_functions.functions.call_get_time_info(app_api.url, app_api.headers, self.user_id)
+        def first_login_done(self):
+            self.first_login_finished = api_functions.functions.call_first_login_done(app_api.url, app_api.headers, self.user_id)
+
         def get_initials(self):
             # split the full name into separate words
             words = self.fullname.split()
@@ -5011,7 +5160,12 @@ def main(page: ft.Page, session_value=None):
                             session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
                             if session_token:
                                 save_session_id_to_file(session_token)
-                        go_homelogin(page)
+                        self.first_login_done()
+                        if self.first_login_finished == 1:
+                            self.get_timezone()
+                            go_homelogin(page)
+                        else:
+                            first_time_config(page)
                 else:
                     on_click_wronguser(page)
         # def mfa_log_values(self, username_field, password_field, retain_session):
@@ -5028,10 +5182,12 @@ def main(page: ft.Page, session_value=None):
                     session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers, self.user_id)
                     if session_token:
                         save_session_id_to_file(session_token)
-
+                self.first_login_done()
+                if self.first_login_finished == 1:
+                    self.get_timezone()
                     go_homelogin(page)
                 else:
-                    go_homelogin(page)
+                    first_time_config(page)
             else:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA Code incorrect"))
                 page.snack_bar.open = True

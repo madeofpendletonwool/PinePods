@@ -646,6 +646,32 @@ async def api_remove_episode_from_history(data: EpisodeToRemove, cnx = Depends(g
     success = database_functions.functions.remove_episode_history(cnx, data.url, data.title, data.user_id)
     return {"success": success}
 
+# Model for request data
+class TimeZoneInfo(BaseModel):
+    user_id: int
+    timezone: str
+    hour_pref: int
+
+# FastAPI endpoint
+@app.post("/api/data/setup_time_info")
+async def setup_timezone_info(data: TimeZoneInfo, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    success = database_functions.functions.setup_timezone_info(cnx, data.user_id, data.timezone, data.hour_pref)
+    return {"success": success}
+
+@app.get("/api/data/get_time_info")
+async def get_time_info(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    timezone, hour_pref = database_functions.functions.get_time_info(cnx, user_id)
+    return {"timezone": timezone, "hour_pref": hour_pref}
+
+class UserLoginUpdate(BaseModel):
+    user_id: int
+
+@app.post("/api/data/first_login_done")
+async def first_login_done(data: UserLoginUpdate, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    success = database_functions.functions.first_login_done(cnx, data.user_id)
+    return {"success": success}
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
