@@ -342,6 +342,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] custom timezone entry
 - [x] MFA Display totp secret
 - [x] Fix guest with timezone stuff
+- [x] 2.0 description features 
+- [x] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
+- [x] Remove local podcasts if podcast is no longer in database - Handle this somehow - Mass delete feature added
 
 ### Pre-beta version
 
@@ -351,17 +354,16 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
-- [ ] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [ ] Queue currently somewhat broken
-- [ ] Remove local podcasts if podcast is no longer in database - Handle this somehow
 - [ ] Fix logout - It's shows navbar still
 - [ ] Allow description view on podcasts not added
 - [ ] Check local downloads if already downloaded
-
+- [ ] Implement page views for poddisplays that have over 30 episodes
+- [ ] Speed up database queries
 
 ### To be added after beta version (Listed in order they will be implemented)
 
-- [ ] Speed up database queries
+- [ ] Jump to clicked timestamp
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
 - [ ] Add highlight to indicate which page you're on
