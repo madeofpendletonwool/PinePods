@@ -125,7 +125,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 
 
                 # get the episode description
-                parsed_description = entry.summary
+                parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
 
                 # get the URL of the audio file for the episode
                 if entry.enclosures:
@@ -273,7 +273,7 @@ def return_selected_episode(cnx, user_id, title, url):
     cursor = cnx.cursor()
     query = ("SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
             "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
-            "Podcasts.PodcastName, Podcasts.WebsiteURL "
+            "Podcasts.PodcastName, Podcasts.WebsiteURL, Podcasts.FeedURL "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s")

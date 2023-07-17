@@ -2260,7 +2260,6 @@ def main(page: ft.Page, session_value=None):
                     self.generate_layout(download_episode_list)
 
                 def delete_selected_episode(self, url, title):
-                    print(url)
                     # current_episode.delete_pod()
                     api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, url, title, active_user.user_id)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
@@ -2312,7 +2311,6 @@ def main(page: ft.Page, session_value=None):
 
                 def get_episode_by_id(self, episode_id):
                     metadata_path = os.path.join(metadata_dir, f"{episode_id}.json")
-                    print(metadata_path)
                     try:
                         with open(metadata_path, 'r') as f:
                             episode_data = json.load(f)
@@ -2423,7 +2421,6 @@ def main(page: ft.Page, session_value=None):
                             else:
                                 if podcast_id in self.delete_list:  # check if podcast_id is in the list
                                     self.delete_list.remove(podcast_id)
-                            print(self.delete_list)
 
                         download_pod_entry_check.on_change = append_deletion
                         download_pod_entry_check.visible = False
@@ -2441,7 +2438,6 @@ def main(page: ft.Page, session_value=None):
                                 else:
                                     if episode_id in self.selected_episodes:  # check if episode_id is in the list
                                         self.selected_episodes.remove(episode_id)
-                                print(self.selected_episodes)
 
                             episode_check.on_change = toggle_episode
                             episode_check.visible = False
@@ -2459,11 +2455,9 @@ def main(page: ft.Page, session_value=None):
                             local_download_ep_duration = podcast['EpisodeDuration']
                             if self.download_type == "server":
                                 local_download_ep_local_url = podcast['DownloadedLocation']
-                                print(local_download_ep_local_url)
                             if self.download_type == "local":
                                 local_download_ep_id = podcast['EpisodeID']
                                 local_download_ep_local_url = podcast['EpisodeLocalPath']
-                                print(local_download_ep_local_url)
 
 
                             # do something with the episode information
@@ -2681,11 +2675,6 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
                     def mass_delete_confirm(e):
-                        print(f'local downloads to delete: {local_list.delete_list}')
-                        print(f'local episodes to delete: {local_list.selected_episodes}')
-                        print(f'server downloads to delete: {download_list.delete_list}')
-                        print(f'server episodes to delete: {download_list.selected_episodes}')
-
                         # only call selective_delete if there is something to delete
                         if local_list.delete_list or local_list.selected_episodes or download_list.delete_list or download_list.selected_episodes:
                             self.selective_delete()
@@ -2765,7 +2754,6 @@ def main(page: ft.Page, session_value=None):
                         # delete selected episodes first
                         if local_list.selected_episodes:
                             episode_list = [local_list.get_episode_by_id(id) for id in local_list.selected_episodes]
-                            print(episode_list)
                             local_list.delete_local_selected_episodes(episode_list)
                             local_list.selected_episodes = []
 
@@ -2855,6 +2843,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/poddisplay" or page.route == "/poddisplay":
             # Check if podcast is already in database for user
+            print('display')
             podcast_status = api_functions.functions.call_check_podcast(app_api.url, app_api.headers,
                                                                         active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
@@ -2933,7 +2922,7 @@ def main(page: ft.Page, session_value=None):
                     parsed_title = entry.title
 
                     # get the episode description
-                    parsed_description = entry.summary
+                    parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
 
                     # get the URL of the audio file for the episode
                     if entry.enclosures:
