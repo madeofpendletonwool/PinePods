@@ -231,12 +231,13 @@ def main(page: ft.Page, session_value=None):
 #---Flet Various Functions---------------------------------------------------------------
 
     class AnimatedButton:
-        def __init__(self, rotate_button, download_ep_row_content):
+        def __init__(self, rotate_button, download_ep_row_content, entry_seemore=None):
             self.rotate_button = rotate_button
             self.download_ep_row_content = download_ep_row_content
             self.rotate_pos = False
+            self.entry_seemore = entry_seemore
 
-        def animate(self, e):
+        def animate_poddisplay(self, e):
             if not self.rotate_pos:
                 self.rotate_pos = True
                 self.download_ep_row_content.visible = True
@@ -244,6 +245,20 @@ def main(page: ft.Page, session_value=None):
                 page.update()
             else:
                 self.download_ep_row_content.visible = False
+                self.rotate_button.rotate.angle -= pi / 2
+                self.rotate_pos = False
+                page.update()
+
+        def animate(self, e):
+            if not self.rotate_pos:
+                self.rotate_pos = True
+                self.download_ep_row_content.visible = True
+                self.entry_seemore.visible = True
+                self.rotate_button.rotate.angle += pi / 2
+                page.update()
+            else:
+                self.download_ep_row_content.visible = False
+                self.entry_seemore.visible = False
                 self.rotate_button.rotate.angle -= pi / 2
                 self.rotate_pos = False
                 page.update()
@@ -1693,6 +1708,7 @@ def main(page: ft.Page, session_value=None):
                             entry_description = ft.Markdown(markdown_desc, on_tap_link=launch_clicked_url)
                             entry_seemore = ft.TextButton(text="See More...", on_click=lambda x,
                                 url=ep_url, title=ep_title: open_episode_select(page, url, title))
+                            entry_seemore.visible = False
                         else:
                             if num_lines > 15:
                                 # Split into lines, truncate to 15 lines, and join back into a string
@@ -1874,7 +1890,7 @@ def main(page: ft.Page, session_value=None):
                                 ft.Column(col={"md": 1}, controls=[rotate_button]),
                             ])
                     entry_description.visible = False
-                    rotate_iteration = AnimatedButton(rotate_button, entry_description)
+                    rotate_iteration = AnimatedButton(rotate_button, entry_description, entry_seemore)
                     rotate_button.on_click = rotate_iteration.animate
 
                     div_row = ft.Divider(color=active_user.accent_color)
@@ -2604,7 +2620,7 @@ def main(page: ft.Page, session_value=None):
                             rotate=ft.transform.Rotate(0, alignment=ft.alignment.center),
                             animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
                         )
-                        local_rotate_iteration = AnimatedButton(local_rotate_button, episode_column)
+                        local_rotate_iteration = AnimatedButton(local_rotate_button, episode_column, local_download_entry_seemore)
                         local_rotate_button.on_click = local_rotate_iteration.animate
 
                         download_pod_data_group = ft.Row(
@@ -3022,7 +3038,7 @@ def main(page: ft.Page, session_value=None):
 
                 entry_description.visible = False
                 rotate_iteration = AnimatedButton(rotate_button, entry_description)
-                rotate_button.on_click = rotate_iteration.animate
+                rotate_button.on_click = rotate_iteration.animate_poddisplay
 
                 div_row = ft.Divider(color=active_user.accent_color)
                 ep_row_final = ft.Column(controls=[ep_row_content, div_row])

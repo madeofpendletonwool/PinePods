@@ -623,7 +623,12 @@ def check_downloaded(cnx, user_id, title, url):
         # Get the EpisodeID from the Episodes table
         query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
         cursor.execute(query, (title, url))
-        episode_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
+
+        if result is None:   # add this check
+            return False
+
+        episode_id = result[0]
 
         # Check if the episode is downloaded for the user
         query = "SELECT DownloadID FROM DownloadedEpisodes WHERE UserID = %s AND EpisodeID = %s"
@@ -640,7 +645,7 @@ def check_downloaded(cnx, user_id, title, url):
     finally:
         if cursor:
             cursor.close()
-            # cnx.close()
+
 
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
