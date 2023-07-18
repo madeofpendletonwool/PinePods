@@ -215,9 +215,17 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                     FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                 )""")
 
-cursor.execute("CREATE INDEX idx_podcasts_userid ON Podcasts(UserID)")
-cursor.execute("CREATE INDEX idx_episodes_podcastid ON Episodes(PodcastID)")
-cursor.execute("CREATE INDEX idx_episodes_episodepubdate ON Episodes(EpisodePubDate)")
+def create_index_if_not_exists(cursor, index_name, table_name, column_name):
+    cursor.execute(f"PRAGMA index_info('{index_name}')")
+    info = cursor.fetchall()
+    if len(info) == 0:
+        cursor.execute(f"CREATE INDEX {index_name} ON {table_name}({column_name})")
+
+
+create_index_if_not_exists(cursor, "idx_podcasts_userid", "Podcasts", "UserID")
+create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
+create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
+
 
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (

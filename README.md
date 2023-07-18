@@ -345,6 +345,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] 2.0 description features 
 - [x] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [x] Remove local podcasts if podcast is no longer in database - Handle this somehow - Mass delete feature added
+- [x] Speed up database queries (Indexing added to episodes and podcasts)
+- [x] Check local downloads if already downloaded
+- [x] Allow description view on podcasts not added
 
 ### Pre-beta version
 
@@ -356,10 +359,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Small layout Improvements
 - [ ] Queue currently somewhat broken
 - [ ] Fix logout - It's shows navbar still
-- [ ] Allow description view on podcasts not added
-- [ ] Check local downloads if already downloaded
 - [ ] Implement page views for poddisplays that have over 30 episodes
-- [ ] Speed up database queries
 - [ ] Configure some kind of auto-refresh feature
 
 ### To be added after beta version (Listed in order they will be implemented)
@@ -373,7 +373,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Rotating currently playing
 - [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] MFA Logins - Github integration and local MFA (OAuth)
+- [ ] MFA Logins - Github integration and cloud logins (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
 - [ ] Linux App    
   - [ ] Flatpak
