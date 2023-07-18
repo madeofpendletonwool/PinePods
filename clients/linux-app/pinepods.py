@@ -1350,6 +1350,7 @@ def main(page: ft.Page, session_value=None):
 
     def open_poddisplay(e):
         pr_instance.touch_stack()
+        page.update()
         page.go("/poddisplay")
 
     def open_settings(e):
@@ -2177,6 +2178,9 @@ def main(page: ft.Page, session_value=None):
             page.views.append(
                 home_view
             )
+            if active_user.first_start == 0:
+                home_layout.refresh_podcasts(e)
+                active_user.first_start += 1
 
         if page.route == "/saved" or page.route == "/saved":
 
@@ -5498,6 +5502,7 @@ def main(page: ft.Page, session_value=None):
             self.timezone = 'UTC'
             self.hour_pref = 24
             self.first_login_finished = 0
+            self.first_start = 0
 
         # New User Stuff ----------------------------
 

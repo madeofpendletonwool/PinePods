@@ -359,11 +359,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Small layout Improvements
 - [ ] Queue currently somewhat broken
 - [ ] Fix logout - It's shows navbar still
-- [ ] Implement page views for poddisplays that have over 30 episodes
 - [ ] Configure some kind of auto-refresh feature
 
 ### To be added after beta version (Listed in order they will be implemented)
 
+- [ ] Implement page views for poddisplays that have over 30 episodes
 - [ ] Jump to clicked timestamp
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
