@@ -2179,8 +2179,17 @@ def main(page: ft.Page, session_value=None):
                 home_view
             )
             if active_user.first_start == 0:
-                home_layout.refresh_podcasts(e)
                 active_user.first_start += 1
+
+                def refresh_podcasts_every_hour():
+                    # Run the refresh_podcasts method
+                    home_layout.refresh_podcasts(e)  # Substitute with actual event argument
+
+                    # Start a timer to run this function again in 1 hour
+                    threading.Timer(3600, refresh_podcasts_every_hour).start()
+
+                # Start the initial call to the function
+                refresh_podcasts_every_hour()
 
         if page.route == "/saved" or page.route == "/saved":
 

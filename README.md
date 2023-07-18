@@ -348,6 +348,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Speed up database queries (Indexing added to episodes and podcasts)
 - [x] Check local downloads if already downloaded
 - [x] Allow description view on podcasts not added
+- [x] Configure some kind of auto-refresh feature - Refreshes now on first boot and once every hour
 
 ### Pre-beta version
 
@@ -359,7 +360,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Small layout Improvements
 - [ ] Queue currently somewhat broken
 - [ ] Fix logout - It's shows navbar still
-- [ ] Configure some kind of auto-refresh feature
 
 ### To be added after beta version (Listed in order they will be implemented)
 
