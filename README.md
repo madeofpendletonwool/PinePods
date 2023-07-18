@@ -360,6 +360,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Check local downloads if already downloaded
 - [ ] Implement page views for poddisplays that have over 30 episodes
 - [ ] Speed up database queries
+- [ ] Configure some kind of auto-refresh feature
 
 ### To be added after beta version (Listed in order they will be implemented)
 

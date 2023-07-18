@@ -215,6 +215,11 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                     FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                 )""")
 
+cursor.execute("CREATE INDEX idx_podcasts_userid ON Podcasts(UserID)")
+cursor.execute("CREATE INDEX idx_episodes_podcastid ON Episodes(PodcastID)")
+cursor.execute("CREATE INDEX idx_episodes_episodepubdate ON Episodes(EpisodePubDate)")
+
+
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
                     UserSettingID INT AUTO_INCREMENT PRIMARY KEY,
                     UserID INT UNIQUE,
