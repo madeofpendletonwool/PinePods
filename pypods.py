@@ -4006,8 +4006,6 @@ def main(page: ft.Page, session_value=None):
                     self.self_service_notify = ft.Text(
                         f'Self Service user creation is currently {"enabled" if self.self_service_bool else "disabled"}')
                     self.self_service_check()
-                    # local settings clear
-                    self.settings_clear_options()
                     # Server Downloads Setup
                     self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
                                                                                              app_api.headers)
