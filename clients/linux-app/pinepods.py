@@ -909,14 +909,6 @@ def main(page: ft.Page, session_value=None):
                 if self.local == False:
                     # Preload the audio file and cache it
                     global cache
-                    # Test mp3 chapter
-                    # Load an MP3 file
-                    # audiofile = eyed3.load(self.url)
-                    #
-                    # # Print chapters
-                    # for chapter in audiofile.tag.chapters:
-                    #     print(chapter.id, chapter.start_time, chapter.end_time, chapter.title)
-
                     preload_audio_file(self.url, proxy_url, cache)
 
                     self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1,
@@ -1441,7 +1433,6 @@ def main(page: ft.Page, session_value=None):
             def close_code_pw_dlg(e):
                 code_pw_dlg.open = False
                 page.update()
-
             # Generate a random reset code
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
@@ -1471,7 +1462,6 @@ def main(page: ft.Page, session_value=None):
                                     content=ft.Text('Your Passwords do not match. Please try again.'))
                                 page.snack_bar.open = True
                                 page.update()
-
                         code_pw_dlg.open = False
                         page.update()
                         time.sleep(1)
@@ -1505,7 +1495,6 @@ def main(page: ft.Page, session_value=None):
                         page.snack_bar = ft.SnackBar(content=ft.Text('Code not valid. Please check your email.'))
                         page.snack_bar.open = True
                         page.update()
-
                 # Create a progress ring while email sends
                 pr_instance.touch_stack()
                 create_self_service_pw_dlg.open = False
@@ -1635,7 +1624,6 @@ def main(page: ft.Page, session_value=None):
                 self.active_pr = False
 
     pr_instance = PR(page)
-
     class Page_Vars:
         def __init__(self, page):
             self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
@@ -1672,7 +1660,7 @@ def main(page: ft.Page, session_value=None):
                 self.banner_button.color = active_user.main_color
                 self.settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                            controls=[self.refresh_ctn, self.banner_button])
-                self.search_row = ft.Row(spacing=25,
+                self.search_row = ft.Row(spacing=20,
                                          controls=[page_items.search_pods, page_items.search_location, search_btn])
                 self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                       vertical_alignment=ft.CrossAxisAlignment.START,
@@ -1802,7 +1790,6 @@ def main(page: ft.Page, session_value=None):
                                 ep_desc = '\n'.join(lines)
                             # display plain text
                             entry_description = ft.Text(ep_desc)
-
 
                     else:
                         if is_html(ep_desc):
@@ -2398,7 +2385,6 @@ def main(page: ft.Page, session_value=None):
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
                     self.page.snack_bar.open = True
                     self.page.update()
-
                 def refresh_downloaded_episodes(self):
                     # Fetch new podcast episodes from the server.
                     if self.download_type == "server":
@@ -3073,10 +3059,8 @@ def main(page: ft.Page, session_value=None):
 
             )
 
-
         if page.route == "/poddisplay" or page.route == "/poddisplay":
             # Check if podcast is already in database for user
-            print('display')
             podcast_status = api_functions.functions.call_check_podcast(app_api.url, app_api.headers,
                                                                         active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
@@ -3683,7 +3667,6 @@ def main(page: ft.Page, session_value=None):
 
                 if source == 'itunes':
                     mapped['title'] = result['collectionName']
-                    mapped['url'] = result['feedUrl']
                     mapped['url'] = result['feedUrl']
                     mapped['link'] = result['collectionViewUrl']
                     mapped['description'] = get_podcast_description(
