@@ -358,8 +358,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
-- [ ] Queue currently somewhat broken
+- [ ] Revamp queue - It should just save to the database
 - [ ] Fix logout - It's shows navbar still
+- [ ] Search options missing from web
+- [ ] Issue with loading poddisplay on web
+- [ ] Mass download options not working on web
 
 ### To be added after beta version (Listed in order they will be implemented)
 
