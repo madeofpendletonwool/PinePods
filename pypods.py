@@ -2365,93 +2365,49 @@ def main(page: ft.Page, session_value=None):
                             local_download_art_parsed = check_image(local_download_art_url)
                             local_download_entry_artwork_url = ft.Image(src=local_download_art_parsed, width=150,
                                                                         height=150)
-                            if self.download_type == "local":
-                                local_download_ep_resume_button = ft.IconButton(
-                                    icon=ft.icons.PLAY_CIRCLE,
-                                    icon_color=active_user.accent_color,
-                                    icon_size=40,
-                                    tooltip="Resume Episode",
-                                    on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title,
-                                                    artwork=local_download_ep_artwork,
-                                                    listen_duration=listen_duration: resume_selected_local_episode(url,
-                                                                                                                   title,
-                                                                                                                   artwork,
-                                                                                                                   listen_duration)
+                            local_download_ep_resume_button = ft.IconButton(
+                                icon=ft.icons.PLAY_CIRCLE,
+                                icon_color=active_user.accent_color,
+                                icon_size=40,
+                                tooltip="Resume Episode",
+                                on_click=lambda x,
+                                                url=f'{proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
+                                                title=local_download_ep_title,
+                                                artwork=local_download_ep_artwork,
+                                                listen_duration=listen_duration: resume_selected_episode(url, title,
+                                                                                                         artwork,
+                                                                                                         listen_duration)
+                            )
+                            local_download_ep_play_button = ft.IconButton(
+                                icon=ft.icons.NOT_STARTED,
+                                icon_color=active_user.accent_color,
+                                icon_size=40,
+                                tooltip="Play Episode",
+                                on_click=lambda x,
+                                                url=f'{proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
+                                                title=local_download_ep_title,
+                                                artwork=local_download_ep_artwork: play_selected_episode(url, title,
+                                                                                                         artwork)
+                            )
+                            local_download_popup_button = ft.PopupMenuButton(
+                                content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED,
+                                                color=active_user.accent_color, size=40, tooltip="Play Episode"),
+                                items=[
+                                    ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
+                                                     on_click=lambda x, url=local_download_ep_url,
+                                                                     title=local_download_ep_title,
+                                                                     artwork=local_download_ep_artwork: queue_selected_episode(
+                                                         url, title, artwork, page)),
+                                    ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Downloaded Episode",
+                                                     on_click=lambda x, url=local_download_ep_url,
+                                                                     title=local_download_ep_title: self.delete_selected_episode(
+                                                         url, title)),
+                                    ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
+                                                     on_click=lambda x, url=local_download_ep_url,
+                                                                     title=local_download_ep_title: save_selected_episode(
+                                                         url, title, page))
+                                ]
                                 )
-                                local_download_ep_play_button = ft.IconButton(
-                                    icon=ft.icons.NOT_STARTED,
-                                    icon_color=active_user.accent_color,
-                                    icon_size=40,
-                                    tooltip="Play Episode",
-                                    on_click=lambda x, url=local_download_ep_local_url, title=local_download_ep_title,
-                                                    artwork=local_download_ep_artwork: play_selected_local_episode(url,
-                                                                                                                   title,
-                                                                                                                   artwork)
-                                )
-                                local_download_popup_button = ft.PopupMenuButton(
-                                    content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED,
-                                                    color=active_user.accent_color, size=40, tooltip="Play Episode"),
-                                    items=[
-                                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
-                                                         on_click=lambda x, url=local_download_ep_url,
-                                                                         title=local_download_ep_title,
-                                                                         artwork=local_download_ep_artwork: queue_selected_episode(
-                                                             url, title, artwork, page)),
-                                        ft.PopupMenuItem(icon=ft.icons.DELETE, text="Delete Downloaded Episode",
-                                                         on_click=lambda x, url=local_download_ep_local_url,
-                                                                         title=local_download_ep_title,
-                                                                         episode_id=local_download_ep_id: self.delete_local_selected_episode(
-                                                             url, title, episode_id)),
-                                        ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
-                                                         on_click=lambda x, url=local_download_ep_url,
-                                                                         title=local_download_ep_title: save_selected_episode(
-                                                             url, title, page))
-                                    ]
-                                    )
-                            else:
-                                local_download_ep_resume_button = ft.IconButton(
-                                    icon=ft.icons.PLAY_CIRCLE,
-                                    icon_color=active_user.accent_color,
-                                    icon_size=40,
-                                    tooltip="Resume Episode",
-                                    on_click=lambda x,
-                                                    url=f'{proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
-                                                    title=local_download_ep_title,
-                                                    artwork=local_download_ep_artwork,
-                                                    listen_duration=listen_duration: resume_selected_episode(url, title,
-                                                                                                             artwork,
-                                                                                                             listen_duration)
-                                )
-                                local_download_ep_play_button = ft.IconButton(
-                                    icon=ft.icons.NOT_STARTED,
-                                    icon_color=active_user.accent_color,
-                                    icon_size=40,
-                                    tooltip="Play Episode",
-                                    on_click=lambda x,
-                                                    url=f'{proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
-                                                    title=local_download_ep_title,
-                                                    artwork=local_download_ep_artwork: play_selected_episode(url, title,
-                                                                                                             artwork)
-                                )
-                                local_download_popup_button = ft.PopupMenuButton(
-                                    content=ft.Icon(ft.icons.ARROW_DROP_DOWN_CIRCLE_ROUNDED,
-                                                    color=active_user.accent_color, size=40, tooltip="Play Episode"),
-                                    items=[
-                                        ft.PopupMenuItem(icon=ft.icons.QUEUE, text="Queue",
-                                                         on_click=lambda x, url=local_download_ep_url,
-                                                                         title=local_download_ep_title,
-                                                                         artwork=local_download_ep_artwork: queue_selected_episode(
-                                                             url, title, artwork, page)),
-                                        ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Delete Downloaded Episode",
-                                                         on_click=lambda x, url=local_download_ep_url,
-                                                                         title=local_download_ep_title: self.delete_selected_episode(
-                                                             url, title)),
-                                        ft.PopupMenuItem(icon=ft.icons.SAVE, text="Save Episode",
-                                                         on_click=lambda x, url=local_download_ep_url,
-                                                                         title=local_download_ep_title: save_selected_episode(
-                                                             url, title, page))
-                                    ]
-                                    )
                             if check_episode_playback == True:
                                 listen_prog = seconds_to_time(listen_duration)
                                 local_download_ep_prog = seconds_to_time(local_download_ep_duration)
@@ -6132,20 +6088,6 @@ def main(page: ft.Page, session_value=None):
         current_episode.url = url
         current_episode.name = title
         current_episode.artwork = artwork
-        current_episode.play_episode(listen_duration=listen_duration)
-
-    def play_selected_local_episode(url, title, artwork):
-        current_episode.url = url
-        current_episode.name = title
-        current_episode.artwork = artwork
-        current_episode.local = True
-        current_episode.play_episode()
-
-    def resume_selected_local_episode(url, title, artwork, listen_duration):
-        current_episode.url = url
-        current_episode.name = title
-        current_episode.artwork = artwork
-        current_episode.local = True
         current_episode.play_episode(listen_duration=listen_duration)
 
     def download_selected_episode(url, title, page):
