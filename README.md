@@ -351,6 +351,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Configure some kind of auto-refresh feature - Refreshes now on first boot and once every hour
 - [x] Mass download options not working on web
 - [x] Issue with loading poddisplay on web
+- [x] Search options missing from web (Restored - Entirely due to flet jank from app to web)
 
 ### Pre-beta version
 
@@ -362,7 +363,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Small layout Improvements
 - [ ] Revamp queue - It should just save to the database
 - [ ] Fix logout - It's shows navbar still
-- [ ] Search options missing from web
+- [ ] playing page not currently removing playing bar on bottom in app version
 
 ### To be added after beta version (Listed in order they will be implemented)
 

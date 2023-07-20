@@ -1961,6 +1961,31 @@ def main(page: ft.Page, session_value=None):
         if page.width <= 768 and page.width != 0:
             page_items.search_pods.visible = False
             page_items.search_location.visible = False
+            max_chars = character_limit(int(page.width))
+            current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
+            currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+            if page.width <= 768 and page.width != 0:
+                ep_height = 100
+                ep_width = 4000
+                page_items.search_pods.visible = False
+                page_items.search_location.visible = False
+                audio_container.height = ep_height
+                audio_container.content = ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[audio_container_pod_details, audio_controls_row])
+                audio_container.update()
+                currently_playing.update()
+                page.update()
+            else:
+                ep_height = 50
+                ep_width = 4000
+                page_items.search_pods.visible = True
+                page_items.search_location.visible = True
+                audio_container.height = ep_height
+                audio_container.content = audio_container_row
+                currently_playing.update()
+                audio_container.update()
+                page.update()
 
         page.on_resize = page_checksize
 
