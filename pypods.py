@@ -1433,18 +1433,6 @@ def main(page: ft.Page, session_value=None):
                 self.active_pr = False
 
     pr_instance = PR(page)
-    class Page_Vars:
-        def __init__(self, page):
-            self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
-            self.search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
-                                               focused_border_color=active_user.accent_color,
-                                               focused_color=active_user.accent_color,
-                                               prefix_icon=ft.icons.MANAGE_SEARCH,
-                                               options=[
-                                                   ft.dropdown.Option("podcastindex"),
-                                                   ft.dropdown.Option("itunes"),
-                                               ]
-                                               )
 
     def route_change(e):
         if pr_instance.active_pr == True:
@@ -1928,6 +1916,53 @@ def main(page: ft.Page, session_value=None):
                 page.dialog = search_dlg
                 search_dlg.open = True
                 page.update()
+
+        class Page_Vars:
+            def __init__(self, page):
+                self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
+                self.search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
+                                                   focused_border_color=active_user.accent_color,
+                                                   focused_color=active_user.accent_color,
+                                                   prefix_icon=ft.icons.MANAGE_SEARCH,
+                                                   options=[
+                                                       ft.dropdown.Option("podcastindex"),
+                                                       ft.dropdown.Option("itunes"),
+                                                   ]
+                                                   )
+
+        page_items = Page_Vars(page)
+        def page_checksize(e):
+            max_chars = character_limit(int(page.width))
+            current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
+            currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+            if page.width <= 768:
+                ep_height = 100
+                ep_width = 4000
+                page_items.search_pods.visible = False
+                page_items.search_location.visible = False
+                audio_container.height = ep_height
+                audio_container.content = ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[audio_container_pod_details, audio_controls_row])
+                audio_container.update()
+                currently_playing.update()
+                page.update()
+            else:
+                ep_height = 50
+                ep_width = 4000
+                page_items.search_pods.visible = True
+                page_items.search_location.visible = True
+                audio_container.height = ep_height
+                audio_container.content = audio_container_row
+                currently_playing.update()
+                audio_container.update()
+                page.update()
+
+        if page.width <= 768 and page.width != 0:
+            page_items.search_pods.visible = False
+            page_items.search_location.visible = False
+
+        page.on_resize = page_checksize
 
         page_items.search_location.width = 130
         page_items.search_location.height = 50
@@ -2751,19 +2786,11 @@ def main(page: ft.Page, session_value=None):
                 on_click=lambda x, title=clicked_podcast.name, url=clicked_podcast.feedurl: download_full_podcast(title,
                                                                                                            url, page)
             )
-            pod_local_download_button = ft.IconButton(
-                icon=ft.icons.DOWNLOAD,
-                icon_color=active_user.accent_color,
-                icon_size=40,
-                tooltip="Download Podcast Episodes Locally",
-                on_click=lambda x, title=clicked_podcast.name, url=clicked_podcast.feedurl: download_full_podcast_locally(title,
-                                                                                                           url, page)
-            )
             if podcast_status == True:
                 feed_row_content = ft.ResponsiveRow([
                     ft.Column(col={"md": 4}, controls=[pod_image]),
                     ft.Column(col={"md": 7}, controls=[pod_feed_title, pod_feed_desc, pod_feed_site]),
-                    ft.Column(col={"md": 1}, controls=[pod_feed_remove_button, pod_local_download_button, pod_download_button]),
+                    ft.Column(col={"md": 1}, controls=[pod_feed_remove_button, pod_download_button]),
                 ])
             else:
                 feed_row_content = ft.ResponsiveRow([
@@ -6003,38 +6030,8 @@ def main(page: ft.Page, session_value=None):
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing],
                                          alignment=ft.MainAxisAlignment.CENTER)
 
-    page_items = Page_Vars(page)
-
-    def page_checksize(e):
-        max_chars = character_limit(int(page.width))
-        current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-        currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
-        if page.width <= 768:
-            ep_height = 100
-            ep_width = 4000
-            page_items.search_pods.visible = False
-            page_items.search_location.visible = False
-            audio_container.height = ep_height
-            audio_container.content = ft.Column(
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[audio_container_pod_details, audio_controls_row])
-            audio_container.update()
-            currently_playing.update()
-            page.update()
-        else:
-            ep_height = 50
-            ep_width = 4000
-            page_items.search_pods.visible = True
-            page_items.search_location.visible = True
-            audio_container.height = ep_height
-            audio_container.content = audio_container_row
-            currently_playing.update()
-            audio_container.update()
-            page.update()
 
     if page.width <= 768 and page.width != 0:
-        page_items.search_pods.visible = False
-        page_items.search_location.visible = False
         ep_height = 100
         ep_width = 4000
         audio_container = ft.Container(

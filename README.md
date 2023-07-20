@@ -349,6 +349,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Check local downloads if already downloaded
 - [x] Allow description view on podcasts not added
 - [x] Configure some kind of auto-refresh feature - Refreshes now on first boot and once every hour
+- [x] Mass download options not working on web
+- [x] Issue with loading poddisplay on web
 
 ### Pre-beta version
 
@@ -361,8 +363,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Revamp queue - It should just save to the database
 - [ ] Fix logout - It's shows navbar still
 - [ ] Search options missing from web
-- [ ] Issue with loading poddisplay on web
-- [ ] Mass download options not working on web
 
 ### To be added after beta version (Listed in order they will be implemented)
 
