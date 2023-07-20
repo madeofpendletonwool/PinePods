@@ -6143,7 +6143,6 @@ def main(page: ft.Page, session_value=None):
         page.snack_bar.open = True
         page.update()
 
-    page.on_resize = page_checksize
     page.on_disconnect = active_user.clear_guest
 
 # Starting Page Layout
