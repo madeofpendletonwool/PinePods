@@ -352,18 +352,18 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Mass download options not working on web
 - [x] Issue with loading poddisplay on web
 - [x] Search options missing from web (Restored - Entirely due to flet jank from app to web)
+- [x] Small layout Improvements (Try, complete layout overhaul actually)
 
 ### Pre-beta version
 
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] Rework local images to run through the image proxy
-- [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
 - [ ] API documentation (Site Built with Docusaurus)
-- [ ] Small layout Improvements
 - [ ] Revamp queue - It should just save to the database
 - [ ] Fix logout - It's shows navbar still
 - [ ] playing page not currently removing playing bar on bottom in app version
+- [ ] Apparently I broke itunes searching
 
 ### To be added after beta version (Listed in order they will be implemented)
 
