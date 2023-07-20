@@ -11,8 +11,6 @@ import app_functions.functions
 
 # Others
 import time
-import mysql.connector
-import mysql.connector.pooling
 import json
 import re
 import sys
@@ -35,6 +33,7 @@ import secrets
 import appdirs
 import logging
 import hashlib
+from dateutil import parser
 import keyring
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -2689,12 +2688,13 @@ def main(page: ft.Page, session_value=None):
             current_download_text_con.padding = padding.only(left=70, right=50)
             current_downloads = DownloadingDisplay(page)
             downloading_row = current_downloads.active_download_row
+            current_downloads.active_download_row.visible = True
             # Create search view object
             ep_download_view = ft.View("/downloads",
                                        [
                                            download_list.top_bar,
                                            current_download_text_con,
-                                           downloading_row,
+                                           current_downloads.active_download_row,
                                            ft.Divider(color=active_user.accent_color),
                                            download_title_row_container,
                                            download_row_contain,
