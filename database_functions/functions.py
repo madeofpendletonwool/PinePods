@@ -125,7 +125,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 
 
                 # get the episode description
-                parsed_description = entry.summary
+                parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
 
                 # get the URL of the audio file for the episode
                 if entry.enclosures:
@@ -273,7 +273,7 @@ def return_selected_episode(cnx, user_id, title, url):
     cursor = cnx.cursor()
     query = ("SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
             "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
-            "Podcasts.PodcastName, Podcasts.WebsiteURL "
+            "Podcasts.PodcastName, Podcasts.WebsiteURL, Podcasts.FeedURL "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s")
@@ -623,7 +623,12 @@ def check_downloaded(cnx, user_id, title, url):
         # Get the EpisodeID from the Episodes table
         query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
         cursor.execute(query, (title, url))
-        episode_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
+
+        if result is None:   # add this check
+            return False
+
+        episode_id = result[0]
 
         # Check if the episode is downloaded for the user
         query = "SELECT DownloadID FROM DownloadedEpisodes WHERE UserID = %s AND EpisodeID = %s"
@@ -640,12 +645,12 @@ def check_downloaded(cnx, user_id, title, url):
     finally:
         if cursor:
             cursor.close()
-            # cnx.close()
+
 
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
              f"Podcasts.WebsiteURL, DownloadedEpisodes.DownloadedLocation "
              f"FROM DownloadedEpisodes "
@@ -714,41 +719,10 @@ def get_email_settings(cnx):
         return None
 
 
-def delete_podcast(cnx, url, title, user_id):
-
-    cursor = cnx.cursor()
-
-    # Get the download ID from the DownloadedEpisodes table
-    query = ("SELECT DownloadID, DownloadedLocation "
-             "FROM DownloadedEpisodes "
-             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
-    cursor.execute(query, (title, url, user_id))
-    result = cursor.fetchone()
-
-    if not result:
-        print("No matching download found.")
-        return
-
-    download_id, downloaded_location = result
-
-    # Delete the downloaded file
-    os.remove(downloaded_location)
-
-    # Remove the entry from the DownloadedEpisodes table
-    query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
-    cursor.execute(query, (download_id,))
-    cnx.commit()
-    print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
-
-    # Update UserStats table to increment EpisodesDownloaded count
-    query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
-             "WHERE UserID = %s")
-    cursor.execute(query, (user_id,))
-    
-    cursor.close()
-    # cnx.close()
+def delete_selected_episodes(cnx, user_id, selected_episodes):
+    pass
+def delete_selected_podcasts(cnx, user_id, selected_episodes):
+    pass
 
 def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     cursor = cnx.cursor()
@@ -920,7 +894,13 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
                    JOIN Podcasts p ON e.PodcastID = p.PodcastID
                    WHERE e.EpisodeTitle = %s AND e.EpisodeURL = %s AND p.UserID = %s"""
         cursor.execute(query, (episode_title, episode_url, user_id))
-        episode_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
+
+        # Check if the EpisodeID is None
+        if result is None:
+            return False, 0
+
+        episode_id = result[0]
 
         # Check if the user has played the episode before
         query = "SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s"
@@ -1717,7 +1697,7 @@ def get_episode_metadata(cnx, url, title, user_id):
     print(episode_id)
     episode_id = episode_id['EpisodeID']
 
-    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
              f"Podcasts.WebsiteURL "
              f"FROM Episodes "
@@ -1772,7 +1752,6 @@ def check_mfa_enabled(cnx, user_id):
 
 def get_mfa_secret(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
-    print(user_id)
 
     query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
 
@@ -1800,3 +1779,160 @@ def delete_mfa_secret(cnx, user_id):
     except Exception as e:
         print("Error deleting MFA secret:", e)
         return False
+
+def get_all_episodes(cnx, pod_feed):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s")
+
+    try:
+        cursor.execute(query, (pod_feed,))
+        result = cursor.fetchall()
+        cursor.close()
+
+        return result
+    except Exception as e:
+        print("Error retrieving Podcast Episodes:", e)
+        return None
+
+def remove_episode_history(cnx, url, title, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = (f"""DELETE FROM UserEpisodeHistory 
+                WHERE UserID = %s AND EpisodeID IN (
+                    SELECT EpisodeID FROM Episodes 
+                    WHERE EpisodeURL = %s AND EpisodeTitle = %s
+                )""")
+
+    try:
+        cursor.execute(query, (user_id, url, title))
+        cnx.commit()
+        cursor.close()
+
+        return True
+    except Exception as e:
+        print("Error removing episode from history:", e)
+        return False
+
+def setup_timezone_info(cnx, user_id, timezone, hour_pref):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = f"""UPDATE Users SET Timezone = %s, TimeFormat = %s, FirstLogin = %s WHERE UserID = %s"""
+
+    try:
+        cursor.execute(query, (timezone, hour_pref, 1, user_id))
+        cnx.commit()
+        cursor.close()
+
+        return True
+    except Exception as e:
+        print("Error setting up time info:", e)
+        return False
+
+def get_time_info(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+    query = (f"""SELECT Timezone, TimeFormat FROM Users WHERE UserID = %s""")
+
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return result['Timezone'], result['TimeFormat']
+    else:
+        return None
+
+def first_login_done(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    # Query to fetch the FirstLogin status
+    query = "SELECT FirstLogin FROM Users WHERE UserID = %s"
+
+    try:
+        # Execute the query
+        cursor.execute(query, (user_id,))
+
+        # Fetch the result
+        result = cursor.fetchone()
+        cursor.close()
+
+        # Check if the FirstLogin value is 1
+        if result['FirstLogin'] == 1:
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        print("Error fetching first login status:", e)
+        return False
+
+
+def delete_selected_episodes(cnx, selected_episodes, user_id):
+    cursor = cnx.cursor()
+    for episode_id in selected_episodes:
+        # Get the download ID and location from the DownloadedEpisodes table
+        query = ("SELECT DownloadID, DownloadedLocation "
+                 "FROM DownloadedEpisodes "
+                 "WHERE EpisodeID = %s AND UserID = %s")
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        if not result:
+            print(f"No matching download found for episode ID {episode_id}")
+            continue
+
+        download_id, downloaded_location = result
+
+        # Delete the downloaded file
+        os.remove(downloaded_location)
+
+        # Remove the entry from the DownloadedEpisodes table
+        query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+        cursor.execute(query, (download_id,))
+        cnx.commit()
+        print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+        # Update UserStats table to decrement EpisodesDownloaded count
+        query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+                 "WHERE UserID = %s")
+        cursor.execute(query, (user_id,))
+
+    cursor.close()
+
+    return "success"
+
+def delete_selected_podcasts(cnx, delete_list, user_id):
+    cursor = cnx.cursor()
+    for podcast_id in delete_list:
+        # Get the download IDs and locations from the DownloadedEpisodes table
+        query = ("SELECT DownloadedEpisodes.DownloadID, DownloadedEpisodes.DownloadedLocation "
+                 "FROM DownloadedEpisodes "
+                 "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
+                 "WHERE Episodes.PodcastID = %s AND DownloadedEpisodes.UserID = %s")
+        cursor.execute(query, (podcast_id, user_id))
+
+        results = cursor.fetchall()
+
+        if not results:
+            print(f"No matching downloads found for podcast ID {podcast_id}")
+            continue
+
+        for result in results:
+            download_id, downloaded_location = result
+
+            # Delete the downloaded file
+            os.remove(downloaded_location)
+
+            # Remove the entry from the DownloadedEpisodes table
+            query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+            cursor.execute(query, (download_id,))
+            cnx.commit()
+            print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+            # Update UserStats table to decrement EpisodesDownloaded count
+            query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+                     "WHERE UserID = %s")
+            cursor.execute(query, (user_id,))
+
+    cursor.close()
+    return "success"

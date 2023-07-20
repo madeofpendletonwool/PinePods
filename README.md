@@ -329,33 +329,55 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] MFA Logins
 - [x] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
 - [x] Add Itunes podcast API
+- [x] MFA Logins on web version
+- [x] Do something when search results aren't found - Currently Blank screen
+- [x] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
+- [x] Option to remove from history
+- [x] Reload not needed to add and remove episodes from pages
+- [x] Add mfa to dynamic settings class
+- [x] Add new users to dynamic settings class
+- [x] Add Email settings to dynamic users class
+- [x] logout on client remove saved app cache (Implemented button in settings to clear cache)
+- [x] On top bar cutoff add a search button that opens a search prompt (There's a small version of the search button now)
+- [x] custom timezone entry
+- [x] MFA Display totp secret
+- [x] Fix guest with timezone stuff
+- [x] 2.0 description features 
+- [x] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
+- [x] Remove local podcasts if podcast is no longer in database - Handle this somehow - Mass delete feature added
+- [x] Speed up database queries (Indexing added to episodes and podcasts)
+- [x] Check local downloads if already downloaded
+- [x] Allow description view on podcasts not added
+- [x] Configure some kind of auto-refresh feature - Refreshes now on first boot and once every hour
+- [x] Mass download options not working on web
+- [x] Issue with loading poddisplay on web
+- [x] Search options missing from web (Restored - Entirely due to flet jank from app to web)
 
 ### Pre-beta version
 
-- [ ] MFA Logins on web version
 - [ ] Refresh changes on readme
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] Rework local images to run through the image proxy
-- [ ] Implement smoother scrolling with big list loading (I've started a fix for this. ListViews are now active and working right on home and podview)
-- [ ] logout on client remove saved app cache
-- [ ] Occasional gStreamer Breaks. ughhh
+- [ ] Occasional gStreamer Breaks. ughhh (Honestly seemingly due to flet updates. This never previously happened)
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Small layout Improvements
+- [ ] Revamp queue - It should just save to the database
+- [ ] Fix logout - It's shows navbar still
+- [ ] playing page not currently removing playing bar on bottom in app version
 
 ### To be added after beta version (Listed in order they will be implemented)
 
+- [ ] Implement page views for poddisplays that have over 30 episodes
+- [ ] Jump to clicked timestamp
 - [ ] Offline mode for playing locally downloaded episodes
-- [ ] Page refreshing to handle adding and removing of things better
-- [ ] Reload not needed to add and remove episodes from pages
-- [ ] Mass downloading episodes. Entire podcast at once
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Rotating currently playing
-- [ ] Add highlight to indicate which page you're on
-- [ ] Customizable login screens
 - [ ] Allow for episodes to be played without being added
+- [ ] Add highlight to indicate which page you're on
+- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
+- [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
+- [ ] Rotating currently playing
+- [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] Option to run the client app with local config. Not connected to a server
-- [ ] MFA Logins - Github integration and local MFA (OAuth)
+- [ ] MFA Logins - Github integration and cloud logins (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
 - [ ] Linux App    
   - [ ] Flatpak

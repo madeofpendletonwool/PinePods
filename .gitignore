@@ -75,3 +75,7 @@ clients/mac-app/pinepods.spec
 
 # pycharm
 .idea/*
+.idea/misc.xml
+.idea/misc.xml
+.idea/PyPods.iml
+.idea/misc.xml

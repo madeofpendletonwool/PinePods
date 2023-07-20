@@ -15,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 import secrets
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -26,6 +26,7 @@ from typing import Any
 import argparse
 import sys
 from pyotp import TOTP
+import base64
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -417,11 +418,15 @@ async def api_download_episode_list(cnx = Depends(get_database_connection), api_
     downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
     return {"downloaded_episodes": downloaded_episodes}
 
+class Queue(BaseModel):
+    queue_urls: List[str]
 
 @app.post("/api/data/get_queue_list")
-async def api_get_queue_list(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), queue_urls: List[str] = Body(...)):
-    queue_list = database_functions.functions.get_queue_list(cnx, queue_urls)
+async def api_get_queue_list(queue: Queue, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    queue_list = database_functions.functions.get_queue_list(cnx, queue.queue_urls)
     return {"queue_list": queue_list}
+
+
 
 @app.post("/api/data/return_selected_episode")
 async def api_return_selected_episode(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), title: str = Body(...), url: str = Body(...)):
@@ -433,10 +438,22 @@ async def api_check_usernames(cnx = Depends(get_database_connection), api_key: s
     result = database_functions.functions.check_usernames(cnx, username)
     return {"username_exists": result}
 
+class UserValues(BaseModel):
+    fullname: str
+    username: str
+    email: str
+    hash_pw: bytes
+    salt: bytes
+
 @app.post("/api/data/add_user")
-async def api_add_user(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_values: List[str] = Body(...)):
-    database_functions.functions.add_user(cnx, tuple(user_values))
+async def api_add_user(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_values: UserValues = Body(...)):
+    # Convert base64 strings back to bytes
+    hash_pw_bytes = base64.b64decode(user_values.hash_pw)
+    salt_bytes = base64.b64decode(user_values.salt)
+    database_functions.functions.add_user(cnx, (user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
     return {"detail": "User added."}
+
+
 
 @app.put("/api/data/set_fullname/{user_id}")
 async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
@@ -611,6 +628,66 @@ async def api_delete_mfa(body: UserIDBody, cnx = Depends(get_database_connection
     result = database_functions.functions.delete_mfa_secret(cnx, body.user_id)
     return {"deleted": result}
 
+class AllEpisodes(BaseModel):
+    pod_feed: str
+
+@app.post("/api/data/get_all_episodes")
+async def api_get_episodes(data: AllEpisodes, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    episodes = database_functions.functions.get_all_episodes(cnx, data.pod_feed)
+    return {"episodes": episodes}
+
+class EpisodeToRemove(BaseModel):
+    url: str
+    title: str
+    user_id: int
+
+@app.post("/api/data/remove_episode_history")
+async def api_remove_episode_from_history(data: EpisodeToRemove, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    success = database_functions.functions.remove_episode_history(cnx, data.url, data.title, data.user_id)
+    return {"success": success}
+
+# Model for request data
+class TimeZoneInfo(BaseModel):
+    user_id: int
+    timezone: str
+    hour_pref: int
+
+# FastAPI endpoint
+@app.post("/api/data/setup_time_info")
+async def setup_timezone_info(data: TimeZoneInfo, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    success = database_functions.functions.setup_timezone_info(cnx, data.user_id, data.timezone, data.hour_pref)
+    return {"success": success}
+
+@app.get("/api/data/get_time_info")
+async def get_time_info(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    timezone, hour_pref = database_functions.functions.get_time_info(cnx, user_id)
+    return {"timezone": timezone, "hour_pref": hour_pref}
+
+class UserLoginUpdate(BaseModel):
+    user_id: int
+
+@app.post("/api/data/first_login_done")
+async def first_login_done(data: UserLoginUpdate, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    first_login_status = database_functions.functions.first_login_done(cnx, data.user_id)
+    return {"FirstLogin": first_login_status}
+
+class SelectedEpisodesDelete(BaseModel):
+    selected_episodes: List[int] = Field(..., title="List of Episode IDs")
+    user_id: int = Field(..., title="User ID")
+
+@app.post("/api/data/delete_selected_episodes")
+async def delete_selected_episodes(data: SelectedEpisodesDelete, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    status = database_functions.functions.delete_selected_episodes(cnx, data.selected_episodes, data.user_id)
+    return {"status": status}
+
+class SelectedPodcastsDelete(BaseModel):
+    delete_list: List[int] = Field(..., title="List of Podcast IDs")
+    user_id: int = Field(..., title="User ID")
+
+@app.post("/api/data/delete_selected_podcasts")
+async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    status = database_functions.functions.delete_selected_podcasts(cnx, data.delete_list, data.user_id)
+    return {"status": status}
 
 
 if __name__ == '__main__':
