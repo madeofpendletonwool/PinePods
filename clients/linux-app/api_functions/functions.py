@@ -784,3 +784,13 @@ def call_delete_selected_podcasts(url, headers, delete_list, user_id):
         print("Error message:", response.text)
         return None
 
+def call_user_search(url, headers, user_id, search_term):
+    data = {"search_term": search_term, "user_id": user_id}
+    response = requests.post(url + "/search_data", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["data"]
+    else:
+        print("Error getting info:", response.status_code)
+        print("Error message:", response.text)
+        return None
