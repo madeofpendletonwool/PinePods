@@ -2747,6 +2747,7 @@ def main(page: ft.Page, session_value=None):
             current_download_text_con = ft.Container(content=current_download_text)
             current_download_text_con.padding = padding.only(left=70, right=50)
             current_downloads = DownloadingDisplay(page)
+            current_downloads.create_downloading_layout()
             downloading_row = current_downloads.active_download_row
             current_downloads.active_download_row.visible = True
             # Create search view object
