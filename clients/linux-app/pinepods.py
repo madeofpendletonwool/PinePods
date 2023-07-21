@@ -12,6 +12,9 @@ import app_functions.functions
 
 # Others
 import urllib
+import urllib.request
+import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
 from requests.exceptions import RequestException, MissingSchema
@@ -3731,8 +3734,12 @@ def main(page: ft.Page, session_value=None):
             podcast_value = new_search.searchvalue
 
             def get_podcast_description(feed_url):
-                feed = feedparser.parse(feed_url)
-                return feed.feed.get('description', '')
+                try:
+                    response = urllib.request.urlopen(feed_url, timeout=10)
+                    feed = feedparser.parse(response)
+                    return feed.feed.get('description', '')
+                except (socket.timeout, Exception):
+                    return ''
 
             def map_search_result(result, source):
                 mapped = {}
@@ -3741,24 +3748,28 @@ def main(page: ft.Page, session_value=None):
                     mapped['title'] = result['collectionName']
                     mapped['url'] = result['feedUrl']
                     mapped['link'] = result['collectionViewUrl']
-                    mapped['description'] = get_podcast_description(
-                        result['feedUrl'])  # iTunes API doesn't provide a description
+                    mapped['description'] = get_podcast_description(result['feedUrl'])
                     mapped['author'] = result['artistName']
                     mapped['artwork'] = result['artworkUrl600']
-                    mapped['categories'] = result[
-                        'genres']  # not exactly the same as 'categories', but it's the closest match
+                    mapped['categories'] = result['genres']
                     mapped['episodeCount'] = result['trackCount']
                 else:  # podcastindex
-                    mapped = result  # no mapping necessary, the attributes are already as expected
+                    mapped = result
 
                 return mapped
 
             search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
-            return_results = [map_search_result(result, new_search.searchlocation) for result in
-                              search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
+
+            # Create a ThreadPoolExecutor.
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                futures = [executor.submit(map_search_result, result, new_search.searchlocation) for result in
+                           search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
+                return_results = [future.result() for future in as_completed(futures)]
+
+            print(search_results)
             pr_instance.rm_stack()
 
-            if search_results['feeds']:
+            if search_results.get('feeds') or search_results.get('results'):
                 # Get and format list
                 pod_number = 1
                 search_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)

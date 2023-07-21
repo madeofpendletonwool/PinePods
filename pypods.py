@@ -2755,7 +2755,6 @@ def main(page: ft.Page, session_value=None):
                                            download_list.top_bar,
                                            current_download_text_con,
                                            current_downloads.active_download_row,
-                                           current_downloads.mass_delete_row,
                                            ft.Divider(color=active_user.accent_color),
                                            download_title_row_container,
                                            download_row_contain,
