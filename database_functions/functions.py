@@ -1936,3 +1936,24 @@ def delete_selected_podcasts(cnx, delete_list, user_id):
 
     cursor.close()
     return "success"
+
+def search_data(cnx, search_term, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    query = """
+    SELECT * FROM Podcasts 
+    INNER JOIN Episodes ON Podcasts.PodcastID = Episodes.PodcastID 
+    WHERE Podcasts.UserID = %s AND 
+    Episodes.EpisodeTitle LIKE %s
+    """
+    search_term = '%' + search_term + '%'
+
+    try:
+        cursor.execute(query, (user_id, search_term))
+        result = cursor.fetchall()
+        cursor.close()
+
+        return result
+    except Exception as e:
+        print("Error retrieving Podcast Episodes:", e)
+        return None

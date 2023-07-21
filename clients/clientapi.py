@@ -689,6 +689,15 @@ async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx = Depends(g
     status = database_functions.functions.delete_selected_podcasts(cnx, data.delete_list, data.user_id)
     return {"status": status}
 
+class SearchPodcastData(BaseModel):
+    search_term: str
+    user_id: int
+
+@app.post("/api/data/search_data")
+async def search_data(data: SearchPodcastData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    status = database_functions.functions.search_data(cnx, data.search_term, data.user_id)
+    return {"status": status}
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -1378,6 +1378,43 @@ def main(page: ft.Page, session_value=None):
         page.update()
         page.go("/pod_list")
 
+    def open_search(e):
+        db_search = ft.TextField(label="Search Database", icon=ft.icons.SEARCH)
+
+        def validate_search(search_term):
+            if search_term == '':
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter a search term!"))
+                page.snack_bar.open = True
+                page.update()
+            elif len(search_term) <= 3:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter at least 4 characters to search for"))
+                page.snack_bar.open = True
+                page.update()
+            else:
+                active_user.search_term = search_term
+                page.go("/user_search")
+        def close_search_db_dlg(e):
+            search_db_dlg.open = False
+            page.update()
+
+        search_db_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Search Database:"),
+            content=ft.Column(controls=[
+                ft.Text(f'Please enter a search term below. This will search the database for episodes and podcasts associated with your username.', selectable=True),
+                db_search
+            ], tight=True),
+            actions=[
+                ft.TextButton("Search", on_click=lambda e: validate_search(db_search.value)),
+                ft.TextButton("Cancel", on_click=close_search_db_dlg)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        )
+        page.dialog = search_db_dlg
+        search_db_dlg.open = True
+        page.update()
+
+
     def go_homelogin_guest(page):
         active_user.user_id = 1
         active_user.fullname = 'Guest User'
@@ -2388,6 +2425,50 @@ def main(page: ft.Page, session_value=None):
             # Create final page
             page.views.append(
                 ep_queue_view
+
+            )
+
+        if page.route == "/user_search" or page.route == "/user_search":
+
+            search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, active_user.search_term)
+            search_layout = Pod_View(page)
+            search_layout.page_type = "search"
+
+            if search_data_list is None:
+                search_row_list = search_layout.define_empty_values(
+                    "No Podcasts matched",
+                    "Try another search",
+                    ""
+                )
+
+            else:
+                search_row_list = search_layout.define_values(search_data_list)
+
+            search_row_contain = ft.Container(content=search_row_list)
+
+            search_title = ft.Text(
+                "Search Results:",
+                size=30,
+                font_family="RobotoSlab",
+                weight=ft.FontWeight.W_300,
+            )
+            search_title_row = ft.Row(controls=[search_title], alignment=ft.MainAxisAlignment.CENTER)
+
+            # Create search view object
+            ep_search_view = ft.View("/user_search",
+                                    [
+                                        search_layout.top_bar,
+                                        search_title_row,
+                                        search_row_contain
+
+                                    ]
+
+                                    )
+            ep_search_view.bgcolor = active_user.bgcolor
+            ep_search_view.scroll = ft.ScrollMode.AUTO
+            # Create final page
+            page.views.append(
+                ep_search_view
 
             )
 
@@ -4003,7 +4084,6 @@ def main(page: ft.Page, session_value=None):
                                                 on_click=lambda e: app_api.api_verify(server_name.value,
                                                                                       app_api_key.value,
                                                                                       retain_session.value)
-                                                # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
                                     ),
@@ -5578,6 +5658,7 @@ def main(page: ft.Page, session_value=None):
             self.hour_pref = 24
             self.first_login_finished = 0
             self.first_start = 0
+            self.search_term = ""
 
         # New User Stuff ----------------------------
 
@@ -6374,6 +6455,7 @@ def main(page: ft.Page, session_value=None):
                         self.ContainedIcon('Downloaded', icons.DOWNLOAD, "Downloaded", open_downloads),
                         self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
                         self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
+                        self.ContainedIcon('Search', icons.SEARCH, 'Search', open_search),
                         ft.Divider(color="white24", height=5),
                         self.ContainedIcon('Settings', icons.SETTINGS, "Settings", open_settings),
                         self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pinepods),
@@ -6463,35 +6545,6 @@ def main(page: ft.Page, session_value=None):
     audio_container_row.padding = ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing],
                                          alignment=ft.MainAxisAlignment.CENTER)
-
-    # page_items = Page_Vars(page)
-
-    # def page_checksize(e):
-    #     max_chars = character_limit(int(page.width))
-    #     current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-    #     currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
-    #     if page.width <= 768:
-    #         ep_height = 100
-    #         ep_width = 4000
-    #         page_items.search_pods.visible = False
-    #         page_items.search_location.visible = False
-    #         audio_container.height = ep_height
-    #         audio_container.content = ft.Column(
-    #             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    #             controls=[audio_container_pod_details, audio_controls_row])
-    #         audio_container.update()
-    #         currently_playing.update()
-    #         page.update()
-    #     else:
-    #         ep_height = 50
-    #         ep_width = 4000
-    #         page_items.search_pods.visible = True
-    #         page_items.search_location.visible = True
-    #         audio_container.height = ep_height
-    #         audio_container.content = audio_container_row
-    #         currently_playing.update()
-    #         audio_container.update()
-    #         page.update()
 
     if page.width <= 768 and page.width != 0:
         ep_height = 100
@@ -6613,13 +6666,6 @@ def main(page: ft.Page, session_value=None):
             page.snack_bar.open = True
             page.update()
 
-    def remove_selected_podcast(title):
-        api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
-        page.snack_bar.open = True
-        page.update()
-
-    # page.on_resize = page_checksize
     page.on_disconnect = active_user.clear_guest
 
     # Starting Page Layout

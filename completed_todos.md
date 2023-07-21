@@ -108,3 +108,4 @@ This is the list of previous todos that are now completed
 - [x] Issue with loading poddisplay on web
 - [x] Search options missing from web (Restored - Entirely due to flet jank from app to web)
 - [x] Small layout Improvements (Try, complete layout overhaul actually)
+- [x] Apparently I broke itunes searching (description addition was causing a problem)
