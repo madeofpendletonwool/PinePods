@@ -2747,7 +2747,6 @@ def main(page: ft.Page, session_value=None):
             current_download_text_con = ft.Container(content=current_download_text)
             current_download_text_con.padding = padding.only(left=70, right=50)
             current_downloads = DownloadingDisplay(page)
-            current_downloads.create_downloading_layout()
             downloading_row = current_downloads.active_download_row
             current_downloads.active_download_row.visible = True
             # Create search view object
@@ -2756,6 +2755,7 @@ def main(page: ft.Page, session_value=None):
                                            download_list.top_bar,
                                            current_download_text_con,
                                            current_downloads.active_download_row,
+                                           current_downloads.mass_delete_row,
                                            ft.Divider(color=active_user.accent_color),
                                            download_title_row_container,
                                            download_row_contain,
