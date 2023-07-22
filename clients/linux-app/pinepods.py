@@ -2430,7 +2430,9 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/user_search" or page.route == "/user_search":
 
+            print('search done')
             search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, active_user.search_term)
+            print(search_data_list)
             search_layout = Pod_View(page)
             search_layout.page_type = "search"
 

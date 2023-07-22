@@ -786,11 +786,14 @@ def call_delete_selected_podcasts(url, headers, delete_list, user_id):
 
 def call_user_search(url, headers, user_id, search_term):
     data = {"search_term": search_term, "user_id": user_id}
-    response = requests.post(url + "/search_data", headers=headers, json=data)
-
-    if response.status_code == 200:
-        return response.json()["data"]
-    else:
-        print("Error getting info:", response.status_code)
-        print("Error message:", response.text)
+    try:
+        response = requests.post(url + "/search_data", headers=headers, json=data)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
         return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]

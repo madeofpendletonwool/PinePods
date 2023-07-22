@@ -255,6 +255,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Revamp queue - It should just save to the database
 - [ ] Fix logout - It's shows navbar still
 - [ ] playing page not currently removing playing bar on bottom in app version
+- [ ] Refresh with nothing in database breaks things
 
 ### To be added after beta version (Listed in order they will be implemented)
 

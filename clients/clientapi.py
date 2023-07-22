@@ -695,8 +695,9 @@ class SearchPodcastData(BaseModel):
 
 @app.post("/api/data/search_data")
 async def search_data(data: SearchPodcastData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    status = database_functions.functions.search_data(cnx, data.search_term, data.user_id)
-    return {"status": status}
+    result = database_functions.functions.search_data(cnx, data.search_term, data.user_id)
+    return {"data": result}
+
 
 
 if __name__ == '__main__':
