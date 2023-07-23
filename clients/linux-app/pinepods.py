@@ -1379,41 +1379,7 @@ def main(page: ft.Page, session_value=None):
         page.go("/pod_list")
 
     def open_search(e):
-        db_search = ft.TextField(label="Search Database", icon=ft.icons.SEARCH)
-
-        def validate_search(search_term):
-            if search_term == '':
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter a search term!"))
-                page.snack_bar.open = True
-                page.update()
-            elif len(search_term) <= 3:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter at least 4 characters to search for"))
-                page.snack_bar.open = True
-                page.update()
-            else:
-                active_user.search_term = search_term
-                page.go("/user_search")
-        def close_search_db_dlg(e):
-            search_db_dlg.open = False
-            page.update()
-
-        search_db_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Search Database:"),
-            content=ft.Column(controls=[
-                ft.Text(f'Please enter a search term below. This will search the database for episodes and podcasts associated with your username.', selectable=True),
-                db_search
-            ], tight=True),
-            actions=[
-                ft.TextButton("Search", on_click=lambda e: validate_search(db_search.value)),
-                ft.TextButton("Cancel", on_click=close_search_db_dlg)
-            ],
-            actions_alignment=ft.MainAxisAlignment.END
-        )
-        page.dialog = search_db_dlg
-        search_db_dlg.open = True
-        page.update()
-
+        page.go("/user_search")
 
     def go_homelogin_guest(page):
         active_user.user_id = 1
@@ -1662,6 +1628,7 @@ def main(page: ft.Page, session_value=None):
             if self.active_pr:
                 self.page.overlay.remove(self.progress_stack)
                 self.active_pr = False
+
 
     pr_instance = PR(page)
     # class Page_Vars:
@@ -2430,23 +2397,59 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/user_search" or page.route == "/user_search":
 
+            class Search:
+                def __init__(self, page):
+                    self.page = page
+                    self.search_term = ''
+                    self.search_lists = ft.ListView()
+                    self.search_textbox = ft.TextField(label='Search Database', icon=ft.icons.SEARCH, hint_text='This American Life')
+                    self.search_text_row = ft.Row(controls=[self.search_textbox])
+                    self.search_text_row.alignment = ft.MainAxisAlignment.CENTER
+                    self.search_container = ft.Container(content=self.search_text_row, alignment=ft.alignment.center)
+                    self.search_container.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+
+                def validate_search(self, e):
+                    print(self.search_textbox.value)
+                    pr_instance.touch_stack()
+                    self.page.update()
+                    if self.search_textbox.value == '':
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter a search term!"))
+                        self.page.snack_bar.open = True
+                        pr_instance.rm_stack()
+                        self.page.update()
+                        return
+                    elif len(self.search_textbox.value) <= 3:
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter at least 4 characters to search for"))
+                        self.page.snack_bar.open = True
+                        pr_instance.rm_stack()
+                        self.page.update()
+                        return
+                    else:
+                        self.search_term = self.search_textbox.value
+                        self.execute_search()
+
+                def execute_search(self):
+                    self.search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, self.search_term)
+                    print(self.search_data_list)
+                    self.search_lists = search_layout.define_values(self.search_data_list)
+                    pr_instance.rm_stack()
+                    page.update()
+                    ep_search_view.controls.append(self.search_lists)
+
+                    page.update()
+
+            search_query = Search(page)
+            page.update()
+
             print('search done')
-            search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, active_user.search_term)
-            print(search_data_list)
+            # page.update()
+            # search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, active_user.search_term)
+            # print(search_data_list)
             search_layout = Pod_View(page)
             search_layout.page_type = "search"
-
-            if search_data_list is None:
-                search_row_list = search_layout.define_empty_values(
-                    "No Podcasts matched",
-                    "Try another search",
-                    ""
-                )
-
-            else:
-                search_row_list = search_layout.define_values(search_data_list)
-
-            search_row_contain = ft.Container(content=search_row_list)
+            search_go = ft.ElevatedButton("Search!", on_click=search_query.validate_search)
+            search_page_row = ft.Row(controls=[search_query.search_container, search_go])
+            search_page_row.alignment = ft.MainAxisAlignment.CENTER
 
             search_title = ft.Text(
                 "Search Results:",
@@ -2461,13 +2464,15 @@ def main(page: ft.Page, session_value=None):
                                     [
                                         search_layout.top_bar,
                                         search_title_row,
-                                        search_row_contain
+                                        search_page_row,
+                                        # search_query.search_lists
 
                                     ]
 
                                     )
             ep_search_view.bgcolor = active_user.bgcolor
             ep_search_view.scroll = ft.ScrollMode.AUTO
+            page.update()
             # Create final page
             page.views.append(
                 ep_search_view
