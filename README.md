@@ -259,7 +259,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### To be added after beta version (Listed in order they will be implemented)
 
-- [ ] Internal Episode Search
+- [ ] Podcast list search
 - [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
 - [ ] Implement page views for poddisplays that have over 30 episodes
 - [ ] Jump to clicked timestamp

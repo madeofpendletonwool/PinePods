@@ -1736,10 +1736,16 @@ def main(page: ft.Page, session_value=None):
                 elif self.page_type == "queue":
                     page_episode_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
                                                                                     current_queue_list)
-                self.define_values(page_episode_list)
-                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
-                self.page.snack_bar.open = True
-                self.page.update()
+
+                if page_episode_list is not None:
+                    self.define_values(page_episode_list)
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
+                    self.page.snack_bar.open = True
+                    self.page.update()
+                else:
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                    self.page.snack_bar.open = True
+                    self.page.update()
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
@@ -2426,13 +2432,10 @@ def main(page: ft.Page, session_value=None):
                         return
                     else:
                         self.search_term = self.search_textbox.value
-                        print('executing')
                         self.execute_search()
 
                 def execute_search(self):
                     self.search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, self.search_term)
-                    print('executing2')
-                    print(self.search_data_list)
                     self.search_lists = search_layout.define_values(self.search_data_list)
                     pr_instance.rm_stack()
                     page.update()
@@ -2442,11 +2445,6 @@ def main(page: ft.Page, session_value=None):
 
             search_query = Search(page)
             page.update()
-
-            print('search done')
-            # page.update()
-            # search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, active_user.search_term)
-            # print(search_data_list)
             search_layout = Pod_View(page)
             search_layout.page_type = "search"
             search_go = ft.ElevatedButton("Search!", on_click=search_query.validate_search)
@@ -2454,7 +2452,7 @@ def main(page: ft.Page, session_value=None):
             search_page_row.alignment = ft.MainAxisAlignment.CENTER
 
             search_title = ft.Text(
-                "Search Results:",
+                "Search Database:",
                 size=30,
                 font_family="RobotoSlab",
                 weight=ft.FontWeight.W_300,
