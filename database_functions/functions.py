@@ -1937,6 +1937,7 @@ def delete_selected_podcasts(cnx, delete_list, user_id):
     cursor.close()
     return "success"
 
+import time
 def search_data(cnx, search_term, user_id):
     cursor = cnx.cursor(dictionary=True)
 
@@ -1949,8 +1950,11 @@ def search_data(cnx, search_term, user_id):
     search_term = '%' + search_term + '%'
 
     try:
+        start = time.time()
         cursor.execute(query, (user_id, search_term))
         result = cursor.fetchall()
+        end = time.time()
+        print(f"Query executed in {end - start} seconds.")
         cursor.close()
 
         return result
