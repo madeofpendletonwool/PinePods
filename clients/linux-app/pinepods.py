@@ -2426,10 +2426,12 @@ def main(page: ft.Page, session_value=None):
                         return
                     else:
                         self.search_term = self.search_textbox.value
+                        print('executing')
                         self.execute_search()
 
                 def execute_search(self):
                     self.search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, self.search_term)
+                    print('executing')
                     print(self.search_data_list)
                     self.search_lists = search_layout.define_values(self.search_data_list)
                     pr_instance.rm_stack()
