@@ -111,3 +111,5 @@ This is the list of previous todos that are now completed
 - [x] Apparently I broke itunes searching (description addition was causing a problem)
 - [x] Internal Episode Search
 - [x] Refresh causes episode to restart
+- [x] Fix logout - It's shows navbar still
+- [x] Refresh with nothing in database breaks things

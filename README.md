@@ -252,11 +252,10 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Rework local images to run through the image proxy for web
 - [ ] API documentation (Site Built with Docusaurus)
 - [ ] Revamp queue - It should just save to the database
-- [ ] Fix logout - It's shows navbar still
-- [ ] Refresh with nothing in database breaks things
 
 ### To be added after beta version (Listed in order they will be implemented)
 
+- [ ] Timestamps in playing page
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] playing page not currently removing playing bar on bottom in app version
 - [ ] Podcast list search

@@ -801,3 +801,12 @@ def call_user_search(url, headers, user_id, search_term):
         return None
     else:
         return response.json()["data"]
+
+def call_queue_pod(url, headers, user_id, episode):
+    pass
+
+def call_remove_queue_pod(url, headers, user_id, episode):
+    pass
+
+def call_queued_episodes(url, headers, user_id, episode):
+    pass

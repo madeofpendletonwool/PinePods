@@ -1206,12 +1206,14 @@ def main(page: ft.Page, session_value=None):
             if self.audio_playing == False:
                 self.play_episode()
             else:
-                self.queue.append(url)
-                time.sleep(.2)
+                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                                                          active_user.user_id)
 
         def remove_queued_pod(self):
             try:
-                self.queue.remove(self.url)
+                api_functions.functions.call_remove_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                                                       active_user.user_id)
+
             except ValueError:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: Episode not found in queue"))
                 page.snack_bar.open = True
