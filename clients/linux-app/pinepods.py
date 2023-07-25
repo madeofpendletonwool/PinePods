@@ -1202,13 +1202,14 @@ def main(page: ft.Page, session_value=None):
             api_functions.functions.call_download_podcast(app_api.url, app_api.headers, self.url, self.title,
                                                           active_user.user_id)
 
-        def queue_pod(self, url, title, page):
+        def queue_pod(self, url, title):
             if self.audio_playing == False:
                 self.play_episode()
-                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                print('queueing next')
+                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
                                                        active_user.user_id)
             else:
-                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
                                                           active_user.user_id)
 
         def remove_queued_pod(self):
@@ -1228,9 +1229,6 @@ def main(page: ft.Page, session_value=None):
         def remove_saved_pod(self):
             api_functions.functions.call_remove_saved_episode(app_api.url, app_api.headers, self.url, self.title,
                                                               active_user.user_id)
-
-        def get_queue(self):
-            return self.queue
 
         def get_current_time(self):
             try:
@@ -1739,6 +1737,8 @@ def main(page: ft.Page, session_value=None):
                 elif self.page_type == "queue":
                     page_episode_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
                                                                                     current_queue_list)
+                else:
+                    return
 
                 if page_episode_list is not None:
                     self.define_values(page_episode_list)
@@ -6670,7 +6670,8 @@ def main(page: ft.Page, session_value=None):
         current_episode.title = title
         current_episode.artwork = artwork
         current_episode.name = title
-        current_episode.queue_pod(url, title, page)
+        print('in queue selected')
+        current_episode.queue_pod(url, title)
         page.update()
 
     def save_selected_episode(url, title, page):
