@@ -110,3 +110,4 @@ This is the list of previous todos that are now completed
 - [x] Small layout Improvements (Try, complete layout overhaul actually)
 - [x] Apparently I broke itunes searching (description addition was causing a problem)
 - [x] Internal Episode Search
+- [x] Refresh causes episode to restart

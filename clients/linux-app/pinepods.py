@@ -354,7 +354,7 @@ def main(page: ft.Page, session_value=None):
                     global cache
                     api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(
                         self.url, self.headers)
-                    self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    # self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     cache = initialize_audio_routes(app, proxy_url)
 
@@ -1322,7 +1322,6 @@ def main(page: ft.Page, session_value=None):
         actions_alignment=ft.MainAxisAlignment.END
     )
 
-    # username = 'placeholder'
 
     # --Defining Routes---------------------------------------------------
 
@@ -1419,10 +1418,11 @@ def main(page: ft.Page, session_value=None):
                               bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        navbar = NavBar(page).create_navbar()
-        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        active_user.navbar_stack = ft.Stack([navbar], expand=True)
-        page.overlay.append(active_user.navbar_stack)
+        global new_nav
+        new_nav = NavBar(page)
+        new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+        page.overlay.append(new_nav.navbar_stack)
         page.update()
         page.go("/")
 
@@ -1602,10 +1602,9 @@ def main(page: ft.Page, session_value=None):
         current_time.color = active_user.font_color
         podcast_length.color = active_user.font_color
 
-        navbar = NavBar(page).create_navbar()
-        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        active_user.navbar_stack = ft.Stack([navbar], expand=True)
-        page.overlay.append(active_user.navbar_stack)
+        new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+        page.overlay.append(new_nav.navbar_stack)
         page.update()
         page.go("/")
 
@@ -1616,7 +1615,7 @@ def main(page: ft.Page, session_value=None):
     class PR:
         def __init__(self, page):
             self.pr = ft.ProgressRing()
-            self.progress_stack = ft.Stack([self.pr], bottom=25, right=30, left=20, expand=True)
+            self.progress_stack = ft.Stack([self.pr], bottom=25, right=30, left=13, expand=True)
             self.page = page
             self.active_pr = False
 
@@ -1739,8 +1738,8 @@ def main(page: ft.Page, session_value=None):
 
                 if page_episode_list is not None:
                     self.define_values(page_episode_list)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
-                    self.page.snack_bar.open = True
+                    # self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
+                    # self.page.snack_bar.open = True
                     self.page.update()
                 else:
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
@@ -2146,7 +2145,6 @@ def main(page: ft.Page, session_value=None):
                                                    )
 
         page_items = Page_Vars(page)
-        print(f'width is {page.width}')
         def page_checksize(e):
             max_chars = character_limit(int(page.width))
             current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
@@ -2418,7 +2416,6 @@ def main(page: ft.Page, session_value=None):
 
 
                 def validate_search(self, e):
-                    print(self.search_textbox.value)
                     pr_instance.touch_stack()
                     self.page.update()
                     if self.search_textbox.value == '':
@@ -2697,13 +2694,6 @@ def main(page: ft.Page, session_value=None):
                     self.local_download_row_list.controls.append(ep_row)
 
                 def generate_layout(self, episode_list):
-                    # def append_deletion(e):
-                    #     if download_pod_entry_check.value:
-                    #         self.delete_list.append(podcast_id)
-                    #     else:
-                    #         self.delete_list.remove(podcast_id)
-                    #     print(self.delete_list)
-
                     self.local_download_row_list.controls.clear()
                     episode_list.reverse()
                     podcasts_by_local_name = defaultdict(list)
@@ -3867,7 +3857,6 @@ def main(page: ft.Page, session_value=None):
                            search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
                 return_results = [future.result() for future in as_completed(futures)]
 
-            print(search_results)
             pr_instance.rm_stack()
 
             if search_results.get('feeds') or search_results.get('results'):
@@ -5519,6 +5508,8 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/playing" or page.route == "/playing":
             audio_container.visible = False
+            audio_container.update()
+            page.update()
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)
@@ -5679,6 +5670,7 @@ def main(page: ft.Page, session_value=None):
             self.first_login_finished = 0
             self.first_start = 0
             self.search_term = ""
+            # self.navbar = NavBar(page).create_navbar()
 
         # New User Stuff ----------------------------
 
@@ -6014,10 +6006,11 @@ def main(page: ft.Page, session_value=None):
             api_functions.functions.call_setup_time_info(app_api.url, app_api.headers, self.user_id, self.timezone,
                                                          self.hour_pref)
             if self.user_id == 1:
-                navbar = NavBar(page).create_navbar()
-                navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-                self.navbar_stack = ft.Stack([navbar], expand=True)
-                page.overlay.append(self.navbar_stack)
+                global new_nav
+                new_nav = NavBar(page)
+                new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+                new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                page.overlay.append(new_nav.navbar_stack)
                 page.update()
                 page.go("/")
             else:
@@ -6128,6 +6121,11 @@ def main(page: ft.Page, session_value=None):
             if login_screen == True:
 
                 start_login(page)
+                new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+                new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                page.overlay.append(new_nav.navbar_stack)
+                new_nav.navbar.visible = False
+                self.page.update()
             else:
                 active_user.user_id = 1
                 active_user.fullname = 'Guest User'
@@ -6364,6 +6362,8 @@ def main(page: ft.Page, session_value=None):
     class NavBar:
         def __init__(self, page):
             self.page = page
+            self.navbar = self.create_navbar()
+            self.navbar_stack = ft.Stack([self.navbar], expand=True)
 
         def HighlightContainer(self, e):
             if e.data == "true":
