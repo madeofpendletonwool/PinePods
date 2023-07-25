@@ -2413,6 +2413,9 @@ def main(page: ft.Page, session_value=None):
                     self.search_text_row.alignment = ft.MainAxisAlignment.CENTER
                     self.search_container = ft.Container(content=self.search_text_row, alignment=ft.alignment.center)
                     self.search_container.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+                    self.searching_results = ft.ListView(divider_thickness=3, auto_scroll=True)
+
+
 
                 def validate_search(self, e):
                     print(self.search_textbox.value)
@@ -2436,12 +2439,22 @@ def main(page: ft.Page, session_value=None):
 
                 def execute_search(self):
                     self.search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, self.search_term)
-                    self.search_lists = search_layout.define_values(self.search_data_list)
-                    pr_instance.rm_stack()
+                    self.searching_results.controls.clear()
                     page.update()
-                    ep_search_view.controls.append(self.search_lists)
+                    if self.search_data_list:
+                        self.search_lists = search_layout.define_values(self.search_data_list)
+                        pr_instance.rm_stack()
+                        page.update()
+                        self.searching_results.controls.append(self.search_lists)
+                    else:
+                        none_text = ft.Text("No results found! Try again!", size=16)
+                        none_row = ft.Row(controls=[none_text], alignment=ft.MainAxisAlignment.CENTER)
+                        pr_instance.rm_stack()
+                        self.searching_results.controls.append(none_row)
+                        page.update()
+                    ep_search_view.controls.append(self.searching_results)
+                    page.update()
 
-                    page.update()
 
             search_query = Search(page)
             page.update()
