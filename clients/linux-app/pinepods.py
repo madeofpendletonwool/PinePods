@@ -1205,6 +1205,8 @@ def main(page: ft.Page, session_value=None):
         def queue_pod(self, url, title, page):
             if self.audio_playing == False:
                 self.play_episode()
+                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                                                       active_user.user_id)
             else:
                 api_functions.functions.call_queue_pod(app_api.url, app_api.headers, self.url, self.title,
                                                           active_user.user_id)
@@ -1694,14 +1696,14 @@ def main(page: ft.Page, session_value=None):
                 # Update the list with the new episodes.
                 self.define_values(current_page_eps)
 
-            def remove_saved_episode(self, url, title, page):
+            def remove_saved_episode(self, url, title):
                 current_episode.url = url
                 current_episode.title = title
                 current_episode.remove_saved_pod()
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from saved podcasts!"))
-                page.snack_bar.open = True
+                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from saved podcasts!"))
+                self.page.snack_bar.open = True
                 self.refresh_episodes()
-                page.update()
+                self.page.update()
 
             def episode_remove_queue(self, url, title):
                 current_episode.url = url
@@ -1862,8 +1864,7 @@ def main(page: ft.Page, session_value=None):
                                                                                                           page)),
                                 ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
                                                  on_click=lambda x, url=ep_url,
-                                                                 title=ep_title: self.remove_saved_episode(url, title,
-                                                                                                           page))
+                                                                 title=ep_title: self.remove_saved_episode(url, title))
                             ]
                         )
                     elif self.page_type == "history":
@@ -2357,9 +2358,8 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/queue" or page.route == "/queue":
 
-            current_queue_list = current_episode.get_queue()
-            episode_queue_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
-                                                                             current_queue_list)
+            episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
             queue_layout = Pod_View(page)
             queue_layout.page_type = "queue"
 

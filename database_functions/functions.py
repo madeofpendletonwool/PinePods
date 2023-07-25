@@ -1938,6 +1938,7 @@ def delete_selected_podcasts(cnx, delete_list, user_id):
     return "success"
 
 import time
+
 def search_data(cnx, search_term, user_id):
     cursor = cnx.cursor(dictionary=True)
 
@@ -1961,3 +1962,106 @@ def search_data(cnx, search_term, user_id):
     except Exception as e:
         print("Error retrieving Podcast Episodes:", e)
         return None
+
+def queue_pod(cnx, episode_title, ep_url, user_id):
+    cursor = cnx.cursor()
+
+    # Fetch the EpisodeID using EpisodeTitle and EpisodeURL
+    query_get_episode_id = """
+    SELECT EpisodeID FROM Episodes 
+    WHERE EpisodeTitle = %s AND EpisodeURL = %s
+    """
+    cursor.execute(query_get_episode_id, (episode_title, ep_url))
+    result = cursor.fetchone()
+
+    # If Episode not found, raise exception or handle it as per your requirement
+    if not result:
+        raise Exception("Episode not found")
+
+    episode_id = result['EpisodeID']
+
+    # Find the current maximum QueuePosition for the user
+    query_get_max_pos = """
+    SELECT MAX(QueuePosition) AS max_pos FROM EpisodeQueue
+    WHERE UserID = %s
+    """
+    cursor.execute(query_get_max_pos, (user_id,))
+    result = cursor.fetchone()
+    max_pos = result['max_pos'] if result['max_pos'] else 0
+
+    # Insert the new episode into the queue
+    query_queue_pod = """
+    INSERT INTO EpisodeQueue(UserID, EpisodeID, QueuePosition) 
+    VALUES (%s, %s, %s)
+    """
+    new_pos = max_pos + 1  # New QueuePosition is one more than the current maximum
+    try:
+        start = time.time()
+        cursor.execute(query_queue_pod, (user_id, episode_id, new_pos))
+        cnx.commit()  # Don't forget to commit the changes
+        end = time.time()
+        print(f"Query executed in {end - start} seconds.")
+    except Exception as e:
+        print("Error queueing Podcast Episode:", e)
+        return None
+
+    return {"detail": "Podcast Episode queued successfully."}
+
+def remove_queued_pod(cnx, episode_title, ep_url, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    # First, retrieve the EpisodeID and QueuePosition of the episode to be removed
+    get_queue_data_query = """
+    SELECT EpisodeQueue.EpisodeID, EpisodeQueue.QueuePosition
+    FROM EpisodeQueue 
+    INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
+    WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND EpisodeQueue.UserID = %s
+    """
+    cursor.execute(get_queue_data_query, (episode_title, ep_url, user_id))
+    queue_data = cursor.fetchone()
+    if queue_data is None:
+        print(f"No queued episode found for the title: {episode_title} and URL: {ep_url}")
+        cursor.close()
+        return None
+
+    episode_id = queue_data['EpisodeID']
+    removed_queue_position = queue_data['QueuePosition']
+
+    # Then, delete the queued episode
+    delete_query = """
+    DELETE FROM EpisodeQueue
+    WHERE UserID = %s AND EpisodeID = %s
+    """
+    cursor.execute(delete_query, (user_id, episode_id))
+    cnx.commit()
+
+    # After that, decrease the QueuePosition of all episodes that were after the removed one
+    update_queue_query = """
+    UPDATE EpisodeQueue 
+    SET QueuePosition = QueuePosition - 1 
+    WHERE UserID = %s AND QueuePosition > %s
+    """
+    cursor.execute(update_queue_query, (user_id, removed_queue_position))
+    cnx.commit()
+
+    print(f"Successfully removed episode: {episode_title} from queue.")
+    cursor.close()
+
+    return {"status": "success"}
+
+def get_queued_episodes(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)
+
+    get_queued_episodes_query = """
+    SELECT Episodes.EpisodeTitle, Episodes.EpisodeURL, EpisodeQueue.QueuePosition
+    FROM EpisodeQueue 
+    INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
+    WHERE EpisodeQueue.UserID = %s 
+    ORDER BY EpisodeQueue.QueuePosition ASC
+    """
+    cursor.execute(get_queued_episodes_query, (user_id,))
+    queued_episodes = cursor.fetchall()
+
+    cursor.close()
+
+    return queued_episodes

@@ -698,6 +698,34 @@ async def search_data(data: SearchPodcastData, cnx = Depends(get_database_connec
     result = database_functions.functions.search_data(cnx, data.search_term, data.user_id)
     return {"data": result}
 
+class QueuePodData(BaseModel):
+    episode_title: str
+    ep_url: str
+    user_id: int
+
+@app.post("/api/data/queue_pod")
+async def queue_pod(data: QueuePodData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.queue_pod(cnx, data.episode_title, data.ep_url, data.user_id)
+    return {"data": result}
+
+class QueueRmData(BaseModel):
+    episode_title: str
+    ep_url: str
+    user_id: int
+
+@app.post("/api/data/remove_queued_pod")
+async def remove_queued_pod(data: QueueRmData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.remove_queued_pod(cnx, data.episode_title, data.ep_url, data.user_id)
+    return {"data": result}
+
+class QueuedEpisodesData(BaseModel):
+    user_id: int
+
+@app.get("/api/data/get_queued_episodes")
+async def get_queued_episodes(data: QueuedEpisodesData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.get_queued_episodes(cnx, data.user_id)
+    return {"data": result}
+
 
 
 if __name__ == '__main__':
