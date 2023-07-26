@@ -251,7 +251,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Refresh changes on readme
 - [ ] Rework local images to run through the image proxy for web
 - [ ] API documentation (Site Built with Docusaurus)
-- [ ] Revamp queue - It should just save to the database
+- [ ] Revamp queue - It should just save to the database (Queue rebuilt. Though it's not dynamically updating quite yet)
 
 ### To be added after beta version (Listed in order they will be implemented)
 

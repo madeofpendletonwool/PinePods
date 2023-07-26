@@ -1005,10 +1005,16 @@ def main(page: ft.Page, session_value=None):
         def on_state_changed(self, status):
             self.state = status
             if status == 'completed':
-
+                api_functions.functions.call_remove_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                                                              active_user.user_id)
+                self.queue = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                          active_user.user_id)
                 if len(self.queue) > 0:
-                    next_episode_url = self.queue.pop(0)
-                    self.play_episode(next_episode_url)
+                    next_episode = self.queue[0]  # First episode in the queue after sorting by QueuePosition
+                    current_episode.url = next_episode['EpisodeURL']
+                    current_episode.name = next_episode['EpisodeTitle']
+                    current_episode.artwork = next_episode['EpisodeArtwork']
+                    self.play_episode()
                 else:
                     self.audio_element.release()
                     self.audio_playing = False
@@ -1752,7 +1758,6 @@ def main(page: ft.Page, session_value=None):
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
-                print(episodes)
                 for values in episodes:
                     ep_title = values['EpisodeTitle']
                     pod_name = values['PodcastName']
@@ -1952,8 +1957,6 @@ def main(page: ft.Page, session_value=None):
                         if self.page_type == "history":
                             entry_released = ft.Text(f'Listened on: {ep_listen_date}',
                                                      color=active_user.font_color)
-                        else:
-                            continue
                         entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color),
                                                           ft.ProgressBar(expand=True, value=progress_value,
                                                                          color=active_user.main_color),
@@ -1981,24 +1984,17 @@ def main(page: ft.Page, session_value=None):
                     else:
                         ep_dur = seconds_to_time(ep_duration)
                         dur_display = ft.Text(f'Episode Duration: {ep_dur}', color=active_user.font_color)
+                        entry_controls = [entry_title, entry_description, entry_released, dur_display,
+                                          ft.Row(controls=[ep_play_button, popup_button])]
+
                         if num_lines > 15:
-                            ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                                ft.Column(col={"md": 9},
-                                          controls=[entry_title, entry_description, entry_seemore,
-                                                    entry_released, dur_display,
-                                                    ft.Row(controls=[ep_play_button, popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
-                        else:
-                            ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                                ft.Column(col={"md": 9},
-                                          controls=[entry_title, entry_description, entry_released,
-                                                    dur_display,
-                                                    ft.Row(controls=[ep_play_button, popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
+                            entry_controls.insert(2, entry_seemore)  # Inserting the 'See More' button after 'entry_description'
+
+                        ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                            ft.Column(col={"md": 9}, controls=entry_controls),
+                            ft.Column(col={"md": 1}, controls=[rotate_button]),
+                        ])
                     entry_description.visible = False
                     rotate_iteration = AnimatedButton(rotate_button, entry_description, entry_seemore)
                     rotate_button.on_click = rotate_iteration.animate
@@ -2351,10 +2347,8 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/queue" or page.route == "/queue":
-            print('que')
             episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
                                                                              active_user.user_id)
-            print('que')
             queue_layout = Pod_View(page)
             queue_layout.page_type = "queue"
 
@@ -2366,9 +2360,7 @@ def main(page: ft.Page, session_value=None):
                 )
 
             else:
-                print('defining')
                 queue_row_list = queue_layout.define_values(episode_queue_list)
-                print('defining')
 
             queue_row_contain = ft.Container(content=queue_row_list)
 
@@ -6667,7 +6659,6 @@ def main(page: ft.Page, session_value=None):
         current_episode.title = title
         current_episode.artwork = artwork
         current_episode.name = title
-        print('in queue selected')
         current_episode.queue_pod(url, title)
         page.update()
 

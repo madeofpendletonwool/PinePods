@@ -873,6 +873,5 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
         return response.json()["data"]
 
 
-
 # def update_queued_positions(url, headers, user_id, episode):
 #     pass
