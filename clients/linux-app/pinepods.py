@@ -897,6 +897,8 @@ def main(page: ft.Page, session_value=None):
                                                                        active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
+            api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.title,
+                                                   active_user.user_id)
             if self.loading_audio == True:
                 page.snack_bar = ft.SnackBar(content=ft.Text(
                     f"Please wait until current podcast has finished loading before selecting a new one."))
@@ -1206,11 +1208,7 @@ def main(page: ft.Page, session_value=None):
             if self.audio_playing == False:
 
                 self.play_episode()
-                print('queueing next')
-                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
-                                                       active_user.user_id)
             else:
-                print('queueing next')
                 api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
                                                           active_user.user_id)
 
@@ -1754,7 +1752,6 @@ def main(page: ft.Page, session_value=None):
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
-                print('defining')
                 print(episodes)
                 for values in episodes:
                     ep_title = values['EpisodeTitle']
@@ -1781,7 +1778,6 @@ def main(page: ft.Page, session_value=None):
                                                 on_click=lambda x, url=ep_url,
                                                                 title=ep_title: open_episode_select(page, url,
                                                                                                     title))
-                    print(1)
                     entry_seemore = ft.TextButton(text="See More...")
                     num_lines = ep_desc.count('\n')
                     if num_lines > 15:
@@ -1817,7 +1813,6 @@ def main(page: ft.Page, session_value=None):
                         else:
                             # display plain text
                             entry_description = ft.Text(ep_desc, selectable=True)
-                    print(2)
                     check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
                         app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
@@ -1942,7 +1937,6 @@ def main(page: ft.Page, session_value=None):
                                                                                                        page))
                             ]
                         )
-                    print(3)
                     rotate_button = ft.IconButton(
                         icon=ft.icons.ARROW_FORWARD_IOS,
                         icon_color=active_user.accent_color,

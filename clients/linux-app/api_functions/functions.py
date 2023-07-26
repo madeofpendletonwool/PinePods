@@ -853,6 +853,26 @@ def call_queued_episodes(url, headers, user_id):
     else:
         return response.json()["data"]
 
+# client_api.py
+
+def call_queue_bump(url, headers, ep_url, title, user_id):
+    data = {"ep_url": ep_url, "title": title, "user_id": user_id}
+    try:
+        response = requests.post(url + "/api/data/queue_bump", headers=headers, json=data, timeout=30)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]
+
+
 
 # def update_queued_positions(url, headers, user_id, episode):
 #     pass

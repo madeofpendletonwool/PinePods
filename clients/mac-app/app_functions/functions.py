@@ -1,4 +1,5 @@
 import feedparser
+import pprint
 
 def search_podcast(e):
     if not search_pods.value:
@@ -97,8 +98,8 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
 
         elif send_mode == "Sendmail":
             pass
-    except smtplib.SMTPException as e:
-        return f'Failed to send email: {str(e)}'
+    except ssl.SSLError:
+        return 'SSL Wrong Version Number. Try another ssl type?'
     except smtplib.SMTPAuthenticationError:
         return 'Authentication Error: Invalid username or password.'
     except smtplib.SMTPRecipientsRefused:
@@ -113,11 +114,13 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
         return 'Connection Refused: The server refused the connection.'
     except TimeoutError:
         return 'Timeout Error: The connection to the server timed out.'
+    except smtplib.SMTPException as e:
+        return f'Failed to send email: {str(e)}'
 
 
 if __name__ == "__main__":
     # Example usage
-    feed_url = "https://feeds.fireside.fm/asknoah/rss"
+    feed_url = "https://feeds.npr.org/510318/podcast.xml"
     d = parse_feed(feed_url)
     for entry in d.entries:
         audio_file = None
@@ -129,13 +132,11 @@ if __name__ == "__main__":
             print("\n")
             print("Title: ", entry.title)
             print("Link: ", entry.link)
-            print("Description: ", entry.description)
+            print("Published Date: ", entry.published)
+            content = entry.get('content', [{}])[0].get('value', entry.description)
+            print("Content/Description: ", content)
             print("Audio File: ", audio_file)
-            # print("Published Date: ", entry.published)
-            # print(entry.itunes_image)
             parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
-            # if parsed_artwork_url == None:
-                # parsed_artwork_url = clicked_podcast.artwork
             print(parsed_artwork_url)
         else:
             print("\n")

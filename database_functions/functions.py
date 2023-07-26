@@ -2075,3 +2075,36 @@ def get_queued_episodes(cnx, user_id):
     cursor.close()
 
     return queued_episodes
+
+# database_functions.py
+
+def queue_bump(cnx, ep_url, title, user_id):
+    cursor = cnx.cursor()
+
+    # check if the episode is already in the queue
+    cursor.execute(
+        "SELECT QueueID, QueuePosition FROM EpisodeQueue "
+        "INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID "
+        "WHERE Episodes.EpisodeURL = %s AND Episodes.EpisodeTitle = %s AND EpisodeQueue.UserID = %s",
+        (ep_url, title, user_id)
+    )
+    result = cursor.fetchone()
+
+    # if the episode is in the queue, remove it
+    if result is not None:
+        cursor.execute(
+            "DELETE FROM EpisodeQueue WHERE QueueID = %s", (result['QueueID'],)
+        )
+
+    # decrease the QueuePosition of all other episodes in the queue
+    cursor.execute(
+        "UPDATE EpisodeQueue SET QueuePosition = QueuePosition - 1 WHERE UserID = %s", (user_id,)
+    )
+
+    # add the episode to the front of the queue
+    queue_pod(cnx, title, ep_url, user_id)
+
+    cnx.commit()
+    cursor.close()
+
+    return {"detail": f"{title} moved to the front of the queue."}
