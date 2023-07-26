@@ -418,16 +418,6 @@ async def api_download_episode_list(cnx = Depends(get_database_connection), api_
     downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
     return {"downloaded_episodes": downloaded_episodes}
 
-class Queue(BaseModel):
-    queue_urls: List[str]
-
-@app.post("/api/data/get_queue_list")
-async def api_get_queue_list(queue: Queue, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    queue_list = database_functions.functions.get_queue_list(cnx, queue.queue_urls)
-    return {"queue_list": queue_list}
-
-
-
 @app.post("/api/data/return_selected_episode")
 async def api_return_selected_episode(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), title: str = Body(...), url: str = Body(...)):
     episode_info = database_functions.functions.return_selected_episode(cnx, user_id, title, url)

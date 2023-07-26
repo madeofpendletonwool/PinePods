@@ -1695,8 +1695,8 @@ def main(page: ft.Page, session_value=None):
                     current_page_eps = api_functions.functions.call_user_history(app_api.url, app_api.headers,
                                                                                  active_user.user_id)
                 elif self.page_type == "queue":
-                    current_page_eps = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
-                                                                                   current_queue_list)
+                    current_page_eps = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
                 # Update the list with the new episodes.
                 self.define_values(current_page_eps)
 
@@ -1741,8 +1741,8 @@ def main(page: ft.Page, session_value=None):
                     page_episode_list = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                                      active_user.user_id)
                 elif self.page_type == "queue":
-                    page_episode_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
-                                                                                    current_queue_list)
+                    page_episode_list = episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
                 else:
                     return
 

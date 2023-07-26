@@ -457,16 +457,6 @@ def call_get_email_info(url, headers):
         print("Response body:", response.json())
         return None
 
-
-def call_get_queue_list(url, headers, queue_urls):
-    data = {"queue_urls": queue_urls}
-    response = requests.post(url + "/get_queue_list", headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()["queue_list"]
-    else:
-        print("Error fetching queue list:", response.status_code)
-        return None
-
 def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
     data = {"user_id": user_id, "title": title, "url": episode_url}
     response = requests.post(api_url + "/return_selected_episode", headers=headers, json=data)

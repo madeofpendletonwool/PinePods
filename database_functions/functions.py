@@ -810,31 +810,6 @@ def episode_remove_queue(cnx, user_id, url, title):
         # cnx.close()
         return False
 
-
-
-def get_queue_list(cnx, queue_urls):
-    if not queue_urls:
-        return None
-    
-    query_template = """
-        SELECT Episodes.EpisodeTitle, Podcasts.PodcastName, Episodes.EpisodePubDate,
-            Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, 
-            NOW() as QueueDate
-        FROM Episodes
-        INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-        WHERE Episodes.EpisodeURL IN ({})
-    """
-    placeholders = ",".join(["%s"] * len(queue_urls))
-    query = query_template.format(placeholders)
-
-    cursor = cnx.cursor(dictionary=True)
-    cursor.execute(query, queue_urls)
-
-    episode_list = cursor.fetchall()
-    cursor.close()
-    # cnx.close()
-    return episode_list
-
 def check_usernames(cnx, username):
     cursor = cnx.cursor()
     query = ("SELECT COUNT(*) FROM Users WHERE Username = %s")
