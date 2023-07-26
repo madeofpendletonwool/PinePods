@@ -2053,9 +2053,19 @@ def get_queued_episodes(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     get_queued_episodes_query = """
-    SELECT Episodes.EpisodeTitle, Episodes.EpisodeURL, EpisodeQueue.QueuePosition
+    SELECT 
+        Episodes.EpisodeTitle, 
+        Podcasts.PodcastName, 
+        Episodes.EpisodePubDate, 
+        Episodes.EpisodeDescription, 
+        Episodes.EpisodeArtwork, 
+        Episodes.EpisodeURL, 
+        EpisodeQueue.QueuePosition, 
+        Episodes.EpisodeDuration, 
+        EpisodeQueue.QueueDate
     FROM EpisodeQueue 
     INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
+    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID 
     WHERE EpisodeQueue.UserID = %s 
     ORDER BY EpisodeQueue.QueuePosition ASC
     """

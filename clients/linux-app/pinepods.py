@@ -1754,6 +1754,8 @@ def main(page: ft.Page, session_value=None):
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
+                print('defining')
+                print(episodes)
                 for values in episodes:
                     ep_title = values['EpisodeTitle']
                     pod_name = values['PodcastName']
@@ -1767,13 +1769,9 @@ def main(page: ft.Page, session_value=None):
                     ep_url = values['EpisodeURL']
                     if self.page_type == "history":
                         ep_listen_date = values['ListenDate']
-                    if self.page_type == "downloads":
-                        ep_local_url = values['DownloadedLocation']
-                    if self.page_type == "local_downloads":
-                        ep_local_url = values['EpisodeLocalPath']
-                        ep_id = values['EpisodeID']
                     if self.page_type == "queue":
                         ep_queue_date = values['QueueDate']
+                        ep_queue_position = values['QueuePosition']
                     ep_duration = values['EpisodeDuration']
                     # do something with the episode information
                     entry_title_button = ft.Text(f'{pod_name} - {ep_title}',
@@ -1783,7 +1781,7 @@ def main(page: ft.Page, session_value=None):
                                                 on_click=lambda x, url=ep_url,
                                                                 title=ep_title: open_episode_select(page, url,
                                                                                                     title))
-
+                    print(1)
                     entry_seemore = ft.TextButton(text="See More...")
                     num_lines = ep_desc.count('\n')
                     if num_lines > 15:
@@ -1819,7 +1817,7 @@ def main(page: ft.Page, session_value=None):
                         else:
                             # display plain text
                             entry_description = ft.Text(ep_desc, selectable=True)
-
+                    print(2)
                     check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
                         app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
@@ -1944,7 +1942,7 @@ def main(page: ft.Page, session_value=None):
                                                                                                        page))
                             ]
                         )
-
+                    print(3)
                     rotate_button = ft.IconButton(
                         icon=ft.icons.ARROW_FORWARD_IOS,
                         icon_color=active_user.accent_color,
@@ -2359,9 +2357,10 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/queue" or page.route == "/queue":
-
+            print('que')
             episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
                                                                              active_user.user_id)
+            print('que')
             queue_layout = Pod_View(page)
             queue_layout.page_type = "queue"
 
@@ -2373,7 +2372,9 @@ def main(page: ft.Page, session_value=None):
                 )
 
             else:
+                print('defining')
                 queue_row_list = queue_layout.define_values(episode_queue_list)
+                print('defining')
 
             queue_row_contain = ft.Container(content=queue_row_list)
 
