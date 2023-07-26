@@ -1204,11 +1204,13 @@ def main(page: ft.Page, session_value=None):
 
         def queue_pod(self, url, title):
             if self.audio_playing == False:
+
                 self.play_episode()
                 print('queueing next')
                 api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
                                                        active_user.user_id)
             else:
+                print('queueing next')
                 api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
                                                           active_user.user_id)
 

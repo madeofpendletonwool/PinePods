@@ -1964,7 +1964,7 @@ def search_data(cnx, search_term, user_id):
         return None
 
 def queue_pod(cnx, episode_title, ep_url, user_id):
-    cursor = cnx.cursor()
+    cursor = cnx.cursor(dictionary=True)
 
     # Fetch the EpisodeID using EpisodeTitle and EpisodeURL
     query_get_episode_id = """
