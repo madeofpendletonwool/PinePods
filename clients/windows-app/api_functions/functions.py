@@ -858,7 +858,7 @@ def call_queued_episodes(url, headers, user_id):
 def call_queue_bump(url, headers, ep_url, title, user_id):
     data = {"ep_url": ep_url, "title": title, "user_id": user_id}
     try:
-        response = requests.post(url + "/api/data/queue_bump", headers=headers, json=data, timeout=30)
+        response = requests.post(url + "/queue_bump", headers=headers, json=data, timeout=30)
         response.raise_for_status()  # Raise an exception for HTTP errors
     except requests.exceptions.Timeout:
         print(f"Request timed out.")
