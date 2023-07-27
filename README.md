@@ -26,6 +26,9 @@
   - [Screenshots :camera:](#screenshots-camera)
 
 PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
+# Getting Started
+
+PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 
 ## Features
 
@@ -50,9 +53,10 @@ version: '3'
 services:
   db:
     image: mariadb:latest
+    command: --wait_timeout=1800
     environment:
       MYSQL_TCP_PORT: 3306
-      MYSQL_ROOT_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: myS3curepass
       MYSQL_DATABASE: pypods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
@@ -62,42 +66,39 @@ services:
     ports:
       - "3306:3306"
     restart: always
-  pinepods-proxy:
-    image: madeofpendletonwool/pinepods-proxy:latest
-    ports:
-      - "8033:8000"
-    restart: always
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
+    # Web Portal Port
       - "8034:8034"
+    # API Server Port - Needed for Client Connections
       - "8032:8032"
+    # Image Proxy Port - Needed to Display Some Images
+      - "8000:8000"
     environment:
       # Default Admin User Information
-      USERNAME: pinepods
-      PASSWORD: password
-      FULLNAME: John Pinepods
-      EMAIL: john@pinepods.com
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
       # Database Vars
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: password
+      DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: pinepods-proxy
-      PROXY_PORT: 8033
-      PROXY_PROTOCOL: http
+      PROXY_HOST: proxy.pinepods.online
+      PROXY_PORT: 8000
+      PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
-      #Podcast Index API
-      API_URL: 'https://api.pinepods.online/api/search'
-
+      # Search Index API Vars
+      API_URL: 'https://search.pinepods.online/api/search'
+      # Client API Vars
+      API_SERVER_PORT: 8032
 
     depends_on:
       - db
-      - pinepods-proxy
-
-
 ```
 
 Make sure you change these variables to variables specific to yourself.
@@ -124,7 +125,7 @@ First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details 
 
 #### Proxy Info
 
-Second, the PROXY_HOST, PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It uses a second container to accomplish this. That's the pinepods-proxy portion of the compose file. The application itself will then use this proxy to route media though. This proxy also be ran over a reverse proxy. Here's few examples
+Second, the PROXY_HOST, PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. The application itself will then use this proxy to route media though. This proxy can also be ran over a reverse proxy. Here's few examples
 
 **Recommended:**
 Routed through proxy, secure, with reverse proxy
@@ -160,57 +161,33 @@ Hostname, secure, and no reverse proxy
 
 Note: Changing REVERSE_PROXY to False adjusts what the application uses for the reverse proxy. In short it removed the port from the url it uses for routing since the reverse proxy will add the port for you.
 
-So REVERSE_PROXY "True"
+So REVERSE_PROXY "True" - App will use
 https://proxy.pinepods.online
 
-REVERSE_PROXY "False"
+REVERSE_PROXY "False" - App will use
 https://proxy.pinepods.online:8033
 
-#### API Notes
+#### Note on the Search API
 
-Let's talk about the API. The variable in the compose file
+Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. The podcast index requires an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below.
 
 ```
 API_URL: 'https://api.pinepods.online/api/search'
 ```
 
-This is an api that I maintain to forward search queries to the podcast index which returns results based on the search term you passed to it. You can leave this variable default, and if you do you'll be using the api that I maintain for this. I do not guarantee 100% uptime on this api though, it should be up most of the time bar a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy
+Above is an api that I maintain. I do not guarantee 100% uptime on this api though, it should be up most of the time besides a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy. Check out the API docs for more information on doing this. Link Below -
 
-Head over to the podcast index API website and sign up to get your very own api and key. It's free and makes everything extra secure.
-[Podcast Index API Website](https://api.podcastindex.org/)
+https://pinepods.online/api/search_api
 
-Once you have it. Use this docker compose file
+####  Client API Vars
 
+The Client API server port variable tells Pinepods what port to expose the FastAPI routes on. This is needed to connect to the server with the Pinepods client/app version. The API_SERVER_PORT variable and API server port that is exposed in the compose file need to be the same.
 ```
-version: '3'
-services:
-    pypods-backend:
-       image: madeofpendletonwool/pinepods_backend:latest
-       container_name: pypods-be
-       env_file: env_file
-       ports:
-            - 5000:5000
-       restart: unless-stopped
+# API Server Port - Needed for Client Connections
+  - "8032:8032"
+...
+API_SERVER_PORT: 8032
 ```
-You also need to create the env file. It should contain your api key and secret NOTE: You MUST use the env file. Docker compose will not interpret certain characters if not in an env file. Don't smash your face against that issue for hours like I did
-env_file
-```
-API_KEY=your_api_key
-API_SECRET=your_api_secret
-```
-
-Now go ahead and ```sudo docker-compose up``` your file. Then, in the pinepods compose file update the api_url.
-
-```
-API_URL: 'http://<YOUR_IP>/api/search'
-```
-
-Or, even better, stick this behind a reverse proxy with your own domain as well.
-
-```
-API_URL: 'https://<YOUR_DOMAIN>/api/search'
-```
-
 #### Start it up!
 
 Either way, once you have everything all setup and your compose file created go ahead and run your
@@ -219,7 +196,9 @@ Either way, once you have everything all setup and your compose file created go 
 sudo docker-compose up
 ```
 
-command on the main pinepods app to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well.
+command on the main pinepods app to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well once you get an API from the settings area in the web app. Check out the Tutorials on the documentation site for more information on how to do basic things.
+
+https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
 ### Linux Client Install :computer:
 
@@ -244,16 +223,10 @@ Coming Soon
 ## Platform Availability
 
 The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. The server will be run from docker and connect to the clients on these platforms
+## ToDo (Listed in order they will be implemented)
 
-## ToDo
-### Pre-beta version
-
-- [ ] Refresh changes on readme
 - [ ] Rework local images to run through the image proxy for web
-- [ ] API documentation (Site Built with Docusaurus)
-
-### To be added after beta version (Listed in order they will be implemented)
-
+- [ ] How-to guides on doing things in the app
 - [ ] Timestamps in playing page
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] playing page not currently removing playing bar on bottom in app version
