@@ -113,3 +113,4 @@ This is the list of previous todos that are now completed
 - [x] Refresh causes episode to restart
 - [x] Fix logout - It's shows navbar still
 - [x] Refresh with nothing in database breaks things
+- [x] Revamp queue - It should just save to the database
