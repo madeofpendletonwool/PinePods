@@ -95,6 +95,9 @@ services:
       API_URL: 'https://search.pinepods.online/api/search'
       # Client API Vars
       API_SERVER_PORT: 8032
+    volumes:
+    # Mount the download location on the server if you want to. You could mount a nas to this folder or something like that
+      - /home/user/pinepods/downloads:/opt/pypods/downloads
 
     depends_on:
       - db
