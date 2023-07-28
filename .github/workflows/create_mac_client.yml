@@ -32,7 +32,7 @@ jobs:
         
     - name: Create Mac Client
       run: |
-        flet pack pinepods.py --icon ./assets/pinepods-appicon.png --add-data "assets:assets --product-name "Pinepods" --product-version "0.1" --copyright "More like Copyleft amiright?""
+        flet pack clients/mac-app/pinepods.py --icon clients/mac-app/assets/pinepods-appicon.png --add-data "assets:assets" --product-name "Pinepods" --product-version "0.1" --copyright "More like Copyleft amiright?""
         
         
 #     - name: Get Latest Tag
