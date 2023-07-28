@@ -5,6 +5,7 @@
 # PinePods :evergreen_tree:
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
+- [Getting Started](#getting-started)
   - [Features](#features)
   - [Try it out! :zap:](#try-it-out-zap)
   - [Installing :runner:](#installing-runner)
@@ -12,7 +13,8 @@
       - [Compose File](#compose-file)
       - [Admin User Info](#admin-user-info)
       - [Proxy Info](#proxy-info)
-      - [API Notes](#api-notes)
+      - [Note on the Search API](#note-on-the-search-api)
+      - [Client API Vars](#client-api-vars)
       - [Start it up!](#start-it-up)
     - [Linux Client Install :computer:](#linux-client-install-computer)
     - [Windows Client Install :computer:](#windows-client-install-computer)
@@ -20,12 +22,9 @@
     - [Android Install :iphone:](#android-install-iphone)
     - [ios Install :iphone:](#ios-install-iphone)
   - [Platform Availability](#platform-availability)
-  - [ToDo](#todo)
-    - [Needed pre-beta release](#needed-pre-beta-release)
-    - [To be added after beta version](#to-be-added-after-beta-version)
+  - [ToDo (Listed in order they will be implemented)](#todo-listed-in-order-they-will-be-implemented)
   - [Screenshots :camera:](#screenshots-camera)
 
-PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 # Getting Started
 
 PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
@@ -202,15 +201,85 @@ https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
 ### Linux Client Install :computer:
 
-Coming Soon
+Any of the client additions are super easy to get going. First head over to the releases page on Github
+
+https://github.com/madeofpendletonwool/PinePods/releases
+
+Grab the pinepods.tar file from the newest release. 
+
+Extract, and then within the extracted folder you'll find an install.sh file. This file simply drops the icon file, and binary in place then installs a .desktop file so your computer will pick up on the app. Ensure the install file has executable permission
+
+```
+cd /pinepods/folder/location
+chmod +x ./install.sh
+```
+
+Then run
+```
+./install.sh
+```
+
+From there, you should be able to search your computer for pinepods and find the client installed as long as your desktop environment supports .desktop files. Otherwise, you can also just run the 'pinepods' file from within the folder directory.
+
+Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
+
+Your server name is where the api server port comes in. 
+```
+    # API Server Port - Needed for Client Connections
+      - "8032:8032"
+```
+
+So in my case running on my local computer I could enter http://localhost:8032
+
+If you create a reverse proxy to that port you might enter https://api.mysite.com
 
 ### Windows Client Install :computer:
 
-Coming Soon
+Any of the client additions are super easy to get going. First head over to the releases page on Github
+
+https://github.com/madeofpendletonwool/PinePods/releases
+
+Grab the Pinepods-Windows.zip file from the newest release. 
+
+Simply extract, and then run.
+
+
+
+Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
+
+Your server name is where the api server port comes in. 
+```
+    # API Server Port - Needed for Client Connections
+      - "8032:8032"
+```
+
+So in my case running on my local computer I could enter http://localhost:8032
+
+If you create a reverse proxy to that port you might enter https://api.mysite.com
 
 ### Mac Client Install :computer:
 
-Coming Soon
+Any of the client additions are super easy to get going. First head over to the releases page on Github
+
+https://github.com/madeofpendletonwool/PinePods/releases
+
+Grab the Pinepods-Mac.zip file from the newest release. 
+
+Simply extract, and then go into Contents/MacOS. From there you can run the app.
+
+You can also place the pinepods app right into your application folder on your mac. Just drag 'pinepods' right in. 
+
+Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
+
+Your server name is where the api server port comes in. 
+```
+    # API Server Port - Needed for Client Connections
+      - "8032:8032"
+```
+
+So in my case running on my local computer I could enter http://localhost:8032
+
+If you create a reverse proxy to that port you might enter https://api.mysite.com
 
 ### Android Install :iphone:
 
@@ -222,7 +291,9 @@ Coming Soon
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. The server will be run from docker and connect to the clients on these platforms
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For a temporary solution for phones you can access the web version from them. The server is run from docker and connects to the clients on all platforms.
+
+
 ## ToDo (Listed in order they will be implemented)
 
 - [ ] Rework local images to run through the image proxy for web
