@@ -1029,7 +1029,8 @@ def main(page: ft.Page, session_value=None):
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                art_url = os.path.dirname(os.path.realpath(__file__))
+                audio_con_art_fallback = os.path.join(art_url, "assets", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1075,7 +1076,8 @@ def main(page: ft.Page, session_value=None):
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                art_url = os.path.dirname(os.path.realpath(__file__))
+                audio_con_art_fallback = os.path.join(art_url, "assets", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1961,7 +1963,8 @@ def main(page: ft.Page, session_value=None):
                 entry_description = ft.Text(ep_desc, width=800)
                 entry_released = ft.Text(pub_date)
                 artwork_no = random.randint(1, 12)
-                artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                art_url = os.path.dirname(os.path.realpath(__file__))
+                artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                 art_url_parsed = check_image(artwork_url)
                 entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                 ep_play_button = ft.IconButton(
@@ -2599,7 +2602,8 @@ def main(page: ft.Page, session_value=None):
                     entry_description = ft.Text(ep_desc, width=800)
                     entry_released = ft.Text(pub_date)
                     artwork_no = random.randint(1, 12)
-                    artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                    art_url = os.path.dirname(os.path.realpath(__file__))
+                    artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                     art_url_parsed = check_image(artwork_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
@@ -3419,7 +3423,8 @@ def main(page: ft.Page, session_value=None):
                     if pod_list_data is None:
                         pod_list_title = 'No Podcasts added yet'
                         artwork_no = random.randint(1, 12)
-                        pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                        art_url = os.path.dirname(os.path.realpath(__file__))
+                        pod_list_artwork = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                         pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                         pod_list_ep_count = 'Start Searching!'
                         pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
@@ -3615,7 +3620,8 @@ def main(page: ft.Page, session_value=None):
                     if pod_list_data is None:
                         pod_list_title = 'No Podcasts added yet'
                         artwork_no = random.randint(1, 12)
-                        pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                        art_url = os.path.dirname(os.path.realpath(__file__))
+                        pod_list_artwork = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                         pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                         pod_list_ep_count = 'Start Searching!'
                         pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
@@ -3918,7 +3924,7 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             coffee_contain.alignment = alignment.bottom_center
             coffee_script_dir = os.path.dirname(os.path.realpath(__file__))
-            image_path = os.path.join(coffee_script_dir, "pinepods-appicon.png")
+            image_path = os.path.join(coffee_script_dir, "assets", "pinepods-appicon.png")
             pinepods_img = ft.Image(
                 src=image_path,
                 width=100,

@@ -231,6 +231,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] playing page not currently removing playing bar on bottom in app version
 - [ ] Podcast list search
+- [ ] Exportable backups 
 - [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
 - [ ] Implement page views for poddisplays that have over 30 episodes
 - [ ] Jump to clicked timestamp
