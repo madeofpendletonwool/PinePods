@@ -4,8 +4,6 @@
 name: Create Pinepods Linux Client
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -36,7 +34,7 @@ jobs:
         mkdir linuxapp
         cp dist/pinepods linuxapp/
         cp clients/linux-app/assets/pinepods-appicon.png linuxapp/
-        cp clients/linux-app/assets/pinepods.desktop linuxapp/
+        cp clients/linux-app/pinepods.desktop linuxapp/
         chmod +x clients/linux-app/install.sh
         cp clients/linux-app/install.sh linuxapp/
         tar -cvf pinepods.tar -C linuxapp/ .
