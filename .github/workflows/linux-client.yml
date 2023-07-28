@@ -4,11 +4,10 @@
 name: Create Pinepods Linux Client
 
 on:
-#   push:
-#     branches: [ "main" ]
-#   pull_request:
-#     branches: [ "main" ]
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 # permissions:
 #   contents: read
@@ -33,7 +32,7 @@ jobs:
         
     - name: Create Linux Client
       run: |
-        flet pack clients/linux-app/pinepods.py
+        flet pack pinepods.py --icon ./assets/pinepods-appicon.png --add-data "assets:assets"
         mkdir linuxapp
         cp dist/pinepods linuxapp/
         cp clients/linux-app/pinepods-appicon.png linuxapp/
