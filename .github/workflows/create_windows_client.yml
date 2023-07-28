@@ -4,11 +4,10 @@
 name: Create Pinepods Windows Client
 
 on:
-#   push:
-#     branches: [ "main" ]
-#   pull_request:
-#     branches: [ "main" ]
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 # permissions:
 #   contents: read
@@ -32,7 +31,7 @@ jobs:
         
     - name: Create Windows Client
       run: |
-        flet pack clients/windows-app/pinepods.py --icon clients/windows-app/pinepods-appicon.png
+        flet pack clients/windows-app/pinepods.py --icon clients/windows-app/assets/pinepods-appicon.png --add-data "clients/windows-app/assets:assets" --product-name "Pinepods" --product-version "0.1" --copyright "More like Copyleft amiright?" --file-description "A Forest of Podcasts, Rooted in the Spirit of Self-Hosting" --file-version "0.1"
         
         
 #     - name: Get Latest Tag
