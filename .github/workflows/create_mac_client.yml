@@ -4,11 +4,10 @@
 name: Create Pinepods Mac Client
 
 on:
-#   push:
-#     branches: [ "main" ]
-#   pull_request:
-#     branches: [ "main" ]
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 # permissions:
 #   contents: read
@@ -33,7 +32,7 @@ jobs:
         
     - name: Create Mac Client
       run: |
-        flet pack clients/mac-app/pinepods.py --icon clients/mac-app/pinepods-appicon.png
+        flet pack pinepods.py --icon ./assets/pinepods-appicon.png --add-data "assets:assets --product-name "Pinepods" --product-version "0.1" --copyright "More like Copyleft amiright?""
         
         
 #     - name: Get Latest Tag
