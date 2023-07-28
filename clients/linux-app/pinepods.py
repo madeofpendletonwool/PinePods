@@ -1,7 +1,7 @@
 # Various flet imports
 import flet as ft
 # from flet import *
-from flet import Page, Text, View, colors, icons, ButtonStyle, Row, alignment, border_radius, animation, \
+from flet import Text, colors, icons, ButtonStyle, Row, alignment, border_radius, animation, \
     MainAxisAlignment, padding
 # Internal Functions
 import internal_functions.functions
@@ -12,6 +12,9 @@ import app_functions.functions
 
 # Others
 import urllib
+import urllib.request
+import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
 from requests.exceptions import RequestException, MissingSchema
@@ -41,10 +44,10 @@ import qrcode
 import feedparser
 from collections import defaultdict
 from math import pi
-import math
 import traceback
 import pytz
 import shutil
+from base64 import urlsafe_b64decode
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -205,13 +208,11 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
 
-
 def preload_audio_file(url, proxy_url, cache):
     response = requests.get(proxy_url, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
-
 
 def initialize_audio_routes(app, proxy_url):
     cache = Cache(app, config={'CACHE_TYPE': 'simple'})
@@ -233,14 +234,11 @@ def initialize_audio_routes(app, proxy_url):
 
     return cache
 
-
 # Make login Screen start on boot
 login_screen = True
 user_home_dir = os.path.expanduser("~")
 audio_playing = False
 active_pod = 'Set at start'
-# two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
-# sys.path.append(two_folders_back)
 initial_script_dir = os.path.dirname(os.path.realpath(__file__))
 script_dir = os.path.dirname(os.path.dirname(initial_script_dir))
 
@@ -250,7 +248,6 @@ appauthor = "Gooseberry Development"
 # user_data_dir would be the equivalent to the home directory you were using
 user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
-
 
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
@@ -351,7 +348,7 @@ def main(page: ft.Page, session_value=None):
                     global cache
                     api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(
                         self.url, self.headers)
-                    self.show_error_snackbar(f"Connected to {proxy_host}!")
+                    # self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     cache = initialize_audio_routes(app, proxy_url)
 
@@ -410,34 +407,10 @@ def main(page: ft.Page, session_value=None):
             page.snack_bar.open = True
             page.update()
 
-    def invalid_username():
-        page.dialog = username_invalid_dlg
-        username_invalid_dlg.open = True
-        page.update()
-
-        # def validate_user(input_username, input_pass):
-
-    #     return Auth.Passfunctions.verify_password(get_database_connection(), input_username, input_pass)
-    #
-    # def generate_session_value():
-    #     return secrets.token_hex(32)
-
     def close_dlg(e):
         user_dlg.open = False
         page.update()
         go_home
-
-    def save_session_to_file(session_id):
-        with open("session.txt", "w") as file:
-            file.write(session_id)
-
-    def get_saved_session_from_file():
-        try:
-            with open("session.txt", "r") as file:
-                session_id = file.read()
-                return session_id
-        except FileNotFoundError:
-            return None
 
     def character_limit(screen_width):
         if screen_width < 400:
@@ -894,6 +867,8 @@ def main(page: ft.Page, session_value=None):
                                                                        active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
+            api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.title,
+                                                   active_user.user_id)
             if self.loading_audio == True:
                 page.snack_bar = ft.SnackBar(content=ft.Text(
                     f"Please wait until current podcast has finished loading before selecting a new one."))
@@ -914,7 +889,6 @@ def main(page: ft.Page, session_value=None):
                     self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1,
                                                   on_state_changed=lambda e: self.on_state_changed(e.data))
                     page.overlay.append(self.audio_element)
-                    # self.audio_element.play()
                 else:
                     self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1,
                                                   on_state_changed=lambda e: self.on_state_changed(e.data))
@@ -1000,10 +974,16 @@ def main(page: ft.Page, session_value=None):
         def on_state_changed(self, status):
             self.state = status
             if status == 'completed':
-
+                api_functions.functions.call_remove_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                                                              active_user.user_id)
+                self.queue = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                          active_user.user_id)
                 if len(self.queue) > 0:
-                    next_episode_url = self.queue.pop(0)
-                    self.play_episode(next_episode_url)
+                    next_episode = self.queue[0]  # First episode in the queue after sorting by QueuePosition
+                    current_episode.url = next_episode['EpisodeURL']
+                    current_episode.name = next_episode['EpisodeTitle']
+                    current_episode.artwork = next_episode['EpisodeArtwork']
+                    self.play_episode()
                 else:
                     self.audio_element.release()
                     self.audio_playing = False
@@ -1049,7 +1029,8 @@ def main(page: ft.Page, session_value=None):
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                art_url = os.path.dirname(os.path.realpath(__file__))
+                audio_con_art_fallback = os.path.join(art_url, "assets", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1095,7 +1076,8 @@ def main(page: ft.Page, session_value=None):
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                art_url = os.path.dirname(os.path.realpath(__file__))
+                audio_con_art_fallback = os.path.join(art_url, "assets", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1120,7 +1102,6 @@ def main(page: ft.Page, session_value=None):
                 pause_button.icon_color = active_user.accent_color
                 seek_button.icon_color = active_user.accent_color
                 currently_playing.color = active_user.font_color
-                # current_time_text.color = active_user.font_color
                 podcast_length.color = active_user.font_color
                 self.page.update()
             else:
@@ -1166,13 +1147,11 @@ def main(page: ft.Page, session_value=None):
             # self.page.update()
 
         def seek_episode(self):
-            seconds = 10
             time = self.audio_element.get_current_position()
             seek_position = time + 10000
             self.audio_element.seek(seek_position)
 
         def seek_back_episode(self):
-            seconds = 10
             time = self.audio_element.get_current_position()
             seek_position = time - 10000
             self.audio_element.seek(seek_position)
@@ -1199,16 +1178,19 @@ def main(page: ft.Page, session_value=None):
             api_functions.functions.call_download_podcast(app_api.url, app_api.headers, self.url, self.title,
                                                           active_user.user_id)
 
-        def queue_pod(self, url, title, page):
-            if self.audio_playing == False:
+        def queue_pod(self, url, title):
+            if not self.audio_playing:
+
                 self.play_episode()
             else:
-                self.queue.append(url)
-                time.sleep(.2)
+                api_functions.functions.call_queue_pod(app_api.url, app_api.headers, url, title,
+                                                          active_user.user_id)
 
         def remove_queued_pod(self):
             try:
-                self.queue.remove(self.url)
+                api_functions.functions.call_remove_queue_pod(app_api.url, app_api.headers, self.url, self.title,
+                                                       active_user.user_id)
+
             except ValueError:
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Error: Episode not found in queue"))
                 page.snack_bar.open = True
@@ -1221,9 +1203,6 @@ def main(page: ft.Page, session_value=None):
         def remove_saved_pod(self):
             api_functions.functions.call_remove_saved_episode(app_api.url, app_api.headers, self.url, self.title,
                                                               active_user.user_id)
-
-        def get_queue(self):
-            return self.queue
 
         def get_current_time(self):
             try:
@@ -1256,12 +1235,6 @@ def main(page: ft.Page, session_value=None):
             listen_duration = self.get_current_seconds()
             api_functions.functions.call_record_listen_duration(app_api.url, app_api.headers, self.url, self.name,
                                                                 active_user.user_id, listen_duration)
-
-        def seek_to_second(self, second):
-            """
-            Set the media position to the specified second.
-            """
-            self.player.set_time(int(second * 1000))
 
     # ---Flet Various Elements----------------------------------------------------------------
     def close_invalid_dlg(e):
@@ -1319,7 +1292,6 @@ def main(page: ft.Page, session_value=None):
         actions_alignment=ft.MainAxisAlignment.END
     )
 
-    # username = 'placeholder'
 
     # --Defining Routes---------------------------------------------------
 
@@ -1375,10 +1347,12 @@ def main(page: ft.Page, session_value=None):
         page.update()
         page.go("/pod_list")
 
+    def open_search(e):
+        page.go("/user_search")
+
     def go_homelogin_guest(page):
         active_user.user_id = 1
         active_user.fullname = 'Guest User'
-        # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
         page.banner.bgcolor = active_user.accent_color
@@ -1397,7 +1371,6 @@ def main(page: ft.Page, session_value=None):
         page.go("/first_time_config")
 
     def go_homelogin(page):
-        # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
         page.banner.bgcolor = active_user.accent_color
@@ -1413,10 +1386,11 @@ def main(page: ft.Page, session_value=None):
                               bgcolor=active_user.main_color, color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        navbar = NavBar(page).create_navbar()
-        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        active_user.navbar_stack = ft.Stack([navbar], expand=True)
-        page.overlay.append(active_user.navbar_stack)
+        global new_nav
+        new_nav = NavBar(page)
+        new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+        page.overlay.append(new_nav.navbar_stack)
         page.update()
         page.go("/")
 
@@ -1438,7 +1412,7 @@ def main(page: ft.Page, session_value=None):
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers,
                                                                                  user_email, reset_code)
-            if user_exist == True:
+            if user_exist:
                 def pw_reset(page, user_email, reset_code):
                     code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers,
                                                                                 user_email, reset_code)
@@ -1571,7 +1545,6 @@ def main(page: ft.Page, session_value=None):
         page.update()
 
     def go_theme_rebuild(page):
-        # navbar.visible = True
         active_user.theme_select()
         # Theme user elements
         page.banner.bgcolor = active_user.accent_color
@@ -1596,10 +1569,9 @@ def main(page: ft.Page, session_value=None):
         current_time.color = active_user.font_color
         podcast_length.color = active_user.font_color
 
-        navbar = NavBar(page).create_navbar()
-        navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        active_user.navbar_stack = ft.Stack([navbar], expand=True)
-        page.overlay.append(active_user.navbar_stack)
+        new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+        page.overlay.append(new_nav.navbar_stack)
         page.update()
         page.go("/")
 
@@ -1610,7 +1582,7 @@ def main(page: ft.Page, session_value=None):
     class PR:
         def __init__(self, page):
             self.pr = ft.ProgressRing()
-            self.progress_stack = ft.Stack([self.pr], bottom=25, right=30, left=20, expand=True)
+            self.progress_stack = ft.Stack([self.pr], bottom=25, right=30, left=13, expand=True)
             self.page = page
             self.active_pr = False
 
@@ -1624,18 +1596,6 @@ def main(page: ft.Page, session_value=None):
                 self.active_pr = False
 
     pr_instance = PR(page)
-    # class Page_Vars:
-    #     def __init__(self, page):
-    #         self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
-    #         self.search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
-    #                                            focused_border_color=active_user.accent_color,
-    #                                            focused_color=active_user.accent_color,
-    #                                            prefix_icon=ft.icons.MANAGE_SEARCH,
-    #                                            options=[
-    #                                                ft.dropdown.Option("podcastindex"),
-    #                                                ft.dropdown.Option("itunes"),
-    #                                            ]
-    #                                            )
 
     def route_change(e):
         if pr_instance.active_pr == True:
@@ -1673,7 +1633,6 @@ def main(page: ft.Page, session_value=None):
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.
-                # new_episodes = self.fetch_new_episodes()
                 if self.page_type == "saved":
                     current_page_eps = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
                                                                                        active_user.user_id)
@@ -1681,19 +1640,20 @@ def main(page: ft.Page, session_value=None):
                     current_page_eps = api_functions.functions.call_user_history(app_api.url, app_api.headers,
                                                                                  active_user.user_id)
                 elif self.page_type == "queue":
-                    current_page_eps = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
-                                                                                   current_queue_list)
+                    current_page_eps = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
+                print(current_page_eps)
                 # Update the list with the new episodes.
                 self.define_values(current_page_eps)
 
-            def remove_saved_episode(self, url, title, page):
+            def remove_saved_episode(self, url, title):
                 current_episode.url = url
                 current_episode.title = title
                 current_episode.remove_saved_pod()
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from saved podcasts!"))
-                page.snack_bar.open = True
+                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been removed from saved podcasts!"))
+                self.page.snack_bar.open = True
                 self.refresh_episodes()
-                page.update()
+                self.page.update()
 
             def episode_remove_queue(self, url, title):
                 current_episode.url = url
@@ -1727,12 +1687,18 @@ def main(page: ft.Page, session_value=None):
                     page_episode_list = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                                      active_user.user_id)
                 elif self.page_type == "queue":
-                    page_episode_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
-                                                                                    current_queue_list)
-                self.define_values(page_episode_list)
-                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
-                self.page.snack_bar.open = True
-                self.page.update()
+                    page_episode_list = episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
+                else:
+                    return
+
+                if page_episode_list is not None:
+                    self.define_values(page_episode_list)
+                    self.page.update()
+                else:
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                    self.page.snack_bar.open = True
+                    self.page.update()
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
@@ -1749,13 +1715,9 @@ def main(page: ft.Page, session_value=None):
                     ep_url = values['EpisodeURL']
                     if self.page_type == "history":
                         ep_listen_date = values['ListenDate']
-                    if self.page_type == "downloads":
-                        ep_local_url = values['DownloadedLocation']
-                    if self.page_type == "local_downloads":
-                        ep_local_url = values['EpisodeLocalPath']
-                        ep_id = values['EpisodeID']
                     if self.page_type == "queue":
                         ep_queue_date = values['QueueDate']
+                        ep_queue_position = values['QueuePosition']
                     ep_duration = values['EpisodeDuration']
                     # do something with the episode information
                     entry_title_button = ft.Text(f'{pod_name} - {ep_title}',
@@ -1765,7 +1727,6 @@ def main(page: ft.Page, session_value=None):
                                                 on_click=lambda x, url=ep_url,
                                                                 title=ep_title: open_episode_select(page, url,
                                                                                                     title))
-
                     entry_seemore = ft.TextButton(text="See More...")
                     num_lines = ep_desc.count('\n')
                     if num_lines > 15:
@@ -1801,7 +1762,6 @@ def main(page: ft.Page, session_value=None):
                         else:
                             # display plain text
                             entry_description = ft.Text(ep_desc, selectable=True)
-
                     check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
                         app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
@@ -1848,8 +1808,7 @@ def main(page: ft.Page, session_value=None):
                                                                                                           page)),
                                 ft.PopupMenuItem(icon=ft.icons.SAVE, text="Remove Saved Episode",
                                                  on_click=lambda x, url=ep_url,
-                                                                 title=ep_title: self.remove_saved_episode(url, title,
-                                                                                                           page))
+                                                                 title=ep_title: self.remove_saved_episode(url, title))
                             ]
                         )
                     elif self.page_type == "history":
@@ -1927,7 +1886,6 @@ def main(page: ft.Page, session_value=None):
                                                                                                        page))
                             ]
                         )
-
                     rotate_button = ft.IconButton(
                         icon=ft.icons.ARROW_FORWARD_IOS,
                         icon_color=active_user.accent_color,
@@ -1943,8 +1901,6 @@ def main(page: ft.Page, session_value=None):
                         if self.page_type == "history":
                             entry_released = ft.Text(f'Listened on: {ep_listen_date}',
                                                      color=active_user.font_color)
-                        else:
-                            continue
                         entry_progress = ft.Row(controls=[ft.Text(listen_prog, color=active_user.font_color),
                                                           ft.ProgressBar(expand=True, value=progress_value,
                                                                          color=active_user.main_color),
@@ -1972,24 +1928,17 @@ def main(page: ft.Page, session_value=None):
                     else:
                         ep_dur = seconds_to_time(ep_duration)
                         dur_display = ft.Text(f'Episode Duration: {ep_dur}', color=active_user.font_color)
+                        entry_controls = [entry_title, entry_description, entry_released, dur_display,
+                                          ft.Row(controls=[ep_play_button, popup_button])]
+
                         if num_lines > 15:
-                            ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                                ft.Column(col={"md": 9},
-                                          controls=[entry_title, entry_description, entry_seemore,
-                                                    entry_released, dur_display,
-                                                    ft.Row(controls=[ep_play_button, popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
-                        else:
-                            ep_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
-                                ft.Column(col={"md": 9},
-                                          controls=[entry_title, entry_description, entry_released,
-                                                    dur_display,
-                                                    ft.Row(controls=[ep_play_button, popup_button])]),
-                                ft.Column(col={"md": 1}, controls=[rotate_button]),
-                            ])
+                            entry_controls.insert(2, entry_seemore)  # Inserting the 'See More' button after 'entry_description'
+
+                        ep_row_content = ft.ResponsiveRow([
+                            ft.Column(col={"md": 2}, controls=[entry_artwork_url]),
+                            ft.Column(col={"md": 9}, controls=entry_controls),
+                            ft.Column(col={"md": 1}, controls=[rotate_button]),
+                        ])
                     entry_description.visible = False
                     rotate_iteration = AnimatedButton(rotate_button, entry_description, entry_seemore)
                     rotate_button.on_click = rotate_iteration.animate
@@ -2014,7 +1963,8 @@ def main(page: ft.Page, session_value=None):
                 entry_description = ft.Text(ep_desc, width=800)
                 entry_released = ft.Text(pub_date)
                 artwork_no = random.randint(1, 12)
-                artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                art_url = os.path.dirname(os.path.realpath(__file__))
+                artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                 art_url_parsed = check_image(artwork_url)
                 entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                 ep_play_button = ft.IconButton(
@@ -2133,7 +2083,6 @@ def main(page: ft.Page, session_value=None):
                                                    )
 
         page_items = Page_Vars(page)
-        print(f'width is {page.width}')
         def page_checksize(e):
             max_chars = character_limit(int(page.width))
             current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
@@ -2228,7 +2177,6 @@ def main(page: ft.Page, session_value=None):
 
             home_view = ft.View("/", [
                 home_layout.top_bar,
-                # *[home_ep_row_dict.get(f'search_row{i+1}') for i in range(len(home_ep_rows))]
                 home_row_contain
             ]
                                 )
@@ -2343,10 +2291,8 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/queue" or page.route == "/queue":
-
-            current_queue_list = current_episode.get_queue()
-            episode_queue_list = api_functions.functions.call_get_queue_list(app_api.url, app_api.headers,
-                                                                             current_queue_list)
+            episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
             queue_layout = Pod_View(page)
             queue_layout.page_type = "queue"
 
@@ -2385,6 +2331,96 @@ def main(page: ft.Page, session_value=None):
             # Create final page
             page.views.append(
                 ep_queue_view
+
+            )
+
+        if page.route == "/user_search" or page.route == "/user_search":
+
+            class Search:
+                def __init__(self, page):
+                    self.page = page
+                    self.search_term = ''
+                    self.search_lists = ft.ListView()
+                    self.search_textbox = ft.TextField(label='Search Database', icon=ft.icons.SEARCH, hint_text='This American Life')
+                    self.search_text_row = ft.Row(controls=[self.search_textbox])
+                    self.search_text_row.alignment = ft.MainAxisAlignment.CENTER
+                    self.search_container = ft.Container(content=self.search_text_row, alignment=ft.alignment.center)
+                    self.search_container.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+                    self.searching_results = ft.ListView(divider_thickness=3, auto_scroll=True)
+
+
+
+                def validate_search(self, e):
+                    pr_instance.touch_stack()
+                    self.page.update()
+                    if self.search_textbox.value == '':
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter a search term!"))
+                        self.page.snack_bar.open = True
+                        pr_instance.rm_stack()
+                        self.page.update()
+                        return
+                    elif len(self.search_textbox.value) <= 3:
+                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Please enter at least 4 characters to search for"))
+                        self.page.snack_bar.open = True
+                        pr_instance.rm_stack()
+                        self.page.update()
+                        return
+                    else:
+                        self.search_term = self.search_textbox.value
+                        self.execute_search()
+
+                def execute_search(self):
+                    self.search_data_list = api_functions.functions.call_user_search(app_api.url, app_api.headers, active_user.user_id, self.search_term)
+                    self.searching_results.controls.clear()
+                    page.update()
+                    if self.search_data_list:
+                        self.search_lists = search_layout.define_values(self.search_data_list)
+                        pr_instance.rm_stack()
+                        page.update()
+                        self.searching_results.controls.append(self.search_lists)
+                    else:
+                        none_text = ft.Text("No results found! Try again!", size=16)
+                        none_row = ft.Row(controls=[none_text], alignment=ft.MainAxisAlignment.CENTER)
+                        pr_instance.rm_stack()
+                        self.searching_results.controls.append(none_row)
+                        page.update()
+                    ep_search_view.controls.append(self.searching_results)
+                    page.update()
+
+
+            search_query = Search(page)
+            page.update()
+            search_layout = Pod_View(page)
+            search_layout.page_type = "search"
+            search_go = ft.ElevatedButton("Search!", on_click=search_query.validate_search)
+            search_page_row = ft.Row(controls=[search_query.search_container, search_go])
+            search_page_row.alignment = ft.MainAxisAlignment.CENTER
+
+            search_title = ft.Text(
+                "Search Database:",
+                size=30,
+                font_family="RobotoSlab",
+                weight=ft.FontWeight.W_300,
+            )
+            search_title_row = ft.Row(controls=[search_title], alignment=ft.MainAxisAlignment.CENTER)
+
+            # Create search view object
+            ep_search_view = ft.View("/user_search",
+                                    [
+                                        search_layout.top_bar,
+                                        search_title_row,
+                                        search_page_row,
+                                        # search_query.search_lists
+
+                                    ]
+
+                                    )
+            ep_search_view.bgcolor = active_user.bgcolor
+            ep_search_view.scroll = ft.ScrollMode.AUTO
+            page.update()
+            # Create final page
+            page.views.append(
+                ep_search_view
 
             )
 
@@ -2468,7 +2504,6 @@ def main(page: ft.Page, session_value=None):
                     self.generate_layout(download_episode_list)
 
                 def delete_selected_episode(self, url, title):
-                    # current_episode.delete_pod()
                     api_functions.functions.call_delete_podcast(app_api.url, app_api.headers, url, title,
                                                                 active_user.user_id)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has deleted!"))
@@ -2504,7 +2539,6 @@ def main(page: ft.Page, session_value=None):
 
                 def delete_local_selected_podcasts(self, podcast_list):
                     for podcast_id in podcast_list:
-                        # podcast_id = podcast['podcast_id']
                         episode_list = self.get_episode_list_of_podcast(podcast_id)
                         self.delete_local_selected_episodes(episode_list)
 
@@ -2568,7 +2602,8 @@ def main(page: ft.Page, session_value=None):
                     entry_description = ft.Text(ep_desc, width=800)
                     entry_released = ft.Text(pub_date)
                     artwork_no = random.randint(1, 12)
-                    artwork_url = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                    art_url = os.path.dirname(os.path.realpath(__file__))
+                    artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                     art_url_parsed = check_image(artwork_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
@@ -2593,13 +2628,6 @@ def main(page: ft.Page, session_value=None):
                     self.local_download_row_list.controls.append(ep_row)
 
                 def generate_layout(self, episode_list):
-                    # def append_deletion(e):
-                    #     if download_pod_entry_check.value:
-                    #         self.delete_list.append(podcast_id)
-                    #     else:
-                    #         self.delete_list.remove(podcast_id)
-                    #     print(self.delete_list)
-
                     self.local_download_row_list.controls.clear()
                     episode_list.reverse()
                     podcasts_by_local_name = defaultdict(list)
@@ -2635,8 +2663,6 @@ def main(page: ft.Page, session_value=None):
 
                         download_pod_entry_check.on_change = append_deletion
                         download_pod_entry_check.visible = False
-                        # self.download_pod_entry_check.on_change = append_deletion
-                        # self.download_pod_entry_check.visible = False
 
                         episode_column = ft.Column()
                         for podcast in podcasts:
@@ -3199,8 +3225,6 @@ def main(page: ft.Page, session_value=None):
             # Episode Info
             # Run Function to get episode data
             ep_number = 1
-            ep_rows = []
-            ep_row_dict = {}
             ep_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
 
             episode_results = app_functions.functions.parse_feed(clicked_podcast.feedurl)
@@ -3399,7 +3423,8 @@ def main(page: ft.Page, session_value=None):
                     if pod_list_data is None:
                         pod_list_title = 'No Podcasts added yet'
                         artwork_no = random.randint(1, 12)
-                        pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                        art_url = os.path.dirname(os.path.realpath(__file__))
+                        pod_list_artwork = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                         pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                         pod_list_ep_count = 'Start Searching!'
                         pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
@@ -3595,7 +3620,8 @@ def main(page: ft.Page, session_value=None):
                     if pod_list_data is None:
                         pod_list_title = 'No Podcasts added yet'
                         artwork_no = random.randint(1, 12)
-                        pod_list_artwork = os.path.join(script_dir, "images", "logo_random", f"{artwork_no}.jpeg")
+                        art_url = os.path.dirname(os.path.realpath(__file__))
+                        pod_list_artwork = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                         pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
                         pod_list_ep_count = 'Start Searching!'
                         pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
@@ -3731,8 +3757,12 @@ def main(page: ft.Page, session_value=None):
             podcast_value = new_search.searchvalue
 
             def get_podcast_description(feed_url):
-                feed = feedparser.parse(feed_url)
-                return feed.feed.get('description', '')
+                try:
+                    response = urllib.request.urlopen(feed_url, timeout=10)
+                    feed = feedparser.parse(response)
+                    return feed.feed.get('description', '')
+                except (socket.timeout, Exception):
+                    return ''
 
             def map_search_result(result, source):
                 mapped = {}
@@ -3741,24 +3771,27 @@ def main(page: ft.Page, session_value=None):
                     mapped['title'] = result['collectionName']
                     mapped['url'] = result['feedUrl']
                     mapped['link'] = result['collectionViewUrl']
-                    mapped['description'] = get_podcast_description(
-                        result['feedUrl'])  # iTunes API doesn't provide a description
+                    mapped['description'] = get_podcast_description(result['feedUrl'])
                     mapped['author'] = result['artistName']
                     mapped['artwork'] = result['artworkUrl600']
-                    mapped['categories'] = result[
-                        'genres']  # not exactly the same as 'categories', but it's the closest match
+                    mapped['categories'] = result['genres']
                     mapped['episodeCount'] = result['trackCount']
                 else:  # podcastindex
-                    mapped = result  # no mapping necessary, the attributes are already as expected
+                    mapped = result
 
                 return mapped
 
             search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
-            return_results = [map_search_result(result, new_search.searchlocation) for result in
-                              search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
+
+            # Create a ThreadPoolExecutor.
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                futures = [executor.submit(map_search_result, result, new_search.searchlocation) for result in
+                           search_results['results' if new_search.searchlocation == 'itunes' else 'feeds']]
+                return_results = [future.result() for future in as_completed(futures)]
+
             pr_instance.rm_stack()
 
-            if search_results['feeds']:
+            if search_results.get('feeds') or search_results.get('results'):
                 # Get and format list
                 pod_number = 1
                 search_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
@@ -3889,12 +3922,9 @@ def main(page: ft.Page, session_value=None):
                                      ),
                                      ], ft.MainAxisAlignment.CENTER, ft.CrossAxisAlignment.CENTER)
             coffee_contain = ft.Container(content=coffee_info)
-            # coffee_contain.padding=padding.only(left=70, right=50)
             coffee_contain.alignment = alignment.bottom_center
-            # two_folders_back = os.path.abspath(os.path.join(os.getcwd(), '..', '..', 'images'))
-            # sys.path.append(two_folders_back)
             coffee_script_dir = os.path.dirname(os.path.realpath(__file__))
-            image_path = os.path.join(coffee_script_dir, "pinepods-appicon.png")
+            image_path = os.path.join(coffee_script_dir, "assets", "pinepods-appicon.png")
             pinepods_img = ft.Image(
                 src=image_path,
                 width=100,
@@ -3992,7 +4022,6 @@ def main(page: ft.Page, session_value=None):
                                                 on_click=lambda e: app_api.api_verify(server_name.value,
                                                                                       app_api_key.value,
                                                                                       retain_session.value)
-                                                # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
                                     ),
@@ -4440,7 +4469,6 @@ def main(page: ft.Page, session_value=None):
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
                                                 on_click=lambda e: active_user.setup_timezone(tz_drop.value,
                                                                                               clock_drop.value)
-                                                # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
                                     ),
@@ -4612,7 +4640,6 @@ def main(page: ft.Page, session_value=None):
                         modal=True,
                         title=ft.Text(f"Confirm MFA:"),
                         content=ft.Column(controls=[
-                            #     ft.Text(f"Setup MFA:", selectable=True),
                             ft.Text(f'Please confirm the code from your authenticator app.', selectable=True),
                             # ], tight=True),
                             mfa_confirm_box,
@@ -4644,15 +4671,12 @@ def main(page: ft.Page, session_value=None):
                         modal=True,
                         title=ft.Text(f"Setup MFA:"),
                         content=ft.Column(controls=[
-                            #     ft.Text(f"Setup MFA:", selectable=True),
                             ft.Text(
                                 f'Scan the code below with your authenticator app and then click continue to validate your code.',
                                 selectable=True),
-                            # ], tight=True),
                             ft.Image(src=img_data_url, width=200, height=200),
                             ft.Text(f'MFA Secret for manual entry: {active_user.mfa_secret}', selectable=True),
                             ft.Text('Enter TOTP as the type if doing manual entry', selectable=True),
-                            # actions=[
                             mfa_select_row
                         ],
                             tight=True),
@@ -4665,14 +4689,12 @@ def main(page: ft.Page, session_value=None):
                 def guest_check(self):
                     if self.guest_status_bool:
                         self.guest_status = 'enabled'
-                        # self.disable_guest_notify.text = f'Guest user is currently {self.guest_status}'
                         self.guest_info_button = ft.ElevatedButton(f'Disable Guest User',
                                                                    on_click=self.guest_user_change,
                                                                    bgcolor=active_user.main_color,
                                                                    color=active_user.accent_color)
                     else:
                         self.guest_status = 'disabled'
-                        # self.disable_guest_notify.text = f'Guest user is currently {self.guest_status}'
                         self.guest_info_button = ft.ElevatedButton(f'Enable Guest User',
                                                                    on_click=self.guest_user_change,
                                                                    bgcolor=active_user.main_color,
@@ -4735,7 +4757,6 @@ def main(page: ft.Page, session_value=None):
                     self.mfa_container = ft.Container(content=self.mfa_column)
                     self.mfa_container.padding = padding.only(left=70, right=50)
                     self.mfa_container.content = self.mfa_column
-                    # self.mfa_container.controls.add(self.mfa_column)
                     self.page.update()
 
                 def email_table_load(self):
@@ -4886,7 +4907,6 @@ def main(page: ft.Page, session_value=None):
                         heading_row_color=active_user.nav_color1,
                         heading_row_height=100,
                         data_row_color={"hovered": active_user.font_color},
-                        # show_checkbox_column=True,
                         columns=[
                             ft.DataColumn(ft.Text("User ID"), numeric=True),
                             ft.DataColumn(ft.Text("Fullname")),
@@ -5408,6 +5428,8 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/playing" or page.route == "/playing":
             audio_container.visible = False
+            audio_container.update()
+            page.update()
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)
@@ -5453,9 +5475,7 @@ def main(page: ft.Page, session_value=None):
 
             def toggle_second_status(status):
                 if current_episode.state == 'playing':
-                    # fs_audio_scrubber.value = current_episode.get_current_seconds()
                     audio_scrubber.update()
-                    # current_time.content = ft.Text(current_episode.current_progress, color=active_user.font_color)
                     current_time.update()
 
             total_seconds = current_episode.media_length // 1000
@@ -5536,8 +5556,6 @@ def main(page: ft.Page, session_value=None):
         page.banner.open = True
         page.update()
 
-    # banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
-
     # Login/User Changes------------------------------------------------------
     class User:
         email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
@@ -5567,6 +5585,7 @@ def main(page: ft.Page, session_value=None):
             self.hour_pref = 24
             self.first_login_finished = 0
             self.first_start = 0
+            self.search_term = ""
 
         # New User Stuff ----------------------------
 
@@ -5655,19 +5674,19 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 self.page.update()
                 self.invalid_value = True
-            if self.invalid_value == True:
+            if self.invalid_value:
                 self.new_user_valid = False
             else:
                 self.new_user_valid = not invalid_value
 
         def user_created_prompt(self):
-            if self.new_user_valid == True:
+            if self.new_user_valid:
                 self.page.dialog = user_dlg
                 user_dlg.open = True
                 self.page.update()
 
         def user_created_snack(self):
-            if self.new_user_valid == True:
+            if self.new_user_valid:
                 page.snack_bar = ft.SnackBar(content=ft.Text(
                     f"New user created successfully. You may now login and begin using Pinepods. Enjoy!"))
                 page.snack_bar.open = True
@@ -5677,7 +5696,7 @@ def main(page: ft.Page, session_value=None):
             pass
 
         def create_user(self):
-            if self.new_user_valid == True:
+            if self.new_user_valid:
                 salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
                 hash_pw_str = base64.b64encode(hash_pw).decode()
                 salt_str = base64.b64encode(salt).decode()
@@ -5902,10 +5921,11 @@ def main(page: ft.Page, session_value=None):
             api_functions.functions.call_setup_time_info(app_api.url, app_api.headers, self.user_id, self.timezone,
                                                          self.hour_pref)
             if self.user_id == 1:
-                navbar = NavBar(page).create_navbar()
-                navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-                self.navbar_stack = ft.Stack([navbar], expand=True)
-                page.overlay.append(self.navbar_stack)
+                global new_nav
+                new_nav = NavBar(page)
+                new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+                new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                page.overlay.append(new_nav.navbar_stack)
                 page.update()
                 page.go("/")
             else:
@@ -5969,11 +5989,7 @@ def main(page: ft.Page, session_value=None):
             else:
                 on_click_wronguser(page)
 
-        # def mfa_log_values(self, username_field, password_field, retain_session):
-
         def mfa_login(self, mfa_prompt):
-            from datetime import datetime
-            import time
             mfa_secret = mfa_prompt.value
 
             mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
@@ -6016,6 +6032,11 @@ def main(page: ft.Page, session_value=None):
             if login_screen == True:
 
                 start_login(page)
+                new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
+                new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                page.overlay.append(new_nav.navbar_stack)
+                new_nav.navbar.visible = False
+                self.page.update()
             else:
                 active_user.user_id = 1
                 active_user.fullname = 'Guest User'
@@ -6252,6 +6273,8 @@ def main(page: ft.Page, session_value=None):
     class NavBar:
         def __init__(self, page):
             self.page = page
+            self.navbar = self.create_navbar()
+            self.navbar_stack = ft.Stack([self.navbar], expand=True)
 
         def HighlightContainer(self, e):
             if e.data == "true":
@@ -6363,6 +6386,7 @@ def main(page: ft.Page, session_value=None):
                         self.ContainedIcon('Downloaded', icons.DOWNLOAD, "Downloaded", open_downloads),
                         self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
                         self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
+                        self.ContainedIcon('Search', icons.SEARCH, 'Search', open_search),
                         ft.Divider(color="white24", height=5),
                         self.ContainedIcon('Settings', icons.SETTINGS, "Settings", open_settings),
                         self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pinepods),
@@ -6452,35 +6476,6 @@ def main(page: ft.Page, session_value=None):
     audio_container_row.padding = ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing],
                                          alignment=ft.MainAxisAlignment.CENTER)
-
-    # page_items = Page_Vars(page)
-
-    # def page_checksize(e):
-    #     max_chars = character_limit(int(page.width))
-    #     current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-    #     currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
-    #     if page.width <= 768:
-    #         ep_height = 100
-    #         ep_width = 4000
-    #         page_items.search_pods.visible = False
-    #         page_items.search_location.visible = False
-    #         audio_container.height = ep_height
-    #         audio_container.content = ft.Column(
-    #             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    #             controls=[audio_container_pod_details, audio_controls_row])
-    #         audio_container.update()
-    #         currently_playing.update()
-    #         page.update()
-    #     else:
-    #         ep_height = 50
-    #         ep_width = 4000
-    #         page_items.search_pods.visible = True
-    #         page_items.search_location.visible = True
-    #         audio_container.height = ep_height
-    #         audio_container.content = audio_container_row
-    #         currently_playing.update()
-    #         audio_container.update()
-    #         page.update()
 
     if page.width <= 768 and page.width != 0:
         ep_height = 100
@@ -6584,7 +6579,7 @@ def main(page: ft.Page, session_value=None):
         current_episode.title = title
         current_episode.artwork = artwork
         current_episode.name = title
-        current_episode.queue_pod(url, title, page)
+        current_episode.queue_pod(url, title)
         page.update()
 
     def save_selected_episode(url, title, page):
@@ -6602,13 +6597,6 @@ def main(page: ft.Page, session_value=None):
             page.snack_bar.open = True
             page.update()
 
-    def remove_selected_podcast(title):
-        api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title, active_user.user_id)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
-        page.snack_bar.open = True
-        page.update()
-
-    # page.on_resize = page_checksize
     page.on_disconnect = active_user.clear_guest
 
     # Starting Page Layout
@@ -6619,7 +6607,6 @@ def main(page: ft.Page, session_value=None):
         app_api.api_verify(saved_app_server_name, saved_app_api_key)
     else:
         start_config(page)
-
 
 # Browser Version
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)

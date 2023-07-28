@@ -418,16 +418,6 @@ async def api_download_episode_list(cnx = Depends(get_database_connection), api_
     downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
     return {"downloaded_episodes": downloaded_episodes}
 
-class Queue(BaseModel):
-    queue_urls: List[str]
-
-@app.post("/api/data/get_queue_list")
-async def api_get_queue_list(queue: Queue, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    queue_list = database_functions.functions.get_queue_list(cnx, queue.queue_urls)
-    return {"queue_list": queue_list}
-
-
-
 @app.post("/api/data/return_selected_episode")
 async def api_return_selected_episode(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...), title: str = Body(...), url: str = Body(...)):
     episode_info = database_functions.functions.return_selected_episode(cnx, user_id, title, url)
@@ -688,6 +678,57 @@ class SelectedPodcastsDelete(BaseModel):
 async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     status = database_functions.functions.delete_selected_podcasts(cnx, data.delete_list, data.user_id)
     return {"status": status}
+
+class SearchPodcastData(BaseModel):
+    search_term: str
+    user_id: int
+
+@app.post("/api/data/search_data")
+async def search_data(data: SearchPodcastData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.search_data(cnx, data.search_term, data.user_id)
+    return {"data": result}
+
+class QueuePodData(BaseModel):
+    episode_title: str
+    ep_url: str
+    user_id: int
+
+@app.post("/api/data/queue_pod")
+async def queue_pod(data: QueuePodData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.queue_pod(cnx, data.episode_title, data.ep_url, data.user_id)
+    return {"data": result}
+
+class QueueRmData(BaseModel):
+    episode_title: str
+    ep_url: str
+    user_id: int
+
+@app.post("/api/data/remove_queued_pod")
+async def remove_queued_pod(data: QueueRmData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.remove_queued_pod(cnx, data.episode_title, data.ep_url, data.user_id)
+    return {"data": result}
+
+class QueuedEpisodesData(BaseModel):
+    user_id: int
+
+@app.get("/api/data/get_queued_episodes")
+async def get_queued_episodes(data: QueuedEpisodesData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    result = database_functions.functions.get_queued_episodes(cnx, data.user_id)
+    return {"data": result}
+
+class QueueBump(BaseModel):
+    ep_url : str
+    title: str
+    user_id: int
+
+@app.post("/api/data/queue_bump")
+async def queue_bump(data: QueueBump, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    try:
+        result = database_functions.functions.queue_bump(cnx, data.ep_url, data.title, data.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"data": result}
+
 
 
 if __name__ == '__main__':
