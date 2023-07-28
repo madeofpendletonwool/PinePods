@@ -35,7 +35,7 @@ Pinepods is a complete podcasts management system and allows you to play, downlo
 
 ## Try it out! :zap:
 
-I try and maintain an instance of Pinepods that's publicly accessible for testing over at [pinepods.online](https://pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.
+I try and maintain an instance of Pinepods that's publicly accessible for testing over at [try.pinepods.online](https://try.pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.
 
 ## Installing :runner:
 
@@ -179,7 +179,7 @@ API_URL: 'https://api.pinepods.online/api/search'
 
 Above is an api that I maintain. I do not guarantee 100% uptime on this api though, it should be up most of the time besides a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy. Check out the API docs for more information on doing this. Link Below -
 
-https://pinepods.online/api/search_api
+https://www.pinepods.online/docs/API/search_api
 
 ####  Client API Vars
 
