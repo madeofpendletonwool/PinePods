@@ -2,7 +2,6 @@
   <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
-![Discord Shield](https://discordapp.com/api/guilds/1134490753012334592 /widget.png?style=shield)
 
 # PinePods :evergreen_tree:
 
