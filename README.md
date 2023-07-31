@@ -299,6 +299,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
+- [ ] Postgresql backend instead of mysql
+- [ ] Export and import of following podcasts (basically backups) 
+- [ ] Import of custom rss feeds from URL
+- [ ] Client sharing. Search network for other clients and play to them
+Lightweight client
 - [ ] Rework local images to run through the image proxy for web
 - [ ] How-to guides on doing things in the app
 - [ ] Timestamps in playing page
