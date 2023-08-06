@@ -301,7 +301,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
-- [ ] Implement custom urls for feeds
 - [ ] Organize folder layout in the same way as the client when server downloading
 - [ ] Implement Postgresql as option for database backend
 - [ ] Rework local images to run through the image proxy for web

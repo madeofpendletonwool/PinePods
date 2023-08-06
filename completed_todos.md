@@ -2,6 +2,12 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.2
+
+- [x] Implement custom urls for feeds
+
+Version 0.1
+
 - [X] Create Code that can pull Podcasts
 - [X] Integrate Podcast Index
 - [X] Play Audio Files using Python - Flet's Audio library is used

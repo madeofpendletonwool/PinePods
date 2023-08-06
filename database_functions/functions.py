@@ -556,47 +556,50 @@ def user_history(cnx, user_id):
     return results
 
 
+
 def download_podcast(cnx, url, title, user_id):
-    # Get the episode ID from the Episodes table
     cursor = cnx.cursor()
-    query = ("SELECT EpisodeID FROM Episodes "
+
+    # First, get the EpisodeID and PodcastID from the Episodes table
+    query = ("SELECT EpisodeID, PodcastID FROM Episodes "
              "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
     cursor.execute(query, (url, title))
-    episode_id = cursor.fetchone()
+    result = cursor.fetchone()
 
-    if episode_id is None:
+    if result is None:
         # Episode not found
         return False
 
-    episode_id = episode_id[0]
+    episode_id, podcast_id = result
+
+    # Next, using the PodcastID, get the PodcastName from the Podcasts table
+    query = ("SELECT PodcastName FROM Podcasts WHERE PodcastID = %s")
+    cursor.execute(query, (podcast_id,))
+    podcast_name = cursor.fetchone()[0]
+
+    # Create a directory named after the podcast, inside the main downloads directory
+    download_dir = os.path.join("/opt/pypods/downloads", podcast_name)
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Generate the episode filename based on episode ID and user ID
+    filename = f"{user_id}-{episode_id}.mp3"
+    file_path = os.path.join(download_dir, filename)
+
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
 
     # Get the current date and time for DownloadedDate
     downloaded_date = datetime.datetime.now()
 
-    # Make the request to download the file
-    response = requests.get(url, stream=True)
-    response.raise_for_status()
-
     # Get the file size from the Content-Length header
     file_size = int(response.headers.get("Content-Length", 0))
 
-    # Set the download location to the user's downloads folder
-    download_location = "/opt/pypods/downloads"
-
-    # Generate a unique filename based on the current timestamp
-    timestamp = time.time()
-    filename = f"{user_id}-{episode_id}-{timestamp}.mp3"
-    file_path = os.path.join(download_location, filename)
-
-    dir_path = os.path.dirname(file_path)
-    os.makedirs(dir_path, exist_ok=True)
     # Write the file to disk
     with open(file_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
             f.write(chunk)
 
     # Insert a new row into the DownloadedEpisodes table
-    cursor = cnx.cursor()
     query = ("INSERT INTO DownloadedEpisodes "
              "(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) "
              "VALUES (%s, %s, %s, %s, %s)")
