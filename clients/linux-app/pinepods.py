@@ -407,6 +407,59 @@ def main(page: ft.Page, session_value=None):
             page.snack_bar.open = True
             page.update()
 
+    def pod_url_add(page):
+        def close_pod_url_dlg(page):
+            pod_url_dlg.open = False
+            page.update()
+
+        def close_pod_url_auto_dlg(e):
+            pod_url_dlg.open = False
+            page.update()
+
+        def add_feed(e):
+            pr_instance.touch_stack()
+            page.update()
+            podcast_values = internal_functions.functions.get_podcast_values(feed_url, active_user.user_id)
+            return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
+                                                                    active_user.user_id)
+            pr_instance.rm_stack()
+            close_pod_url_dlg(page)
+            if return_value == True:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
+                page.snack_bar.open = True
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Already Added!"))
+                page.snack_bar.open = True
+                page.update()
+
+        pod_url_box = ft.TextField(label="Podcast Feed URL", icon=ft.icons.ADD_LINK, hint_text='https://mycoolpodcast/episodes/rss')
+        pod_url_select_row = ft.Row(
+            controls=[
+                ft.TextButton("Confirm", on_click=add_feed),
+                ft.TextButton("Cancel", on_click=close_pod_url_auto_dlg)
+            ],
+            alignment=ft.MainAxisAlignment.END
+        )
+
+        pod_url_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Confirm MFA:"),
+            content=ft.Column(controls=[
+                ft.Text(f'Input Podcast Feed URL below to add to database.', selectable=True),
+                # ], tight=True),
+                pod_url_box,
+                # actions=[
+                pod_url_select_row
+            ],
+                tight=True),
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
+        page.dialog = pod_url_dlg
+        pod_url_dlg.open = True
+        page.update()
+
     def close_dlg(e):
         user_dlg.open = False
         page.update()
@@ -3378,199 +3431,6 @@ def main(page: ft.Page, session_value=None):
                     self.banner_button.color = active_user.main_color
                     self.settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                                controls=[self.refresh_ctn, self.banner_button])
-                    self.search_row = ft.Row(spacing=25, controls=[page_items.search_pods, page_items.search_location, search_btn])
-                    self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                                          vertical_alignment=ft.CrossAxisAlignment.START,
-                                          controls=[self.settings_row, self.search_row])
-                    self.top_row_container = ft.Container(content=self.top_row, expand=True)
-                    self.top_row_container.padding = ft.padding.only(left=60)
-                    self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
-                                          controls=[self.top_row_container])
-                    if current_episode.audio_playing == True:
-                        audio_container.visible = True
-
-                def refresh_podcasts(self):
-                    # Fetch new podcast episodes from the server.
-                    pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
-                    self.generate_layout(pod_list_data)
-
-                def remove_selected_podcast(self, title):
-                    # Call the API function to remove the podcast
-                    response = api_functions.functions.call_remove_podcast(app_api.url, app_api.headers, title,
-                                                                           active_user.user_id)
-
-                    # Check if the podcast was removed successfully
-                    if response:
-                        # Display a success message
-                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"{title} has been removed!"))
-                        self.page.snack_bar.open = True
-
-                        # Refresh the podcast list
-                        self.refresh_podcasts()
-
-                        # Update the page
-                        self.page.update()
-                    else:
-                        # Display an error message if the podcast couldn't be removed
-                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Unable to remove {title}!"))
-                        self.page.snack_bar.open = True
-                def generate_layout(self, pod_list_data):
-                    self.pod_row_list.controls.clear()
-                    def on_pod_list_title_click(e, title, artwork, author, categories, desc, ep_count, feed, website):
-                        evaluate_podcast(title, artwork, author, categories, desc, ep_count, feed, website)
-                        open_poddisplay(e)
-
-                    if pod_list_data is None:
-                        pod_list_title = 'No Podcasts added yet'
-                        artwork_no = random.randint(1, 12)
-                        art_url = os.path.dirname(os.path.realpath(__file__))
-                        pod_list_artwork = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
-                        pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
-                        pod_list_ep_count = 'Start Searching!'
-                        pod_list_website = "https://github.com/madeofpendletonwool/PinePods"
-                        pod_list_feed = ""
-                        pod_list_author = "PinePods"
-                        pod_list_categories = ""
-
-                        # Parse webpages needed to extract podcast artwork
-                        pod_list_art_parsed = check_image(pod_list_artwork)
-                        pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
-
-                        # Defining the attributes of each podcast that will be displayed on screen
-                        pod_list_title_display = ft.Text(pod_list_title)
-                        pod_list_desc_display = ft.Text(pod_list_desc)
-                        # Episode Count and subtitle
-                        pod_list_ep_title = ft.Text('PinePods:', weight=ft.FontWeight.BOLD)
-                        pod_list_ep_count_display = ft.Text(pod_list_ep_count)
-                        pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
-                        remove_pod_button = ft.IconButton(
-                            icon=ft.icons.EMOJI_EMOTIONS,
-                            icon_color=active_user.accent_color,
-                            icon_size=40,
-                            tooltip="Start Adding Podcasts!"
-                        )
-
-                        # Creating column and row for search layout
-                        pod_list_column = ft.Column(
-                            controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
-                        )
-                        pod_list_row_content = ft.ResponsiveRow([
-                            ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
-                            ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
-                        ])
-                        pod_list_row = ft.Container(content=pod_list_row_content)
-                        pod_list_row.padding = padding.only(left=70, right=50)
-                        self.pod_row_list.controls.append(pod_list_row)
-
-                    else:
-
-                        for entry in pod_list_data:
-                            pod_list_title = entry['PodcastName']
-                            pod_list_artwork = entry['ArtworkURL']
-                            pod_list_desc = entry['Description']
-                            pod_list_ep_count = entry['EpisodeCount']
-                            pod_list_website = entry['WebsiteURL']
-                            pod_list_feed = entry['FeedURL']
-                            pod_list_author = entry['Author']
-                            pod_list_categories = entry['Categories']
-
-                            # Parse webpages needed to extract podcast artwork
-                            pod_list_art_parsed = check_image(pod_list_artwork)
-                            pod_list_artwork_image = ft.Image(src=pod_list_art_parsed, width=150, height=150)
-
-                            # Defining the attributes of each podcast that will be displayed on screen
-                            pod_list_title_display = ft.TextButton(
-                                text=pod_list_title,
-                                on_click=lambda x, e=e, title=pod_list_title, artwork=pod_list_artwork,
-                                                author=pod_list_author,
-                                                categories=pod_list_categories, desc=pod_list_desc,
-                                                ep_count=pod_list_ep_count,
-                                                feed=pod_list_feed, website=pod_list_website: on_pod_list_title_click(e,
-                                                                                                                      title,
-                                                                                                                      artwork,
-                                                                                                                      author,
-                                                                                                                      categories,
-                                                                                                                      desc,
-                                                                                                                      ep_count,
-                                                                                                                      feed,
-                                                                                                                      website)
-                            )
-                            pod_list_desc_display = ft.Text(pod_list_desc)
-                            # Episode Count and subtitle
-                            pod_list_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD,
-                                                        color=active_user.font_color)
-                            pod_list_ep_count_display = ft.Text(pod_list_ep_count, color=active_user.font_color)
-                            pod_list_ep_info = ft.Row(controls=[pod_list_ep_title, pod_list_ep_count_display])
-                            remove_pod_button = ft.IconButton(
-                                icon=ft.icons.INDETERMINATE_CHECK_BOX,
-                                icon_color="red400",
-                                icon_size=40,
-                                tooltip="Remove Podcast",
-                                on_click=lambda x, title=pod_list_title: self.remove_selected_podcast(title)
-                            )
-
-                            # Creating column and row for search layout
-                            pod_list_column = ft.Column(
-                                controls=[pod_list_title_display, pod_list_desc_display, pod_list_ep_info]
-                            )
-
-                            pod_list_row_content = ft.ResponsiveRow([
-                                ft.Column(col={"md": 2}, controls=[pod_list_artwork_image]),
-                                ft.Column(col={"md": 10}, controls=[pod_list_column, remove_pod_button]),
-                            ])
-                            div_row = ft.Divider(color=active_user.accent_color)
-                            pod_row_column = ft.Column(controls=[pod_list_row_content, div_row])
-                            pod_list_row = ft.Container(content=pod_row_column)
-                            pod_list_row.padding = padding.only(left=70, right=50)
-                            self.pod_row_list.controls.append(pod_list_row)
-            # Get Pod info
-            pod_list_data = api_functions.functions.call_return_pods(app_api.url, app_api.headers, active_user.user_id)
-            pod_list_instance = Podlayout(page)
-            pod_list_instance.generate_layout(pod_list_data)
-
-            pod_view_title = ft.Text(
-                "Added Podcasts:",
-                size=30,
-                font_family="RobotoSlab",
-                color=active_user.font_color,
-                weight=ft.FontWeight.W_300,
-            )
-            pod_view_row = ft.Row(controls=[pod_view_title], alignment=ft.MainAxisAlignment.CENTER)
-            # Create search view object
-            pod_list_view = ft.View("/pod_list",
-                                    [
-                                        pod_list_instance.top_bar,
-                                        pod_view_row,
-                                        pod_list_instance.pod_row_list
-
-                                    ]
-
-                                    )
-            pod_list_view.bgcolor = active_user.bgcolor
-            pod_list_view.scroll = ft.ScrollMode.AUTO
-            # Create final page
-            page.views.append(
-                pod_list_view
-
-            )
-
-        if page.route == "/pod_list" or page.route == "/pod_list":
-            class Podlayout:
-                def __init__(self, page):
-                    self.page = page
-                    self.pod_row_list = ft.ListView(divider_thickness=3, auto_scroll=True)
-                    self.refresh_btn = ft.IconButton(icon=ft.icons.REFRESH, icon_color=active_user.font_color,
-                                                     tooltip="Refresh Podcast List", on_click=self.refresh_podcasts)
-                    self.refresh_btn.icon_color = active_user.font_color
-                    self.refresh_ctn = ft.Container(
-                        content=self.refresh_btn,
-                        alignment=ft.alignment.top_left
-                    )
-                    self.banner_button = ft.ElevatedButton("Help!", on_click=show_banner_click)
-                    self.banner_button.bgcolor = active_user.accent_color
-                    self.banner_button.color = active_user.main_color
-                    self.settings_row = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
-                                               controls=[self.refresh_ctn, self.banner_button])
                     self.search_row = ft.Row(spacing=25,
                                              controls=[page_items.search_pods, page_items.search_location, search_btn])
                     self.top_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -3733,11 +3593,14 @@ def main(page: ft.Page, session_value=None):
                 color=active_user.font_color,
                 weight=ft.FontWeight.W_300,
             )
+            pod_add_url = ft.ElevatedButton("Add Podcast from URL feed", bgcolor=active_user.main_color, color=active_user.accent_color, on_click=lambda x: (pod_url_add(page)))
             pod_view_row = ft.Row(controls=[pod_view_title], alignment=ft.MainAxisAlignment.CENTER)
+            pod_add_row = ft.Row(controls=[pod_add_url], alignment=ft.MainAxisAlignment.END)
             # Create search view object
             pod_list_view = ft.View("/pod_list",
                                     [
                                         pod_list_instance.top_bar,
+                                        pod_add_row,
                                         pod_view_row,
                                         pod_list_instance.pod_row_list
 
