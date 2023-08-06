@@ -5,7 +5,7 @@ APP_PATH="$HOME/.local/bin"
 ICON_PATH="$HOME/.config/pinepods/pinepods-appicon.png"
 
 # Create necessary directories
-mkdir -p $(dirname $APP_PATH)
+mkdir -p $APP_PATH
 mkdir -p $(dirname $ICON_PATH)
 
 # Download the app and the icon
