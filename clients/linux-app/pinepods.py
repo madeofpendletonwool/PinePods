@@ -417,11 +417,15 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         def add_feed(e):
+            active_user.feed_url = pod_url_box.value
             pr_instance.touch_stack()
             page.update()
-            podcast_values = internal_functions.functions.get_podcast_values(feed_url, active_user.user_id)
+            print('pre-values')
+            podcast_values = internal_functions.functions.get_podcast_values(active_user.feed_url, active_user.user_id)
+            print(podcast_values)
             return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
                                                                     active_user.user_id)
+            print('post add')
             pr_instance.rm_stack()
             close_pod_url_dlg(page)
             if return_value == True:
@@ -5449,6 +5453,7 @@ def main(page: ft.Page, session_value=None):
             self.first_login_finished = 0
             self.first_start = 0
             self.search_term = ""
+            self.feed_url = None
 
         # New User Stuff ----------------------------
 
