@@ -420,12 +420,9 @@ def main(page: ft.Page, session_value=None):
             active_user.feed_url = pod_url_box.value
             pr_instance.touch_stack()
             page.update()
-            print('pre-values')
             podcast_values = internal_functions.functions.get_podcast_values(active_user.feed_url, active_user.user_id)
-            print(podcast_values)
             return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
                                                                     active_user.user_id)
-            print('post add')
             pr_instance.rm_stack()
             close_pod_url_dlg(page)
             if return_value == True:
@@ -1699,7 +1696,6 @@ def main(page: ft.Page, session_value=None):
                 elif self.page_type == "queue":
                     current_page_eps = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
                                                                              active_user.user_id)
-                print(current_page_eps)
                 # Update the list with the new episodes.
                 self.define_values(current_page_eps)
 
@@ -3365,8 +3361,8 @@ def main(page: ft.Page, session_value=None):
                                                              artwork=display_art_entry_parsed: queue_selected_episode(
                                                  url, title, artwork, page)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Server Download",
-                                             on_click=lambda x, url=entry_audio_url,
-                                                             title=entry_title: download_selected_episode(url, title,
+                                             on_click=lambda x, url=entry_audio_url.value,
+                                                             title=entry_title.value: download_selected_episode(url, title,
                                                                                                           page)),
                             ft.PopupMenuItem(icon=ft.icons.DOWNLOAD, text="Local Download",
                                              on_click=lambda x, url=entry_audio_url.value,

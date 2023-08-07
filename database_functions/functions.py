@@ -572,14 +572,18 @@ def download_podcast(cnx, url, title, user_id):
 
     episode_id, podcast_id = result
 
+    print('pre-podname')
+
     # Next, using the PodcastID, get the PodcastName from the Podcasts table
     query = ("SELECT PodcastName FROM Podcasts WHERE PodcastID = %s")
     cursor.execute(query, (podcast_id,))
     podcast_name = cursor.fetchone()[0]
+    print(post-pod)
 
     # Create a directory named after the podcast, inside the main downloads directory
     download_dir = os.path.join("/opt/pypods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
+    print('dir created'')
 
     # Generate the episode filename based on episode ID and user ID
     filename = f"{user_id}-{episode_id}.mp3"
