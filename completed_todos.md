@@ -5,6 +5,7 @@ This is the list of previous todos that are now completed
 Version 0.2
 
 - [x] Implement custom urls for feeds
+- [x] Organize folder layout in the same way as the client when server downloading
 
 Version 0.1
 
