@@ -2,6 +2,7 @@
   <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
+
 # PinePods :evergreen_tree:
 
 [![](https://dcbadge.vercel.app/api/server/ZkrDqPrf)](https://discord.gg/ZkrDqPrf)
@@ -302,6 +303,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ## ToDo (Listed in order they will be implemented)
 
 - [ ] Implement Postgresql as option for database backend
+- [ ] Export and import of following podcasts (basically backups) 
+- [ ] Import of custom rss feeds from URL
+- [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] Rework local images to run through the image proxy for web
 - [ ] How-to guides on doing things in the app
 - [ ] Timestamps in playing page
