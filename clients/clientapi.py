@@ -254,7 +254,6 @@ async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(.
         return {"success": True}
     else:
         return {"success": False}
-
 @app.post("/api/data/enable_disable_guest")
 async def api_enable_disable_guest(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     database_functions.functions.enable_disable_guest(cnx)

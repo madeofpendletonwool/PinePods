@@ -5,6 +5,8 @@
 
 # PinePods :evergreen_tree:
 
+[![](https://dcbadge.vercel.app/api/server/ZkrDqPrf)](https://discord.gg/ZkrDqPrf)
+
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
   - [Features](#features)
@@ -300,16 +302,17 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
-- [ ] Postgresql backend instead of mysql
+- [ ] Implement Postgresql as option for database backend
 - [ ] Export and import of following podcasts (basically backups) 
 - [ ] Import of custom rss feeds from URL
-- [ ] Client sharing. Search network for other clients and play to them
-Lightweight client
+- [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] Rework local images to run through the image proxy for web
 - [ ] How-to guides on doing things in the app
 - [ ] Timestamps in playing page
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] playing page not currently removing playing bar on bottom in app version
+- [ ] Stream podcasts to other devices running pinepods over local network
+- [ ] Pinepods lite. A light client used as a streaming device. No frontend
 - [ ] Podcast list search
 - [ ] Exportable backups 
 - [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
@@ -321,6 +324,7 @@ Lightweight client
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
 - [ ] Rotating currently playing
+- [ ] Playlist Priority - Similar to podcast republic
 - [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] MFA Logins - Github integration and cloud logins (OAuth)
