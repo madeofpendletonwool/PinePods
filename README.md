@@ -303,8 +303,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ## ToDo (Listed in order they will be implemented)
 
 - [ ] Implement Postgresql as option for database backend
-- [ ] Export and import of following podcasts (basically backups) 
-- [ ] Import of custom rss feeds from URL
+- [ ] Export and import of following podcasts (basically backups)
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] Rework local images to run through the image proxy for web
 - [ ] How-to guides on doing things in the app
@@ -313,7 +312,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] playing page not currently removing playing bar on bottom in app version
 - [ ] Stream podcasts to other devices running pinepods over local network
 - [ ] Pinepods lite. A light client used as a streaming device. No frontend
-- [ ] Podcast list search
 - [ ] Exportable backups 
 - [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
 - [ ] Implement page views for poddisplays that have over 30 episodes

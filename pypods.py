@@ -3905,6 +3905,8 @@ def main(page: ft.Page, session_value=None):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
                                                                                            active_user.user_id)
                     self.mfa_check()
+                    # Backup Settings Setup
+                    self.settings_backup_data()
                     # New User Creation Setup
                     self.user_table_rows = []
                     self.user_table_load()
@@ -3912,6 +3914,20 @@ def main(page: ft.Page, session_value=None):
                     self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
                     self.email_table_rows = []
                     self.email_table_load()
+
+                def settings_backup_data(self):
+                    backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
+                    backup_option_desc = Text(
+                        "Note: This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
+                        color=active_user.font_color)
+                    self.settings_backup_button = ft.ElevatedButton(f'Backup Data',
+                                                                   on_click=active_user.backup_data,
+                                                                   bgcolor=active_user.main_color,
+                                                                   color=active_user.accent_color)
+                    setting_backup_col = ft.Column(
+                        controls=[backup_option_text, backup_option_desc, self.settings_backup_button])
+                    self.setting_backup_con = ft.Container(content=setting_backup_col)
+                    self.setting_backup_con.padding = padding.only(left=70, right=50)
 
                 def update_mfa_status(self):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
@@ -4767,6 +4783,8 @@ def main(page: ft.Page, session_value=None):
                         theme_row_container,
                         div_row,
                         settings_data.mfa_container,
+                        div_row,
+                        settings_data.setting_backup_con,
                         div_row,
                         admin_setting_text,
                         user_row_container,

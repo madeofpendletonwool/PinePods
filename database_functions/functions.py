@@ -2087,3 +2087,24 @@ def queue_bump(cnx, ep_url, title, user_id):
     cursor.close()
 
     return {"detail": f"{title} moved to the front of the queue."}
+
+
+def backup_user(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)  # We use dictionary=True to fetch results as dictionaries
+
+    # Fetch podcasts for the user
+    cursor.execute(
+        "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = %s", (user_id,)
+    )
+    podcasts = cursor.fetchall()
+    cursor.close()
+
+    # Construct the OPML content
+    opml_content = '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>Podcast Subscriptions</title>\n  </head>\n  <body>\n'
+
+    for podcast in podcasts:
+        opml_content += f'    <outline text="{podcast["PodcastName"]}" title="{podcast["PodcastName"]}" type="rss" xmlUrl="{podcast["FeedURL"]}" />\n'
+
+    opml_content += '  </body>\n</opml>'
+
+    return opml_content

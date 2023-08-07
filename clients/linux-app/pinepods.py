@@ -248,6 +248,7 @@ appauthor = "Gooseberry Development"
 # user_data_dir would be the equivalent to the home directory you were using
 user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
+backup_dir = os,path.join(user_data_dir, 'backups')
 
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
@@ -4377,6 +4378,8 @@ def main(page: ft.Page, session_value=None):
                     self.self_service_check()
                     # local settings clear
                     self.settings_clear_options()
+                    # Backup Settings Setup
+                    self.settings_backup_data()
                     # Server Downloads Setup
                     self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
                                                                                              app_api.headers)
@@ -4395,6 +4398,20 @@ def main(page: ft.Page, session_value=None):
                     self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
                     self.email_table_rows = []
                     self.email_table_load()
+
+                def settings_backup_data(self):
+                    backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
+                    backup_option_desc = Text(
+                        "Note: This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
+                        color=active_user.font_color)
+                    self.settings_backup_button = ft.ElevatedButton(f'Backup Data',
+                                                                   on_click=self.backup_data,
+                                                                   bgcolor=active_user.main_color,
+                                                                   color=active_user.accent_color)
+                    setting_backup_col = ft.Column(
+                        controls=[backup_option_text, backup_option_desc, self.settings_backup_button])
+                    self.setting_backup_con = ft.Container(content=setting_backup_col)
+                    self.setting_backup_con.padding = padding.only(left=70, right=50)
 
                 def settings_clear_options(self):
                     setting_option_text = Text('Clear existing client data:', color=active_user.font_color, size=16)
@@ -4839,6 +4856,90 @@ def main(page: ft.Page, session_value=None):
                         rows=self.user_table_rows
                     )
 
+                def backup_data(self, e):
+                    def close_backup_dlg_auto(e):
+                        backup_dlg.open = False
+                        self.page.update()
+
+                    def close_backup_dlg(page):
+                        backup_dlg.open = False
+                        self.page.update()
+
+                    def backup_user():
+                        backup_status = api_functions.functions.call_backup_user(app_api.url, app_api.headers,
+                                                                                 active_user.user_id, backup_dir)
+                        close_backup_dlg(self.page)
+                        self.page.update()
+
+                        def open_backups():
+                            pass
+
+                        def close_backup_status_win(page):
+                            backup_stat_dlg.open = False
+                            self.page.update()
+
+                        if backup_status == True:
+                            backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}", selectable=True)
+                            folder_location = ft.TextButton("Open Backup Location",
+                                                                 on_click=lambda x: (open_backups()))
+                        else:
+                            backup_status_text = ft.Text("Backup was not successful. Try again!")
+                            folder_location = ft.Text("N/A")
+
+                        backup_select_status_row = ft.Row(
+                            controls=[
+                                ft.TextButton("Close", on_click=lambda x: (close_backup_status_win(self.page)))
+                            ],
+                            alignment=ft.MainAxisAlignment.END
+                        )
+
+                        backup_stat_dlg = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text(f"Backup Data:"),
+                            content=ft.Column(controls=[
+                                backup_status_text,
+                                folder_location,
+                                backup_select_status_row
+                            ],
+                                tight=True),
+                            actions_alignment=ft.MainAxisAlignment.END,
+                        )
+                        self.page.dialog = backup_stat_dlg
+                        backup_stat_dlg.open = True
+                        self.page.update()
+
+                    def backup_server():
+                        backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers, backup_dir)
+
+
+                    user_backup_select = ft.TextButton("Export OPML of Podcasts", on_click=lambda x: (backup_user()))
+                    server_backup_select = ft.TextButton("Backup Entire Server", on_click=lambda x: (backup_server()))
+
+                    backup_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Close", on_click=lambda x: (close_backup_dlg(self.page)))
+                        ],
+                        alignment=ft.MainAxisAlignment.END
+                    )
+
+                    backup_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Backup Data:"),
+                        content=ft.Column(controls=[
+                            ft.Text(
+                                f'Select an option below to backup information.',
+                                selectable=True),
+                            user_backup_select,
+                            server_backup_select,
+                            backup_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    self.page.dialog = backup_dlg
+                    backup_dlg.open = True
+                    self.page.update()
+
                 def guest_user_change(self, e):
                     api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
@@ -5158,6 +5259,8 @@ def main(page: ft.Page, session_value=None):
                                         theme_row_container,
                                         user_div_row,
                                         settings_data.mfa_container,
+                                        user_div_row,
+                                        settings_data.setting_backup_con,
                                         user_div_row,
                                         settings_data.setting_option_con,
                                         div_row,

@@ -863,5 +863,29 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
         return response.json()["data"]
 
 
+def call_backup_user(url, headers, user_id, backup_dir):
+    data = {"user_id": user_id}
+    try:
+        response = requests.post(url + "/api/data/backup_user", headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        with open(os.path.join(backup_dir, f"user_{user_id}_backup.opml"), 'w') as file:
+            file.write(response.text)
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return True
+
+
+def call_backup_server(url, headers, backup_dir):
+    pass
+
+
 # def update_queued_positions(url, headers, user_id, episode):
 #     pass

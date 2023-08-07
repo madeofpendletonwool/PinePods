@@ -1,6 +1,7 @@
 # Fast API
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form, File, UploadFile, Query
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import PlainTextResponse
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -727,6 +728,17 @@ async def queue_bump(data: QueueBump, cnx = Depends(get_database_connection), ap
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"data": result}
+
+class BackupUser(BaseModel):
+    user_id: int
+
+@app.post("/api/data/backup_user", response_class=PlainTextResponse)
+async def backup_user(data: BackupUser, cnx = Depends(get_database_connection)):
+    try:
+        opml_data = database_functions.functions.backup_user(cnx, data.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return opml_data
 
 
 
