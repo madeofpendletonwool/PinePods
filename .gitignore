@@ -67,3 +67,17 @@ clients/.DS_Store
 */pinepods.spec
 */generated
 clients/mac-app/pinepods.spec
+
+
+# env files
+*/env_file
+*/.env
+
+# pycharm
+.idea/*
+.idea/misc.xml
+.idea/misc.xml
+.idea/PyPods.iml
+.idea/misc.xml
+.idea/misc.xml
+.idea/PyPods.iml

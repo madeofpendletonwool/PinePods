@@ -3,9 +3,7 @@ services:
     pypods-backend:
        image: madeofpendletonwool/pinepods_backend:latest
        container_name: pypods-be
-       environment:
-           - API_KEY=your_api_key
-           - API_SECRET=your_api_secret
+       env_file: env_file
        ports:
             - 5000:5000
        restart: unless-stopped

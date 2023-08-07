@@ -351,8 +351,10 @@ def call_check_podcast(url, headers, user_id, podcast_name):
     if response.status_code == 200:
         return response.json()["exists"]
     else:
-        print("Error checking podcast:", response.status_code)
+        print(f"Error checking podcast: {response.status_code}, response: {response.text}")
         return False
+
+
 
 def call_remove_podcast(url, headers, podcast_name, user_id):
     data = {"podcast_name": podcast_name, "user_id": user_id}
@@ -455,16 +457,6 @@ def call_get_email_info(url, headers):
         print("Response body:", response.json())
         return None
 
-
-def call_get_queue_list(url, headers, queue_urls):
-    data = {"queue_urls": queue_urls}
-    response = requests.post(url + "/get_queue_list", headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()["queue_list"]
-    else:
-        print("Error fetching queue list:", response.status_code)
-        return None
-
 def call_return_selected_episode(api_url, headers, user_id, title, episode_url):
     data = {"user_id": user_id, "title": title, "url": episode_url}
     response = requests.post(api_url + "/return_selected_episode", headers=headers, json=data)
@@ -486,12 +478,15 @@ def call_check_usernames(url, headers, username):
         return False
 
 
-def call_add_user(url, headers, user_values):
-    response = requests.post(url + "/add_user", headers=headers, json=user_values)  # Send user_values directly
+def call_add_user(url, headers, fullname, username, email, hash_pw, salt):
+    user_values = {"fullname": fullname, "username": username, "email": email, "hash_pw": hash_pw, "salt": salt}
+    response = requests.post(url + "/add_user", headers=headers, json=user_values)
     if response.status_code == 200:
         print("User added successfully.")
     else:
         print("Error adding user:", response.status_code)
+
+
 
 def call_set_fullname(url, headers, user_id, new_name):
     params = {"new_name": new_name}
@@ -627,4 +622,246 @@ def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw):
         print("Error resetting password:", response.status_code)
         return None
 
+def call_clear_guest_data(url, headers):
+    response = requests.post(url + "/clear_guest_data", headers=headers)
+    if response.status_code == 200:
+        return response.json()["message"]
+    else:
+        print("Error clearing guest data:", response.status_code)
+        return None
 
+
+def call_get_episode_metadata(url, headers, episode_url, episode_title, user_id):
+    print(episode_url, episode_title, user_id)
+    data = {
+        "episode_url": episode_url,
+        "episode_title": episode_title,
+        "user_id": user_id,
+    }
+    response = requests.post(url + f"/get_episode_metadata", headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["episode"]
+    else:
+        print("Error fetching episode metadata:", response.status_code)
+        return None
+
+def call_save_mfa_secret(url, headers, user_id, mfa_secret):
+    data = {
+        "user_id": user_id,
+        "mfa_secret": mfa_secret
+    }
+    response = requests.post(url + "/save_mfa_secret", headers=headers, json=data)
+    
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving MFA secret:", response.status_code)
+        print("Error message:", response.text)
+        return False
+
+
+def call_check_mfa_enabled(url, headers, user_id):
+    response = requests.get(url + f"/check_mfa_enabled/{user_id}", headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get('mfa_enabled', False)
+    else:
+        print("Error checking MFA status:", response.status_code)
+        print("Error message:", response.text)
+        return False
+
+def call_verify_mfa(url, headers, user_id, mfa_code):
+    data = {
+        "user_id": user_id,
+        "mfa_code": mfa_code
+    }
+    response = requests.post(url + "/verify_mfa", headers=headers, json=data)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get('verified', False)
+    else:
+        print("Error verifying MFA code:", response.status_code)
+        print("Error message:", response.text)
+        return False
+
+def call_delete_mfa_secret(url, headers, user_id):
+    response = requests.delete(
+        f"{url}/delete_mfa",
+        headers=headers,
+        json={"user_id": user_id}
+    )
+
+    if response.status_code == 200:
+        return response.json().get('deleted', False)
+
+    return False
+
+def call_get_all_episodes(url, headers, pod_feed):
+    data = {"pod_feed": pod_feed}
+    response = requests.post(url + "/get_all_episodes", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["episodes"]
+    else:
+        print("Error getting Podcast Episodes:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_remove_episode_history(url, headers, ep_url, title, user_id):
+    data = {"url": ep_url, "title": title, "user_id": user_id}
+    response = requests.post(url + "/remove_episode_history", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["success"]
+    else:
+        print("Error removing episode from history:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_setup_time_info(url, headers, user_id, timezone, hour_pref):
+    data = {"user_id": user_id, "timezone": timezone, "hour_pref": hour_pref}
+    response = requests.post(url + "/setup_time_info", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["success"]
+    else:
+        print("Error setting up time info:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_get_time_info(url, headers, user_id):
+    response = requests.get(url + "/get_time_info", headers=headers, params={"user_id": user_id})
+
+    if response.status_code == 200:
+        return response.json()["timezone"], response.json()["hour_pref"]
+    else:
+        print("Error getting time info:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_first_login_done(url, headers, user_id):
+    data = {"user_id": user_id}
+    response = requests.post(url + "/first_login_done", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["FirstLogin"]
+    else:
+        print("Error fetching first login status:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_delete_selected_episodes(url, headers, selected_episodes, user_id):
+    data = {"selected_episodes": selected_episodes, "user_id": user_id}
+    response = requests.post(url + "/delete_selected_episodes", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["status"]
+    else:
+        print("Error deleting selected episodes:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+def call_delete_selected_podcasts(url, headers, delete_list, user_id):
+    data = {"delete_list": delete_list, "user_id": user_id}
+    response = requests.post(url + "/delete_selected_podcasts", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()["status"]
+    else:
+        print("Error deleting selected podcasts:", response.status_code)
+        print("Error message:", response.text)
+        return None
+
+
+def call_user_search(url, headers, user_id, search_term):
+    data = {"search_term": search_term, "user_id": user_id}
+    try:
+        response = requests.post(url + "/search_data", headers=headers, json=data, timeout=30)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]
+
+def call_queue_pod(url, headers, ep_url, episode_title, user_id):
+    data = {"episode_title": episode_title, "ep_url": ep_url, "user_id": user_id}
+    try:
+        response = requests.post(url + "/queue_pod", headers=headers, json=data, timeout=30)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]
+
+def call_remove_queue_pod(url, headers, ep_url, episode_title, user_id):
+    data = {"episode_title": episode_title, "ep_url": ep_url, "user_id": user_id}
+    try:
+        response = requests.post(url + "/remove_queued_pod", headers=headers, json=data, timeout=30)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]
+
+def call_queued_episodes(url, headers, user_id):
+    data = {"user_id": user_id}
+    try:
+        response = requests.get(url + "/get_queued_episodes", headers=headers, json=data, timeout=30)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]
+
+# client_api.py
+
+def call_queue_bump(url, headers, ep_url, title, user_id):
+    data = {"ep_url": ep_url, "title": title, "user_id": user_id}
+    try:
+        response = requests.post(url + "/queue_bump", headers=headers, json=data, timeout=30)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return response.json()["data"]
+
+
+# def update_queued_positions(url, headers, user_id, episode):
+#     pass

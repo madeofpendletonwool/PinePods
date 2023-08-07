@@ -45,17 +45,23 @@ cnx = mysql.connector.connect(
 cursor = cnx.cursor()
 
 # create tables
-cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
-                    UserID INT AUTO_INCREMENT PRIMARY KEY,
-                    Fullname TEXT,
-                    Username TEXT UNIQUE,
-                    Email VARCHAR(255),
-                    Hashed_PW CHAR(60),
-                    Salt CHAR(60),
-                    IsAdmin TINYINT(1),
-                    Reset_Code TEXT,
-                    Reset_Expiry DATETIME
-                )""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Users (
+        UserID INT AUTO_INCREMENT PRIMARY KEY,
+        Fullname TEXT,
+        Username TEXT UNIQUE,
+        Email VARCHAR(255),
+        Hashed_PW CHAR(60),
+        Salt CHAR(60),
+        IsAdmin TINYINT(1),
+        Reset_Code TEXT,
+        Reset_Expiry DATETIME,
+        MFA_Secret VARCHAR(50),
+        TimeZone VARCHAR(50) DEFAULT 'UTC',
+        TimeFormat INT  DEFAULT 24,
+        FirstLogin TINYINT(1) DEFAULT 0
+    )
+""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                     APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
@@ -162,15 +168,11 @@ with open("/tmp/web_api_key.txt", "w") as f:
 admin_fullname = os.environ.get("FULLNAME", "Admin User")
 admin_username = os.environ.get("USERNAME", "admin")
 admin_email = os.environ.get("EMAIL", "admin@pinepods.online")
-print(admin_email)
-print(admin_username)
-print(admin_fullname)
 
 alphabet = string.ascii_letters + string.digits + string.punctuation
 fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
 
 admin_pw = os.environ.get("PASSWORD", fallback_password)
-print(admin_pw)
 
 salt, hash_pw = hash_password(admin_pw)
 
@@ -212,6 +214,17 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                     EpisodeDuration INT,
                     FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                 )""")
+
+def create_index_if_not_exists(cursor, index_name, table_name, column_name):
+    cursor.execute(f"SELECT COUNT(1) IndexIsThere FROM INFORMATION_SCHEMA.STATISTICS WHERE table_schema = DATABASE() AND index_name = '{index_name}'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(f"CREATE INDEX {index_name} ON {table_name}({column_name})")
+
+create_index_if_not_exists(cursor, "idx_podcasts_userid", "Podcasts", "UserID")
+create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
+create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
+
+
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
                     UserSettingID INT AUTO_INCREMENT PRIMARY KEY,

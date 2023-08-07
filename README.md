@@ -2,9 +2,13 @@
   <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
+
 # PinePods :evergreen_tree:
 
+[![](https://dcbadge.vercel.app/api/server/ZkrDqPrf)](https://discord.gg/ZkrDqPrf)
+
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
+- [Getting Started](#getting-started)
   - [Features](#features)
   - [Try it out! :zap:](#try-it-out-zap)
   - [Installing :runner:](#installing-runner)
@@ -12,7 +16,8 @@
       - [Compose File](#compose-file)
       - [Admin User Info](#admin-user-info)
       - [Proxy Info](#proxy-info)
-      - [API Notes](#api-notes)
+      - [Note on the Search API](#note-on-the-search-api)
+      - [Client API Vars](#client-api-vars)
       - [Start it up!](#start-it-up)
     - [Linux Client Install :computer:](#linux-client-install-computer)
     - [Windows Client Install :computer:](#windows-client-install-computer)
@@ -20,10 +25,10 @@
     - [Android Install :iphone:](#android-install-iphone)
     - [ios Install :iphone:](#ios-install-iphone)
   - [Platform Availability](#platform-availability)
-  - [ToDo](#todo)
-    - [Needed pre-beta release](#needed-pre-beta-release)
-    - [To be added after beta version](#to-be-added-after-beta-version)
+  - [ToDo (Listed in order they will be implemented)](#todo-listed-in-order-they-will-be-implemented)
   - [Screenshots :camera:](#screenshots-camera)
+
+# Getting Started
 
 PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
 
@@ -33,7 +38,7 @@ Pinepods is a complete podcasts management system and allows you to play, downlo
 
 ## Try it out! :zap:
 
-I try and maintain an instance of Pinepods that's publicly accessible for testing over at [pinepods.online](https://pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.
+I try and maintain an instance of Pinepods that's publicly accessible for testing over at [try.pinepods.online](https://try.pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.
 
 ## Installing :runner:
 
@@ -50,9 +55,10 @@ version: '3'
 services:
   db:
     image: mariadb:latest
+    command: --wait_timeout=1800
     environment:
       MYSQL_TCP_PORT: 3306
-      MYSQL_ROOT_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: myS3curepass
       MYSQL_DATABASE: pypods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
@@ -62,42 +68,42 @@ services:
     ports:
       - "3306:3306"
     restart: always
-  pinepods-proxy:
-    image: madeofpendletonwool/pinepods-proxy:latest
-    ports:
-      - "8033:8000"
-    restart: always
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
+    # Web Portal Port
       - "8034:8034"
+    # API Server Port - Needed for Client Connections
       - "8032:8032"
+    # Image Proxy Port - Needed to Display Some Images
+      - "8000:8000"
     environment:
       # Default Admin User Information
-      USERNAME: pinepods
-      PASSWORD: password
-      FULLNAME: John Pinepods
-      EMAIL: john@pinepods.com
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
       # Database Vars
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: password
+      DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: pinepods-proxy
-      PROXY_PORT: 8033
-      PROXY_PROTOCOL: http
+      PROXY_HOST: proxy.pinepods.online
+      PROXY_PORT: 8000
+      PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
-      #Podcast Index API
-      API_URL: 'https://api.pinepods.online/api/search'
-
+      # Search Index API Vars
+      API_URL: 'https://search.pinepods.online/api/search'
+      # Client API Vars
+      API_SERVER_PORT: 8032
+    volumes:
+    # Mount the download location on the server if you want to. You could mount a nas to this folder or something like that
+      - /home/user/pinepods/downloads:/opt/pypods/downloads
 
     depends_on:
       - db
-      - pinepods-proxy
-
-
 ```
 
 Make sure you change these variables to variables specific to yourself.
@@ -124,7 +130,7 @@ First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details 
 
 #### Proxy Info
 
-Second, the PROXY_HOST, PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It uses a second container to accomplish this. That's the pinepods-proxy portion of the compose file. The application itself will then use this proxy to route media though. This proxy also be ran over a reverse proxy. Here's few examples
+Second, the PROXY_HOST, PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. The application itself will then use this proxy to route media though. This proxy can also be ran over a reverse proxy. Here's few examples
 
 **Recommended:**
 Routed through proxy, secure, with reverse proxy
@@ -160,57 +166,33 @@ Hostname, secure, and no reverse proxy
 
 Note: Changing REVERSE_PROXY to False adjusts what the application uses for the reverse proxy. In short it removed the port from the url it uses for routing since the reverse proxy will add the port for you.
 
-So REVERSE_PROXY "True"
+So REVERSE_PROXY "True" - App will use
 https://proxy.pinepods.online
 
-REVERSE_PROXY "False"
+REVERSE_PROXY "False" - App will use
 https://proxy.pinepods.online:8033
 
-#### API Notes
+#### Note on the Search API
 
-Let's talk about the API. The variable in the compose file
+Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. The podcast index requires an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below.
 
 ```
 API_URL: 'https://api.pinepods.online/api/search'
 ```
 
-This is an api that I maintain to forward search queries to the podcast index which returns results based on the search term you passed to it. You can leave this variable default, and if you do you'll be using the api that I maintain for this. I do not guarantee 100% uptime on this api though, it should be up most of the time bar a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy
+Above is an api that I maintain. I do not guarantee 100% uptime on this api though, it should be up most of the time besides a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy. Check out the API docs for more information on doing this. Link Below -
 
-Head over to the podcast index API website and sign up to get your very own api and key. It's free and makes everything extra secure.
-[Podcast Index API Website](https://api.podcastindex.org/)
+https://www.pinepods.online/docs/API/search_api
 
-Once you have it. Use this docker compose file
+####  Client API Vars
 
+The Client API server port variable tells Pinepods what port to expose the FastAPI routes on. This is needed to connect to the server with the Pinepods client/app version. The API_SERVER_PORT variable and API server port that is exposed in the compose file need to be the same.
 ```
-version: '3'
-services:
-    pypods-backend:
-       image: madeofpendletonwool/pinepods_backend:latest
-       container_name: pypods-be
-       env_file: env_file
-       ports:
-            - 5000:5000
-       restart: unless-stopped
+# API Server Port - Needed for Client Connections
+  - "8032:8032"
+...
+API_SERVER_PORT: 8032
 ```
-You also need to create the env file. It should contain your api key and secret NOTE: You MUST use the env file. Docker compose will not interpret certain characters if not in an env file. Don't smash your face against that issue for hours like I did
-env_file
-```
-API_KEY=your_api_key
-API_SECRET=your_api_secret
-```
-
-Now go ahead and ```sudo docker-compose up``` your file. Then, in the pinepods compose file update the api_url.
-
-```
-API_URL: 'http://<YOUR_IP>/api/search'
-```
-
-Or, even better, stick this behind a reverse proxy with your own domain as well.
-
-```
-API_URL: 'https://<YOUR_DOMAIN>/api/search'
-```
-
 #### Start it up!
 
 Either way, once you have everything all setup and your compose file created go ahead and run your
@@ -219,19 +201,91 @@ Either way, once you have everything all setup and your compose file created go 
 sudo docker-compose up
 ```
 
-command on the main pinepods app to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well.
+command on the main pinepods app to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well once you get an API from the settings area in the web app. Check out the Tutorials on the documentation site for more information on how to do basic things.
+
+https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
 ### Linux Client Install :computer:
 
-Coming Soon
+Any of the client additions are super easy to get going. First head over to the releases page on Github
+
+https://github.com/madeofpendletonwool/PinePods/releases
+
+Grab the pinepods.tar file from the newest release. 
+
+Extract, and then within the extracted folder you'll find an install.sh file. This file simply drops the icon file, and binary in place then installs a .desktop file so your computer will pick up on the app. Ensure the install file has executable permission
+
+```
+cd /pinepods/folder/location
+chmod +x ./install.sh
+```
+
+Then run
+```
+./install.sh
+```
+
+From there, you should be able to search your computer for pinepods and find the client installed as long as your desktop environment supports .desktop files. Otherwise, you can also just run the 'pinepods' file from within the folder directory.
+
+Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
+
+Your server name is where the api server port comes in. 
+```
+    # API Server Port - Needed for Client Connections
+      - "8032:8032"
+```
+
+So in my case running on my local computer I could enter http://localhost:8032
+
+If you create a reverse proxy to that port you might enter https://api.mysite.com
 
 ### Windows Client Install :computer:
 
-Coming Soon
+Any of the client additions are super easy to get going. First head over to the releases page on Github
+
+https://github.com/madeofpendletonwool/PinePods/releases
+
+Grab the Pinepods-Windows.zip file from the newest release. 
+
+Simply extract, and then run.
+
+
+
+Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
+
+Your server name is where the api server port comes in. 
+```
+    # API Server Port - Needed for Client Connections
+      - "8032:8032"
+```
+
+So in my case running on my local computer I could enter http://localhost:8032
+
+If you create a reverse proxy to that port you might enter https://api.mysite.com
 
 ### Mac Client Install :computer:
 
-Coming Soon
+Any of the client additions are super easy to get going. First head over to the releases page on Github
+
+https://github.com/madeofpendletonwool/PinePods/releases
+
+Grab the Pinepods-Mac.zip file from the newest release. 
+
+Simply extract, and then go into Contents/MacOS. From there you can run the app.
+
+You can also place the pinepods app right into your application folder on your mac. Just drag 'pinepods' right in. 
+
+Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
+
+Your server name is where the api server port comes in. 
+```
+    # API Server Port - Needed for Client Connections
+      - "8032:8032"
+```
+
+So in my case running on my local computer I could enter http://localhost:8032
+
+If you create a reverse proxy to that port you might enter https://api.mysite.com
 
 ### Android Install :iphone:
 
@@ -243,123 +297,73 @@ Coming Soon
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. The server will be run from docker and connect to the clients on these platforms
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For a temporary solution for phones you can access the web version from them. The server is run from docker and connects to the clients on all platforms.
 
-## ToDo
 
-- [X] Create Code that can pull Podcasts
-- [X] Integrate Podcast Index
-- [X] Play Audio Files using Python - Flet's Audio library is used
-- [X] Record listen history and display user history on specific page
-- [X] Record accurate listen time. So if you stop listening part-way through you can resume from the same spot
-- [X] Scrubbing playback from a progress bar - ft.slider()
-- [X] Visual progress bar based on time listened to podcasts partly listened to
-- [X] Download option for podcasts. In addition, display downloaded podcasts in downloads area. Allow for deletion of these after downloaded
-- [X] Queue, and allow podcasts to be removed from queue once added (Queue is added but you can't remove them from it yet)
-- [X] Login screen
-- [X] Episode view (Also display html in descriptions via markdown)
-- [X] Multiple Themes (like 10 I think?)
-- [X] Add picture of current episode to soundbar
-- [X] Complete user management with admin options
-- [X] Ability to Delete Users
-- [X] Allow guest user to be disabled (Is disabled by default)
-- [X] Ensure changes cannot be made to guest user
-- [X] Ensure Users cannot delete themselves
-- [X] Guest sign in via button on login screen when enabled
-- [X] Saved episodes view
-- [X] Caching image server (proxy)
-- [X] Optional user self service creation
-- [X] User stats page
-- [X] Implement sign in retention. (App retention now works. It creates session keys and stores them locally. Browser retention is next, this will need some kind of oauth)
-- [X] Audio Volume adjustment options
-- [X] Create Web App
-  - [X] Responsive layout
-  - [X] Security and Logins
-  - [X] Database interaction for users and podcast data
-- [x] Fully update Readme with updated info and docs including deployment guide
-- [X] Bugs
-  - [X] Links when searching an episode are blue (wrong color)
-  - [X] When changing theme, then selecting 'podcasts' page, the navbar does not retain theme
-  - [X] There's an issue with Queue not working properly. Sometimes it just plays instead of queues (Fixed when switching to flet audio control)
-  - [X] Clicking podcast that's already been added displays add podcast view with no current way to play
-  - [X] Clicking play buttons on a podcast while another is loading currently breaks things
-  - [X] Pausing audio changes font color
-  - [X] Login screen colors are wrong on first boot
-  - [X] Themeing currently wrong on audio interaction control
-  - [X] Starting a podcast results in audio bar being in phone mode on application version (This should be fixed. I load the check screensize method now further down the page. Which results in consistent width collection.)
-  - [X] Starting a podcast results in audio bar being in phone mode on application version
-  - [X] Adding a podcast with an emoji in the description currently appears to break it
-  - [X] Layout breaks when pausing for podcast names
-  - [X] The queue works but currently does not remove podcasts after switching to a new one
-  - [X] Resume is currently broken (it now works but it double plays an episode before resuming for some reason. It still double plays and there's not a great way to fix it. Return later. Updates to flet are likely to help eventually)
-  - [X] Double check 2 users adding the same podcast (There was an issue with checking playback status that is now fixed)
-  - [X] After refresh auto update current route
-  - [X] Double and triple check all interactions to verify functionality
-  - [X] Fix any additional browser playback bugs (Audio now routes properly through the proxy)
-- [x] Dockerize
-  - [X] Package into Container/Dockerfile
-  - [X] Pypods image in docker hub
-  - [X] Create Docker-Compose Code
-  - [X] Mixed content - Currently running http or https content can cause an error
-  - [x] Option to run your own local podcast index api connection
-- [x] Implement Gravitar API for profile picture
-- [x] Make web version utilize API Routes instead of database connections directly
-- [x] Update flet dependancy to v6 (This fixes audio routing)
-- [x] Ability to disable downloads (for public servers)
-- [x] One set of functions. Currently client and web app uses different function set. This is be changed for consistency. 
-- [x] GUI Wrapper for App
-  - [x] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
-  - [x] Options to create API keys on the web client as well as ability to remove them
-  - [x] Linux App
-    - [x] Install Script
-    - [x] Packaging and automation
-  - [X] Proper web layout
-  - [x] Windows App
-    - [x] Packaging and automation
-  - [x] Mac App
-    - [x] Packaging and automation
-- [x] Self Service PW Resets
-- [x] Add creator info to bottom of stats page
-- [x] Fix client pooling issue (This is a tough issue. Pooling is occationally a problem. I set the idle timeout to kill old connections and I also fixed a couple database connections that didn't run cnx.close)
+## ToDo (Listed in order they will be implemented)
 
-### Pre-beta version
-
-- [ ] Refresh changes on readme
-- [ ] Default User Creation
-- [ ] Issue with web search bar may be due to appbar
-
-### To be added after beta version
-
-- [ ] Layout Settings page better
-- [ ] Rotating currently playing
-- [ ] Implement smoother scrolling with big list loading
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Allow local downloads to just download the mp3 files direct (Likely only possible on app version)
-- [ ] Page refreshing to handle adding and removing of things better
-- [ ] Handle Images better. Currently it takes a long time to parse through many images (Needs to not load all images. Only ones on screen)
-- [ ] Reload not needed to add and remove episodes from pages
-- [ ] Customizable login screens
-- [ ] Add highlight to indicate which page you're on
-- [ ] Add Itunes podcast API
+- [ ] Implement Postgresql as option for database backend
+- [ ] Export and import of following podcasts (basically backups) 
+- [ ] Import of custom rss feeds from URL
+- [ ] Client sharing. Search network for other clients and play to them Lightweight client
+- [ ] Rework local images to run through the image proxy for web
+- [ ] How-to guides on doing things in the app
+- [ ] Timestamps in playing page
+- [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
+- [ ] playing page not currently removing playing bar on bottom in app version
+- [ ] Stream podcasts to other devices running pinepods over local network
+- [ ] Pinepods lite. A light client used as a streaming device. No frontend
+- [ ] Podcast list search
+- [ ] Exportable backups 
+- [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
+- [ ] Implement page views for poddisplays that have over 30 episodes
+- [ ] Jump to clicked timestamp
+- [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
+- [ ] Add highlight to indicate which page you're on
+- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
+- [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
+- [ ] Rotating currently playing
+- [ ] Playlist Priority - Similar to podcast republic
+- [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] MFA Logins - Github integration and local MFA (OAuth)
+- [ ] MFA Logins - Github integration and cloud logins (OAuth)
 - [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
-- [ ] Option to run the client app with local config. Not connected to a server
-- [ ] Add verification before deleting user
-- [ ] Rating System
-- [ ] Sharing System
 - [ ] Linux App    
   - [ ] Flatpak
   - [ ] Snap
 - [ ] Mobile Apps
-  - [ ] Sign in retention for moble editions
+  - [ ] Sign in retention for mobile editions
   - [ ] Android App
   - [ ] IOS App
   - [ ] Packaging and automation
+- [ ] Add verification before deleting user
+- [ ] Rating System
+- [ ] Sharing System
 
 ## Screenshots :camera:
 
+Main Homepage with podcasts displayed
 <p align="center">
-  <img src="./images/podlist.png">
+  <img src="./images/screenshots/homethemed.png">
+</p>
+
+Loads of themes!
+<p align="center">
+  <img src="./images/screenshots/home.png">
+</p>
+
+Full Podcast Management
+<p align="center">
+  <img src="./images/screenshots/podpage.png">
+</p>
+
+Browse through episodes
+<p align="center">
+  <img src="./images/screenshots/podview.png">
+</p>
+
+Markdown and HTML display compatible
+<p align="center">
+  <img src="./images/screenshots/markdownview.png">
 </p>
