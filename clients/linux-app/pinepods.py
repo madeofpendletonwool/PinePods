@@ -248,7 +248,7 @@ appauthor = "Gooseberry Development"
 # user_data_dir would be the equivalent to the home directory you were using
 user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
-backup_dir = os,path.join(user_data_dir, 'backups')
+backup_dir = os.path.join(user_data_dir, 'backups')
 
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
@@ -4380,6 +4380,8 @@ def main(page: ft.Page, session_value=None):
                     self.settings_clear_options()
                     # Backup Settings Setup
                     self.settings_backup_data()
+                    # Import Settings Setup
+                    self.settings_import_data()
                     # Server Downloads Setup
                     self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
                                                                                              app_api.headers)
@@ -4412,6 +4414,20 @@ def main(page: ft.Page, session_value=None):
                         controls=[backup_option_text, backup_option_desc, self.settings_backup_button])
                     self.setting_backup_con = ft.Container(content=setting_backup_col)
                     self.setting_backup_con.padding = padding.only(left=70, right=50)
+
+                def settings_import_data(self):
+                    import_option_text = Text('Import Data:', color=active_user.font_color, size=16)
+                    import_option_desc = Text(
+                        "Note: This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
+                        color=active_user.font_color)
+                    self.settings_import_button = ft.ElevatedButton(f'Import Data',
+                                                                   on_click=self.import_data,
+                                                                   bgcolor=active_user.main_color,
+                                                                   color=active_user.accent_color)
+                    setting_import_col = ft.Column(
+                        controls=[import_option_text, import_option_desc, self.settings_import_button])
+                    self.setting_import_con = ft.Container(content=setting_import_col)
+                    self.setting_import_con.padding = padding.only(left=70, right=50)
 
                 def settings_clear_options(self):
                     setting_option_text = Text('Clear existing client data:', color=active_user.font_color, size=16)
@@ -4856,11 +4872,81 @@ def main(page: ft.Page, session_value=None):
                         rows=self.user_table_rows
                     )
 
-                def backup_data(self, e):
-                    def close_backup_dlg_auto(e):
-                        backup_dlg.open = False
+                def import_data(self, e):
+                    def close_import_dlg(page):
+                        import_dlg.open = False
                         self.page.update()
 
+                    def import_pick_result(e: ft.FilePickerResultEvent):
+                        if e.files:
+                            active_user.import_file = e.files[0].path
+
+                    def import_user():
+                        import xml.etree.ElementTree as ET
+
+                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        self.page.overlay.append(file_picker)
+                        self.page.update()
+                        file_picker.pick_files()
+
+                        tree = ET.parse(active_user.import_file)
+                        root = tree.getroot()
+
+                        podcasts = []
+                        for outline in root.findall('.//outline'):
+                            podcast_data = {
+                                'title': outline.get('title'),
+                                'xmlUrl': outline.get('xmlUrl')
+                            }
+                            podcasts.append(podcast_data)
+
+                        for podcast in podcasts:
+                            if not podcast.get('title') or not podcast.get('xmlUrl'):
+                                close_import_dlg(page)
+                                page.snack_bar = ft.SnackBar(
+                                    content=ft.Text(f"This does not appear to be a valid opml file"))
+                                page.snack_bar.open = True
+                                self.page.update()
+                        return True
+                        api_functions.functions.call_import_podcasts(app_api.url, app_api.headers, active_user.user_id, podcasts)
+
+
+                    def import_server():
+                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        self.page.overlay.append(file_picker)
+                        self.page.update()
+                        file_picker.pick_files()
+
+                    user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
+                    server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
+
+                    import_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Close", on_click=lambda x: (close_import_dlg(self.page)))
+                        ],
+                        alignment=ft.MainAxisAlignment.END
+                    )
+
+                    import_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Backup Data:"),
+                        content=ft.Column(controls=[
+                            ft.Text(
+                                f'Select an option below to import data.',
+                                selectable=True),
+                            user_import_select,
+                            server_import_select,
+                            import_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    self.page.dialog = import_dlg
+                    import_dlg.open = True
+                    self.page.update()
+
+
+                def backup_data(self, e):
                     def close_backup_dlg(page):
                         backup_dlg.open = False
                         self.page.update()
@@ -4872,7 +4958,18 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
                         def open_backups():
-                            pass
+                            import subprocess
+                            import platform
+
+                            def open_folder(path):
+                                if platform.system() == "Windows":
+                                    os.startfile(path)
+                                elif platform.system() == "Darwin":
+                                    subprocess.Popen(["open", path])
+                                else:
+                                    subprocess.Popen(["xdg-open", path])
+                            print(backup_dir)
+                            open_folder(backup_dir)
 
                         def close_backup_status_win(page):
                             backup_stat_dlg.open = False
@@ -5262,6 +5359,8 @@ def main(page: ft.Page, session_value=None):
                                         user_div_row,
                                         settings_data.setting_backup_con,
                                         user_div_row,
+                                        settings_data.setting_import_con,
+                                        user_div_row,
                                         settings_data.setting_option_con,
                                         div_row,
                                         admin_setting_text,
@@ -5553,6 +5652,7 @@ def main(page: ft.Page, session_value=None):
             self.first_start = 0
             self.search_term = ""
             self.feed_url = None
+            self.import_file = None
 
         # New User Stuff ----------------------------
 

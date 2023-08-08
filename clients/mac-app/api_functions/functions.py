@@ -866,10 +866,16 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
 def call_backup_user(url, headers, user_id, backup_dir):
     data = {"user_id": user_id}
     try:
-        response = requests.post(url + "/api/data/backup_user", headers=headers, json=data, timeout=30)
+        response = requests.post(url + "/backup_user", headers=headers, json=data, timeout=30)
         response.raise_for_status()
+
+        # Check if the backup_dir exists; if not, create it
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
         with open(os.path.join(backup_dir, f"user_{user_id}_backup.opml"), 'w') as file:
             file.write(response.text)
+
     except requests.exceptions.Timeout:
         print(f"Request timed out.")
         return None
