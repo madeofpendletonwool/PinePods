@@ -2108,24 +2108,3 @@ def backup_user(cnx, user_id):
     opml_content += '  </body>\n</opml>'
 
     return opml_content
-
-def import_podcasts(cnx, user_id, podcasts):
-    cursor = cnx.cursor()
-
-    for podcast in podcasts:
-        # Check if the podcast feed URL already exists for the user
-        cursor.execute(
-            "SELECT COUNT(*) FROM Podcasts WHERE FeedURL = %s AND UserID = %s",
-            (podcast['xmlUrl'], user_id)
-        )
-        count = cursor.fetchone()[0]
-
-        # If the podcast doesn't exist for the user, insert it
-        if count == 0:
-            cursor.execute(
-                "INSERT INTO Podcasts (PodcastName, FeedURL, UserID) VALUES (%s, %s, %s)",
-                (podcast['title'], podcast['xmlUrl'], user_id)
-            )
-
-    cnx.commit()
-    cursor.close()

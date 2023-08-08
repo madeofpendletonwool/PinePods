@@ -740,24 +740,6 @@ async def backup_user(data: BackupUser, cnx = Depends(get_database_connection)):
         raise HTTPException(status_code=400, detail=str(e))
     return opml_data
 
-class PodcastData(BaseModel):
-    title: str
-    xmlUrl: str
-
-class PodcastImport(BaseModel):
-    user_id: int
-    podcasts: List[PodcastData]
-
-@app.post("/import_podcasts")
-async def import_podcasts(data: PodcastImport, cnx = Depends(get_database_connection)):
-    try:
-        # Add more business logic here, such as checking for duplicates before inserting, etc.
-        database_functions.functions.import_podcasts(cnx, data.user_id, data.podcasts)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"detail": "Podcasts imported successfully"}
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')

@@ -4907,9 +4907,16 @@ def main(page: ft.Page, session_value=None):
                                     content=ft.Text(f"This does not appear to be a valid opml file"))
                                 page.snack_bar.open = True
                                 self.page.update()
-                        return True
-                        api_functions.functions.call_import_podcasts(app_api.url, app_api.headers, active_user.user_id, podcasts)
+                                return False
 
+                            # Get the podcast values
+                            podcast_values = internal_functions.functions.get_podcast_values(podcast['xmlUrl'], active_user.user_id)
+
+                            # Call add_podcast for each podcast
+                            api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
+                                                                     active_user.user_id)
+
+                        return True
 
                     def import_server():
                         file_picker = ft.FilePicker(on_result=import_pick_result)
