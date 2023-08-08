@@ -320,7 +320,14 @@ def return_pods(cnx, user_id):
 
     return rows
 
+
+def fetch_and_add_episodes(cnx, podcast_details):
+    podcast_id, feed_url, artwork_url = podcast_details
+    print(f'Running for :{podcast_id}')
+    add_episodes(cnx, podcast_id, feed_url, artwork_url)
+
 def refresh_pods(cnx):
+    from concurrent.futures import ThreadPoolExecutor
     print('refresh begin')
     cursor = cnx.cursor()
 
@@ -331,12 +338,31 @@ def refresh_pods(cnx):
 
     cursor.nextset()  # move to the next result set
 
-    for (podcast_id, feed_url, artwork_url) in result_set:
-        print(f'Running for :{podcast_id}')
-        add_episodes(cnx, podcast_id, feed_url, artwork_url)
+    # Use ThreadPoolExecutor to run fetch_and_add_episodes in parallel
+    with ThreadPoolExecutor() as executor:
+        # Mapping fetch_and_add_episodes function to the result_set
+        executor.map(lambda podcast_details: fetch_and_add_episodes(cnx, podcast_details), result_set)
 
     cursor.close()
-    # cnx.close()
+# def refresh_pods(cnx):
+#     import concurrent.futures
+#
+#     print('refresh begin')
+#     cursor = cnx.cursor()
+#
+#     select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL FROM Podcasts"
+#
+#     cursor.execute(select_podcasts)
+#     result_set = cursor.fetchall() # fetch the result set
+#
+#     cursor.nextset()  # move to the next result set
+#
+#     for (podcast_id, feed_url, artwork_url) in result_set:
+#         print(f'Running for :{podcast_id}')
+#         add_episodes(cnx, podcast_id, feed_url, artwork_url)
+#
+#     cursor.close()
+#     # cnx.close()
 
 def remove_unavailable_episodes(cnx):
     cursor = cnx.cursor()
