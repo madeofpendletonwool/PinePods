@@ -655,15 +655,28 @@ def check_downloaded(cnx, user_id, title, url):
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-             f"Podcasts.WebsiteURL, DownloadedEpisodes.DownloadedLocation "
-             f"FROM DownloadedEpisodes "
-             f"INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             f"WHERE DownloadedEpisodes.UserID = %s "
-             f"ORDER BY DownloadedEpisodes.DownloadedDate DESC")
-
+    query = """
+    SELECT 
+        Podcasts.PodcastID, 
+        Podcasts.PodcastName, 
+        Podcasts.ArtworkURL, 
+        Episodes.EpisodeID, 
+        Episodes.EpisodeTitle, 
+        Episodes.EpisodePubDate, 
+        Episodes.EpisodeDescription, 
+        Episodes.EpisodeArtwork, 
+        Episodes.EpisodeURL, 
+        Episodes.EpisodeDuration, 
+        Podcasts.WebsiteURL, 
+        DownloadedEpisodes.DownloadedLocation,
+        UserEpisodeHistory.ListenDuration
+    FROM DownloadedEpisodes 
+    INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID 
+    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID 
+    LEFT JOIN UserEpisodeHistory ON DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
+    WHERE DownloadedEpisodes.UserID = %s 
+    ORDER BY DownloadedEpisodes.DownloadedDate DESC
+    """
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
 
@@ -674,6 +687,7 @@ def download_episode_list(cnx, user_id):
         return None
 
     return rows
+
 
 def save_email_settings(cnx, email_settings):
     cursor = cnx.cursor()
@@ -1255,20 +1269,20 @@ def saved_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-             f"Podcasts.WebsiteURL "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
+             f"Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
              f"FROM SavedEpisodes "
              f"INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"LEFT JOIN UserEpisodeHistory ON SavedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
              f"WHERE SavedEpisodes.UserID = %s "
              f"ORDER BY SavedEpisodes.SaveDate DESC")
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, user_id))
     rows = cursor.fetchall()
 
     cursor.close()
     # cnx.close()
-
 
     if not rows:
         return None
@@ -2042,10 +2056,12 @@ def get_queued_episodes(cnx, user_id):
         Episodes.EpisodeURL, 
         EpisodeQueue.QueuePosition, 
         Episodes.EpisodeDuration, 
-        EpisodeQueue.QueueDate
+        EpisodeQueue.QueueDate,
+        UserEpisodeHistory.ListenDuration
     FROM EpisodeQueue 
     INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
     INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID 
+    LEFT JOIN UserEpisodeHistory ON EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
     WHERE EpisodeQueue.UserID = %s 
     ORDER BY EpisodeQueue.QueuePosition ASC
     """
@@ -2055,6 +2071,7 @@ def get_queued_episodes(cnx, user_id):
     cursor.close()
 
     return queued_episodes
+
 
 # database_functions.py
 

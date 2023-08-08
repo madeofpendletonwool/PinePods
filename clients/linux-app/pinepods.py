@@ -2795,9 +2795,10 @@ def main(page: ft.Page, session_value=None):
                                 else:
                                     # display plain text
                                     local_download_entry_description = ft.Text(local_download_ep_desc)
-                            check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
-                                app_api.url, app_api.headers, active_user.user_id, local_download_ep_title,
-                                local_download_ep_url)
+                            if self.download_type == "local":
+                                check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
+                                    app_api.url, app_api.headers, active_user.user_id, local_download_ep_title,
+                                    local_download_ep_url)
                             local_download_entry_released = ft.Text(f'Released on: {local_download_pub_date}',
                                                                     color=active_user.font_color)
                             local_download_art_no = random.randint(1, 12)
@@ -2894,7 +2895,7 @@ def main(page: ft.Page, session_value=None):
                                                              url, title, page))
                                     ]
                                     )
-                            if check_episode_playback == True:
+                            if listen_duration is not None:
                                 listen_prog = seconds_to_time(listen_duration)
                                 local_download_ep_prog = seconds_to_time(local_download_ep_duration)
                                 progress_value = get_progress(listen_duration, local_download_ep_duration)
