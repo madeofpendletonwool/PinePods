@@ -2252,7 +2252,9 @@ def main(page: ft.Page, session_value=None):
                     threading.Timer(3600, refresh_podcasts_every_hour).start()
 
                 # Start the initial call to the function
-                refresh_podcasts_every_hour()
+                # refresh_podcasts_every_hour()
+                thread = threading.Thread(target=refresh_podcasts_every_hour())
+                thread.start()
 
         if page.route == "/saved" or page.route == "/saved":
 
