@@ -899,7 +899,3 @@ def call_import_podcasts(url, headers, user_id, podcasts):
     }
     response = requests.post(url + "/import_podcasts", headers=headers, json=data)
     return response.json()
-
-
-# def update_queued_positions(url, headers, user_id, episode):
-#     pass

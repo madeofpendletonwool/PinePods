@@ -864,6 +864,7 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
 
 
 def call_backup_user(url, headers, user_id, backup_dir):
+    import os
     data = {"user_id": user_id}
     try:
         response = requests.post(url + "/backup_user", headers=headers, json=data, timeout=30)
@@ -891,7 +892,10 @@ def call_backup_user(url, headers, user_id, backup_dir):
 
 def call_backup_server(url, headers, backup_dir):
     pass
-
-
-# def update_queued_positions(url, headers, user_id, episode):
-#     pass
+def call_import_podcasts(url, headers, user_id, podcasts):
+    data = {
+        "user_id": user_id,
+        "podcasts": podcasts
+    }
+    response = requests.post(url + "/import_podcasts", headers=headers, json=data)
+    return response.json()
