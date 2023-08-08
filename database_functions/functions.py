@@ -251,18 +251,19 @@ def return_episodes(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+             f"UserEpisodeHistory.ListenDuration "
              f"FROM Episodes "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
              f"WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
              f"AND Podcasts.UserID = %s "
              f"ORDER BY Episodes.EpisodePubDate DESC")
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, user_id))
     rows = cursor.fetchall()
 
     cursor.close()
-    # cnx.close()
 
     if not rows:
         return None

@@ -1767,6 +1767,8 @@ def main(page: ft.Page, session_value=None):
                     ep_desc = values['EpisodeDescription']
                     ep_artwork = values['EpisodeArtwork']
                     ep_url = values['EpisodeURL']
+                    # Now fetch the ListenDuration from the returned data
+                    listen_duration = values.get('ListenDuration')
                     if self.page_type == "history":
                         ep_listen_date = values['ListenDate']
                     if self.page_type == "queue":
@@ -1816,8 +1818,8 @@ def main(page: ft.Page, session_value=None):
                         else:
                             # display plain text
                             entry_description = ft.Text(ep_desc, selectable=True)
-                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
-                        app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
+                    # check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
+                    #     app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
                     art_no = random.randint(1, 12)
                     art_fallback = os.path.join(script_dir, "images", "logo_random", f"{art_no}.jpeg")
@@ -1948,7 +1950,7 @@ def main(page: ft.Page, session_value=None):
                         animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
                     )
 
-                    if check_episode_playback == True:
+                    if listen_duration is not None:
                         listen_prog = seconds_to_time(listen_duration)
                         ep_prog = seconds_to_time(ep_duration)
                         progress_value = get_progress(listen_duration, ep_duration)
@@ -4877,46 +4879,70 @@ def main(page: ft.Page, session_value=None):
                         import_dlg.open = False
                         self.page.update()
 
-                    def import_pick_result(e: ft.FilePickerResultEvent):
-                        if e.files:
-                            active_user.import_file = e.files[0].path
-
                     def import_user():
                         import xml.etree.ElementTree as ET
+
+                        def import_pick_result(e: ft.FilePickerResultEvent):
+                            if e.files:
+                                active_user.import_file = e.files[0].path
+
+                            print('testing')
+                            tree = ET.parse(active_user.import_file)
+                            root = tree.getroot()
+
+                            podcasts = []
+                            for outline in root.findall('.//outline'):
+                                podcast_data = {
+                                    'title': outline.get('title'),
+                                    'xmlUrl': outline.get('xmlUrl')
+                                }
+                                podcasts.append(podcast_data)
+
+                            pr_instance.touch_stack()
+                            close_import_dlg(page)
+                            page.update()
+                            for podcast in podcasts:
+
+                                if not podcast.get('title') or not podcast.get('xmlUrl'):
+                                    close_import_dlg(page)
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text(f"This does not appear to be a valid opml file"))
+                                    page.snack_bar.open = True
+                                    self.page.update()
+                                    return False
+
+                                # Get the podcast values
+                                podcast_values = internal_functions.functions.get_podcast_values(podcast['xmlUrl'],
+                                                                                                 active_user.user_id)
+
+                                # Call add_podcast for each podcast
+                                return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
+                                                                         active_user.user_id)
+                                if return_value:
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text(f"{podcast_values[0]} Imported!")
+                                    )
+                                else:
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text(f"{podcast_values[0]} already added!")
+                                    )
+                                page.snack_bar.open = True
+                                self.page.update()
+
+                            if pr_instance.active_pr == True:
+                                pr_instance.rm_stack()
+                            page.snack_bar = ft.SnackBar(
+                                content=ft.Text(
+                                    f"OPML Successfully imported! You should now be subscribed to podcasts defined in the file!"))
+                            page.snack_bar.open = True
+                            self.page.update()
+
+                            return True
 
                         file_picker = ft.FilePicker(on_result=import_pick_result)
                         self.page.overlay.append(file_picker)
                         self.page.update()
                         file_picker.pick_files()
-
-                        tree = ET.parse(active_user.import_file)
-                        root = tree.getroot()
-
-                        podcasts = []
-                        for outline in root.findall('.//outline'):
-                            podcast_data = {
-                                'title': outline.get('title'),
-                                'xmlUrl': outline.get('xmlUrl')
-                            }
-                            podcasts.append(podcast_data)
-
-                        for podcast in podcasts:
-                            if not podcast.get('title') or not podcast.get('xmlUrl'):
-                                close_import_dlg(page)
-                                page.snack_bar = ft.SnackBar(
-                                    content=ft.Text(f"This does not appear to be a valid opml file"))
-                                page.snack_bar.open = True
-                                self.page.update()
-                                return False
-
-                            # Get the podcast values
-                            podcast_values = internal_functions.functions.get_podcast_values(podcast['xmlUrl'], active_user.user_id)
-
-                            # Call add_podcast for each podcast
-                            api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
-                                                                     active_user.user_id)
-
-                        return True
 
                     def import_server():
                         file_picker = ft.FilePicker(on_result=import_pick_result)
