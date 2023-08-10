@@ -252,6 +252,9 @@ user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
 backup_dir = os.path.join(user_data_dir, 'backups')
 
+global current_pod_view
+current_pod_view = None  # This global variable will hold the current active Pod_View instance
+
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
 
@@ -1654,9 +1657,9 @@ def main(page: ft.Page, session_value=None):
 
     pr_instance = PR(page)
 
-    current_pod_view = None  # This global variable will hold the current active Pod_View instance
+
     def route_change(e):
-        global current_pod_view
+
 
         # If there's an active Pod_View instance with an active WebSocket, close the connection
         if current_pod_view and current_pod_view.websocket_client:
@@ -1699,7 +1702,9 @@ def main(page: ft.Page, session_value=None):
 
             def start_websocket(self):
                 if not self.websocket_client:
-                    asyncio.get_event_loop().run_until_complete(self.initiate_websocket())
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.initiate_websocket())
 
             def stop_websocket(self):
                 if self.websocket_client:
