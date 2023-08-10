@@ -754,11 +754,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except:
         connected_clients.remove(websocket)
 
-def run_refresh_pods():
+async def run_refresh_pods():
     with get_database_connection() as cnx:
         database_functions.functions.refresh_pods(cnx)
     for client in connected_clients:
         await client.send_text("refreshed")
+
 
 @app.post("/api/data/start-refresh")
 async def start_refresh(background_tasks: BackgroundTasks):
