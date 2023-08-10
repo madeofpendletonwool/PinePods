@@ -28,6 +28,7 @@ import argparse
 import sys
 from pyotp import TOTP
 import base64
+import threading
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -766,10 +767,23 @@ async def start_refresh(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_refresh_pods)
     return {"message": "Refresh started in the background"}
 
+
 def periodic_refresh():
     while True:
         time.sleep(3600)  # Sleep for an hour
-        run_refresh_pods()
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_refresh_pods())
+        loop.close()
+
+
+def start_periodic_refresh():
+    refresh_thread = threading.Thread(target=periodic_refresh)
+    refresh_thread.start()
+
+# Then, somewhere at the start of your program or app initialization:
+start_periodic_refresh()
 
 
 if __name__ == '__main__':

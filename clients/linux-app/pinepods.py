@@ -252,9 +252,6 @@ user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
 backup_dir = os.path.join(user_data_dir, 'backups')
 
-global current_pod_view
-current_pod_view = None  # This global variable will hold the current active Pod_View instance
-
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
 
@@ -1657,13 +1654,11 @@ def main(page: ft.Page, session_value=None):
 
     pr_instance = PR(page)
 
-
     def route_change(e):
 
-
-        # If there's an active Pod_View instance with an active WebSocket, close the connection
-        if current_pod_view and current_pod_view.websocket_client:
-            current_pod_view.stop_websocket()  # Assuming you've defined the stop_websocket() method as suggested earlier
+        # # If there's an active Pod_View instance with an active WebSocket, close the connection
+        # if active_user.current_pod_view and active_user.current_pod_view.websocket_client:
+        #     active_user.current_pod_view.stop_websocket()  # Assuming you've defined the stop_websocket() method as suggested earlier
 
         if pr_instance.active_pr == True:
             pr_instance.rm_stack()
@@ -1700,19 +1695,34 @@ def main(page: ft.Page, session_value=None):
                 # if self.websocket_client:
                 #     self.websocket_client.send("close")
 
-            def start_websocket(self):
-                if not self.websocket_client:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.initiate_websocket())
 
-            def stop_websocket(self):
-                if self.websocket_client:
-                    self.websocket_client.send("close")
+            def start_websocket(self):
+                def run_event_loop(loop):
+                    asyncio.set_event_loop(loop)
+                    loop.run_forever()
+
+                if not self.websocket_client:
+                    self.loop = asyncio.new_event_loop()
+                    self.loop_thread = threading.Thread(target=run_event_loop, args=(self.loop,))
+                    self.loop_thread.start()  # Start the event loop in a separate thread
+
+                    # Now create the websocket task
+                    asyncio.run_coroutine_threadsafe(self.initiate_websocket(), self.loop)
+
+            # def stop_websocket(self):
+            #     if self.websocket_client and self.loop:
+            #         # First, ensure that the "close" message is sent
+            #         asyncio.run_coroutine_threadsafe(self.websocket_client.send("close"), self.loop).result()
+            #
+            #         # Now, stop the event loop
+            #         self.loop.call_soon_threadsafe(self.loop.stop)
+            #         self.loop_thread.join()  # Wait for the thread to finish
+            #         self.loop.close()
 
             async def initiate_websocket(self):
                 # global websocket_client
-                uri = f"ws://{app_api.url}/api/data/ws"
+                print(app_api.url)
+                uri = f"ws://172.18.0.3:8032/api/data/ws"
                 async with websockets.connect(uri) as websocket:
                     self.websocket_client = websocket  # Assign the websocket to the global variable
                     while True:
@@ -2243,7 +2253,7 @@ def main(page: ft.Page, session_value=None):
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                          active_user.user_id)
             home_layout = Pod_View(page)
-            current_pod_view = home_layout
+            active_user.current_pod_view = home_layout
 
             home_layout.page_type = "home"
 
@@ -2271,39 +2281,7 @@ def main(page: ft.Page, session_value=None):
             if active_user.first_start == 0:
                 active_user.first_start += 1
 
-                # def refresh_podcasts_every_hour():
-                #     run_refresh_pods()
-                #     threading.Timer(3600, refresh_podcasts_every_hour).start()
-                #
-                # # Start the initial call to the function
-                # refresh_podcasts_every_hour()
-                # # thread = threading.Thread(target=refresh_podcasts_every_hour())
-                # # thread.start()
-                # websocket_client = None  # This will hold the reference to the WebSocket connection
-                #
-                # async def initiate_websocket():
-                #     global websocket_client
-                #     uri = f"ws://{app_api.url}/ws"
-                #     async with websockets.connect(uri) as websocket:
-                #         websocket_client = websocket  # Assign the websocket to the global variable
-                #         while True:
-                #             message = await websocket.recv()
-                #             if message == "refreshed":
-                #                 # Fetch the new data here
-                #                 page_episode_list = api_functions.functions.call_return_episodes(app_api.url,
-                #                                                                              app_api.headers,
-                #                                                                              active_user.user_id)
-                #                 if page_episode_list is not None:
-                #                     self.define_values(page_episode_list)
-                #                     self.page.update()
-                #                 else:
-                #                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
-                #                     self.page.snack_bar.open = True
-                #                     self.page.update()
-                #                 # Now handle the home_episodes as required
-                #             elif message == "close":
-                #                 break
-            # asyncio.get_event_loop().run_until_complete(home_layout.initiate_websocket())
+
             home_layout.start_websocket()
 
         if page.route == "/saved" or page.route == "/saved":
@@ -5739,6 +5717,8 @@ def main(page: ft.Page, session_value=None):
             self.search_term = ""
             self.feed_url = None
             self.import_file = None
+            # global current_pod_view
+            self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
 
         # New User Stuff ----------------------------
 
