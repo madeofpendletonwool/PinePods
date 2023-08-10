@@ -17,6 +17,8 @@ import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
+import asyncio
+import websockets
 from requests.exceptions import RequestException, MissingSchema
 import os
 import requests
@@ -1652,10 +1654,16 @@ def main(page: ft.Page, session_value=None):
 
     pr_instance = PR(page)
 
+    current_pod_view = None  # This global variable will hold the current active Pod_View instance
     def route_change(e):
+        global current_pod_view
+
+        # If there's an active Pod_View instance with an active WebSocket, close the connection
+        if current_pod_view and current_pod_view.websocket_client:
+            current_pod_view.stop_websocket()  # Assuming you've defined the stop_websocket() method as suggested earlier
+
         if pr_instance.active_pr == True:
             pr_instance.rm_stack()
-
         class Pod_View:
             def __init__(self, page):
                 # self.view_list = ft.ListView(divider_thickness=3, auto_scroll=True)
@@ -1685,6 +1693,40 @@ def main(page: ft.Page, session_value=None):
                 self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[self.top_row_container])
                 if current_episode.audio_playing == True:
                     audio_container.visible = True
+                self.websocket_client = None  # This will hold the reference to the WebSocket connection
+                # if self.websocket_client:
+                #     self.websocket_client.send("close")
+
+            def start_websocket(self):
+                if not self.websocket_client:
+                    asyncio.get_event_loop().run_until_complete(self.initiate_websocket())
+
+            def stop_websocket(self):
+                if self.websocket_client:
+                    self.websocket_client.send("close")
+
+            async def initiate_websocket(self):
+                # global websocket_client
+                uri = f"ws://{app_api.url}/api/data/ws"
+                async with websockets.connect(uri) as websocket:
+                    self.websocket_client = websocket  # Assign the websocket to the global variable
+                    while True:
+                        message = await websocket.recv()
+                        if message == "refreshed":
+                            # Fetch the new data here
+                            page_episode_list = api_functions.functions.call_return_episodes(app_api.url,
+                                                                                             app_api.headers,
+                                                                                             active_user.user_id)
+                            if page_episode_list is not None:
+                                self.define_values(page_episode_list)
+                                self.page.update()
+                            else:
+                                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                                self.page.snack_bar.open = True
+                                self.page.update()
+                            # Now handle the home_episodes as required
+                        elif message == "close":
+                            break
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.
@@ -1727,32 +1769,11 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
             def refresh_podcasts(self, e):
-                pr_instance.touch_stack()
                 self.page.update()
                 api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
-                pr_instance.rm_stack()
-                if self.page_type == "saved":
-                    page_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
-                                                                                        active_user.user_id)
-                elif self.page_type == "history":
-                    page_episode_list = api_functions.functions.call_user_history(app_api.url, app_api.headers,
-                                                                                  active_user.user_id)
-                elif self.page_type == "home":
-                    page_episode_list = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
-                                                                                     active_user.user_id)
-                elif self.page_type == "queue":
-                    page_episode_list = episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
-                                                                             active_user.user_id)
-                else:
-                    return
-
-                if page_episode_list is not None:
-                    self.define_values(page_episode_list)
-                    self.page.update()
-                else:
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
-                    self.page.snack_bar.open = True
-                    self.page.update()
+                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Initiated!"))
+                self.page.snack_bar.open = True
+                self.page.update()
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
@@ -2217,6 +2238,7 @@ def main(page: ft.Page, session_value=None):
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                          active_user.user_id)
             home_layout = Pod_View(page)
+            current_pod_view = home_layout
 
             home_layout.page_type = "home"
 
@@ -2244,17 +2266,40 @@ def main(page: ft.Page, session_value=None):
             if active_user.first_start == 0:
                 active_user.first_start += 1
 
-                def refresh_podcasts_every_hour():
-                    # Run the refresh_podcasts method
-                    home_layout.refresh_podcasts(e)  # Substitute with actual event argument
-
-                    # Start a timer to run this function again in 1 hour
-                    threading.Timer(3600, refresh_podcasts_every_hour).start()
-
-                # Start the initial call to the function
+                # def refresh_podcasts_every_hour():
+                #     run_refresh_pods()
+                #     threading.Timer(3600, refresh_podcasts_every_hour).start()
+                #
+                # # Start the initial call to the function
                 # refresh_podcasts_every_hour()
-                thread = threading.Thread(target=refresh_podcasts_every_hour())
-                thread.start()
+                # # thread = threading.Thread(target=refresh_podcasts_every_hour())
+                # # thread.start()
+                # websocket_client = None  # This will hold the reference to the WebSocket connection
+                #
+                # async def initiate_websocket():
+                #     global websocket_client
+                #     uri = f"ws://{app_api.url}/ws"
+                #     async with websockets.connect(uri) as websocket:
+                #         websocket_client = websocket  # Assign the websocket to the global variable
+                #         while True:
+                #             message = await websocket.recv()
+                #             if message == "refreshed":
+                #                 # Fetch the new data here
+                #                 page_episode_list = api_functions.functions.call_return_episodes(app_api.url,
+                #                                                                              app_api.headers,
+                #                                                                              active_user.user_id)
+                #                 if page_episode_list is not None:
+                #                     self.define_values(page_episode_list)
+                #                     self.page.update()
+                #                 else:
+                #                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                #                     self.page.snack_bar.open = True
+                #                     self.page.update()
+                #                 # Now handle the home_episodes as required
+                #             elif message == "close":
+                #                 break
+            # asyncio.get_event_loop().run_until_complete(home_layout.initiate_websocket())
+            home_layout.start_websocket()
 
         if page.route == "/saved" or page.route == "/saved":
 

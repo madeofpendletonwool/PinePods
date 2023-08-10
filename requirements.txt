@@ -28,4 +28,6 @@ pyotp
 qrcode[pil]
 eyed3
 mutagen
+asyncio
+websockets
 pytz

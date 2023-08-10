@@ -1,5 +1,5 @@
 # Fast API
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form, File, UploadFile, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form, File, UploadFile, Query, BackgroundTasks, WebSocket
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 
@@ -89,7 +89,7 @@ def setup_connection_pool():
 
     return pooling.MySQLConnectionPool(
         pool_name="pinepods_api_pool",
-        pool_size=32,  # Adjust the pool size according to your needs
+        pool_size=20,  # Adjust the pool size according to your needs
         pool_reset_session=True,
         host=db_host,
         port=db_port,
@@ -739,6 +739,37 @@ async def backup_user(data: BackupUser, cnx = Depends(get_database_connection)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return opml_data
+
+connected_clients = []
+
+@app.websocket("/api/data/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    connected_clients.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except:
+        connected_clients.remove(websocket)
+
+def run_refresh_pods():
+    with get_database_connection() as cnx:
+        database_functions.functions.refresh_pods(cnx)
+    for client in connected_clients:
+        await client.send_text("refreshed")
+
+@app.post("/api/data/start-refresh")
+async def start_refresh(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_refresh_pods)
+    return {"message": "Refresh started in the background"}
+
+def periodic_refresh():
+    while True:
+        time.sleep(3600)  # Sleep for an hour
+        run_refresh_pods()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
