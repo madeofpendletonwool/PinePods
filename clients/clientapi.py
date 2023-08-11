@@ -72,16 +72,14 @@ else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
 
-def get_database_connection():
-    db = None
+def get_database_connection() -> MySQLConnectionPool:
     try:
         db = connection_pool.get_connection()
         yield db
     except Error as e:
         raise HTTPException(500, "Unable to connect to the database")
     finally:
-        if db:
-            db.close()
+        db.close()
 
 
 
@@ -745,63 +743,63 @@ async def backup_user(data: BackupUser, cnx = Depends(get_database_connection)):
         raise HTTPException(status_code=400, detail=str(e))
     return opml_data
 
-connected_clients = []
-
-@app.websocket("/api/data/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    connected_clients.append(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
-    except:
-        connected_clients.remove(websocket)
-
-async def run_refresh_pods():
-    with get_database_connection() as db:
-        try:
-            database_functions.functions.refresh_pods(db)
-            for client in connected_clients:
-                await client.send_text("refreshed")
-        except Exception as e:
-            logging.error(f"Error during refresh: {e}")
-
-
-
-
-@app.post("/api/data/start-refresh")
-async def start_refresh(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_refresh_pods)
-    return {"message": "Refresh started in the background"}
-
-
-def periodic_refresh():
-    print('starting scheduled refresh')
-
-    # First, create a new event loop and execute the refresh immediately on boot
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_refresh_pods())
-    loop.close()
-
-    # Now start the periodic (once per hour) refresh loop
-    while True:
-        time.sleep(3600)  # Sleep for an hour
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_refresh_pods())
-        loop.close()
-
-
-def start_periodic_refresh():
-    refresh_thread = threading.Thread(target=periodic_refresh)
-    refresh_thread.start()
-
-# Then, somewhere at the start of your program or app initialization:
-start_periodic_refresh()
+# connected_clients = []
+#
+# @app.websocket("/api/data/ws")
+# async def websocket_endpoint(websocket: WebSocket):
+#     await websocket.accept()
+#     connected_clients.append(websocket)
+#     try:
+#         while True:
+#             data = await websocket.receive_text()
+#             if data == "ping":
+#                 await websocket.send_text("pong")
+#     except:
+#         connected_clients.remove(websocket)
+#
+# async def run_refresh_pods():
+#     with get_database_connection() as db:
+#         try:
+#             database_functions.functions.refresh_pods(db)
+#             for client in connected_clients:
+#                 await client.send_text("refreshed")
+#         except Exception as e:
+#             logging.error(f"Error during refresh: {e}")
+#
+#
+#
+#
+# @app.post("/api/data/start-refresh")
+# async def start_refresh(background_tasks: BackgroundTasks):
+#     background_tasks.add_task(run_refresh_pods)
+#     return {"message": "Refresh started in the background"}
+#
+#
+# def periodic_refresh():
+#     print('starting scheduled refresh')
+#
+#     # First, create a new event loop and execute the refresh immediately on boot
+#     loop = asyncio.new_event_loop()
+#     asyncio.set_event_loop(loop)
+#     loop.run_until_complete(run_refresh_pods())
+#     loop.close()
+#
+#     # Now start the periodic (once per hour) refresh loop
+#     while True:
+#         time.sleep(3600)  # Sleep for an hour
+#
+#         loop = asyncio.new_event_loop()
+#         asyncio.set_event_loop(loop)
+#         loop.run_until_complete(run_refresh_pods())
+#         loop.close()
+#
+#
+# def start_periodic_refresh():
+#     refresh_thread = threading.Thread(target=periodic_refresh)
+#     refresh_thread.start()
+#
+# # Then, somewhere at the start of your program or app initialization:
+# start_periodic_refresh()
 
 
 if __name__ == '__main__':
