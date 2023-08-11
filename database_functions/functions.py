@@ -159,22 +159,21 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                     return parsed_duration
 
                 parsed_duration = 0
-                if entry.itunes_duration:
+                if hasattr(entry, "itunes_duration"):
                     parsed_duration = parse_duration(entry.itunes_duration)
-                elif entry.itunes_duration_seconds:
+                elif hasattr(entry, "itunes_duration_seconds"):
                     parsed_duration = entry.itunes_duration_seconds
-                elif entry.duration:
+                elif hasattr(entry, "duration"):
                     parsed_duration = parse_duration(entry.duration)
-                elif entry.length:
+                elif hasattr(entry, "length"):
                     parsed_duration = parse_duration(entry.length)
-
 
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
                                 "WHERE PodcastID = %s AND EpisodeTitle = %s")
                 check_episode_values = (podcast_id, parsed_title)
                 cursor.execute(check_episode, check_episode_values)
-                if cursor.fetchone() is not None:
+                if cursor.fetchall() is not None:
                     # episode already exists, skip it
                     continue
 
