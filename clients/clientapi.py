@@ -361,6 +361,21 @@ async def api_refresh_pods(cnx = Depends(get_database_connection), api_key: str 
     database_functions.functions.refresh_pods(cnx)
     return {"detail": "Podcasts refreshed."}
 
+def run_refresh_pods():
+    # I'm using the synchronous version of your function here.
+    with get_database_connection() as cnx:
+        database_functions.functions.refresh_pods(cnx)
+
+def periodic_refresh():
+    while True:
+        print('starting refresh task')
+        sleep(3600)  # Sleep for an hour
+        run_refresh_pods()
+
+@app.on_event("startup")
+async def startup_event():
+    task = BackgroundTasks().add_task(periodic_refresh)
+
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     stats = database_functions.functions.get_stats(cnx, user_id)
