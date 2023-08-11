@@ -1697,6 +1697,7 @@ def main(page: ft.Page, session_value=None):
 
 
             def start_websocket(self):
+                print('starting socket')
                 def run_event_loop(loop):
                     asyncio.set_event_loop(loop)
                     loop.run_forever()
@@ -1720,28 +1721,32 @@ def main(page: ft.Page, session_value=None):
             #         self.loop.close()
 
             async def initiate_websocket(self):
-                # global websocket_client
-                print(app_api.url)
-                uri = f"ws://172.18.0.3:8032/api/data/ws"
-                async with websockets.connect(uri) as websocket:
-                    self.websocket_client = websocket  # Assign the websocket to the global variable
-                    while True:
-                        message = await websocket.recv()
-                        if message == "refreshed":
-                            # Fetch the new data here
-                            page_episode_list = api_functions.functions.call_return_episodes(app_api.url,
-                                                                                             app_api.headers,
-                                                                                             active_user.user_id)
-                            if page_episode_list is not None:
-                                self.define_values(page_episode_list)
-                                self.page.update()
-                            else:
-                                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
-                                self.page.snack_bar.open = True
-                                self.page.update()
-                            # Now handle the home_episodes as required
-                        elif message == "close":
-                            break
+                print("Trying to connect to WebSocket")
+                uri = f"ws://localhost:8032/api/data/ws"
+                try:
+                    async with websockets.connect(uri) as websocket:
+                        print("Connected to WebSocket")
+                        # ... rest of your code ...
+                        self.websocket_client = websocket  # Assign the websocket to the global variable
+                        while True:
+                            message = await websocket.recv()
+                            if message == "refreshed":
+                                # Fetch the new data here
+                                page_episode_list = api_functions.functions.call_return_episodes(app_api.url,
+                                                                                                 app_api.headers,
+                                                                                                 active_user.user_id)
+                                if page_episode_list is not None:
+                                    self.define_values(page_episode_list)
+                                    self.page.update()
+                                else:
+                                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                                    self.page.snack_bar.open = True
+                                    self.page.update()
+                                # Now handle the home_episodes as required
+                            elif message == "close":
+                                break
+                except Exception as e:
+                    print(f"WebSocket error: {e}")
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.

@@ -770,6 +770,15 @@ async def start_refresh(background_tasks: BackgroundTasks):
 
 
 def periodic_refresh():
+    print('starting scheduled refresh')
+
+    # First, create a new event loop and execute the refresh immediately on boot
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_refresh_pods())
+    loop.close()
+
+    # Now start the periodic (once per hour) refresh loop
     while True:
         time.sleep(3600)  # Sleep for an hour
 
