@@ -8,4 +8,4 @@ API_KEY=$(cat /tmp/web_api_key.txt)
 
 # Call the FastAPI endpoint using the API key
 echo "Refreshing now!"
-curl "http://localhost:8032/api/data/refresh_pods" -H "Authorization: $API_KEY" >> /cron.log 2>&1
+curl "http://localhost:8032/api/data/refresh_pods" -H "Api-Key: $API_KEY" >> /cron.log 2>&1
