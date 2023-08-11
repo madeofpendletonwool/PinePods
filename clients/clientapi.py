@@ -757,10 +757,15 @@ async def websocket_endpoint(websocket: WebSocket):
         connected_clients.remove(websocket)
 
 async def run_refresh_pods():
-    with get_database_connection() as cnx:
-        database_functions.functions.refresh_pods(cnx)
-    for client in connected_clients:
-        await client.send_text("refreshed")
+    cnx = get_database_connection()
+    db = next(cnx)  # Get the database connection from the generator
+    try:
+        database_functions.functions.refresh_pods(db)
+        for client in connected_clients:
+            await client.send_text("refreshed")
+    finally:
+        db.close()  # Close the connection manually
+
 
 
 @app.post("/api/data/start-refresh")
