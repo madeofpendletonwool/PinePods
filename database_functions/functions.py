@@ -107,6 +107,7 @@ def add_admin_user(cnx, user_values):
     
     cursor.close()
 
+
 def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
     import feedparser
@@ -122,7 +123,6 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
             if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
                 # get the episode title
                 parsed_title = entry.title
-                
 
                 # get the episode description
                 parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
@@ -137,17 +137,17 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 parsed_release_date = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d")
 
                 # get the URL of the episode artwork, or use the podcast image URL if not available
-                parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+                parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get(
+                    'href', None)
                 if parsed_artwork_url == None:
                     parsed_artwork_url = artwork_url
-
-
 
                 def parse_duration(duration_string: str) -> int:
                     match = re.match(r'(\d+):(\d+)(?::(\d+))?', duration_string)  # Regex to optionally match HH:MM:SS
                     if match:
                         if match.group(3):  # If there is an HH part
-                            parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(match.group(3))
+                            parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(
+                                match.group(3))
                         else:  # It's only MM:SS
                             parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
                     else:
@@ -159,28 +159,29 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                     return parsed_duration
 
                 parsed_duration = 0
-                if hasattr(entry, "itunes_duration"):
+                if entry.itunes_duration:
                     parsed_duration = parse_duration(entry.itunes_duration)
-                elif hasattr(entry, "itunes_duration_seconds"):
+                elif entry.itunes_duration_seconds:
                     parsed_duration = entry.itunes_duration_seconds
-                elif hasattr(entry, "duration"):
+                elif entry.duration:
                     parsed_duration = parse_duration(entry.duration)
-                elif hasattr(entry, "length"):
+                elif entry.length:
                     parsed_duration = parse_duration(entry.length)
 
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
-                                "WHERE PodcastID = %s AND EpisodeTitle = %s")
+                                 "WHERE PodcastID = %s AND EpisodeTitle = %s")
                 check_episode_values = (podcast_id, parsed_title)
                 cursor.execute(check_episode, check_episode_values)
-                if cursor.fetchall() is not None:
+                if cursor.fetchone() is not None:
                     # episode already exists, skip it
                     continue
 
-
                 # insert the episode into the database
                 query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, parsed_duration)
+                values = (
+                podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date,
+                parsed_duration)
                 cursor.execute(query, values)
 
                 # check if any rows were affected by the insert operation
