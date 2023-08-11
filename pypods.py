@@ -8,11 +8,13 @@ import api_functions.functions
 import app_functions.functions
 
 # Others
+import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import as_completed
 import urllib.request
+import asyncio
+import websockets
 from requests.exceptions import RequestException, MissingSchema
 import os
 import requests
@@ -20,7 +22,6 @@ import time
 import random
 import string
 import datetime
-import socket
 import html2text
 import threading
 from html.parser import HTMLParser
@@ -37,6 +38,7 @@ import qrcode
 import feedparser
 from collections import defaultdict
 from math import pi
+import traceback
 import pytz
 import shutil
 from base64 import urlsafe_b64decode
@@ -111,6 +113,7 @@ appauthor = "Gooseberry Development"
 # user_data_dir would be the equivalent to the home directory you were using
 user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
+backup_dir = os.path.join(user_data_dir, 'backups')
 
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
@@ -1504,7 +1507,6 @@ def main(page: ft.Page, session_value=None):
                 elif self.page_type == "queue":
                     current_page_eps = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
                                                                              active_user.user_id)
-                print(current_page_eps)
                 # Update the list with the new episodes.
                 self.define_values(current_page_eps)
 
@@ -1535,32 +1537,11 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
             def refresh_podcasts(self, e):
-                pr_instance.touch_stack()
                 self.page.update()
                 api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
-                pr_instance.rm_stack()
-                if self.page_type == "saved":
-                    page_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
-                                                                                        active_user.user_id)
-                elif self.page_type == "history":
-                    page_episode_list = api_functions.functions.call_user_history(app_api.url, app_api.headers,
-                                                                                  active_user.user_id)
-                elif self.page_type == "home":
-                    page_episode_list = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
-                                                                                     active_user.user_id)
-                elif self.page_type == "queue":
-                    page_episode_list = episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
-                                                                             active_user.user_id)
-                else:
-                    return
-
-                if page_episode_list is not None:
-                    self.define_values(page_episode_list)
-                    self.page.update()
-                else:
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
-                    self.page.snack_bar.open = True
-                    self.page.update()
+                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Initiated!"))
+                self.page.snack_bar.open = True
+                self.page.update()
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
@@ -1575,6 +1556,8 @@ def main(page: ft.Page, session_value=None):
                     ep_desc = values['EpisodeDescription']
                     ep_artwork = values['EpisodeArtwork']
                     ep_url = values['EpisodeURL']
+                    # Now fetch the ListenDuration from the returned data
+                    listen_duration = values.get('ListenDuration')
                     if self.page_type == "history":
                         ep_listen_date = values['ListenDate']
                     if self.page_type == "queue":
@@ -1624,8 +1607,6 @@ def main(page: ft.Page, session_value=None):
                         else:
                             # display plain text
                             entry_description = ft.Text(ep_desc, selectable=True)
-                    check_episode_playback, listen_duration = api_functions.functions.call_check_episode_playback(
-                        app_api.url, app_api.headers, active_user.user_id, ep_title, ep_url)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
                     art_no = random.randint(1, 12)
                     art_fallback = os.path.join(script_dir, "images", "logo_random", f"{art_no}.jpeg")
@@ -1740,7 +1721,7 @@ def main(page: ft.Page, session_value=None):
                         animate_rotation=ft.animation.Animation(300, ft.AnimationCurve.BOUNCE_OUT),
                     )
 
-                    if check_episode_playback == True:
+                    if listen_duration is not None:
                         listen_prog = seconds_to_time(listen_duration)
                         ep_prog = seconds_to_time(ep_duration)
                         progress_value = get_progress(listen_duration, ep_duration)
@@ -2006,6 +1987,7 @@ def main(page: ft.Page, session_value=None):
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                          active_user.user_id)
             home_layout = Pod_View(page)
+            active_user.current_pod_view = home_layout
 
             home_layout.page_type = "home"
 
@@ -2032,16 +2014,6 @@ def main(page: ft.Page, session_value=None):
             )
             if active_user.first_start == 0:
                 active_user.first_start += 1
-
-                def refresh_podcasts_every_hour():
-                    # Run the refresh_podcasts method
-                    home_layout.refresh_podcasts(e)  # Substitute with actual event argument
-
-                    # Start a timer to run this function again in 1 hour
-                    threading.Timer(3600, refresh_podcasts_every_hour).start()
-
-                # Start the initial call to the function
-                refresh_podcasts_every_hour()
 
         if page.route == "/saved" or page.route == "/saved":
 
@@ -3402,7 +3374,7 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             coffee_contain.alignment = alignment.bottom_center
             coffee_script_dir = os.path.dirname(os.path.realpath(__file__))
-            image_path = os.path.join(coffee_script_dir, "pinepods-appicon.png")
+            image_path = os.path.join(coffee_script_dir, "assets", "pinepods-appicon.png")
             pinepods_img = ft.Image(
                 src=image_path,
                 width=100,
@@ -3894,6 +3866,10 @@ def main(page: ft.Page, session_value=None):
                     self.self_service_notify = ft.Text(
                         f'Self Service user creation is currently {"enabled" if self.self_service_bool else "disabled"}')
                     self.self_service_check()
+                    # Backup Settings Setup
+                    self.settings_backup_data()
+                    # Import Settings Setup
+                    self.settings_import_data()
                     # Server Downloads Setup
                     self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
                                                                                              app_api.headers)
@@ -3905,8 +3881,6 @@ def main(page: ft.Page, session_value=None):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
                                                                                            active_user.user_id)
                     self.mfa_check()
-                    # Backup Settings Setup
-                    self.settings_backup_data()
                     # New User Creation Setup
                     self.user_table_rows = []
                     self.user_table_load()
@@ -3921,13 +3895,27 @@ def main(page: ft.Page, session_value=None):
                         "Note: This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
                         color=active_user.font_color)
                     self.settings_backup_button = ft.ElevatedButton(f'Backup Data',
-                                                                   on_click=active_user.backup_data,
+                                                                   on_click=self.backup_data,
                                                                    bgcolor=active_user.main_color,
                                                                    color=active_user.accent_color)
                     setting_backup_col = ft.Column(
                         controls=[backup_option_text, backup_option_desc, self.settings_backup_button])
                     self.setting_backup_con = ft.Container(content=setting_backup_col)
                     self.setting_backup_con.padding = padding.only(left=70, right=50)
+
+                def settings_import_data(self):
+                    import_option_text = Text('Import Data:', color=active_user.font_color, size=16)
+                    import_option_desc = Text(
+                        "Note: This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
+                        color=active_user.font_color)
+                    self.settings_import_button = ft.ElevatedButton(f'Import Data',
+                                                                   on_click=self.import_data,
+                                                                   bgcolor=active_user.main_color,
+                                                                   color=active_user.accent_color)
+                    setting_import_col = ft.Column(
+                        controls=[import_option_text, import_option_desc, self.settings_import_button])
+                    self.setting_import_con = ft.Container(content=setting_import_col)
+                    self.setting_import_con.padding = padding.only(left=70, right=50)
 
                 def update_mfa_status(self):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
@@ -4358,6 +4346,202 @@ def main(page: ft.Page, session_value=None):
                         rows=self.user_table_rows
                     )
 
+                def import_data(self, e):
+                    def close_import_dlg(page):
+                        import_dlg.open = False
+                        self.page.update()
+
+                    def import_user():
+                        import xml.etree.ElementTree as ET
+
+                        def import_pick_result(e: ft.FilePickerResultEvent):
+                            if e.files:
+                                active_user.import_file = e.files[0].path
+
+                            print('testing')
+                            tree = ET.parse(active_user.import_file)
+                            root = tree.getroot()
+
+                            podcasts = []
+                            for outline in root.findall('.//outline'):
+                                podcast_data = {
+                                    'title': outline.get('title'),
+                                    'xmlUrl': outline.get('xmlUrl')
+                                }
+                                podcasts.append(podcast_data)
+
+                            pr_instance.touch_stack()
+                            close_import_dlg(page)
+                            page.update()
+                            for podcast in podcasts:
+
+                                if not podcast.get('title') or not podcast.get('xmlUrl'):
+                                    close_import_dlg(page)
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text(f"This does not appear to be a valid opml file"))
+                                    page.snack_bar.open = True
+                                    self.page.update()
+                                    return False
+
+                                # Get the podcast values
+                                podcast_values = internal_functions.functions.get_podcast_values(podcast['xmlUrl'],
+                                                                                                 active_user.user_id)
+
+                                # Call add_podcast for each podcast
+                                return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
+                                                                         active_user.user_id)
+                                if return_value:
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text(f"{podcast_values[0]} Imported!")
+                                    )
+                                else:
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text(f"{podcast_values[0]} already added!")
+                                    )
+                                page.snack_bar.open = True
+                                self.page.update()
+
+                            if pr_instance.active_pr == True:
+                                pr_instance.rm_stack()
+                            page.snack_bar = ft.SnackBar(
+                                content=ft.Text(
+                                    f"OPML Successfully imported! You should now be subscribed to podcasts defined in the file!"))
+                            page.snack_bar.open = True
+                            self.page.update()
+
+                            return True
+
+                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        self.page.overlay.append(file_picker)
+                        self.page.update()
+                        file_picker.pick_files()
+
+                    def import_server():
+                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        self.page.overlay.append(file_picker)
+                        self.page.update()
+                        file_picker.pick_files()
+
+                    user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
+                    server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
+
+                    import_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Close", on_click=lambda x: (close_import_dlg(self.page)))
+                        ],
+                        alignment=ft.MainAxisAlignment.END
+                    )
+
+                    import_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Backup Data:"),
+                        content=ft.Column(controls=[
+                            ft.Text(
+                                f'Select an option below to import data.',
+                                selectable=True),
+                            user_import_select,
+                            server_import_select,
+                            import_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    self.page.dialog = import_dlg
+                    import_dlg.open = True
+                    self.page.update()
+
+
+                def backup_data(self, e):
+                    def close_backup_dlg(page):
+                        backup_dlg.open = False
+                        self.page.update()
+
+                    def backup_user():
+                        backup_status = api_functions.functions.call_backup_user(app_api.url, app_api.headers,
+                                                                                 active_user.user_id, backup_dir)
+                        close_backup_dlg(self.page)
+                        self.page.update()
+
+                        def open_backups():
+                            import subprocess
+                            import platform
+
+                            def open_folder(path):
+                                if platform.system() == "Windows":
+                                    os.startfile(path)
+                                elif platform.system() == "Darwin":
+                                    subprocess.Popen(["open", path])
+                                else:
+                                    subprocess.Popen(["xdg-open", path])
+                            print(backup_dir)
+                            open_folder(backup_dir)
+
+                        def close_backup_status_win(page):
+                            backup_stat_dlg.open = False
+                            self.page.update()
+
+                        if backup_status == True:
+                            backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}", selectable=True)
+                            folder_location = ft.TextButton("Open Backup Location",
+                                                                 on_click=lambda x: (open_backups()))
+                        else:
+                            backup_status_text = ft.Text("Backup was not successful. Try again!")
+                            folder_location = ft.Text("N/A")
+
+                        backup_select_status_row = ft.Row(
+                            controls=[
+                                ft.TextButton("Close", on_click=lambda x: (close_backup_status_win(self.page)))
+                            ],
+                            alignment=ft.MainAxisAlignment.END
+                        )
+
+                        backup_stat_dlg = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text(f"Backup Data:"),
+                            content=ft.Column(controls=[
+                                backup_status_text,
+                                folder_location,
+                                backup_select_status_row
+                            ],
+                                tight=True),
+                            actions_alignment=ft.MainAxisAlignment.END,
+                        )
+                        self.page.dialog = backup_stat_dlg
+                        backup_stat_dlg.open = True
+                        self.page.update()
+
+                    def backup_server():
+                        backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers, backup_dir)
+
+
+                    user_backup_select = ft.TextButton("Export OPML of Podcasts", on_click=lambda x: (backup_user()))
+                    server_backup_select = ft.TextButton("Backup Entire Server", on_click=lambda x: (backup_server()))
+
+                    backup_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Close", on_click=lambda x: (close_backup_dlg(self.page)))
+                        ],
+                        alignment=ft.MainAxisAlignment.END
+                    )
+
+                    backup_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Backup Data:"),
+                        content=ft.Column(controls=[
+                            ft.Text(
+                                f'Select an option below to backup information.',
+                                selectable=True),
+                            user_backup_select,
+                            server_backup_select,
+                            backup_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    self.page.dialog = backup_dlg
+                    backup_dlg.open = True
+                    self.page.update()
+
                 def guest_user_change(self, e):
                     api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
@@ -4781,11 +4965,13 @@ def main(page: ft.Page, session_value=None):
                     [
                         user_setting_text,
                         theme_row_container,
-                        div_row,
+                        user_div_row,
                         settings_data.mfa_container,
-                        div_row,
+                        user_div_row,
                         settings_data.setting_backup_con,
-                        div_row,
+                        user_div_row,
+                        settings_data.setting_import_con,
+                        user_div_row,
                         admin_setting_text,
                         user_row_container,
                         settings_data.user_edit_container,
@@ -5073,6 +5259,9 @@ def main(page: ft.Page, session_value=None):
             self.first_start = 0
             self.search_term = ""
             self.feed_url = None
+            self.import_file = None
+            # global current_pod_view
+            self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
 
         # New User Stuff ----------------------------
 

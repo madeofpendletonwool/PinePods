@@ -11,12 +11,12 @@ from api_functions.functions import call_api_config
 import app_functions.functions
 
 # Others
-import urllib
-import urllib.request
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
+import urllib
+import urllib.request
 import asyncio
 import websockets
 from requests.exceptions import RequestException, MissingSchema
@@ -1655,13 +1655,9 @@ def main(page: ft.Page, session_value=None):
     pr_instance = PR(page)
 
     def route_change(e):
-
-        # # If there's an active Pod_View instance with an active WebSocket, close the connection
-        # if active_user.current_pod_view and active_user.current_pod_view.websocket_client:
-        #     active_user.current_pod_view.stop_websocket()  # Assuming you've defined the stop_websocket() method as suggested earlier
-
         if pr_instance.active_pr == True:
             pr_instance.rm_stack()
+
         class Pod_View:
             def __init__(self, page):
                 # self.view_list = ft.ListView(divider_thickness=3, auto_scroll=True)
@@ -2285,9 +2281,6 @@ def main(page: ft.Page, session_value=None):
             )
             if active_user.first_start == 0:
                 active_user.first_start += 1
-
-
-            # home_layout.start_websocket()
 
         if page.route == "/saved" or page.route == "/saved":
 
@@ -5420,33 +5413,33 @@ def main(page: ft.Page, session_value=None):
 
             # Create search view object
             settings_view = ft.View("/settings",
-                                    [
-                                        user_setting_text,
-                                        theme_row_container,
-                                        user_div_row,
-                                        settings_data.mfa_container,
-                                        user_div_row,
-                                        settings_data.setting_backup_con,
-                                        user_div_row,
-                                        settings_data.setting_import_con,
-                                        user_div_row,
-                                        settings_data.setting_option_con,
-                                        div_row,
-                                        admin_setting_text,
-                                        user_row_container,
-                                        settings_data.user_edit_container,
-                                        div_row,
-                                        pw_reset_container,
-                                        settings_data.email_edit_container,
-                                        div_row,
-                                        guest_info,
-                                        div_row,
-                                        self_service_info,
-                                        div_row,
-                                        download_info
-                                    ]
+                    [
+                        user_setting_text,
+                        theme_row_container,
+                        user_div_row,
+                        settings_data.mfa_container,
+                        user_div_row,
+                        settings_data.setting_backup_con,
+                        user_div_row,
+                        settings_data.setting_import_con,
+                        user_div_row,
+                        settings_data.setting_option_con,
+                        div_row,
+                        admin_setting_text,
+                        user_row_container,
+                        settings_data.user_edit_container,
+                        div_row,
+                        pw_reset_container,
+                        settings_data.email_edit_container,
+                        div_row,
+                        guest_info,
+                        div_row,
+                        self_service_info,
+                        div_row,
+                        download_info
+                    ]
 
-                                    )
+                    )
             settings_view.bgcolor = active_user.bgcolor
             settings_view.scroll = ft.ScrollMode.AUTO
             # Create final page
