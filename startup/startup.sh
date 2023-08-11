@@ -58,6 +58,6 @@ service cron start
 chmod +x /pinepods/startup/call_refresh_endpoint.sh
 echo "Starting a Podcast Refresh"
 ./pinepods/startup/call_refresh_endpoint.sh
-echo "0 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
+echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
 # Start PinePods
 python3 -u /pinepods/pypods.py

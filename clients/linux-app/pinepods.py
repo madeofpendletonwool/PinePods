@@ -1785,11 +1785,33 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
             def refresh_podcasts(self, e):
+                pr_instance.touch_stack()
                 self.page.update()
-                api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
-                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Initiated!"))
-                self.page.snack_bar.open = True
-                self.page.update()
+                pr_instance.rm_stack()
+                if self.page_type == "saved":
+                    page_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
+                                                                                        active_user.user_id)
+                elif self.page_type == "history":
+                    page_episode_list = api_functions.functions.call_user_history(app_api.url, app_api.headers,
+                                                                                  active_user.user_id)
+                elif self.page_type == "home":
+                    page_episode_list = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
+                                                                                     active_user.user_id)
+                elif self.page_type == "queue":
+                    page_episode_list = episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
+                else:
+                    return
+
+                if page_episode_list is not None:
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode List Refreshed!"))
+                    self.page.snack_bar.open = True
+                    self.define_values(page_episode_list)
+                    self.page.update()
+                else:
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                    self.page.snack_bar.open = True
+                    self.page.update()
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
