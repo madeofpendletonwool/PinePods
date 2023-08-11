@@ -2287,7 +2287,7 @@ def main(page: ft.Page, session_value=None):
                 active_user.first_start += 1
 
 
-            home_layout.start_websocket()
+            # home_layout.start_websocket()
 
         if page.route == "/saved" or page.route == "/saved":
 

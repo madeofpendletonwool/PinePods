@@ -4,6 +4,7 @@ from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 
 # Needed Modules
+from contextlib import contextmanager
 from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
@@ -71,14 +72,16 @@ else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
 print(f'Proxy url is configured to {proxy_url}')
 
-def get_database_connection() -> MySQLConnectionPool:
+def get_database_connection():
+    db = None
     try:
         db = connection_pool.get_connection()
         yield db
     except Error as e:
         raise HTTPException(500, "Unable to connect to the database")
     finally:
-        db.close()
+        if db:
+            db.close()
 
 
 
@@ -91,7 +94,7 @@ def setup_connection_pool():
 
     return pooling.MySQLConnectionPool(
         pool_name="pinepods_api_pool",
-        pool_size=20,  # Adjust the pool size according to your needs
+        pool_size=32,  # Adjust the pool size according to your needs
         pool_reset_session=True,
         host=db_host,
         port=db_port,
@@ -757,14 +760,14 @@ async def websocket_endpoint(websocket: WebSocket):
         connected_clients.remove(websocket)
 
 async def run_refresh_pods():
-    cnx = get_database_connection()
-    db = next(cnx)  # Get the database connection from the generator
-    try:
-        database_functions.functions.refresh_pods(db)
-        for client in connected_clients:
-            await client.send_text("refreshed")
-    finally:
-        db.close()  # Close the connection manually
+    with get_database_connection() as db:
+        try:
+            database_functions.functions.refresh_pods(db)
+            for client in connected_clients:
+                await client.send_text("refreshed")
+        except Exception as e:
+            logging.error(f"Error during refresh: {e}")
+
 
 
 
