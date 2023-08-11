@@ -369,7 +369,7 @@ def run_refresh_pods():
 def periodic_refresh():
     while True:
         print('starting refresh task')
-        sleep(3600)  # Sleep for an hour
+        time.sleep(3600)  # Sleep for an hour
         run_refresh_pods()
 
 @app.on_event("startup")
