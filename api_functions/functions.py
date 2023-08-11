@@ -312,7 +312,7 @@ def call_record_listen_duration(url, headers, episode_url, title, user_id, liste
         print("Error recording listen duration:", response.status_code)
 
 def call_refresh_pods(url, headers):
-    response = requests.get(url + f"/start-refresh", headers=headers)
+    response = requests.get(url + f"/refresh_pods", headers=headers)
     if response.status_code == 200:
         print("Podcasts refreshed.")
     else:

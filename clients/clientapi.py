@@ -357,9 +357,9 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx = Depen
     return {"detail": "Listen duration recorded."}
 
 @app.get("/api/data/refresh_pods")
-async def api_refresh_pods(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    database_functions.functions.refresh_pods(cnx)
-    return {"detail": "Podcasts refreshed."}
+async def api_refresh_pods(background_tasks: BackgroundTasks, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    background_tasks.add_task(database_functions.functions.refresh_pods, cnx)
+    return {"detail": "Refresh initiated."}
 
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
