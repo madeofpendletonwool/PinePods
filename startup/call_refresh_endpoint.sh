@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Ensure app has time to start
+sleep 10
+
 # Read the API key from /tmp/web_api_key.txt
 API_KEY=$(cat /tmp/web_api_key.txt)
 
