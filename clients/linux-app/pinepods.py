@@ -855,6 +855,7 @@ def main(page: ft.Page, session_value=None):
                 self.loading_audio = False
                 self.local = False
                 self.name_truncated = 'placeholder'
+                self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -903,6 +904,7 @@ def main(page: ft.Page, session_value=None):
                 # self.episode_name = self.name
                 self.queue = []
                 self.state = 'stopped'
+                self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
                 self.fs_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_ARROW,
                     tooltip="Play Podcast",
@@ -1082,7 +1084,7 @@ def main(page: ft.Page, session_value=None):
                 audio_container.visible = False
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
-                currently_playing.content = ft.Text(self.name_truncated, size=16)
+                current_episode.currently_playing.content = ft.Text(self.name_truncated, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
@@ -1111,14 +1113,14 @@ def main(page: ft.Page, session_value=None):
                 play_button.icon_color = active_user.accent_color
                 pause_button.icon_color = active_user.accent_color
                 seek_button.icon_color = active_user.accent_color
-                currently_playing.color = active_user.font_color
+                current_episode.currently_playing.color = active_user.font_color
                 # current_time_text.color = active_user.font_color
                 podcast_length.color = active_user.font_color
                 self.page.update()
             else:
                 pause_button.visible = False
                 play_button.visible = True
-                currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                current_episode.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
 
         def toggle_current_status(self):
@@ -1129,7 +1131,7 @@ def main(page: ft.Page, session_value=None):
                 audio_container.visible = True
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
-                currently_playing.content = ft.Text(self.name_truncated, size=16)
+                current_episode.currently_playing.content = ft.Text(self.name_truncated, size=16)
                 current_time.content = ft.Text(self.length, color=active_user.font_color)
                 podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
@@ -1158,13 +1160,13 @@ def main(page: ft.Page, session_value=None):
                 play_button.icon_color = active_user.accent_color
                 pause_button.icon_color = active_user.accent_color
                 seek_button.icon_color = active_user.accent_color
-                currently_playing.color = active_user.font_color
+                current_episode.currently_playing.color = active_user.font_color
                 podcast_length.color = active_user.font_color
                 self.page.update()
             else:
                 pause_button.visible = False
                 play_button.visible = True
-                currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                current_episode.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
 
         def volume_view(self):
@@ -1622,7 +1624,7 @@ def main(page: ft.Page, session_value=None):
         play_button.icon_color = active_user.accent_color
         pause_button.icon_color = active_user.accent_color
         seek_button.icon_color = active_user.accent_color
-        currently_playing.color = active_user.font_color
+        current_episode.currently_playing.color = active_user.font_color
         current_time.color = active_user.font_color
         podcast_length.color = active_user.font_color
 
@@ -2201,7 +2203,7 @@ def main(page: ft.Page, session_value=None):
         def page_checksize(e):
             max_chars = character_limit(int(page.width))
             current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-            currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+            current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
             if page.width <= 768 and page.width != 0:
                 ep_height = 100
                 ep_width = 4000
@@ -2212,7 +2214,7 @@ def main(page: ft.Page, session_value=None):
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[audio_container_pod_details, audio_controls_row])
                 audio_container.update()
-                currently_playing.update()
+                current_episode.currently_playing.update()
                 page.update()
             else:
                 ep_height = 50
@@ -2221,7 +2223,7 @@ def main(page: ft.Page, session_value=None):
                 page_items.search_location.visible = True
                 audio_container.height = ep_height
                 audio_container.content = audio_container_row
-                currently_playing.update()
+                current_episode.currently_playing.update()
                 audio_container.update()
                 page.update()
 
@@ -2230,7 +2232,7 @@ def main(page: ft.Page, session_value=None):
             page_items.search_location.visible = False
             max_chars = character_limit(int(page.width))
             current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-            currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+            current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
             if page.width <= 768 and page.width != 0:
                 ep_height = 100
                 ep_width = 4000
@@ -2241,7 +2243,7 @@ def main(page: ft.Page, session_value=None):
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[audio_container_pod_details, audio_controls_row])
                 audio_container.update()
-                currently_playing.update()
+                current_episode.currently_playing.update()
                 page.update()
             else:
                 ep_height = 50
@@ -2250,7 +2252,7 @@ def main(page: ft.Page, session_value=None):
                 page_items.search_location.visible = True
                 audio_container.height = ep_height
                 audio_container.content = audio_container_row
-                currently_playing.update()
+                current_episode.currently_playing.update()
                 audio_container.update()
                 page.update()
 
@@ -6587,8 +6589,7 @@ def main(page: ft.Page, session_value=None):
     )
     ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
     # Create the currently playing container
-    currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
-    currently_playing.padding = ft.padding.only(bottom=5)
+    current_episode.currently_playing.padding = ft.padding.only(bottom=5)
 
     def format_time(time):
         hours, remainder = divmod(int(time), 3600)
@@ -6615,7 +6616,7 @@ def main(page: ft.Page, session_value=None):
                                              width=40, height=40)
     audio_container_image = ft.Container(content=audio_container_image_landing, on_click=open_currently_playing)
     audio_container_image.border_radius = ft.border_radius.all(25)
-    currently_playing_container = ft.Row(controls=[audio_container_image, currently_playing])
+    currently_playing_container = ft.Row(controls=[audio_container_image, current_episode.currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
     volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume",
                                   on_click=lambda x: current_episode.volume_view())
@@ -6627,7 +6628,7 @@ def main(page: ft.Page, session_value=None):
         controls=[currently_playing_container, audio_controls_row])
     audio_container_row = ft.Container(content=audio_container_row_landing)
     audio_container_row.padding = ft.padding.only(left=10)
-    audio_container_pod_details = ft.Row(controls=[audio_container_image, currently_playing],
+    audio_container_pod_details = ft.Row(controls=[audio_container_image, current_episode.currently_playing],
                                          alignment=ft.MainAxisAlignment.CENTER)
 
     if page.width <= 768 and page.width != 0:
@@ -6641,7 +6642,7 @@ def main(page: ft.Page, session_value=None):
             padding=6,
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[audio_container_image, currently_playing, audio_controls_row])
+                controls=[audio_container_image, current_episode.currently_playing, audio_controls_row])
         )
     else:
         ep_height = 50
