@@ -619,6 +619,7 @@ def main(page: ft.Page, session_value=None):
                 self.loading_audio = False
                 self.local = False
                 self.name_truncated = 'placeholder'
+                self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
