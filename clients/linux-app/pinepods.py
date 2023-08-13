@@ -2200,32 +2200,34 @@ def main(page: ft.Page, session_value=None):
                                                    )
 
         page_items = Page_Vars(page)
+        print(active_user.user_id)
         def page_checksize(e):
-            max_chars = character_limit(int(page.width))
-            current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-            current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
-            if page.width <= 768 and page.width != 0:
-                ep_height = 100
-                ep_width = 4000
-                page_items.search_pods.visible = False
-                page_items.search_location.visible = False
-                audio_container.height = ep_height
-                audio_container.content = ft.Column(
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[audio_container_pod_details, audio_controls_row])
-                audio_container.update()
-                current_episode.currently_playing.update()
-                page.update()
-            else:
-                ep_height = 50
-                ep_width = 4000
-                page_items.search_pods.visible = True
-                page_items.search_location.visible = True
-                audio_container.height = ep_height
-                audio_container.content = audio_container_row
-                current_episode.currently_playing.update()
-                audio_container.update()
-                page.update()
+            if active_user.user_id:
+                max_chars = character_limit(int(page.width))
+                current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
+                current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+                if page.width <= 768 and page.width != 0:
+                    ep_height = 100
+                    ep_width = 4000
+                    page_items.search_pods.visible = False
+                    page_items.search_location.visible = False
+                    audio_container.height = ep_height
+                    audio_container.content = ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[audio_container_pod_details, audio_controls_row])
+                    audio_container.update()
+                    current_episode.currently_playing.update()
+                    page.update()
+                else:
+                    ep_height = 50
+                    ep_width = 4000
+                    page_items.search_pods.visible = True
+                    page_items.search_location.visible = True
+                    audio_container.height = ep_height
+                    audio_container.content = audio_container_row
+                    current_episode.currently_playing.update()
+                    audio_container.update()
+                    page.update()
 
         if page.width <= 768 and page.width != 0:
             page_items.search_pods.visible = False
