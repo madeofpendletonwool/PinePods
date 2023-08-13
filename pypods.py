@@ -1905,7 +1905,7 @@ def main(page: ft.Page, session_value=None):
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[audio_container_pod_details, audio_controls_row])
                 audio_container.update()
-                current_episode.currently_playing.update()
+                # current_episode.currently_playing.update()
                 page.update()
             else:
                 ep_height = 50
@@ -1914,7 +1914,7 @@ def main(page: ft.Page, session_value=None):
                 page_items.search_location.visible = True
                 audio_container.height = ep_height
                 audio_container.content = audio_container_row
-                current_episode.currently_playing.update()
+                # current_episode.currently_playing.update()
                 audio_container.update()
                 page.update()
 
