@@ -301,9 +301,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 
 ## ToDo (Listed in order they will be implemented)
- 
+
+- [ ] Finalize reverse proxy processes and web playing
 - [ ] Implement Postgresql as option for database backend
-- [ ] Export and import of following podcasts (basically backups)
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] How-to guides on doing things in the app
 - [ ] Timestamps in playing page

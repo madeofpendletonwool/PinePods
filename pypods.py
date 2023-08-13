@@ -1888,6 +1888,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
 
         if page.width <= 768 and page.width != 0:
+            print('using toggle pod currently')
             page_items.search_pods.visible = False
             page_items.search_location.visible = False
             max_chars = character_limit(int(page.width))
@@ -6008,6 +6009,7 @@ def main(page: ft.Page, session_value=None):
     parsed_title = 'nothing playing'
     # Initialize the current episode
     current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
+    print('current episode creation')
 
     # Create the audio controls
     play_button = ft.IconButton(

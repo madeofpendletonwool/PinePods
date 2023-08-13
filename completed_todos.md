@@ -2,6 +2,10 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.3
+
+- [x] Export and import of following podcasts (basically backups)
+
 Version 0.2
 
 - [x] Implement custom urls for feeds
