@@ -6054,7 +6054,7 @@ def main(page: ft.Page, session_value=None):
             self.podcast_length = ft.Container(content=ft.Text('doesntmatter'))
             self.current_time_text = ft.Text('placeholder')
             self.current_time = ft.Container(content=self.current_time_text)
-            self.audio_scrubber = ft.Slider(min=0, expand=True, max=self.current_episode.seconds, label="{value}",
+            self.audio_scrubber = ft.Slider(min=0, expand=True, max=current_episode.seconds, label="{value}",
                                             on_change=slider_changed)
             self.audio_scrubber.width = '100%'
             self.audio_scrubber_column = ft.Column(controls=[self.audio_scrubber])
@@ -6066,14 +6066,14 @@ def main(page: ft.Page, session_value=None):
             self.audio_container_image_landing = ft.Image(
                 src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
                 width=40, height=40)
-            self.audio_container_image = ft.Container(content=self.current_episode.audio_container_image_landing,
+            self.audio_container_image = ft.Container(content=current_episode.audio_container_image_landing,
                                                       on_click=open_currently_playing)
             self.audio_container_image.border_radius = ft.border_radius.all(25)
             self.currently_playing_container = ft.Row(
-                controls=[self.audio_container_image, self.current_episode.currently_playing])
+                controls=[self.audio_container_image, current_episode.currently_playing])
             self.scrub_bar_row = ft.Row(controls=[self.current_time, self.audio_scrubber_column, self.podcast_length])
             self.volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume",
-                                               on_click=lambda x: self.current_episode.volume_view())
+                                               on_click=lambda x: current_episode.volume_view())
             self.audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER,
                                              controls=[self.scrub_bar_row, self.ep_audio_controls, self.volume_button])
             self.audio_container_row_landing = ft.Row(
@@ -6083,7 +6083,7 @@ def main(page: ft.Page, session_value=None):
             self.audio_container_row = ft.Container(content=self.audio_container_row_landing)
             self.audio_container_row.padding = ft.padding.only(left=10)
             self.audio_container_pod_details = ft.Row(
-                controls=[self.audio_container_image, self.current_episode.currently_playing],
+                controls=[self.audio_container_image, current_episode.currently_playing],
                 alignment=ft.MainAxisAlignment.CENTER)
             ep_height = 50
             ep_width = 4000
@@ -6097,7 +6097,7 @@ def main(page: ft.Page, session_value=None):
             )
 
         def setup_volume_control(self):
-            self.volume_slider = ft.Slider(value=1, on_change=lambda x: self.current_episode.volume_adjust())
+            self.volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
             self.volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
             self.volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
             self.volume_adjust_column = ft.Row(
