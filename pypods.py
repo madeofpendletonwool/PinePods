@@ -1860,65 +1860,40 @@ def main(page: ft.Page, session_value=None):
                                                    )
 
         page_items = Page_Vars(page)
-        def page_checksize(e):
-            if active_user.user_id:
-                max_chars = character_limit(int(page.width))
-                current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-                current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
-                if page.width <= 768 and page.width != 0:
-                    ep_height = 100
-                    ep_width = 4000
-                    page_items.search_pods.visible = False
-                    page_items.search_location.visible = False
-                    audio_container.height = ep_height
-                    audio_container.content = ft.Column(
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        controls=[audio_container_pod_details, audio_controls_row])
-                    audio_container.update()
-                    # current_episode.currently_playing.update()
-                    page.update()
-                else:
-                    ep_height = 50
-                    ep_width = 4000
-                    page_items.search_pods.visible = True
-                    page_items.search_location.visible = True
-                    audio_container.height = ep_height
-                    audio_container.content = audio_container_row
-                    # current_episode.currently_playing.update()
-                    audio_container.update()
-                    page.update()
 
-        if page.width <= 768 and page.width != 0:
-            print('using toggle pod currently')
-            page_items.search_pods.visible = False
-            page_items.search_location.visible = False
+        def adjust_audio_container():
             max_chars = character_limit(int(page.width))
             current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
             current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+
             if page.width <= 768 and page.width != 0:
-                ep_height = 100
-                ep_width = 4000
+                print('using toggle pod currently')
                 page_items.search_pods.visible = False
                 page_items.search_location.visible = False
+
+                ep_height = 100
+                ep_width = 4000
                 audio_container.height = ep_height
                 audio_container.content = ft.Column(
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[audio_container_pod_details, audio_controls_row])
-                audio_container.update()
-                # current_episode.currently_playing.update()
-                page.update()
             else:
                 ep_height = 50
                 ep_width = 4000
                 page_items.search_pods.visible = True
                 page_items.search_location.visible = True
+
                 audio_container.height = ep_height
                 audio_container.content = audio_container_row
-                # current_episode.currently_playing.update()
-                audio_container.update()
-                page.update()
 
-        page.on_resize = page_checksize
+            audio_container.update()
+            page.update()
+
+        # This function gets called when the page resizes
+        page.on_resize = adjust_audio_container
+
+        # Call it directly to set up the initial state based on screen size
+        adjust_audio_container()
 
         page_items.search_location.width = 130
         page_items.search_location.height = 50
