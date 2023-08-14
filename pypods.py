@@ -6043,7 +6043,7 @@ def main(page: ft.Page, session_value=None):
             def slider_changed(e):
                 formatted_scrub = format_time(self.audio_scrubber.value)
                 self.current_time.content = ft.Text(formatted_scrub)
-                self.current_time.update()
+                # self.current_time.update()
                 current_episode.time_scrub(self.audio_scrubber.value)
 
             self.podcast_length = ft.Container(content=ft.Text('doesntmatter'))
