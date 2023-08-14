@@ -2089,12 +2089,20 @@ def queue_bump(cnx, ep_url, title, user_id):
         (ep_url, title, user_id)
     )
     result = cursor.fetchone()
+    print(result)
 
-    # if the episode is in the queue, remove it
     if result is not None:
-        cursor.execute(
-            "DELETE FROM EpisodeQueue WHERE QueueID = %s", (result['QueueID'],)
-        )
+        print("Attempting to delete episode with details:", result)
+        try:
+            cursor.execute(
+                "DELETE FROM EpisodeQueue WHERE QueueID = %s", (result['QueueID'],)
+            )
+            if cursor.rowcount == 0:
+                print("No rows were deleted.")
+            else:
+                print(f"{cursor.rowcount} row(s) deleted successfully.")
+        except Exception as e:
+            print(f"Error while deleting episode from queue: {e}")
 
     # decrease the QueuePosition of all other episodes in the queue
     cursor.execute(
