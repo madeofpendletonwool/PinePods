@@ -619,9 +619,6 @@ def main(page: ft.Page, session_value=None):
                 self.loading_audio = False
                 self.local = False
                 self.name_truncated = 'placeholder'
-                self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
-                self.audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
-                                             width=40, height=40)
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -770,7 +767,7 @@ def main(page: ft.Page, session_value=None):
                 # convert milliseconds to seconds
                 total_seconds = media_length // 1000
                 self.seconds = total_seconds
-                audio_scrubber.max = self.seconds
+                pod_controls.audio_scrubber.max = self.seconds
 
                 threading.Thread(target=self.run_function_every_60_seconds, daemon=True).start()
 
@@ -800,9 +797,9 @@ def main(page: ft.Page, session_value=None):
                                                                           active_user.user_id)
                 if len(self.queue) > 0:
                     next_episode = self.queue[0]  # First episode in the queue after sorting by QueuePosition
-                    current_episode.url = next_episode['EpisodeURL']
-                    current_episode.name = next_episode['EpisodeTitle']
-                    current_episode.artwork = next_episode['EpisodeArtwork']
+                    pod_controls.current_episode.url = next_episode['EpisodeURL']
+                    pod_controls.current_episode.name = next_episode['EpisodeTitle']
+                    pod_controls.current_episode.artwork = next_episode['EpisodeArtwork']
                     self.play_episode()
                 else:
                     self.audio_element.release()
@@ -839,107 +836,107 @@ def main(page: ft.Page, session_value=None):
 
         def fs_toggle_current_status(self):
             if self.audio_playing:
-                play_button.visible = False
-                pause_button.visible = True
-                audio_container.bgcolor = active_user.main_color
-                audio_container.visible = False
+                pod_controls.play_button.visible = False
+                pod_controls.pause_button.visible = True
+                pod_controls.audio_container.bgcolor = active_user.main_color
+                pod_controls.audio_container.visible = False
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
                 current_episode.currently_playing.content = ft.Text(self.name_truncated, size=16)
-                current_time.content = ft.Text(self.length, color=active_user.font_color)
-                podcast_length.content = ft.Text(self.length)
+                pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
+                pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
                 audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
                 self.audio_con_art_url_parsed = audio_con_art_url_parsed
-                current_episode.audio_container_image_landing.src = audio_con_art_url_parsed
-                current_episode.audio_container_image_landing.width = 40
-                current_episode.audio_container_image_landing.height = 40
-                current_episode.audio_container_image_landing.border_radius = ft.border_radius.all(100)
-                audio_container_image.border_radius = ft.border_radius.all(75)
-                current_episode.audio_container_image_landing.update()
-                audio_scrubber.active_color = active_user.nav_color2
-                audio_scrubber.inactive_color = active_user.nav_color2
-                audio_scrubber.thumb_color = active_user.accent_color
-                volume_container.bgcolor = active_user.main_color
-                volume_down_icon.icon_color = active_user.accent_color
-                volume_up_icon.icon_color = active_user.accent_color
-                volume_button.icon_color = active_user.accent_color
-                volume_slider.active_color = active_user.nav_color2
-                volume_slider.inactive_color = active_user.nav_color2
-                volume_slider.thumb_color = active_user.accent_color
-                play_button.icon_color = active_user.accent_color
-                pause_button.icon_color = active_user.accent_color
-                seek_button.icon_color = active_user.accent_color
+                pod_controls.audio_container_image_landing.src = audio_con_art_url_parsed
+                pod_controls.audio_container_image_landing.width = 40
+                pod_controls.audio_container_image_landing.height = 40
+                pod_controls.audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                pod_controls.audio_container_image.border_radius = ft.border_radius.all(75)
+                pod_controls.audio_container_image_landing.update()
+                pod_controls.audio_scrubber.active_color = active_user.nav_color2
+                pod_controls.audio_scrubber.inactive_color = active_user.nav_color2
+                pod_controls.audio_scrubber.thumb_color = active_user.accent_color
+                pod_controls.volume_container.bgcolor = active_user.main_color
+                pod_controls.volume_down_icon.icon_color = active_user.accent_color
+                pod_controls.volume_up_icon.icon_color = active_user.accent_color
+                pod_controls.volume_button.icon_color = active_user.accent_color
+                pod_controls.volume_slider.active_color = active_user.nav_color2
+                pod_controls.volume_slider.inactive_color = active_user.nav_color2
+                pod_controls.volume_slider.thumb_color = active_user.accent_color
+                pod_controls.play_button.icon_color = active_user.accent_color
+                pod_controls.pause_button.icon_color = active_user.accent_color
+                pod_controls.seek_button.icon_color = active_user.accent_color
                 current_episode.currently_playing.color = active_user.font_color
                 # current_time_text.color = active_user.font_color
-                podcast_length.color = active_user.font_color
+                pod_controls.podcast_length.color = active_user.font_color
                 self.page.update()
             else:
-                pause_button.visible = False
-                play_button.visible = True
+                pod_controls.pause_button.visible = False
+                pod_controls.play_button.visible = True
                 current_episode.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
 
         def toggle_current_status(self):
             if self.audio_playing:
-                play_button.visible = False
-                pause_button.visible = True
-                audio_container.bgcolor = active_user.main_color
-                audio_container.visible = True
+                pod_controls.play_button.visible = False
+                pod_controls.pause_button.visible = True
+                pod_controls.audio_container.bgcolor = active_user.main_color
+                pod_controls.audio_container.visible = True
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
                 current_episode.currently_playing.content = ft.Text(self.name_truncated, size=16)
-                current_time.content = ft.Text(self.length, color=active_user.font_color)
-                podcast_length.content = ft.Text(self.length)
+                pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
+                pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
                 audio_con_art_fallback = os.path.join(script_dir, "images", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
                 self.audio_con_art_url_parsed = audio_con_art_url_parsed
-                current_episode.audio_container_image_landing.src = audio_con_art_url_parsed
-                current_episode.audio_container_image_landing.width = 40
-                current_episode.audio_container_image_landing.height = 40
-                current_episode.audio_container_image_landing.border_radius = ft.border_radius.all(100)
-                audio_container_image.border_radius = ft.border_radius.all(75)
-                current_episode.audio_container_image_landing.update()
-                audio_scrubber.active_color = active_user.nav_color2
-                audio_scrubber.inactive_color = active_user.nav_color2
-                audio_scrubber.thumb_color = active_user.accent_color
-                volume_container.bgcolor = active_user.main_color
-                volume_down_icon.icon_color = active_user.accent_color
-                volume_up_icon.icon_color = active_user.accent_color
-                volume_button.icon_color = active_user.accent_color
-                volume_slider.active_color = active_user.nav_color2
-                volume_slider.inactive_color = active_user.nav_color2
-                volume_slider.thumb_color = active_user.accent_color
-                play_button.icon_color = active_user.accent_color
-                pause_button.icon_color = active_user.accent_color
-                seek_button.icon_color = active_user.accent_color
+                pod_controls.audio_container_image_landing.src = audio_con_art_url_parsed
+                pod_controls.audio_container_image_landing.width = 40
+                pod_controls.audio_container_image_landing.height = 40
+                pod_controls.audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                pod_controls.audio_container_image.border_radius = ft.border_radius.all(75)
+                pod_controls.audio_container_image_landing.update()
+                pod_controls.audio_scrubber.active_color = active_user.nav_color2
+                pod_controls.audio_scrubber.inactive_color = active_user.nav_color2
+                pod_controls.audio_scrubber.thumb_color = active_user.accent_color
+                pod_controls.volume_container.bgcolor = active_user.main_color
+                pod_controls.volume_down_icon.icon_color = active_user.accent_color
+                pod_controls.volume_up_icon.icon_color = active_user.accent_color
+                pod_controls.volume_button.icon_color = active_user.accent_color
+                pod_controls.volume_slider.active_color = active_user.nav_color2
+                pod_controls.volume_slider.inactive_color = active_user.nav_color2
+                pod_controls.volume_slider.thumb_color = active_user.accent_color
+                pod_controls.play_button.icon_color = active_user.accent_color
+                pod_controls.pause_button.icon_color = active_user.accent_color
+                pod_controls.seek_button.icon_color = active_user.accent_color
                 current_episode.currently_playing.color = active_user.font_color
-                podcast_length.color = active_user.font_color
+                pod_controls.podcast_length.color = active_user.font_color
                 self.page.update()
             else:
-                pause_button.visible = False
-                play_button.visible = True
+                pod_controls.pause_button.visible = False
+                pod_controls.play_button.visible = True
                 current_episode.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
 
         def volume_view(self):
-            if volume_container.visible:
-                volume_container.visible = False
-                volume_container.update()
+            if pod_controls.volume_container.visible:
+                pod_controls.volume_container.visible = False
+                pod_controls.volume_container.update()
             else:
-                volume_container.visible = True
-                volume_container.update()
+                pod_controls.volume_container.visible = True
+                pod_controls.volume_container.update()
                 self.volume_timer = threading.Timer(10, self.hide_volume_container)
                 self.volume_timer.start()
 
         def volume_adjust(self):
-            self.audio_element.volume = volume_slider.value
+            self.audio_element.volume = pod_controls.volume_slider.value
             self.audio_element.update()
             self.volume_changed = True
             if self.volume_timer:
@@ -949,18 +946,18 @@ def main(page: ft.Page, session_value=None):
 
         def hide_volume_container(self):
             if not self.volume_changed:
-                volume_container.visible = False
-                volume_container.update()
+                pod_controls.volume_container.visible = False
+                pod_controls.volume_container.update()
                 self.volume_timer = None
             else:
                 self.volume_changed = False
 
         def toggle_second_status(self, status):
             if self.state == 'playing':
-                audio_scrubber.value = self.get_current_seconds()
-                audio_scrubber.update()
-                current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
-                current_time.update()
+                pod_controls.audio_scrubber.value = self.get_current_seconds()
+                pod_controls.audio_scrubber.update()
+                pod_controls.current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
+                pod_controls.current_time.update()
 
             # self.page.update()
 
@@ -1376,16 +1373,16 @@ def main(page: ft.Page, session_value=None):
                               color=active_user.accent_color),
             ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
         ]
-        audio_container.bgcolor = active_user.main_color
-        audio_scrubber.active_color = active_user.nav_color2
-        audio_scrubber.inactive_color = active_user.nav_color2
-        audio_scrubber.thumb_color = active_user.accent_color
-        play_button.icon_color = active_user.accent_color
-        pause_button.icon_color = active_user.accent_color
-        seek_button.icon_color = active_user.accent_color
+        pod_controls.audio_container.bgcolor = active_user.main_color
+        pod_controls.audio_scrubber.active_color = active_user.nav_color2
+        pod_controls.audio_scrubber.inactive_color = active_user.nav_color2
+        pod_controls.audio_scrubber.thumb_color = active_user.accent_color
+        pod_controls.play_button.icon_color = active_user.accent_color
+        pod_controls.pause_button.icon_color = active_user.accent_color
+        pod_controls.seek_button.icon_color = active_user.accent_color
         current_episode.currently_playing.color = active_user.font_color
-        current_time.color = active_user.font_color
-        podcast_length.color = active_user.font_color
+        pod_controls.current_time.color = active_user.font_color
+        pod_controls.podcast_length.color = active_user.font_color
 
         new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
         new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
@@ -1447,7 +1444,7 @@ def main(page: ft.Page, session_value=None):
                 self.top_row_container.padding = ft.padding.only(left=60)
                 self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[self.top_row_container])
                 if current_episode.audio_playing == True:
-                    audio_container.visible = True
+                    pod_controls.audio_container.visible = True
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.
@@ -1769,9 +1766,9 @@ def main(page: ft.Page, session_value=None):
                 return row_list
 
         if current_episode.audio_playing == True:
-            audio_container.visible == True
+            pod_controls.audio_container.visible == True
         else:
-            audio_container.visible == False
+            pod_controls.audio_container.visible == False
 
         def open_search(e):
             if page.width > 768:
@@ -1875,25 +1872,25 @@ def main(page: ft.Page, session_value=None):
 
                 ep_height = 100
                 ep_width = 4000
-                audio_container.height = ep_height
-                audio_container.content = ft.Column(
+                pod_controls.audio_container.height = ep_height
+                pod_controls.audio_container.content = ft.Column(
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[audio_container_pod_details, audio_controls_row])
+                    controls=[pod_controls.audio_container_pod_details, pod_controls.audio_controls_row])
             else:
                 ep_height = 50
                 ep_width = 4000
                 page_items.search_pods.visible = True
                 page_items.search_location.visible = True
 
-                audio_container.height = ep_height
-                audio_container.content = audio_container_row
+                pod_controls.audio_container.height = ep_height
+                pod_controls.audio_container.content = pod_controls.audio_container_row
 
-            audio_container.update()
+            pod_controls.audio_container.update()
             page.update()
 
         max_chars = character_limit(int(page.width))
-        current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-        current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+        pod_controls.name_truncated = truncate_text(pod_controls.name, max_chars)
+        pod_controls.currently_playing.content = ft.Text(pod_controls.name_truncated, size=16)
 
         if page.width <= 768 and page.width != 0:
             print('using toggle pod currently')
@@ -1902,20 +1899,20 @@ def main(page: ft.Page, session_value=None):
 
             ep_height = 100
             ep_width = 4000
-            audio_container.height = ep_height
-            audio_container.content = ft.Column(
+            pod_controls.audio_container.height = ep_height
+            pod_controls.audio_container.content = ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[audio_container_pod_details, audio_controls_row])
+                controls=[pod_controls.audio_container_pod_details, pod_controls.audio_controls_row])
         else:
             ep_height = 50
             ep_width = 4000
             page_items.search_pods.visible = True
             page_items.search_location.visible = True
 
-            audio_container.height = ep_height
-            audio_container.content = audio_container_row
+            pod_controls.audio_container.height = ep_height
+            pod_controls.audio_container.content = pod_controls.audio_container_row
 
-        audio_container.update()
+        pod_controls.audio_container.update()
         page.update()
 
         # This function gets called when the page resizes
@@ -2234,7 +2231,7 @@ def main(page: ft.Page, session_value=None):
                     self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                           controls=[self.top_row_container])
                     if current_episode.audio_playing == True:
-                        audio_container.visible = True
+                        pod_controls.audio_container.visible = True
 
                 def refresh_podcasts(self, e):
                     pr_instance.touch_stack()
@@ -2985,7 +2982,7 @@ def main(page: ft.Page, session_value=None):
                     self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START,
                                           controls=[self.top_row_container])
                     if current_episode.audio_playing == True:
-                        audio_container.visible = True
+                        pod_controls.audio_container.visible = True
 
                 def refresh_podcasts(self):
                     # Fetch new podcast episodes from the server.
@@ -5055,8 +5052,8 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/playing" or page.route == "/playing":
-            audio_container.visible = False
-            audio_container.update()
+            pod_controls.audio_container.visible = False
+            pod_controls.audio_container.update()
             page.update()
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
@@ -5086,9 +5083,9 @@ def main(page: ft.Page, session_value=None):
             fs_ep_audio_controls = ft.Row(
                 controls=[fs_seek_back_button, current_episode.fs_play_button, current_episode.fs_pause_button,
                           fs_seek_button], alignment=ft.MainAxisAlignment.CENTER)
-            fs_scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length],
+            fs_scrub_bar_row = ft.Row(controls=[pod_controls.current_time, pod_controls.audio_scrubber_column, pod_controls.podcast_length],
                                       alignment=ft.MainAxisAlignment.CENTER)
-            fs_volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon],
+            fs_volume_adjust_column = ft.Row(controls=[pod_controls.volume_down_icon, pod_controls.volume_slider, pod_controls.volume_up_icon],
                                              alignment=ft.MainAxisAlignment.CENTER)
             fs_volume_container = ft.Container(
                 height=35,
@@ -5103,8 +5100,8 @@ def main(page: ft.Page, session_value=None):
 
             def toggle_second_status(status):
                 if current_episode.state == 'playing':
-                    audio_scrubber.update()
-                    current_time.update()
+                    pod_controls.audio_scrubber.update()
+                    pod_controls.current_time.update()
 
             total_seconds = current_episode.media_length // 1000
 
@@ -5998,114 +5995,132 @@ def main(page: ft.Page, session_value=None):
             )
 
     # Create Page--------------------------------------------------------
-
-    page.title = "PinePods"
-    page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
-    # Podcast Search Function Setup
-
     # get the absolute path of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # set the audio file path relative to the current script's directory
-    audio_file = os.path.join(current_dir, "Audio", "750-milliseconds-of-silence.mp3")
-    audio_file = os.path.join(current_dir, "Audio", "750-milliseconds-of-silence.mp3")
-
     parsed_audio_url = os.path.join(current_dir, "Audio", "750-milliseconds-of-silence.mp3")
     parsed_title = 'nothing playing'
-    # Initialize the current episode
     current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
-    print('current episode creation')
+    class PodcastControls:
 
-    # Create the audio controls
-    play_button = ft.IconButton(
-        icon=ft.icons.PLAY_ARROW,
-        tooltip="Play Podcast",
-        icon_color="white",
-        on_click=lambda e: current_episode.resume_podcast()
-    )
-    pause_button = ft.IconButton(
-        icon=ft.icons.PAUSE,
-        tooltip="Pause Playback",
-        icon_color="white",
-        on_click=lambda e: current_episode.pause_episode()
-    )
-    pause_button.visible = False
-    seek_button = ft.IconButton(
-        icon=ft.icons.FAST_FORWARD,
-        tooltip="Seek 10 seconds",
-        icon_color="white",
-        on_click=lambda e: current_episode.seek_episode()
-    )
-    ep_audio_controls = ft.Row(controls=[play_button, pause_button, seek_button])
-    # Create the currently playing container
-    current_episode.currently_playing.padding = ft.padding.only(bottom=5)
+        def __init__(self, page, go_home, parsed_audio_url, parsed_title):
+            self.page = page
+            self.go_home = go_home
+            self.parsed_audio_url = parsed_audio_url
+            self.parsed_title = parsed_title
+            # self.current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
+            self.init_controls()
 
-    def format_time(time):
-        hours, remainder = divmod(int(time), 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        def init_controls(self):
+            self.create_audio_controls()
+            self.setup_audio_scrubber()
+            self.setup_audio_container()
+            self.setup_volume_control()
 
-    def slider_changed(e):
-        formatted_scrub = format_time(audio_scrubber.value)
-        current_time.content = ft.Text(formatted_scrub)
-        current_time.update()
-        current_episode.time_scrub(audio_scrubber.value)
+        def create_audio_controls(self):
+            self.play_button = ft.IconButton(
+                icon=ft.icons.PLAY_ARROW,
+                tooltip="Play Podcast",
+                icon_color="white",
+                on_click=lambda e: current_episode.resume_podcast()
+            )
+            self.pause_button = ft.IconButton(
+                icon=ft.icons.PAUSE,
+                tooltip="Pause Playback",
+                icon_color="white",
+                on_click=lambda e: current_episode.pause_episode()
+            )
+            self.pause_button.visible = False
+            self.seek_button = ft.IconButton(
+                icon=ft.icons.FAST_FORWARD,
+                tooltip="Seek 10 seconds",
+                icon_color="white",
+                on_click=lambda e: current_episode.seek_episode()
+            )
+            self.ep_audio_controls = ft.Row(controls=[self.play_button, self.pause_button, self.seek_button])
 
-    podcast_length = ft.Container(content=ft.Text('doesntmatter'))
-    current_time_text = ft.Text('placeholder')
-    current_time = ft.Container(content=current_time_text)
-    audio_scrubber = ft.Slider(min=0, expand=True, max=current_episode.seconds, label="{value}",
-                               on_change=slider_changed)
-    audio_scrubber.width = '100%'
-    audio_scrubber_column = ft.Column(controls=[audio_scrubber])
-    audio_scrubber_column.horizontal_alignment.STRETCH
-    audio_scrubber_column.width = '100%'
-    # Image for podcast playing
-    audio_container_image = ft.Container(content=current_episode.audio_container_image_landing, on_click=open_currently_playing)
-    audio_container_image.border_radius = ft.border_radius.all(25)
-    currently_playing_container = ft.Row(controls=[audio_container_image, current_episode.currently_playing])
-    scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
-    volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume",
-                                  on_click=lambda x: current_episode.volume_view())
-    audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER,
-                                controls=[scrub_bar_row, ep_audio_controls, volume_button])
-    audio_container_row_landing = ft.Row(
-        vertical_alignment=ft.CrossAxisAlignment.END,
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        controls=[currently_playing_container, audio_controls_row])
-    audio_container_row = ft.Container(content=audio_container_row_landing)
-    audio_container_row.padding = ft.padding.only(left=10)
-    audio_container_pod_details = ft.Row(controls=[audio_container_image, current_episode.currently_playing],
-                                         alignment=ft.MainAxisAlignment.CENTER)
-    ep_height = 50
-    ep_width = 4000
-    audio_container = ft.Container(
-        height=ep_height,
-        width=ep_width,
-        bgcolor=active_user.main_color,
-        border_radius=45,
-        padding=6,
-        content=audio_container_row
-    )
-    volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
-    volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
-    volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
-    volume_adjust_column = ft.Row(controls=[volume_down_icon, volume_slider, volume_up_icon], expand=True)
-    volume_container = ft.Container(
-        height=35,
-        width=275,
-        bgcolor=ft.colors.WHITE,
-        border_radius=45,
-        padding=6,
-        content=volume_adjust_column)
-    volume_container.adding = ft.padding.all(50)
-    volume_container.alignment = ft.alignment.top_right
-    volume_container.visible = False
+        def setup_audio_scrubber(self):
+            def format_time(time):
+                hours, remainder = divmod(int(time), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-    page.overlay.append(ft.Stack([volume_container], bottom=75, right=25, expand=True))
+            def slider_changed(e):
+                formatted_scrub = format_time(self.audio_scrubber.value)
+                self.current_time.content = ft.Text(formatted_scrub)
+                self.current_time.update()
+                current_episode.time_scrub(self.audio_scrubber.value)
 
-    page.overlay.append(ft.Stack([audio_container], bottom=20, right=20, left=70, expand=True))
-    audio_container.visible = False
+            self.podcast_length = ft.Container(content=ft.Text('doesntmatter'))
+            self.current_time_text = ft.Text('placeholder')
+            self.current_time = ft.Container(content=self.current_time_text)
+            self.audio_scrubber = ft.Slider(min=0, expand=True, max=self.current_episode.seconds, label="{value}",
+                                            on_change=slider_changed)
+            self.audio_scrubber.width = '100%'
+            self.audio_scrubber_column = ft.Column(controls=[self.audio_scrubber])
+            self.audio_scrubber_column.horizontal_alignment.STRETCH
+            self.audio_scrubber_column.width = '100%'
+
+        def setup_audio_container(self):
+            self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
+            self.audio_container_image_landing = ft.Image(
+                src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
+                width=40, height=40)
+            self.audio_container_image = ft.Container(content=self.current_episode.audio_container_image_landing,
+                                                      on_click=open_currently_playing)
+            self.audio_container_image.border_radius = ft.border_radius.all(25)
+            self.currently_playing_container = ft.Row(
+                controls=[self.audio_container_image, self.current_episode.currently_playing])
+            self.scrub_bar_row = ft.Row(controls=[self.current_time, self.audio_scrubber_column, self.podcast_length])
+            self.volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume",
+                                               on_click=lambda x: self.current_episode.volume_view())
+            self.audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER,
+                                             controls=[self.scrub_bar_row, self.ep_audio_controls, self.volume_button])
+            self.audio_container_row_landing = ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.END,
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                controls=[self.currently_playing_container, self.audio_controls_row])
+            self.audio_container_row = ft.Container(content=self.audio_container_row_landing)
+            self.audio_container_row.padding = ft.padding.only(left=10)
+            self.audio_container_pod_details = ft.Row(
+                controls=[self.audio_container_image, self.current_episode.currently_playing],
+                alignment=ft.MainAxisAlignment.CENTER)
+            ep_height = 50
+            ep_width = 4000
+            self.audio_container = ft.Container(
+                height=ep_height,
+                width=ep_width,
+                bgcolor=active_user.main_color,
+                border_radius=45,
+                padding=6,
+                content=self.audio_container_row
+            )
+
+        def setup_volume_control(self):
+            self.volume_slider = ft.Slider(value=1, on_change=lambda x: self.current_episode.volume_adjust())
+            self.volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
+            self.volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
+            self.volume_adjust_column = ft.Row(
+                controls=[self.volume_down_icon, self.volume_slider, self.volume_up_icon], expand=True)
+            self.volume_container = ft.Container(
+                height=35,
+                width=275,
+                bgcolor=ft.colors.WHITE,
+                border_radius=45,
+                padding=6,
+                content=self.volume_adjust_column)
+            self.volume_container.adding = ft.padding.all(50)
+            self.volume_container.alignment = ft.alignment.top_right
+            self.volume_container.visible = False
+
+            self.page.overlay.append(ft.Stack([self.volume_container], bottom=75, right=25, expand=True))
+            self.page.overlay.append(ft.Stack([self.audio_container], bottom=20, right=20, left=70, expand=True))
+            self.audio_container.visible = False
+
+    # Usage:
+    page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    pod_controls = PodcastControls(page, go_home, parsed_audio_url, parsed_title)
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url
