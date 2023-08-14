@@ -1886,7 +1886,7 @@ def main(page: ft.Page, session_value=None):
 
         max_chars = character_limit(int(page.width))
         current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-        pod_controls.currently_playing.content = ft.Text(pod_controls.name_truncated, size=16)
+        pod_controls.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
 
         if page.width <= 768 and page.width != 0:
             print('using toggle pod currently')
