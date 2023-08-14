@@ -951,11 +951,10 @@ def main(page: ft.Page, session_value=None):
         def toggle_second_status(self, status):
             if self.state == 'playing':
                 pod_controls.audio_scrubber.value = self.get_current_seconds()
-                pod_controls.audio_scrubber.update()
+                # pod_controls.audio_scrubber.update()
                 pod_controls.current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
                 pod_controls.current_time.update()
-
-            # self.page.update()
+                self.page.update()
 
         def seek_episode(self):
             time = self.audio_element.get_current_position()
