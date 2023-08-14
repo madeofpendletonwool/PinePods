@@ -6077,31 +6077,16 @@ def main(page: ft.Page, session_value=None):
     audio_container_row.padding = ft.padding.only(left=10)
     audio_container_pod_details = ft.Row(controls=[audio_container_image, current_episode.currently_playing],
                                          alignment=ft.MainAxisAlignment.CENTER)
-
-    if page.width <= 768 and page.width != 0:
-        ep_height = 100
-        ep_width = 4000
-        audio_container = ft.Container(
-            height=ep_height,
-            width=ep_width,
-            bgcolor=active_user.main_color,
-            border_radius=45,
-            padding=6,
-            content=ft.Column(
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[audio_container_image, current_episode.currently_playing, audio_controls_row])
-        )
-    else:
-        ep_height = 50
-        ep_width = 4000
-        audio_container = ft.Container(
-            height=ep_height,
-            width=ep_width,
-            bgcolor=active_user.main_color,
-            border_radius=45,
-            padding=6,
-            content=audio_container_row
-        )
+    ep_height = 50
+    ep_width = 4000
+    audio_container = ft.Container(
+        height=ep_height,
+        width=ep_width,
+        bgcolor=active_user.main_color,
+        border_radius=45,
+        padding=6,
+        content=audio_container_row
+    )
     volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
     volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
     volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
