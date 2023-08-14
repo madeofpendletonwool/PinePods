@@ -13,8 +13,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
 import urllib.request
-import asyncio
-import websockets
 from requests.exceptions import RequestException, MissingSchema
 import os
 import requests
@@ -38,7 +36,6 @@ import qrcode
 import feedparser
 from collections import defaultdict
 from math import pi
-import traceback
 import pytz
 import shutil
 from base64 import urlsafe_b64decode
@@ -796,9 +793,9 @@ def main(page: ft.Page, session_value=None):
                                                                           active_user.user_id)
                 if len(self.queue) > 0:
                     next_episode = self.queue[0]  # First episode in the queue after sorting by QueuePosition
-                    pod_controls.current_episode.url = next_episode['EpisodeURL']
-                    pod_controls.current_episode.name = next_episode['EpisodeTitle']
-                    pod_controls.current_episode.artwork = next_episode['EpisodeArtwork']
+                    current_episode.url = next_episode['EpisodeURL']
+                    current_episode.name = next_episode['EpisodeTitle']
+                    current_episode.artwork = next_episode['EpisodeArtwork']
                     self.play_episode()
                 else:
                     self.audio_element.release()
@@ -1888,7 +1885,7 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         max_chars = character_limit(int(page.width))
-        pod_controls.name_truncated = truncate_text(pod_controls.name, max_chars)
+        current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
         pod_controls.currently_playing.content = ft.Text(pod_controls.name_truncated, size=16)
 
         if page.width <= 768 and page.width != 0:
