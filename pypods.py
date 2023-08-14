@@ -685,7 +685,7 @@ def main(page: ft.Page, session_value=None):
                                                                        active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
-            api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.title,
+            api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.name,
                                                    active_user.user_id)
             if self.loading_audio == True:
                 page.snack_bar = ft.SnackBar(content=ft.Text(
@@ -1833,7 +1833,7 @@ def main(page: ft.Page, session_value=None):
 
                     page.go("/searchpod")
 
-                search_value_small = ft.TextField(label="Podcast", hint_text='Darknet Diaries')
+                search_value_small = ft.TextField(label="Podcast", hint_text='Darknet Diaries', on_submit=open_search)
                 search_location_small = ft.Dropdown(color=active_user.font_color,
                                                     focused_bgcolor=active_user.main_color,
                                                     focused_border_color=active_user.accent_color,
@@ -1864,7 +1864,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
         class Page_Vars:
             def __init__(self, page):
-                self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200)
+                self.search_pods = ft.TextField(label="Search for new podcast", content_padding=5, width=200, on_submit=open_search)
                 self.search_location = ft.Dropdown(color=active_user.font_color, focused_bgcolor=active_user.main_color,
                                                    focused_border_color=active_user.accent_color,
                                                    focused_color=active_user.accent_color,

@@ -924,7 +924,11 @@ def main(page: ft.Page, session_value=None):
                                                                        active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
-            api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.title,
+            # if self.audio_playing:
+            #     print('releasing')
+            #     self.audio_element.release()
+            print(self.name)
+            api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.name,
                                                    active_user.user_id)
             if self.loading_audio == True:
                 page.snack_bar = ft.SnackBar(content=ft.Text(
@@ -936,8 +940,8 @@ def main(page: ft.Page, session_value=None):
                 pr_instance.touch_stack()
                 page.update()
                 # release audio_element if it exists
-                if self.audio_element:
-                    self.audio_element.release()
+                # if self.audio_element:
+                #     self.audio_element.release()
                 if self.local == False:
                     # Preload the audio file and cache it
                     global cache
@@ -2102,9 +2106,9 @@ def main(page: ft.Page, session_value=None):
                 return row_list
 
         if current_episode.audio_playing == True:
-            pod_controls.audio_container.visible == True
+            pod_controls.audio_container.visible = True
         else:
-            pod_controls.audio_container.visible == False
+            pod_controls.audio_container.visible = False
 
         def open_search(e):
             if page.width > 768:

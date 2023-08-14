@@ -5,6 +5,9 @@ This is the list of previous todos that are now completed
 Version 0.3
 
 - [x] Export and import of following podcasts (basically backups)
+- [x] New refresh system added to automatically update podcasts in database with no user input.
+- [x] Reworked the controls displayed on the page to be components of a class. This should improve performance.
+- [x] Bug fixing such as fixing queue bump, and fixing an audio changing issue.
 
 Version 0.2
 

@@ -720,13 +720,14 @@ async def get_queued_episodes(data: QueuedEpisodesData, cnx = Depends(get_databa
     return {"data": result}
 
 class QueueBump(BaseModel):
-    ep_url : str
+    ep_url: str
     title: str
     user_id: int
 
 @app.post("/api/data/queue_bump")
 async def queue_bump(data: QueueBump, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     try:
+        print(data)
         result = database_functions.functions.queue_bump(cnx, data.ep_url, data.title, data.user_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
