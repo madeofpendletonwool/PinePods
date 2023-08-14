@@ -1482,11 +1482,33 @@ def main(page: ft.Page, session_value=None):
                 self.page.update()
 
             def refresh_podcasts(self, e):
+                pr_instance.touch_stack()
                 self.page.update()
-                api_functions.functions.call_refresh_pods(app_api.url, app_api.headers)
-                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Initiated!"))
-                self.page.snack_bar.open = True
-                self.page.update()
+                pr_instance.rm_stack()
+                if self.page_type == "saved":
+                    page_episode_list = api_functions.functions.call_saved_episode_list(app_api.url, app_api.headers,
+                                                                                        active_user.user_id)
+                elif self.page_type == "history":
+                    page_episode_list = api_functions.functions.call_user_history(app_api.url, app_api.headers,
+                                                                                  active_user.user_id)
+                elif self.page_type == "home":
+                    page_episode_list = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
+                                                                                     active_user.user_id)
+                elif self.page_type == "queue":
+                    page_episode_list = episode_queue_list = api_functions.functions.call_queued_episodes(app_api.url, app_api.headers,
+                                                                             active_user.user_id)
+                else:
+                    return
+
+                if page_episode_list is not None:
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode List Refreshed!"))
+                    self.page.snack_bar.open = True
+                    self.define_values(page_episode_list)
+                    self.page.update()
+                else:
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
+                    self.page.snack_bar.open = True
+                    self.page.update()
 
             def define_values(self, episodes):
                 self.row_list.controls.clear()
@@ -2246,9 +2268,7 @@ def main(page: ft.Page, session_value=None):
                     self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Refresh Complete!"))
                     self.page.snack_bar.open = True
                     self.page.update()
-
                 def refresh_downloaded_episodes(self):
-
                     # Fetch new podcast episodes from the server.
                     download_episode_list = api_functions.functions.call_download_episode_list(app_api.url,
                                                                                                    app_api.headers,
@@ -3352,8 +3372,7 @@ def main(page: ft.Page, session_value=None):
 
         if page.route == "/login" or page.route == "/login":
             guest_enabled = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
-            retain_session = ft.Switch(label="Stay Signed in", value=False)
-            retain_session_contained = ft.Container(content=retain_session)
+            retain_session_contained = ft.Container(content=active_user.retain_session)
             retain_session_contained.padding = padding.only(left=70)
             login_button = ft.FilledButton(
                 content=ft.Text(
@@ -3363,11 +3382,11 @@ def main(page: ft.Page, session_value=None):
                 width=160,
                 height=40,
                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                on_click=lambda e: active_user.login(login_username, login_password, retain_session.value)
+                on_click=lambda e: active_user.login(login_username, login_password, active_user.retain_session.value)
                 # on_click=lambda e: go_homelogin(e)
             )
             if page.web:
-                retain_session.visible = False
+                active_user.retain_session.visible = False
             if guest_enabled == True:
                 login_startpage = ft.Column(
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -5210,6 +5229,7 @@ def main(page: ft.Page, session_value=None):
             self.import_file = None
             # global current_pod_view
             self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
+            self.retain_session = ft.Switch(label="Stay Signed in", value=False)
 
         # New User Stuff ----------------------------
 
@@ -5837,11 +5857,15 @@ def main(page: ft.Page, session_value=None):
 
         return ColorGradient
 
+    def speed_login(e):
+        active_user.login(login_username, login_password, active_user.retain_session.value)
+
     login_username = ft.TextField(
         label="Username",
         border="underline",
         width=320,
         text_size=14,
+        on_submit=speed_login
     )
 
     login_password = ft.TextField(
@@ -5851,6 +5875,7 @@ def main(page: ft.Page, session_value=None):
         text_size=14,
         password=True,
         can_reveal_password=True,
+        on_submit=speed_login
     )
 
     mfa_prompt = ft.TextField(
@@ -6116,6 +6141,7 @@ def main(page: ft.Page, session_value=None):
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
     current_dir = os.path.dirname(os.path.abspath(__file__))
     pod_controls = PodcastControls(page, go_home, parsed_audio_url, parsed_title)
+
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url
