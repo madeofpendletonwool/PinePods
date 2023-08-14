@@ -667,7 +667,6 @@ def main(page: ft.Page, session_value=None):
                 # self.episode_name = self.name
                 self.queue = []
                 self.state = 'stopped'
-                self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
                 self.fs_play_button = ft.IconButton(
                     icon=ft.icons.PLAY_ARROW,
                     tooltip="Play Podcast",
@@ -842,7 +841,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.audio_container.visible = False
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
-                current_episode.currently_playing.content = ft.Text(self.name_truncated, size=16)
+                pod_controls.currently_playing.content = ft.Text(self.name_truncated, size=16)
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
@@ -870,14 +869,14 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.play_button.icon_color = active_user.accent_color
                 pod_controls.pause_button.icon_color = active_user.accent_color
                 pod_controls.seek_button.icon_color = active_user.accent_color
-                current_episode.currently_playing.color = active_user.font_color
+                pod_controls.currently_playing.color = active_user.font_color
                 # current_time_text.color = active_user.font_color
                 pod_controls.podcast_length.color = active_user.font_color
                 self.page.update()
             else:
                 pod_controls.pause_button.visible = False
                 pod_controls.play_button.visible = True
-                current_episode.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                pod_controls.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
 
         def toggle_current_status(self):
@@ -888,7 +887,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.audio_container.visible = True
                 max_chars = character_limit(int(page.width))
                 self.name_truncated = truncate_text(self.name, max_chars)
-                current_episode.currently_playing.content = ft.Text(self.name_truncated, size=16)
+                pod_controls.currently_playing.content = ft.Text(self.name_truncated, size=16)
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
@@ -916,13 +915,13 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.play_button.icon_color = active_user.accent_color
                 pod_controls.pause_button.icon_color = active_user.accent_color
                 pod_controls.seek_button.icon_color = active_user.accent_color
-                current_episode.currently_playing.color = active_user.font_color
+                pod_controls.currently_playing.color = active_user.font_color
                 pod_controls.podcast_length.color = active_user.font_color
                 self.page.update()
             else:
                 pod_controls.pause_button.visible = False
                 pod_controls.play_button.visible = True
-                current_episode.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
+                pod_controls.currently_playing.content = ft.Text(self.name_truncated, color=active_user.font_color, size=16)
                 self.page.update()
 
         def volume_view(self):
@@ -1380,7 +1379,7 @@ def main(page: ft.Page, session_value=None):
         pod_controls.play_button.icon_color = active_user.accent_color
         pod_controls.pause_button.icon_color = active_user.accent_color
         pod_controls.seek_button.icon_color = active_user.accent_color
-        current_episode.currently_playing.color = active_user.font_color
+        pod_controls.currently_playing.color = active_user.font_color
         pod_controls.current_time.color = active_user.font_color
         pod_controls.podcast_length.color = active_user.font_color
 
@@ -1863,7 +1862,7 @@ def main(page: ft.Page, session_value=None):
         def adjust_audio_container(e):
             max_chars = character_limit(int(page.width))
             current_episode.name_truncated = truncate_text(current_episode.name, max_chars)
-            current_episode.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
+            pod_controls.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
 
             if page.width <= 768 and page.width != 0:
                 print('using toggle pod currently')
@@ -6070,7 +6069,7 @@ def main(page: ft.Page, session_value=None):
                                                       on_click=open_currently_playing)
             self.audio_container_image.border_radius = ft.border_radius.all(25)
             self.currently_playing_container = ft.Row(
-                controls=[self.audio_container_image, current_episode.currently_playing])
+                controls=[self.audio_container_image, self.currently_playing])
             self.scrub_bar_row = ft.Row(controls=[self.current_time, self.audio_scrubber_column, self.podcast_length])
             self.volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume",
                                                on_click=lambda x: current_episode.volume_view())
@@ -6083,7 +6082,7 @@ def main(page: ft.Page, session_value=None):
             self.audio_container_row = ft.Container(content=self.audio_container_row_landing)
             self.audio_container_row.padding = ft.padding.only(left=10)
             self.audio_container_pod_details = ft.Row(
-                controls=[self.audio_container_image, current_episode.currently_playing],
+                controls=[self.audio_container_image, self.currently_playing],
                 alignment=ft.MainAxisAlignment.CENTER)
             ep_height = 50
             ep_width = 4000
