@@ -3346,7 +3346,7 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             coffee_contain.alignment = alignment.bottom_center
             coffee_script_dir = os.path.dirname(os.path.realpath(__file__))
-            image_path = os.path.join(coffee_script_dir, "assets", "pinepods-appicon.png")
+            image_path = os.path.join(coffee_script_dir, "images", "pinepods-appicon.png")
             pinepods_img = ft.Image(
                 src=image_path,
                 width=100,
