@@ -698,7 +698,11 @@ def main(page: ft.Page, session_value=None):
                 page.update()
                 # release audio_element if it exists
                 if self.audio_element:
+                    print('releasing')
                     self.audio_element.release()
+                    if self.audio_element in page.overlay:
+                        page.overlay.remove(self.audio_element)
+                        self.page.update()
                 # Preload the audio file and cache it
                 global cache
                 preload_audio_file(self.url, proxy_url, cache)

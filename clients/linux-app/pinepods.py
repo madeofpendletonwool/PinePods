@@ -924,9 +924,6 @@ def main(page: ft.Page, session_value=None):
                                                                        active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
-            # if self.audio_playing:
-            #     print('releasing')
-            #     self.audio_element.release()
             print(self.name)
             api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.name,
                                                    active_user.user_id)
@@ -940,8 +937,12 @@ def main(page: ft.Page, session_value=None):
                 pr_instance.touch_stack()
                 page.update()
                 # release audio_element if it exists
-                # if self.audio_element:
-                #     self.audio_element.release()
+                if self.audio_element:
+                    print('releasing')
+                    self.audio_element.release()
+                    if self.audio_element in page.overlay:
+                        page.overlay.remove(self.audio_element)
+                        self.page.update()
                 if self.local == False:
                     # Preload the audio file and cache it
                     global cache
@@ -1318,7 +1319,7 @@ def main(page: ft.Page, session_value=None):
     username_invalid_dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text("Username Invalid!"),
-        content=ft.Text("Usernames must be unique and require at least 6 characters!"),
+        content=ft.Text("Usernames must be unique and require at least 3 characters!"),
         actions=[
             ft.TextButton("Okay", on_click=close_invalid_dlg),
         ],
@@ -5776,7 +5777,7 @@ def main(page: ft.Page, session_value=None):
             self.isadmin = new_admin
 
         def verify_user_values(self):
-            self.valid_username = self.username is not None and len(self.username) >= 6
+            self.valid_username = self.username is not None and len(self.username) >= 3
             self.valid_password = self.password is not None and len(self.password) >= 8 and any(
                 c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
