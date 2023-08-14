@@ -953,7 +953,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.audio_scrubber.value = self.get_current_seconds()
                 # pod_controls.audio_scrubber.update()
                 pod_controls.current_time.content = ft.Text(self.current_progress, color=active_user.font_color)
-                pod_controls.current_time.update()
+                # pod_controls.current_time.update()
                 self.page.update()
 
         def seek_episode(self):
