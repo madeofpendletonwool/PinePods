@@ -898,7 +898,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.audio_container_image_landing.height = 40
                 pod_controls.audio_container_image_landing.border_radius = ft.border_radius.all(100)
                 pod_controls.audio_container_image.border_radius = ft.border_radius.all(75)
-                pod_controls.audio_container_image_landing.update()
+                # pod_controls.audio_container_image_landing.update()
                 pod_controls.audio_scrubber.active_color = active_user.nav_color2
                 pod_controls.audio_scrubber.inactive_color = active_user.nav_color2
                 pod_controls.audio_scrubber.thumb_color = active_user.accent_color
