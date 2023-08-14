@@ -6066,7 +6066,7 @@ def main(page: ft.Page, session_value=None):
             self.audio_container_image_landing = ft.Image(
                 src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
                 width=40, height=40)
-            self.audio_container_image = ft.Container(content=current_episode.audio_container_image_landing,
+            self.audio_container_image = ft.Container(content=self.audio_container_image_landing,
                                                       on_click=open_currently_playing)
             self.audio_container_image.border_radius = ft.border_radius.all(25)
             self.currently_playing_container = ft.Row(
