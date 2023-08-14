@@ -620,6 +620,8 @@ def main(page: ft.Page, session_value=None):
                 self.local = False
                 self.name_truncated = 'placeholder'
                 self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
+                self.audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
+                                             width=40, height=40)
                 # self.episode_name = self.name
                 if url is None or name is None:
                     self.active_pod = 'Initial Value'
@@ -852,12 +854,12 @@ def main(page: ft.Page, session_value=None):
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
                 self.audio_con_art_url_parsed = audio_con_art_url_parsed
-                audio_container_image_landing.src = audio_con_art_url_parsed
-                audio_container_image_landing.width = 40
-                audio_container_image_landing.height = 40
-                audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                current_episode.audio_container_image_landing.src = audio_con_art_url_parsed
+                current_episode.audio_container_image_landing.width = 40
+                current_episode.audio_container_image_landing.height = 40
+                current_episode.audio_container_image_landing.border_radius = ft.border_radius.all(100)
                 audio_container_image.border_radius = ft.border_radius.all(75)
-                audio_container_image_landing.update()
+                current_episode.audio_container_image_landing.update()
                 audio_scrubber.active_color = active_user.nav_color2
                 audio_scrubber.inactive_color = active_user.nav_color2
                 audio_scrubber.thumb_color = active_user.accent_color
@@ -898,12 +900,12 @@ def main(page: ft.Page, session_value=None):
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
                 self.audio_con_art_url_parsed = audio_con_art_url_parsed
-                audio_container_image_landing.src = audio_con_art_url_parsed
-                audio_container_image_landing.width = 40
-                audio_container_image_landing.height = 40
-                audio_container_image_landing.border_radius = ft.border_radius.all(100)
+                current_episode.audio_container_image_landing.src = audio_con_art_url_parsed
+                current_episode.audio_container_image_landing.width = 40
+                current_episode.audio_container_image_landing.height = 40
+                current_episode.audio_container_image_landing.border_radius = ft.border_radius.all(100)
                 audio_container_image.border_radius = ft.border_radius.all(75)
-                audio_container_image_landing.update()
+                current_episode.audio_container_image_landing.update()
                 audio_scrubber.active_color = active_user.nav_color2
                 audio_scrubber.inactive_color = active_user.nav_color2
                 audio_scrubber.thumb_color = active_user.accent_color
@@ -6059,9 +6061,7 @@ def main(page: ft.Page, session_value=None):
     audio_scrubber_column.horizontal_alignment.STRETCH
     audio_scrubber_column.width = '100%'
     # Image for podcast playing
-    audio_container_image_landing = ft.Image(src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
-                                             width=40, height=40)
-    audio_container_image = ft.Container(content=audio_container_image_landing, on_click=open_currently_playing)
+    audio_container_image = ft.Container(content=current_episode.audio_container_image_landing, on_click=open_currently_playing)
     audio_container_image.border_radius = ft.border_radius.all(25)
     currently_playing_container = ft.Row(controls=[audio_container_image, current_episode.currently_playing])
     scrub_bar_row = ft.Row(controls=[current_time, audio_scrubber_column, podcast_length])
