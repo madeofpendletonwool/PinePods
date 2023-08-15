@@ -52,7 +52,7 @@ proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
-api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
+api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
 
 # API Setup for FastAPI interactions with the database
 with open("/tmp/web_api_key.txt", "r") as f:
@@ -110,7 +110,7 @@ appauthor = "Gooseberry Development"
 # user_data_dir would be the equivalent to the home directory you were using
 user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
-backup_dir = os.path.join(user_data_dir, 'backups')
+backup_dir = os.path.join('/opt', 'pinepods' 'backups')
 
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
@@ -3341,8 +3341,9 @@ def main(page: ft.Page, session_value=None):
             coffee_contain = ft.Container(content=coffee_info)
             coffee_contain.alignment = alignment.bottom_center
             image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
+            finish_image_path = check_image(image_path)
             pinepods_img = ft.Image(
-                src=image_path,
+                src=finish_image_path,
                 width=100,
                 height=100,
                 fit=ft.ImageFit.CONTAIN,
@@ -6082,7 +6083,7 @@ def main(page: ft.Page, session_value=None):
         def setup_audio_container(self):
             self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
             self.audio_container_image_landing = ft.Image(
-                src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
+                src=f"None",
                 width=40, height=40)
             self.audio_container_image = ft.Container(content=self.audio_container_image_landing,
                                                       on_click=open_currently_playing)

@@ -5,7 +5,7 @@
 
 # PinePods :evergreen_tree:
 
-[![](https://dcbadge.vercel.app/api/server/ZkrDqPrf)](https://discord.gg/bKzHRa4GNc)
+[![](https://dcbadge.vercel.app/api/server/1134490753012334592)](https://discord.gg/bKzHRa4GNc)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
@@ -90,17 +90,18 @@ services:
       DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: proxy.pinepods.online
+      PROXY_HOST: try.pinepods.online
       PROXY_PORT: 8000
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
       # Search Index API Vars
-      API_URL: 'https://search.pinepods.online/api/search'
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       # Client API Vars
       API_SERVER_PORT: 8032
     volumes:
-    # Mount the download location on the server if you want to. You could mount a nas to this folder or something like that
-      - /home/user/pinepods/downloads:/opt/pypods/downloads
+    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that
+      - /home/user/pinepods/downloads:/opt/pinepods/downloads
+      - /home/user/pinepods/backups:/opt/pinepods/backups
 
     depends_on:
       - db
@@ -303,6 +304,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ## ToDo (Listed in order they will be implemented)
 
 - [ ] Finalize reverse proxy processes and web playing
+- [ ] Jump to clicked timestamp
+- [ ] Offline mode for playing locally downloaded episodes
+- [ ] Allow for episodes to be played without being added
 - [ ] Implement Postgresql as option for database backend
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] How-to guides on doing things in the app
@@ -311,12 +315,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] playing page not currently removing playing bar on bottom in app version
 - [ ] Stream podcasts to other devices running pinepods over local network
 - [ ] Pinepods lite. A light client used as a streaming device. No frontend
-- [ ] Exportable backups 
 - [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
 - [ ] Implement page views for poddisplays that have over 30 episodes
-- [ ] Jump to clicked timestamp
-- [ ] Offline mode for playing locally downloaded episodes
-- [ ] Allow for episodes to be played without being added
 - [ ] Add highlight to indicate which page you're on
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
@@ -325,10 +325,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] MFA Logins - Github integration and cloud logins (OAuth)
-- [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA)
-- [ ] Linux App    
-  - [ ] Flatpak
-  - [ ] Snap
+- [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA) 
+- [ ] Flatpak Client
+- [ ] Snap Client
 - [ ] Mobile Apps
   - [ ] Sign in retention for mobile editions
   - [ ] Android App

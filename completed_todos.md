@@ -5,6 +5,7 @@ This is the list of previous todos that are now completed
 Version 0.3
 
 - [x] Export and import of following podcasts (basically backups)
+- [x] Entire Server Backup and Import. This allows you to export and import your entire database for complete backups
 - [x] New refresh system added to automatically update podcasts in database with no user input.
 - [x] Reworked the controls displayed on the page to be components of a class. This should improve performance.
 - [x] fixed issues with logging in on small screens. (a big step for mobile version) 

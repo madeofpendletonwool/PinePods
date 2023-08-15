@@ -744,6 +744,18 @@ async def backup_user(data: BackupUser, cnx = Depends(get_database_connection)):
         raise HTTPException(status_code=400, detail=str(e))
     return opml_data
 
+class BackupServer(BaseModel):
+    backup_dir: str
+    database_pass: str
+@app.get("/api/data/backup_server", response_class=PlainTextResponse)
+async def backup_server(data: BackupServer, cnx=Depends(get_database_connection)):
+    try:
+        dump_data = database_functions.functions.backup_server(cnx, data.database_pass)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return dump_data
+
+
 # connected_clients = []
 #
 # @app.websocket("/api/data/ws")

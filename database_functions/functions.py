@@ -583,7 +583,7 @@ def download_podcast(cnx, url, title, user_id):
     podcast_name = cursor.fetchone()[0]
 
     # Create a directory named after the podcast, inside the main downloads directory
-    download_dir = os.path.join("/opt/pypods/downloads", podcast_name)
+    download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
 
     # Generate the episode filename based on episode ID and user ID
@@ -2132,3 +2132,25 @@ def backup_user(cnx, user_id):
     opml_content += '  </body>\n</opml>'
 
     return opml_content
+
+
+import subprocess
+
+
+def backup_server(cnx, backup_dir, database_pass):
+    # Replace with your database and authentication details
+    cmd = [
+        "mysqldump",
+        "-u", "root",
+        "-p" + database_pass,  # You can put the password here directly, but it's not recommended for security reasons
+        "pypods_database"
+    ]
+
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+
+    if process.returncode != 0:
+        # Handle error
+        raise Exception(f"Backup failed with error: {stderr.decode()}")
+
+    return stdout.decode()

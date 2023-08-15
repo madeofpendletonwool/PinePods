@@ -5003,6 +5003,9 @@ def main(page: ft.Page, session_value=None):
                     user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
                     server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
 
+                    if not active_user.user_is_admin:
+                        server_import_select.visible = False
+
                     import_select_row = ft.Row(
                         controls=[
                             ft.TextButton("Close", on_click=lambda x: (close_import_dlg(self.page)))
@@ -5034,25 +5037,25 @@ def main(page: ft.Page, session_value=None):
                         backup_dlg.open = False
                         self.page.update()
 
+                    def open_backups():
+                        import subprocess
+                        import platform
+
+                        def open_folder(path):
+                            if platform.system() == "Windows":
+                                os.startfile(path)
+                            elif platform.system() == "Darwin":
+                                subprocess.Popen(["open", path])
+                            else:
+                                subprocess.Popen(["xdg-open", path])
+
+                        open_folder(backup_dir)
+
                     def backup_user():
                         backup_status = api_functions.functions.call_backup_user(app_api.url, app_api.headers,
                                                                                  active_user.user_id, backup_dir)
                         close_backup_dlg(self.page)
                         self.page.update()
-
-                        def open_backups():
-                            import subprocess
-                            import platform
-
-                            def open_folder(path):
-                                if platform.system() == "Windows":
-                                    os.startfile(path)
-                                elif platform.system() == "Darwin":
-                                    subprocess.Popen(["open", path])
-                                else:
-                                    subprocess.Popen(["xdg-open", path])
-                            print(backup_dir)
-                            open_folder(backup_dir)
 
                         def close_backup_status_win(page):
                             backup_stat_dlg.open = False
@@ -5089,11 +5092,87 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
                     def backup_server():
-                        backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers, backup_dir)
+                        close_backup_dlg(self.page)
+                        self.page.update()
+
+                        def run_database_backup(e):
+                            backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers,
+                                                                                       backup_dir,
+                                                                                       backup_database_pass.value)
+                            close_backup_pass_win(self.page)
+                            self.page.update()
+
+                            def close_backup_status_win(page):
+                                backup_stat_dlg.open = False
+                                self.page.update()
+
+                            if backup_status:
+                                backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}",
+                                                             selectable=True)
+                                folder_location = ft.TextButton("Open Backup Location",
+                                                                on_click=lambda x: (open_backups()))
+                            else:
+                                backup_status_text = ft.Text("Backup was not successful. Try again!")
+                                folder_location = ft.Text("N/A")
+
+                            backup_select_status_row = ft.Row(
+                                controls=[
+                                    ft.TextButton("Close", on_click=lambda x: (close_backup_status_win(self.page)))
+                                ],
+                                alignment=ft.MainAxisAlignment.END
+                            )
+
+                            backup_stat_dlg = ft.AlertDialog(
+                                modal=True,
+                                title=ft.Text(f"Backup Data:"),
+                                content=ft.Column(controls=[
+                                    backup_status_text,
+                                    folder_location,
+                                    backup_select_status_row
+                                ],
+                                    tight=True),
+                                actions_alignment=ft.MainAxisAlignment.END,
+                            )
+                            self.page.dialog = backup_stat_dlg
+                            backup_stat_dlg.open = True
+                            self.page.update()
+
+                        def close_backup_pass_win(page):
+                            backup_pass_dlg.open = False
+                            self.page.update()
+
+                        backup_pass_text = ft.Text(f"In order to conduct a server wide backup you must provide your database password set during the creation of your Pinepods server. Please enter that below.", selectable=True)
+
+                        backup_select_pass_row = ft.Row(
+                            controls=[
+                                ft.TextButton("Submit", on_click=run_database_backup),
+                                ft.TextButton("Close", on_click=lambda x: (close_backup_pass_win(self.page)))
+                            ],
+                            alignment=ft.MainAxisAlignment.END
+                        )
+                        backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN, hint_text='My_Datab@$$_P@SS', password=True, can_reveal_password=True)
+
+                        backup_pass_dlg = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text(f"Backup Data:"),
+                            content=ft.Column(controls=[
+                                backup_pass_text,
+                                backup_database_pass,
+                                backup_select_pass_row
+                            ],
+                                tight=True),
+                            actions_alignment=ft.MainAxisAlignment.END,
+                        )
+                        self.page.dialog = backup_pass_dlg
+                        backup_pass_dlg.open = True
+                        self.page.update()
 
 
                     user_backup_select = ft.TextButton("Export OPML of Podcasts", on_click=lambda x: (backup_user()))
                     server_backup_select = ft.TextButton("Backup Entire Server", on_click=lambda x: (backup_server()))
+
+                    if not active_user.user_is_admin:
+                        server_backup_select.visible = False
 
                     backup_select_row = ft.Row(
                         controls=[
@@ -5414,9 +5493,9 @@ def main(page: ft.Page, session_value=None):
             # Check if admin settings should be displayed
             div_row = ft.Divider(color=active_user.accent_color)
             user_div_row = ft.Divider(color=active_user.accent_color)
-            user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
+            active_user.user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
                                                                           int(active_user.user_id))
-            if user_is_admin == True:
+            if active_user.user_is_admin == True:
                 pass
             else:
                 admin_setting_text.visible = False
@@ -5736,6 +5815,7 @@ def main(page: ft.Page, session_value=None):
             self.search_term = ""
             self.feed_url = None
             self.import_file = None
+            self.user_is_admin = None
             # global current_pod_view
             self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
             self.retain_session = ft.Switch(label="Stay Signed in", value=False)
@@ -6622,7 +6702,7 @@ def main(page: ft.Page, session_value=None):
         def setup_audio_container(self):
             self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
             self.audio_container_image_landing = ft.Image(
-                src=f"/home/collinp/Documents/GitHub/PyPods/images/pinepods-logo.jpeg",
+                src=f"None",
                 width=40, height=40)
             self.audio_container_image = ft.Container(content=self.audio_container_image_landing,
                                                       on_click=open_currently_playing)
