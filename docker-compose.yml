@@ -5,7 +5,7 @@ services:
     command: --wait_timeout=1800
     environment:
       MYSQL_TCP_PORT: 3306
-      MYSQL_ROOT_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: myS3curepass
       MYSQL_DATABASE: pypods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
@@ -15,42 +15,40 @@ services:
     ports:
       - "3306:3306"
     restart: always
-  # pinepods-proxy:
-  #   image: madeofpendletonwool/pinepods-proxy:latest
-  #   ports:
-  #     - "8033:8000"
-  #   restart: always
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
-      # The port that the Pinepods UI will be hosted at. Open a browser and access at http://localhost:8034 for example
+    # Web Portal Port
       - "8034:8034"
-      # This is the port the API server is hosted at. You can also change this but the API Server Port var below must also equal this.
+    # API Server Port - Needed for Client Connections
       - "8032:8032"
-      # Port for proxy host. Whatever this is set to the PROXY_HOST var must also match
+    # Image Proxy Port - Needed to Display Some Images
       - "8000:8000"
     environment:
       # Default Admin User Information
-      USERNAME: pinepods
-      PASSWORD: password
-      FULLNAME: John Pinepods
-      EMAIL: john@pinepods.com
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
       # Database Vars
+      DB_TYPE: mysql
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: password
+      DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: localhost
+      PROXY_HOST: proxy.pinepods.online
       PROXY_PORT: 8000
-      PROXY_PROTOCOL: http
+      PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
       # Search Index API Vars
-      API_URL: 'https://api.pinepods.online/api/search'
-      # Client API Server Vars
+      API_URL: 'https://search.pinepods.online/api/search'
+      # Client API Vars
       API_SERVER_PORT: 8032
-
+    volumes:
+    # Mount the download location on the server if you want to. You could mount a nas to this folder or something like that
+      - /home/user/pinepods/downloads:/opt/pypods/downloads
 
     depends_on:
       - db

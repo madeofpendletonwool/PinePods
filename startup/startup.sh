@@ -47,7 +47,11 @@ mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 # Database Setup
+if [[ $DB_TYPE == "postgresql" ]]; then
+/wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setuppostgresdatabase.py
+else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
+fi
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
 # Start the proxy server

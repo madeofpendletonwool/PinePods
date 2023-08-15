@@ -84,6 +84,7 @@ services:
       FULLNAME: Pinepods Admin
       EMAIL: user@pinepods.online
       # Database Vars
+      DB_TYPE: mysql
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
