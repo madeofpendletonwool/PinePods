@@ -750,7 +750,7 @@ class BackupServer(BaseModel):
 @app.get("/api/data/backup_server", response_class=PlainTextResponse)
 async def backup_server(data: BackupServer, cnx=Depends(get_database_connection)):
     try:
-        dump_data = database_functions.functions.backup_server(cnx, data.database_pass)
+        dump_data = database_functions.functions.backup_server(cnx, data.backup_dir, data.database_pass)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return dump_data

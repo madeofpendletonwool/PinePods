@@ -890,8 +890,35 @@ def call_backup_user(url, headers, user_id, backup_dir):
         return True
 
 
-def call_backup_server(url, headers, backup_dir):
-    pass
+def call_backup_server(url, headers, backup_dir, database_pass):
+    import os
+    print('trying dbbackup')
+
+    data = {"backup_dir": backup_dir, "database_pass": database_pass}
+
+    try:
+        response = requests.get(url + "/backup_server", headers=headers, json=data, timeout=60)  # Increase timeout since it might take a while
+        response.raise_for_status()
+
+        # Check if the backup_dir exists; if not, create it
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
+        with open(os.path.join(backup_dir, "server_backup.sql"), 'wb') as file:
+            file.write(response.content)
+
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return True
+
 def call_import_podcasts(url, headers, user_id, podcasts):
     data = {
         "user_id": user_id,
