@@ -31,3 +31,4 @@ mutagen
 asyncio
 websockets
 pytz
+psycopg2

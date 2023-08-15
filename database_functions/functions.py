@@ -2136,6 +2136,7 @@ def backup_user(cnx, user_id):
 
 def backup_server(cnx, backup_dir, database_pass):
     # Replace with your database and authentication details
+    print(f'pass: {database_pass}')
     cmd = [
         "mysqldump",
         "-h", 'db',
@@ -2147,6 +2148,8 @@ def backup_server(cnx, backup_dir, database_pass):
 
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
+    print("STDOUT:", stdout.decode())
+    print("STDERR:", stderr.decode())
 
     if process.returncode != 0:
         # Handle error
