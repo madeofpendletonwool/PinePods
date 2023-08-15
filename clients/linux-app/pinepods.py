@@ -548,12 +548,7 @@ def main(page: ft.Page, session_value=None):
             return progress
 
     def check_image(artwork_path):
-        if artwork_path.startswith('http'):
-            # It's a URL, so return the path with the proxy URL appended
-            return f"{proxy_url}{artwork_path}"
-        else:
-            # It's a local file path, so return the path as is
-            return artwork_path
+        return f"{proxy_url}{artwork_path}"
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
                          pod_feed_url, pod_website):
@@ -1091,8 +1086,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                art_url = os.path.dirname(os.path.realpath(__file__))
-                audio_con_art_fallback = os.path.join(art_url, "assets", "logo_random",
+                audio_con_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1138,8 +1132,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                art_url = os.path.dirname(os.path.realpath(__file__))
-                audio_con_art_fallback = os.path.join(art_url, "assets", "logo_random",
+                audio_con_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                       f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1883,7 +1876,7 @@ def main(page: ft.Page, session_value=None):
                             entry_description = ft.Text(ep_desc, selectable=True)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
                     art_no = random.randint(1, 12)
-                    art_fallback = os.path.join(script_dir, "images", "logo_random", f"{art_no}.jpeg")
+                    art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
@@ -2080,8 +2073,7 @@ def main(page: ft.Page, session_value=None):
                 entry_description = ft.Text(ep_desc, width=800)
                 entry_released = ft.Text(pub_date)
                 artwork_no = random.randint(1, 12)
-                art_url = os.path.dirname(os.path.realpath(__file__))
-                artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
+                artwork_url = os.path.join('/pinepods', "images", "logo_random", f"{artwork_no}.jpeg")
                 art_url_parsed = check_image(artwork_url)
                 entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                 ep_play_button = ft.IconButton(
@@ -2750,7 +2742,7 @@ def main(page: ft.Page, session_value=None):
                         podcast_id = podcasts[0]['PodcastID']
 
                         download_pod_art_no = random.randint(1, 12)
-                        download_pod_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                        download_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                                  f"{download_pod_art_no}.jpeg")
 
                         download_pod_art_url = podcasts[0]['ArtworkURL'] if podcasts[0][
@@ -2858,7 +2850,7 @@ def main(page: ft.Page, session_value=None):
                             local_download_entry_released = ft.Text(f'Released on: {local_download_pub_date}',
                                                                     color=active_user.font_color)
                             local_download_art_no = random.randint(1, 12)
-                            local_download_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                            local_download_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                                        f"{local_download_art_no}.jpeg")
                             local_download_art_url = local_download_ep_artwork if local_download_ep_artwork else local_download_art_fallback
                             local_download_art_parsed = check_image(local_download_art_url)
@@ -3277,7 +3269,7 @@ def main(page: ft.Page, session_value=None):
             # Creating attributes for page layout
             # First Podcast Info
             display_pod_art_no = random.randint(1, 12)
-            display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
+            display_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_pod_art_no}.jpeg")
             display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
             display_pod_art_parsed = check_image(display_pod_art_url)
             pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
@@ -3375,7 +3367,7 @@ def main(page: ft.Page, session_value=None):
                     if parsed_artwork_url == None:
                         parsed_artwork_url = clicked_podcast.artwork
                     display_art_no = random.randint(1, 12)
-                    display_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_art_no}.jpeg")
+                    display_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_art_no}.jpeg")
                     display_art_url = parsed_artwork_url if parsed_artwork_url else display_art_fallback
 
                 else:
@@ -3723,7 +3715,7 @@ def main(page: ft.Page, session_value=None):
                         if k == 'title':
                             # Parse webpages needed to extract podcast artwork
                             search_art_no = random.randint(1, 12)
-                            search_art_fallback = os.path.join(script_dir, "images", "logo_random",
+                            search_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                                f"{search_art_no}.jpeg")
                             search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
                             podimage_parsed = check_image(search_art_url)
@@ -3846,10 +3838,11 @@ def main(page: ft.Page, session_value=None):
                                      ], ft.MainAxisAlignment.CENTER, ft.CrossAxisAlignment.CENTER)
             coffee_contain = ft.Container(content=coffee_info)
             coffee_contain.alignment = alignment.bottom_center
-            coffee_script_dir = os.path.dirname(os.path.realpath(__file__))
-            image_path = os.path.join(coffee_script_dir, "assets", "pinepods-appicon.png")
+            image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
+            finish_image_path = check_image(image_path)
+            print(finish_image_path)
             pinepods_img = ft.Image(
-                src=image_path,
+                src=finish_image_path,
                 width=100,
                 height=100,
                 fit=ft.ImageFit.CONTAIN,
@@ -5495,7 +5488,7 @@ def main(page: ft.Page, session_value=None):
 
             ep_podcast_name = ft.Text("ep_pod_name")
             display_pod_art_no = random.randint(1, 12)
-            display_pod_art_fallback = os.path.join(script_dir, "images", "logo_random", f"{display_pod_art_no}.jpeg")
+            display_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_pod_art_no}.jpeg")
             display_pod_art_url = ep_artwork if ep_artwork else display_pod_art_fallback
             display_pod_art_parsed = check_image(display_pod_art_url)
             pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
