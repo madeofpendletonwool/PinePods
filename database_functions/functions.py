@@ -8,6 +8,7 @@ import datetime
 import time
 import appdirs
 import base64
+import subprocess
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
@@ -2133,14 +2134,12 @@ def backup_user(cnx, user_id):
 
     return opml_content
 
-
-import subprocess
-
-
 def backup_server(cnx, backup_dir, database_pass):
     # Replace with your database and authentication details
     cmd = [
         "mysqldump",
+        "-h", 'db',
+        "-P", '3306',
         "-u", "root",
         "-p" + database_pass,  # You can put the password here directly, but it's not recommended for security reasons
         "pypods_database"

@@ -9,7 +9,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Make sure the package repository is up to date. Also install needed packages via apt
 RUN apt update && \
     apt -qy upgrade && \
-    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev && \
+    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev mariadb-client && \
     rm -rf /var/lib/apt/lists/*
 
 # Install needed python packages via pip

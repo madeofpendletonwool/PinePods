@@ -5096,6 +5096,7 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
                         def run_database_backup(e):
+                            print('running dbackup')
                             backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers,
                                                                                        backup_dir,
                                                                                        backup_database_pass.value)
