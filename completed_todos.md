@@ -9,7 +9,7 @@ Version 0.3
 - [x] New refresh system added to automatically update podcasts in database with no user input.
 - [x] Reworked the controls displayed on the page to be components of a class. This should improve performance.
 - [x] fixed issues with logging in on small screens. (a big step for mobile version) 
-- [x] Bug fixing such as fixing queue bump, and fixing an audio changing issue.
+- [x] Bug fixing such as fixing queue bump, and fixing an audio changing issue - Along with quite a few random UI bug fixing throughout
 
 Version 0.2
 

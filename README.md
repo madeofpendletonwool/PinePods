@@ -314,16 +314,16 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 - [ ] Finalize reverse proxy processes and web playing
 - [ ] Jump to clicked timestamp
+- [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
 - [ ] Implement Postgresql as option for database backend
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] How-to guides on doing things in the app
-- [ ] Timestamps in playing page
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
 - [ ] playing page not currently removing playing bar on bottom in app version
 - [ ] Stream podcasts to other devices running pinepods over local network
-- [ ] Pinepods lite. A light client used as a streaming device. No frontend
+- [ ] *Pinepods Firewood*. A light client used as a remote streaming device. No frontend
 - [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
 - [ ] Implement page views for poddisplays that have over 30 episodes
 - [ ] Add highlight to indicate which page you're on
