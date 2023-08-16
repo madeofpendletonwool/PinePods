@@ -919,7 +919,6 @@ def main(page: ft.Page, session_value=None):
                                                                        active_user.user_id)
 
         def play_episode(self, e=None, listen_duration=None):
-            print(self.name)
             api_functions.functions.call_queue_bump(app_api.url, app_api.headers, self.url, self.name,
                                                    active_user.user_id)
             if self.loading_audio == True:
@@ -933,7 +932,6 @@ def main(page: ft.Page, session_value=None):
                 page.update()
                 # release audio_element if it exists
                 if self.audio_element:
-                    print('releasing')
                     self.audio_element.release()
                     if self.audio_element in page.overlay:
                         page.overlay.remove(self.audio_element)
@@ -1684,62 +1682,6 @@ def main(page: ft.Page, session_value=None):
                 self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[self.top_row_container])
                 if current_episode.audio_playing == True:
                     pod_controls.audio_container.visible = True
-                self.websocket_client = None  # This will hold the reference to the WebSocket connection
-                # if self.websocket_client:
-                #     self.websocket_client.send("close")
-
-
-            def start_websocket(self):
-                print('starting socket')
-                def run_event_loop(loop):
-                    asyncio.set_event_loop(loop)
-                    loop.run_forever()
-
-                if not self.websocket_client:
-                    self.loop = asyncio.new_event_loop()
-                    self.loop_thread = threading.Thread(target=run_event_loop, args=(self.loop,))
-                    self.loop_thread.start()  # Start the event loop in a separate thread
-
-                    # Now create the websocket task
-                    asyncio.run_coroutine_threadsafe(self.initiate_websocket(), self.loop)
-
-            # def stop_websocket(self):
-            #     if self.websocket_client and self.loop:
-            #         # First, ensure that the "close" message is sent
-            #         asyncio.run_coroutine_threadsafe(self.websocket_client.send("close"), self.loop).result()
-            #
-            #         # Now, stop the event loop
-            #         self.loop.call_soon_threadsafe(self.loop.stop)
-            #         self.loop_thread.join()  # Wait for the thread to finish
-            #         self.loop.close()
-
-            async def initiate_websocket(self):
-                print("Trying to connect to WebSocket")
-                uri = f"ws://localhost:8032/api/data/ws"
-                try:
-                    async with websockets.connect(uri) as websocket:
-                        print("Connected to WebSocket")
-                        # ... rest of your code ...
-                        self.websocket_client = websocket  # Assign the websocket to the global variable
-                        while True:
-                            message = await websocket.recv()
-                            if message == "refreshed":
-                                # Fetch the new data here
-                                page_episode_list = api_functions.functions.call_return_episodes(app_api.url,
-                                                                                                 app_api.headers,
-                                                                                                 active_user.user_id)
-                                if page_episode_list is not None:
-                                    self.define_values(page_episode_list)
-                                    self.page.update()
-                                else:
-                                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found!"))
-                                    self.page.snack_bar.open = True
-                                    self.page.update()
-                                # Now handle the home_episodes as required
-                            elif message == "close":
-                                break
-                except Exception as e:
-                    print(f"WebSocket error: {e}")
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.
@@ -2199,7 +2141,6 @@ def main(page: ft.Page, session_value=None):
             pod_controls.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
 
             if page.width <= 768 and page.width != 0:
-                print('using toggle pod currently')
                 page_items.search_pods.visible = False
                 page_items.search_location.visible = False
 
@@ -2226,7 +2167,6 @@ def main(page: ft.Page, session_value=None):
         pod_controls.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
 
         if page.width <= 768 and page.width != 0:
-            print('using toggle pod currently')
             page_items.search_pods.visible = False
             page_items.search_location.visible = False
 
@@ -3840,7 +3780,6 @@ def main(page: ft.Page, session_value=None):
             coffee_contain.alignment = alignment.bottom_center
             image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
             finish_image_path = check_image(image_path)
-            print(finish_image_path)
             pinepods_img = ft.Image(
                 src=finish_image_path,
                 width=100,
@@ -5009,11 +4948,8 @@ def main(page: ft.Page, session_value=None):
                                     self.page.update()
                                     time.sleep(1)
 
-                                    print('Sending file for restoration...')
                                     restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, backup_database_pass.value, file_contents)
-                                    print(restore_status)
                                     if restore_status.get("success") == True:
-                                        print('Successfully imported database')
                                         self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Server Restore Successful! Now logging out!"))
                                         self.page.snack_bar.open = True
                                         pr_instance.rm_stack()
@@ -5173,7 +5109,6 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
                         def run_database_backup(e):
-                            print('running dbackup')
                             backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers,
                                                                                        backup_dir,
                                                                                        backup_database_pass.value)
@@ -6930,3 +6865,4 @@ def main(page: ft.Page, session_value=None):
 # ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
 # App version
 ft.app(target=main, port=8036)
+
