@@ -2157,7 +2157,7 @@ def backup_server(cnx, backup_dir, database_pass):
 
     return stdout.decode()
 
-def restore_server(cnx, server_restore_data):
+def restore_server(cnx, database_pass, server_restore_data):
     import tempfile
     # Create a temporary file to store the content. This is because the mysql command reads from a file.
     with tempfile.NamedTemporaryFile(mode='w+', delete=True) as tempf:

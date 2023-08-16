@@ -5005,7 +5005,7 @@ def main(page: ft.Page, session_value=None):
                                     self.page.update()
 
                                     print('Sending file for restoration...')
-                                    restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, file_contents)
+                                    restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, backup_database_pass.value, file_contents)
                                     if restore_status.get("success") == True:
                                         self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Server Restore Successful! Now logging out!"))
                                         self.page.snack_bar.open = True

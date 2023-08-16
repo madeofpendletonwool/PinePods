@@ -756,11 +756,12 @@ async def backup_server(data: BackupServer, cnx=Depends(get_database_connection)
     return dump_data
 
 class RestoreServer(BaseModel):
+    database_pass: str
     server_restore_data: str
-@app.get("/api/data/restore_server", response_class=PlainTextResponse)
-async def backup_server(data: RestoreServer, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+@app.post("/api/data/restore_server", response_class=PlainTextResponse)
+async def restore_server(data: RestoreServer, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     try:
-        dump_data = database_functions.functions.restore_server(cnx, data.server_restore_data)
+        dump_data = database_functions.functions.restore_server(cnx, data.database_pass, data.server_restore_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return dump_data
