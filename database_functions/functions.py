@@ -2156,3 +2156,28 @@ def backup_server(cnx, backup_dir, database_pass):
         raise Exception(f"Backup failed with error: {stderr.decode()}")
 
     return stdout.decode()
+
+def restore_server(cnx, server_restore_data):
+    import tempfile
+    # Create a temporary file to store the content. This is because the mysql command reads from a file.
+    with tempfile.NamedTemporaryFile(mode='w+', delete=True) as tempf:
+        tempf.write(server_restore_data)
+        tempf.flush()
+        cmd = [
+            "mysql",
+            "-h", 'db',
+            "-P", '3306',
+            "-u", "root",
+            "-p" + database_pass,
+            "pypods_database"
+        ]
+
+        # Use the file's content as input for the mysql command
+        with open(tempf.name, 'r') as file:
+            process = subprocess.Popen(cmd, stdin=file, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+
+            if process.returncode != 0:
+                raise Exception(f"Restoration failed with error: {stderr.decode()}")
+
+    return "Restoration completed successfully!"

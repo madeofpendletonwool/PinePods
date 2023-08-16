@@ -4936,7 +4936,6 @@ def main(page: ft.Page, session_value=None):
                             if e.files:
                                 active_user.import_file = e.files[0].path
 
-                            print('testing')
                             tree = ET.parse(active_user.import_file)
                             root = tree.getroot()
 
@@ -4995,10 +4994,80 @@ def main(page: ft.Page, session_value=None):
                         file_picker.pick_files()
 
                     def import_server():
-                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        def import_server_result(e: ft.FilePickerResultEvent):
+                            if e.files:
+                                file_path = e.files[0].path
+                                with open(file_path, 'r') as file:
+                                    file_contents = file.read()
+
+                                def run_full_restore(e):
+                                    close_restore_pass_win(self.page)
+                                    self.page.update()
+
+                                    print('Sending file for restoration...')
+                                    restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, file_contents)
+                                    if restore_status.get("success") == True:
+                                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Server Restore Successful! Now logging out!"))
+                                        self.page.snack_bar.open = True
+                                        self.page.update()
+                                        time.sleep(1.5)
+
+                                        active_user = User(page)
+                                        pr_instance.rm_stack()
+                                        login_username.visible = True
+                                        login_password.visible = True
+
+                                        start_login(page)
+                                        new_nav.navbar.border = ft.border.only(
+                                            right=ft.border.BorderSide(2, active_user.tertiary_color))
+                                        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                                        page.overlay.append(new_nav.navbar_stack)
+                                        new_nav.navbar.visible = False
+                                        self.page.update()
+                                    else:
+                                        error_message = restore_status.get("error_message", "Unknown error.")
+                                        self.page.snack_bar = ft.SnackBar(
+                                            content=ft.Text(f"Server Restore failed: {error_message}"))
+                                        self.page.snack_bar.open = True
+                                        self.page.update()
+
+                                def close_restore_pass_win(page):
+                                    close_restore_pass_dlg.open = False
+                                    self.page.update()
+
+                                backup_pass_text = ft.Text(f"WARNING: You are about to run a full restore on your server! This will remove absolutely everything currently currently stored in your database and revert to the data that's part of the backup you restore to. If you're unsure what you're doing DO NOT proceed. If you are certain you'd like to restore the database with a previous backup please enter your database root password below.", selectable=True)
+                                backup_occur_text = ft.Text(f"After that backup is complete you will be logged out from Pinepods as the restore operation will restore your users to the users included in the backup. Make certain you know the login details to a user that's an admin in the backup you are about to restore to.")
+
+                                backup_select_pass_row = ft.Row(
+                                    controls=[
+                                        ft.TextButton("Submit", on_click=run_full_restore),
+                                        ft.TextButton("Close", on_click=lambda x: (close_restore_pass_win(self.page)))
+                                    ],
+                                    alignment=ft.MainAxisAlignment.END
+                                )
+                                backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN, hint_text='My_Datab@$$_P@SS', password=True, can_reveal_password=True)
+
+                                close_restore_pass_dlg = ft.AlertDialog(
+                                    modal=True,
+                                    title=ft.Text(f"Restore Data:"),
+                                    content=ft.Column(controls=[
+                                        backup_pass_text,
+                                        backup_occur_text,
+                                        backup_database_pass,
+                                        backup_select_pass_row
+                                    ],
+                                        tight=True),
+                                    actions_alignment=ft.MainAxisAlignment.END,
+                                )
+                                self.page.dialog = close_restore_pass_dlg
+                                close_restore_pass_dlg.open = True
+                                self.page.update()
+
+                        file_picker = ft.FilePicker(on_result=import_server_result)
                         self.page.overlay.append(file_picker)
                         self.page.update()
                         file_picker.pick_files()
+
 
                     user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
                     server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
@@ -5107,13 +5176,14 @@ def main(page: ft.Page, session_value=None):
                                 backup_stat_dlg.open = False
                                 self.page.update()
 
-                            if backup_status:
+                            if backup_status["success"]:
                                 backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}",
                                                              selectable=True)
                                 folder_location = ft.TextButton("Open Backup Location",
                                                                 on_click=lambda x: (open_backups()))
                             else:
-                                backup_status_text = ft.Text("Backup was not successful. Try again!")
+                                backup_status_text = ft.Text(
+                                    f"Backup was not successful. Reason: {backup_status['error_message']}")
                                 folder_location = ft.Text("N/A")
 
                             backup_select_status_row = ft.Row(
@@ -5130,8 +5200,7 @@ def main(page: ft.Page, session_value=None):
                                     backup_status_text,
                                     folder_location,
                                     backup_select_status_row
-                                ],
-                                    tight=True),
+                                ], tight=True),
                                 actions_alignment=ft.MainAxisAlignment.END,
                             )
                             self.page.dialog = backup_stat_dlg
