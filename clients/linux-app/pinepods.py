@@ -5035,8 +5035,8 @@ def main(page: ft.Page, session_value=None):
                                     close_restore_pass_dlg.open = False
                                     self.page.update()
 
-                                backup_pass_text = ft.Text(f"WARNING: You are about to run a full restore on your server! This will remove absolutely everything currently currently stored in your database and revert to the data that's part of the backup you restore to. If you're unsure what you're doing DO NOT proceed. If you are certain you'd like to restore the database with a previous backup please enter your database root password below.", selectable=True)
-                                backup_occur_text = ft.Text(f"After that backup is complete you will be logged out from Pinepods as the restore operation will restore your users to the users included in the backup. Make certain you know the login details to a user that's an admin in the backup you are about to restore to.")
+                                backup_pass_text = ft.Text(f"WARNING: You are about to run a full restore on your server! This will remove absolutely everything currently stored in your database and revert to the data that's part of the backup you restore to. If you're unsure what you're doing DO NOT proceed. If you are certain you'd like to restore the database with a previous backup please enter your database root password below.", selectable=True)
+                                backup_occur_text = ft.Text(f"After the restore is complete you will be logged out from Pinepods as the restore operation will restore your users to the users included in the backup. Make certain you know the login details to a user that's an admin in the backup you are about to restore to.")
 
                                 backup_select_pass_row = ft.Row(
                                     controls=[

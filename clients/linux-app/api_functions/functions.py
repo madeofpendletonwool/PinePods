@@ -911,7 +911,21 @@ def call_backup_server(url, headers, backup_dir, database_pass):
     except requests.exceptions.Timeout:
         return {"success": False, "error_message": "Request timed out."}
     except requests.exceptions.HTTPError as http_err:
-        return {"success": False, "error_message": f"HTTP error occurred: {http_err}"}
+        return {"success": False, "error_message": f"HTTP error occurred: {http_err} - Is your database password correct?"}
+    except Exception as err:
+        return {"success": False, "error_message": f"Other error occurred: {err}"}
+
+def call_restore_server(url, headers, server_restore_data):
+    data = {"server_restore_data": server_restore_data}
+
+    try:
+        response = requests.get(url + "/restore_server", headers=headers, json=data, timeout=60)
+        response.raise_for_status()
+
+    except requests.exceptions.Timeout:
+        return {"success": False, "error_message": "Request timed out."}
+    except requests.exceptions.HTTPError as http_err:
+        return {"success": False, "error_message": f"HTTP error occurred: {http_err} - Is your database password correct?"}
     except Exception as err:
         return {"success": False, "error_message": f"Other error occurred: {err}"}
 
