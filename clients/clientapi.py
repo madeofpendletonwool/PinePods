@@ -57,7 +57,7 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Proxy variables
-proxy_host = os.environ.get("PROXY_HOST", "localhost")
+proxy_host = os.environ.get("HOSTNAME", "localhost")
 proxy_port = os.environ.get("PROXY_PORT", "8000")
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")

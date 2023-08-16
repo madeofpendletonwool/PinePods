@@ -4995,20 +4995,28 @@ def main(page: ft.Page, session_value=None):
 
                     def import_server():
                         def import_server_result(e: ft.FilePickerResultEvent):
+                            close_import_dlg(page)
+                            self.page.update()
+
                             if e.files:
                                 file_path = e.files[0].path
                                 with open(file_path, 'r') as file:
                                     file_contents = file.read()
 
                                 def run_full_restore(e):
+                                    pr_instance.touch_stack()
                                     close_restore_pass_win(self.page)
                                     self.page.update()
+                                    time.sleep(1)
 
                                     print('Sending file for restoration...')
                                     restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, backup_database_pass.value, file_contents)
+                                    print(restore_status)
                                     if restore_status.get("success") == True:
+                                        print('Successfully imported database')
                                         self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Server Restore Successful! Now logging out!"))
                                         self.page.snack_bar.open = True
+                                        pr_instance.rm_stack()
                                         self.page.update()
                                         time.sleep(1.5)
 
@@ -6100,7 +6108,7 @@ def main(page: ft.Page, session_value=None):
                     modal=True,
                     title=ft.Text(f"Guest user cannot be changed"),
                     actions=[
-                        ft.TextButton("Cancel", on_click=close_modify_dlg)
+                        ft.TextButton("Cancel", on_click=close_modify_dlg_auto)
                     ],
                     actions_alignment=ft.MainAxisAlignment.END
                 )

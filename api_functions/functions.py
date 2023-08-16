@@ -921,6 +921,7 @@ def call_restore_server(url, headers, database_pass, server_restore_data):
     try:
         response = requests.post(url + "/restore_server", headers=headers, json=data, timeout=60)
         response.raise_for_status()
+        return {"success": True, "error_message": None}
 
     except requests.exceptions.Timeout:
         return {"success": False, "error_message": "Request timed out."}

@@ -78,6 +78,10 @@ services:
     # Image Proxy Port - Needed to Display Some Images
       - "8000:8000"
     environment:
+      # Basic Server Info
+      HOSTNAME: try.pinepods.online
+      API_SERVER_PORT: 8032
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
@@ -91,19 +95,14 @@ services:
       DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_HOST: try.pinepods.online
       PROXY_PORT: 8000
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
-      # Search Index API Vars
-      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
-      # Client API Vars
-      API_SERVER_PORT: 8032
     volumes:
-    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that
+    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
+    # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
-
     depends_on:
       - db
 ```
@@ -112,16 +111,16 @@ Make sure you change these variables to variables specific to yourself.
 
 ```
       MYSQL_ROOT_PASSWORD: password
+      HOSTNAME: try.pinepods.online
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       USERNAME: pinepods
       PASSWORD: password
       FULLNAME: John Pinepods
       EMAIL: john@pinepods.com
       DB_PASSWORD: password # This should match the MSQL_ROOT_PASSWORD
-      PROXY_HOST: proxy.pinepods.online
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
       REVERSE_PROXY: "True"
-      API_URL: 'https://api.pinepods.online/api/search'
 ```
 
 Most of those are pretty obvious, but let's break a couple of them down.
@@ -130,15 +129,19 @@ Most of those are pretty obvious, but let's break a couple of them down.
 
 First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details for your default admin account. This account will have admin credentails and will be able to log in right when you start up the app. Once started you'll be able to create more users and even more admins but you need an account to kick things off on. If you don't specify credentials in the compose file it will create an account with a random password for you but I would recommend just creating one for yourself.
 
+#### Basic Info
+
+The HOSTNAME variable is simply the hostname you'll be using for the name of your pinepods server. There's a image proxy, fastapi server, and web client of pinepods that all runs over this hostname.
+
 #### Proxy Info
 
-Second, the PROXY_HOST, PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. The application itself will then use this proxy to route media though. This proxy can also be ran over a reverse proxy. Here's few examples
+Second, the PROXY_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. The application itself will then use this proxy to route media though. This proxy can also be ran over a reverse proxy. Here's few examples
 
 **Recommended:**
 Routed through proxy, secure, with reverse proxy
 
 ```
-      PROXY_HOST: proxy.pinepods.online
+      HOSTNAME: try.pinepods.online
       PROXY_PORT: 8033
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
@@ -151,7 +154,7 @@ Routed through proxy, secure, with reverse proxy
 Direct to ip, insecure, and no reverse proxy
 
 ```
-      PROXY_HOST: 192.168.0.30
+      HOSTNAME: 192.168.0.30
       PROXY_PORT: 8033
       PROXY_PROTOCOL: http
       REVERSE_PROXY: "False"
@@ -160,19 +163,24 @@ Direct to ip, insecure, and no reverse proxy
 Hostname, secure, and no reverse proxy
 
 ```
-      PROXY_HOST: proxy.pinepods.online
+      HOSTNAME: proxy.pinepods.online
       PROXY_PORT: 8033
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "False"
 ```
 
-Note: Changing REVERSE_PROXY to False adjusts what the application uses for the reverse proxy. In short it removed the port from the url it uses for routing since the reverse proxy will add the port for you.
+Note: Changing REVERSE_PROXY to False adjusts what the application uses for the reverse proxy. In short, it removes the port from the url it uses for routing since the reverse proxy will add the port for you.
 
 So REVERSE_PROXY "True" - App will use
 https://proxy.pinepods.online
 
 REVERSE_PROXY "False" - App will use
 https://proxy.pinepods.online:8033
+
+#### Further note on Reverse Proxies
+
+Pinepods has a bit of additional reverse proxy setup since it runs the fastapi server, web client, and image proxy. Please see the website for additional documentation on setting that up. You simply need to add some additional locations.
+https://www.pinepods.online/docs/tutorial-extras/reverse-proxy
 
 #### Note on the Search API
 
