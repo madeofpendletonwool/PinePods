@@ -55,15 +55,21 @@ fi
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
 # Start the proxy server
+# Start the Image Server
 nohup gunicorn --bind 0.0.0.0:${PROXY_PORT:-8000} --workers 4 --timeout 30 pinepods.imageserver.wsgi:app &
-# Start the FastAPI client api
-python3 /pinepods/clients/clientapi.py --port ${API_SERVER_PORT:-8032} &
-# Start cron
+
+# Start the FastAPI client API
+nohup python3 /pinepods/clients/clientapi.py --port ${API_SERVER_PORT:-8032} &
+
+# Start PinePods main app
+nohup python3 -u /pinepods/pypods.py &
+
+# Set up and start cron tasks
 service cron start
-# Add to the cron job to call the script every hour
 chmod +x /pinepods/startup/call_refresh_endpoint.sh
 echo "Starting a Podcast Refresh"
 ./pinepods/startup/call_refresh_endpoint.sh
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
-# Start PinePods
-python3 -u /pinepods/pypods.py
+
+# Start Pinepods Reverse Proxy last
+nohup python3 -u /pinepods/startup/fastapirouter.py &
