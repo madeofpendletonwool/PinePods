@@ -14,13 +14,18 @@ async def proxy_requests(request: Request, path: str):
 
             # Forward to API
             if "/api" in path:
-                response = await client.request(
-                    request.method,
-                    f"http://localhost:8032/{path}",
-                    headers=headers,
-                    cookies=request.cookies,
-                    data=request.body,
-                )
+                try:
+                    print(request.method, f"http://localhost:8032/{path}", headers, request.cookies, request.body)
+                    response = await client.request(
+                        request.method,
+                        f"http://localhost:8032/{path}",
+                        headers=headers,
+                        cookies=request.cookies,
+                        data=request.body,
+                    )
+                    print(response.status_code, response.text)
+                except httpx.HTTPError as exc:
+                    print(f"An error occurred while making the request: {exc}")
             # Forward to Image Server (Proxy)
             elif "/proxy" in path:
                 response = await client.request(
@@ -32,13 +37,18 @@ async def proxy_requests(request: Request, path: str):
                 )
             # Forward to the Main App
             else:
-                response = await client.request(
-                    request.method,
-                    f"http://localhost:8034/{path}",
-                    headers=headers,
-                    cookies=request.cookies,
-                    data=request.body,
-                )
+                try:
+                    print(request.method, f"http://localhost:8034/{path}", headers, request.cookies, request.body)
+                    response = await client.request(
+                        request.method,
+                        f"http://localhost:8034/{path}",
+                        headers=headers,
+                        cookies=request.cookies,
+                        data=request.body,
+                    )
+                    print(response.status_code, response.text)
+                except httpx.HTTPError as exc:
+                    print(f"An error occurred while making the request: {exc}")
 
             return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
         except httpx.RequestError as exc:
