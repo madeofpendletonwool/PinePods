@@ -3,7 +3,7 @@ import httpx
 import logging
 
 app = FastAPI()
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_requests(request: Request, path: str):
@@ -21,7 +21,7 @@ async def proxy_requests(request: Request, path: str):
                         f"http://localhost:8032/{path}",
                         headers=headers,
                         cookies=request.cookies,
-                        data=request.body,
+                        data=await request.body(),
                     )
                     print(response.status_code, response.text)
                 except httpx.HTTPError as exc:
@@ -33,7 +33,7 @@ async def proxy_requests(request: Request, path: str):
                     f"http://localhost:8000/{path}",
                     headers=headers,
                     cookies=request.cookies,
-                    data=request.body,
+                    data=await request.body(),
                 )
             # Forward to the Main App
             else:
@@ -44,7 +44,7 @@ async def proxy_requests(request: Request, path: str):
                         f"http://localhost:8034/{path}",
                         headers=headers,
                         cookies=request.cookies,
-                        data=request.body,
+                        data=await request.body(),
                     )
                     print(response.status_code, response.text)
                 except httpx.HTTPError as exc:
