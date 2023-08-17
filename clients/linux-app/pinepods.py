@@ -309,6 +309,7 @@ def main(page: ft.Page, session_value=None):
             }
 
             try:
+                print(check_url)
                 check_response = requests.get(check_url, timeout=10)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")

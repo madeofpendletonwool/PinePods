@@ -6,55 +6,70 @@ import websockets
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy_requests(request: Request, path: str):
+
+@app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_api_requests(request: Request, api_path: str):
+    async with httpx.AsyncClient() as client:
+        # Filter out headers that might conflict with the internal service
+        headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
+
+        try:
+            print(request.method, f"http://localhost:8032/api/{api_path}", headers, request.cookies, request.body)
+            response = await client.request(
+                request.method,
+                f"http://localhost:8032/api/{api_path}",
+                headers=headers,
+                cookies=request.cookies,
+                data=await request.body(),
+            )
+            print(response.status_code, response.text)
+        except httpx.HTTPError as exc:
+            print(f"An error occurred while making the request: {exc}")
+            return Response(content=f"Proxy Error: {exc}", status_code=502)
+
+        return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
+
+
+@app.api_route("/proxy/{proxy_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_image_requests(request: Request, proxy_path: str):
+    headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
     async with httpx.AsyncClient() as client:
         try:
-            # Filter out headers that might conflict with the internal service
-            headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
+            response = await client.request(
+                request.method,
+                f"http://localhost:8000/proxy/{proxy_path}",
+                headers=headers,
+                cookies=request.cookies,
+                data=await request.body(),
+            )
+            print(response.status_code, response.text)
+        except httpx.HTTPError as exc:
+            print(f"An error occurred while making the request: {exc}")
+            return Response(content=f"Proxy Error: {exc}", status_code=502)
 
-            # Forward to API
-            if "/api" in path:
-                try:
-                    print(request.method, f"http://localhost:8032/{path}", headers, request.cookies, request.body)
-                    response = await client.request(
-                        request.method,
-                        f"http://localhost:8032/{path}",
-                        headers=headers,
-                        cookies=request.cookies,
-                        data=await request.body(),
-                    )
-                    print(response.status_code, response.text)
-                except httpx.HTTPError as exc:
-                    print(f"An error occurred while making the request: {exc}")
-            # Forward to Image Server (Proxy)
-            elif "/proxy" in path:
-                response = await client.request(
-                    request.method,
-                    f"http://localhost:8000/{path}",
-                    headers=headers,
-                    cookies=request.cookies,
-                    data=await request.body(),
-                )
-            # Forward to the Main App
-            else:
-                try:
-                    print(request.method, f"http://localhost:8034/{path}", headers, request.cookies, request.body)
-                    response = await client.request(
-                        request.method,
-                        f"http://localhost:8034/{path}",
-                        headers=headers,
-                        cookies=request.cookies,
-                        data=await request.body(),
-                    )
-                    print(response.status_code, response.text)
-                except httpx.HTTPError as exc:
-                    print(f"An error occurred while making the request: {exc}")
+        return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
 
-            return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
-        except httpx.RequestError as exc:
-            logging.error(f"An error occurred while requesting {exc.request.url!r}.")
-            raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_requests(request: Request, path: str):
+    headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
+    async with httpx.AsyncClient() as client:
+        try:
+            print(request.method, f"http://localhost:8034/{path}", headers, request.cookies, request.body)
+            response = await client.request(
+                request.method,
+                f"http://localhost:8034/{path}",
+                headers=headers,
+                cookies=request.cookies,
+                data=await request.body(),
+            )
+            print(response.status_code, response.text)
+        except httpx.HTTPError as exc:
+            print(f"An error occurred while making the request: {exc}")
+            return Response(content=f"Proxy Error: {exc}", status_code=502)
+
+        return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
+
 
 import asyncio
 
