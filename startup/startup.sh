@@ -72,4 +72,4 @@ echo "Starting a Podcast Refresh"
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
 
 # Start Pinepods Reverse Proxy last
-nohup python3 -u /pinepods/startup/fastapirouter.py &
+python3 -u /pinepods/startup/fastapirouter.py
