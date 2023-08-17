@@ -1,8 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException, Response, WebSocket
 import httpx
 import logging
 import websockets
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
+from PIL import Image, UnidentifiedImageError
+import io
+
 
 app = FastAPI()
 app.add_middleware(
@@ -37,26 +42,67 @@ async def proxy_api_requests(request: Request, api_path: str):
 
         return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
 
+async def open_image(file):
+    try:
+        with Image.open(file) as image:
+            if image.mode == 'RGBA' or image.mode == 'P':
+                image = image.convert('RGB')
+            output = io.BytesIO()
+            image.save(output, format='JPEG', optimize=True, quality=50) # Compress and save the image
+            return output.getvalue()
+    except UnidentifiedImageError:
+        print("Unidentified image, using default.")
+        with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
+            output = io.BytesIO()
+            image.save(output, format='JPEG')
+            return output.getvalue()
+
+async def optimize_image(content):
+    with io.BytesIO(content) as f:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(open_image, f)
+            try:
+                return future.result(timeout=1)  # set timeout to 1 second
+            except TimeoutError:
+                print("Image processing took too long, using default.")
+                with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
+                    output = io.BytesIO()
+                    image.save(output, format='JPEG')
+                    return output.getvalue()
+
 
 @app.api_route("/proxy/{proxy_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request, proxy_path: str):
+    url = request.query_params.get("url")
+
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
+
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.request(
-                request.method,
-                f"http://localhost:8000/proxy/{proxy_path}",
-                headers=headers,
-                cookies=request.cookies,
-                data=await request.body(),
-            )
-            print(response.status_code, response.text)
-        except httpx.HTTPError as exc:
+            response = await client.get(url, headers=headers)
+
+            # Check if the URL is an audio or image file
+            if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
+                content = response.content  # Directly use audio content
+
+            elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                content = await optimize_image(response.content)
+            else:
+                content = response.content  # Directly use content if not recognized
+
+            content_type = response.headers.get("Content-Type")
+
+            if 'Range' in headers:
+                return StreamingResponse(io.BytesIO(content), media_type=content_type, status_code=206)
+            return StreamingResponse(io.BytesIO(content), media_type=content_type)
+
+        except (httpx.ReadTimeout, httpx.RequestError) as exc:
             print(f"An error occurred while making the request: {exc}")
             return Response(content=f"Proxy Error: {exc}", status_code=502)
 
-        return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
-
+        except Exception as e:
+            print(f"Unexpected error occurred: {e}")
+            return Response(content=f"Error: {e}", status_code=500)
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_requests(request: Request, path: str):
