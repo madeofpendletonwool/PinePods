@@ -2648,8 +2648,7 @@ def main(page: ft.Page, session_value=None):
                     entry_description = ft.Text(ep_desc, width=800)
                     entry_released = ft.Text(pub_date)
                     artwork_no = random.randint(1, 12)
-                    art_url = os.path.dirname(os.path.realpath(__file__))
-                    artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
+                    artwork_url = os.path.join('/pinepods', "images", "logo_random", f"{artwork_no}.jpeg")
                     art_url_parsed = check_image(artwork_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
