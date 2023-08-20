@@ -71,8 +71,8 @@ async def optimize_image(content):
                     return output.getvalue()
 
 
-@app.api_route("/proxy/{proxy_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy_image_requests(request: Request, proxy_path: str):
+@app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_image_requests(request: Request):
     url = request.query_params.get("url")
     print("Entered /proxy route")
 
