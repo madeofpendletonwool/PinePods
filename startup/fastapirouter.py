@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException, Response, WebSocket
 import httpx
 import logging
@@ -6,10 +5,8 @@ import websockets
 from fastapi.middleware.cors import CORSMiddleware
 import gzip
 from io import BytesIO
-from starlette.responses import StreamingResponse, FileResponse
-from PIL import Image, UnidentifiedImageError
-import io
-
+import os
+import uvicorn
 
 app = FastAPI()
 app.add_middleware(
@@ -77,7 +74,6 @@ async def proxy_image_requests(request: Request):
     if not url:
         return Response(content="URL parameter missing.", status_code=400)
 
-    print(url)
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
     async with httpx.AsyncClient() as client:
         try:
@@ -88,7 +84,6 @@ async def proxy_image_requests(request: Request):
                 cookies=request.cookies,
                 data=await request.body(),
             )
-            print(response.status_code, response.text)
         except httpx.HTTPError as exc:
             print(f"An error occurred while making the request: {exc}")
             return Response(content=f"Proxy Error: {exc}", status_code=502)
@@ -98,11 +93,9 @@ async def proxy_image_requests(request: Request):
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_requests(request: Request, path: str):
-    print("Entered /main route")
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
     async with httpx.AsyncClient() as client:
         try:
-            print(request.method, f"http://localhost:8034/{path}", headers, request.cookies, request.body)
             response = await client.request(
                 request.method,
                 f"http://localhost:8034/{path}",
@@ -110,7 +103,6 @@ async def proxy_requests(request: Request, path: str):
                 cookies=request.cookies,
                 data=await request.body(),
             )
-            print(response.status_code, response.text)
         except httpx.HTTPError as exc:
             print(f"An error occurred while making the request: {exc}")
             return Response(content=f"Proxy Error: {exc}", status_code=502)
@@ -147,5 +139,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run("fastapirouter:app", host="0.0.0.0", port=8040)
+    # Fetch the PROXY_PORT environment variable. If not set, default to 8040
+    proxy_port = int(os.getenv('PROXY_PORT', 8040))
+
+    uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)
