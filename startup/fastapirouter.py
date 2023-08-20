@@ -57,10 +57,10 @@ async def open_image(file):
             image.save(output, format='JPEG')
             return output.getvalue()
 
-def optimize_image(content):
+async def optimize_image(content):
     with io.BytesIO(content) as f:
         try:
-            return open_image(f)
+            return await open_image(f)  # Await the result here
         except Exception:
             print("Image processing failed, using default.")
             with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
@@ -93,11 +93,10 @@ async def proxy_image_requests(request: Request):
             # Check if the URL is an audio or image file
             if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
                 content = response.content  # Directly use audio content
-
             elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                content = optimize_image(response.content)
+                content = await optimize_image(response.content)  # Await the result here
             else:
-                content = response.content  # Directly use content if not recognized
+                content = response.content
 
             content_type = response.headers.get("Content-Type")
 
