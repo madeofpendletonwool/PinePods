@@ -18,12 +18,8 @@ services:
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
-    # Web Portal Port
-      - "8034:8034"
-    # API Server Port - Needed for Client Connections
-      - "8032:8032"
-    # Image Proxy Port - Needed to Display Some Images
-      - "8000:8000"
+    # Pinepods Port
+      - "8040:80"
     environment:
       # Basic Server Info
       HOSTNAME: try.pinepods.online

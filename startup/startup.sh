@@ -11,6 +11,7 @@ export EMAIL=${EMAIL:-'admin@pinepods.online'}
 export PASSWORD=${PASSWORD:-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c14 ; echo '')}
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
+export PINEPODS_PORT=$PINEPODS_PORT
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"
@@ -52,18 +53,10 @@ if [[ $DB_TYPE == "postgresql" ]]; then
 else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
+
+echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
+
+# Start all services with supervisord
+supervisord -c /pinepods/startup/supervisord.conf
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
-# Start the proxy server
-nohup gunicorn --bind 0.0.0.0:${PROXY_PORT:-8000} --workers 4 --timeout 30 pinepods.imageserver.wsgi:app &
-# Start the FastAPI client api
-python3 /pinepods/clients/clientapi.py --port ${API_SERVER_PORT:-8032} &
-# Start cron
-service cron start
-# Add to the cron job to call the script every hour
-chmod +x /pinepods/startup/call_refresh_endpoint.sh
-echo "Starting a Podcast Refresh"
-./pinepods/startup/call_refresh_endpoint.sh
-echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
-# Start PinePods
-python3 -u /pinepods/pypods.py

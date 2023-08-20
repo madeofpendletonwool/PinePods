@@ -47,7 +47,7 @@ time.sleep(3)
 
 # Proxy variables
 proxy_host = os.environ.get("HOSTNAME", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
+proxy_port = os.environ.get("PINEPODS_PORT", "8040")
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
@@ -62,26 +62,32 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy/?url='
+    audio_proxy = f'{proxy_protocol}://{proxy_host}/proxy/'
 else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy/?url='
+    audio_proxy = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy/'
 
 
 # --- Create Flask app for caching ------------------------------------------------
 app = Flask(__name__)
 
-def preload_audio_file(url, proxy_url, cache):
-    response = requests.get(proxy_url, params={'url': url})
+def preload_audio_file(url, audio_proxy, cache):
+    print(url)
+    print(audio_proxy)
+    full_url = f"{audio_proxy}?url={url}"
+    print(full_url)
+    response = requests.get(audio_proxy, params={'url': url})
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
 
-def initialize_audio_routes(app, proxy_url):
+def initialize_audio_routes(app, audio_proxy):
     cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
     @app.route('/preload/<path:url>')
     def route_preload_audio_file(url):
-        preload_audio_file(url, proxy_url, cache)
+        preload_audio_file(url, audio_proxy, cache)
         return ""
 
     @app.route('/cached_audio/<path:url>')
@@ -700,7 +706,7 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
                 # Preload the audio file and cache it
                 global cache
-                preload_audio_file(self.url, proxy_url, cache)
+                preload_audio_file(self.url, audio_proxy, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
@@ -1578,6 +1584,7 @@ def main(page: ft.Page, session_value=None):
                     art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
+                    print(art_url_parsed)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
@@ -3342,6 +3349,7 @@ def main(page: ft.Page, session_value=None):
             coffee_contain.alignment = alignment.bottom_center
             image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
             finish_image_path = check_image(image_path)
+            print(finish_image_path)
             pinepods_img = ft.Image(
                 src=finish_image_path,
                 width=100,
@@ -6213,6 +6221,6 @@ def main(page: ft.Page, session_value=None):
 
 
 # Browser Version
-ft.app(target=main, view=ft.WEB_BROWSER, port=8034)
+ft.app(target=main, view=ft.WEB_BROWSER, port=8034, assets_dir="images")
 # App version
 # ft.app(target=main, port=8034)

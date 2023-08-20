@@ -309,6 +309,7 @@ def main(page: ft.Page, session_value=None):
             }
 
             try:
+                print(check_url)
                 check_response = requests.get(check_url, timeout=10)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
@@ -1821,6 +1822,7 @@ def main(page: ft.Page, session_value=None):
                     art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
+                    print(art_url_parsed)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
@@ -2210,9 +2212,10 @@ def main(page: ft.Page, session_value=None):
             page.bgcolor = colors.BLUE_GREY
 
             # Home Screen Podcast Layout (Episodes in Newest order)
-
+            print('pre-run call episodes')
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                          active_user.user_id)
+            print(home_episodes)
             home_layout = Pod_View(page)
             active_user.current_pod_view = home_layout
 
@@ -2646,8 +2649,7 @@ def main(page: ft.Page, session_value=None):
                     entry_description = ft.Text(ep_desc, width=800)
                     entry_released = ft.Text(pub_date)
                     artwork_no = random.randint(1, 12)
-                    art_url = os.path.dirname(os.path.realpath(__file__))
-                    artwork_url = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
+                    artwork_url = os.path.join('/pinepods', "images", "logo_random", f"{artwork_no}.jpeg")
                     art_url_parsed = check_image(artwork_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
