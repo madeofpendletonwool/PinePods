@@ -72,6 +72,7 @@ async def optimize_image(content):
 @app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
     url = request.query_params.get("url")
+    logging.info(f"Entered /proxy route for URL: {url}")
     print("Entered /proxy route")
 
     # Assuming this is a direct filesystem path
@@ -86,9 +87,20 @@ async def proxy_image_requests(request: Request):
     # For other URLs, use the proxy logic
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
 
+    # Add or override headers as needed
+    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36"
+    headers["Referer"] = "https://www.google.com/"
+
+    logging.info(f"Sending request with headers: {headers}")
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, headers=headers)
+
+            logging.info(f"Received response with status: {response.status_code}")
+            logging.info(f"Response headers: {response.headers}")
+            logging.info(f"Response content (first 100 characters): {response.text[:100]}")
+
 
             # Check if the URL is an audio or image file
             if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
@@ -105,11 +117,12 @@ async def proxy_image_requests(request: Request):
             return StreamingResponse(io.BytesIO(content), media_type=content_type)
 
         except (httpx.ReadTimeout, httpx.RequestError) as exc:
-            print(f"An error occurred while making the request: {exc}")
+            logging.error(f"An error occurred while making the request: {exc}")
             return Response(content=f"Proxy Error: {exc}", status_code=502)
 
+
         except Exception as e:
-            print(f"Unexpected error occurred: {e}")
+            logging.error(f"Unexpected error occurred: {e}")
             return Response(content=f"Error: {e}", status_code=500)
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
