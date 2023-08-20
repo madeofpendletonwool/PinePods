@@ -62,7 +62,7 @@ nohup gunicorn --bind 0.0.0.0:${PROXY_PORT:-8000} --workers 4 --timeout 30 pinep
 nohup python3 /pinepods/clients/clientapi.py --port ${API_SERVER_PORT:-8032} &
 
 # Start PinePods main app
-nohup python3 -u /pinepods/pypods.py &
+nohup python3 -u /pinepods/main.py &
 
 # Set up and start cron tasks
 service cron start
