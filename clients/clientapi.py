@@ -67,9 +67,9 @@ api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
 
 #Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy?url='
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy/?url='
 else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy?url='
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy/?url='
 print(f'Proxy url is configured to {proxy_url}')
 
 def get_database_connection() -> MySQLConnectionPool:
