@@ -1,11 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException, Response, WebSocket
-from fastapi.staticfiles import FileResponse
 import httpx
 import logging
 import websockets
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse
+from starlette.responses import StreamingResponse, FileResponse
 from PIL import Image, UnidentifiedImageError
 import io
 
