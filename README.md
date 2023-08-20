@@ -5,7 +5,7 @@
 
 # PinePods :evergreen_tree:
 
-[![](https://dcbadge.vercel.app/api/server/1134490753012334592)](https://discord.gg/bKzHRa4GNc)
+[![](https://dcbadge.vercel.app/api/server/bKzHRa4GNc)](https://discord.gg/bKzHRa4GNc)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)

@@ -3342,6 +3342,7 @@ def main(page: ft.Page, session_value=None):
             coffee_contain.alignment = alignment.bottom_center
             image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
             finish_image_path = check_image(image_path)
+            print(finish_image_path)
             pinepods_img = ft.Image(
                 src=finish_image_path,
                 width=100,
