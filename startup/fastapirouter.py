@@ -45,8 +45,11 @@ async def proxy_api_requests(request: Request, api_path: str):
             # Check if the response is gzipped
             if response.headers.get("Content-Encoding") == "gzip":
                 buffer = BytesIO(response.content)
-                with gzip.GzipFile(fileobj=buffer, mode='rb') as f:
-                    decompressed_content = f.read()
+                try:
+                    with gzip.GzipFile(fileobj=buffer, mode='rb') as f:
+                        decompressed_content = f.read()
+                except gzip.BadGzipFile:
+                    decompressed_content = response.content
             else:
                 decompressed_content = response.content
 
