@@ -80,12 +80,12 @@ def preload_audio_file(url, audio_proxy, cache):
         # Cache the file content
         cache.set(url, response.content)
 
-def initialize_audio_routes(app, proxy_url):
+def initialize_audio_routes(app, audio_proxy):
     cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
     @app.route('/preload/<path:url>')
     def route_preload_audio_file(url):
-        preload_audio_file(url, proxy_url, cache)
+        preload_audio_file(url, audio_proxy, cache)
         return ""
 
     @app.route('/cached_audio/<path:url>')
@@ -704,7 +704,7 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
                 # Preload the audio file and cache it
                 global cache
-                preload_audio_file(self.url, proxy_url, cache)
+                preload_audio_file(self.url, audio_proxy, cache)
 
                 self.audio_element = ft.Audio(src=f'{proxy_url}{urllib.parse.quote(self.url)}', autoplay=True, volume=1, on_state_changed=lambda e: self.on_state_changed(e.data))
                 page.overlay.append(self.audio_element)
