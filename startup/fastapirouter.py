@@ -42,88 +42,32 @@ async def proxy_api_requests(request: Request, api_path: str):
 
         return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
 
-async def open_image(file):
-    try:
-        with Image.open(file) as image:
-            if image.mode == 'RGBA' or image.mode == 'P':
-                image = image.convert('RGB')
-            output = io.BytesIO()
-            image.save(output, format='JPEG', optimize=True, quality=50) # Compress and save the image
-            return output.getvalue()
-    except UnidentifiedImageError:
-        print("Unidentified image, using default.")
-        with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
-            output = io.BytesIO()
-            image.save(output, format='JPEG')
-            return output.getvalue()
-
-async def optimize_image(content):
-    with io.BytesIO(content) as f:
-        try:
-            return await open_image(f)  # Await the result here
-        except Exception:
-            print("Image processing failed, using default.")
-            with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
-                output = io.BytesIO()
-                image.save(output, format='JPEG')
-                return output.getvalue()
-
 
 @app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
     url = request.query_params.get("url")
-    logging.info(f"Entered /proxy route for URL: {url}")
-    print("Entered /proxy route")
 
-    # Assuming this is a direct filesystem path
-    if url.startswith('/pinepods'):
-        try:
-            # Directly serve the file if it exists
-            return FileResponse(url, media_type="image/png")  # you may need to adjust the media type based on the actual image format
-        except Exception as e:
-            print(f"Error reading file: {e}")
-            return Response(content="File not found", status_code=404)
+    if not url:
+        return Response(content="URL parameter missing.", status_code=400)
 
-    # For other URLs, use the proxy logic
+    print(url)
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
-
-    # Add or override headers as needed
-    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36"
-    headers["Referer"] = "https://www.google.com/"
-
-    logging.info(f"Sending request with headers: {headers}")
-
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(url, headers=headers)
-
-            logging.info(f"Received response with status: {response.status_code}")
-            logging.info(f"Response headers: {response.headers}")
-            logging.info(f"Response content (first 100 characters): {response.text[:100]}")
-
-
-            # Check if the URL is an audio or image file
-            if url.endswith(('.mp3', '.wav', '.ogg', '.flac')):
-                content = response.content  # Directly use audio content
-            elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                content = await optimize_image(response.content)  # Await the result here
-            else:
-                content = response.content
-
-            content_type = response.headers.get("Content-Type")
-
-            if 'Range' in headers:
-                return StreamingResponse(io.BytesIO(content), media_type=content_type, status_code=206)
-            return StreamingResponse(io.BytesIO(content), media_type=content_type)
-
-        except (httpx.ReadTimeout, httpx.RequestError) as exc:
-            logging.error(f"An error occurred while making the request: {exc}")
+            response = await client.request(
+                request.method,
+                f"http://localhost:8000/proxy?url={url}",
+                headers=headers,
+                cookies=request.cookies,
+                data=await request.body(),
+            )
+            print(response.status_code, response.text)
+        except httpx.HTTPError as exc:
+            print(f"An error occurred while making the request: {exc}")
             return Response(content=f"Proxy Error: {exc}", status_code=502)
 
+        return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
 
-        except Exception as e:
-            logging.error(f"Unexpected error occurred: {e}")
-            return Response(content=f"Error: {e}", status_code=500)
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_requests(request: Request, path: str):
