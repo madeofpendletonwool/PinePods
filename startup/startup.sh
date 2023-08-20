@@ -52,17 +52,12 @@ if [[ $DB_TYPE == "postgresql" ]]; then
 else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
+
+
+# Start all services with supervisord
+supervisord -c /pinepods/startup/supervisord.conf
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
-# Start the proxy server
-# Start the Image Server
-nohup gunicorn --bind 0.0.0.0:${PROXY_PORT:-8000} --workers 4 --timeout 30 pinepods.imageserver.wsgi:app &
-
-# Start the FastAPI client API
-nohup python3 /pinepods/clients/clientapi.py --port ${API_SERVER_PORT:-8032} &
-
-# Start PinePods main app
-nohup python3 -u /pinepods/main.py &
 
 # Set up and start cron tasks
 service cron start
