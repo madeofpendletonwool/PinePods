@@ -62,9 +62,9 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
-    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy/'
+    proxy_url = f'{proxy_protocol}://{proxy_host}/proxy/?url='
 else:
-    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy/'
+    proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy/?url='
 
 
 # --- Create Flask app for caching ------------------------------------------------
