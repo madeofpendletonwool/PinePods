@@ -43,14 +43,15 @@ async def proxy_api_requests(request: Request, api_path: str):
             # Exclude the 'Content-Length' from the forwarded headers
             forward_headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
 
-            return StreamingResponse(
-                content=response.iter_bytes(),
+            return Response(
+                content=response.content,
                 status_code=response.status_code,
                 headers=forward_headers
             )
         except httpx.HTTPError as exc:
             print(f"An error occurred while making the request: {exc}")
             return Response(content=f"Proxy Error: {exc}", status_code=502)
+
 
 @app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
