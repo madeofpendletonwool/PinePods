@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException, Response, WebSocket
+from fastapi.staticfiles import FileResponse
 import httpx
 import logging
 import websockets
@@ -75,6 +76,16 @@ async def optimize_image(content):
 async def proxy_image_requests(request: Request, proxy_path: str):
     url = request.query_params.get("url")
 
+    # Assuming this is a direct filesystem path
+    if url.startswith('/pinepods'):
+        try:
+            # Directly serve the file if it exists
+            return FileResponse(url, media_type="image/png")  # you may need to adjust the media type based on the actual image format
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            return Response(content="File not found", status_code=404)
+
+    # For other URLs, use the proxy logic
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
 
     async with httpx.AsyncClient() as client:

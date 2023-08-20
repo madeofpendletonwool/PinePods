@@ -1578,6 +1578,7 @@ def main(page: ft.Page, session_value=None):
                     art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
+                    print(art_url_parsed)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
