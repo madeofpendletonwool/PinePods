@@ -26,11 +26,16 @@ async def proxy_api_requests(request: Request, api_path: str):
         # Filter out headers that might conflict with the internal service
         headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
 
+        # Build the URL for the proxy request, including the original query parameters
+        proxy_url = f"http://localhost:8032/api/{api_path}"
+        if request.query_params:
+            proxy_url += f"?{request.query_params}"
+
         try:
-            print(request.method, f"http://localhost:8032/api/{api_path}", headers, request.cookies, request.body)
+            print(request.method, proxy_url, headers, request.cookies, request.body)
             response = await client.request(
                 request.method,
-                f"http://localhost:8032/api/{api_path}",
+                proxy_url,
                 headers=headers,
                 cookies=request.cookies,
                 data=await request.body(),
