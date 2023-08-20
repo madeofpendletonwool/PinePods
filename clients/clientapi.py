@@ -58,7 +58,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Proxy variables
 proxy_host = os.environ.get("HOSTNAME", "localhost")
-proxy_port = os.environ.get("PROXY_PORT", "8000")
+proxy_port = os.environ.get("PINEPODS_PORT", "8040")
 proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 

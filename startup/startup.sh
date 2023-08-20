@@ -11,7 +11,7 @@ export EMAIL=${EMAIL:-'admin@pinepods.online'}
 export PASSWORD=${PASSWORD:-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c14 ; echo '')}
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
-export PROXY_PORT=$PROXY_PORT
+export PINEPODS_PORT=$PINEPODS_PORT
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"
