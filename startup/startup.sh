@@ -53,18 +53,9 @@ else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
 
+echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
 
 # Start all services with supervisord
 supervisord -c /pinepods/startup/supervisord.conf
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
-
-# Set up and start cron tasks
-service cron start
-chmod +x /pinepods/startup/call_refresh_endpoint.sh
-echo "Starting a Podcast Refresh"
-./pinepods/startup/call_refresh_endpoint.sh
-echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
-
-# Start Pinepods Reverse Proxy last
-python3 -u /pinepods/startup/fastapirouter.py
