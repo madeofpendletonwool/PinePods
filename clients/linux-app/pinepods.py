@@ -2211,9 +2211,10 @@ def main(page: ft.Page, session_value=None):
             page.bgcolor = colors.BLUE_GREY
 
             # Home Screen Podcast Layout (Episodes in Newest order)
-
+            print('pre-run call episodes')
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                          active_user.user_id)
+            print(home_episodes)
             home_layout = Pod_View(page)
             active_user.current_pod_view = home_layout
 

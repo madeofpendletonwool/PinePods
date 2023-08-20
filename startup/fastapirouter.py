@@ -4,6 +4,8 @@ import httpx
 import logging
 import websockets
 from fastapi.middleware.cors import CORSMiddleware
+import gzip
+from io import BytesIO
 from starlette.responses import StreamingResponse, FileResponse
 from PIL import Image, UnidentifiedImageError
 import io
@@ -40,11 +42,22 @@ async def proxy_api_requests(request: Request, api_path: str):
                 data=await request.body(),
             )
 
-            # Exclude the 'Content-Length' from the forwarded headers
-            forward_headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+            # Check if the response is gzipped
+            if response.headers.get("Content-Encoding") == "gzip":
+                buffer = BytesIO(response.content)
+                with gzip.GzipFile(fileobj=buffer, mode='rb') as f:
+                    decompressed_content = f.read()
+            else:
+                decompressed_content = response.content
+
+            # Exclude the 'Content-Length' and 'Content-Encoding' from the forwarded headers
+            forward_headers = {
+                k: v for k, v in response.headers.items()
+                if k.lower() not in ["content-length", "content-encoding"]
+            }
 
             return Response(
-                content=response.content,
+                content=decompressed_content,
                 status_code=response.status_code,
                 headers=forward_headers
             )
