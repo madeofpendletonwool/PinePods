@@ -2,6 +2,10 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.3.1
+
+- [x] Finalize reverse proxy processes and web playing
+
 Version 0.3
 
 - [x] Export and import of following podcasts (basically user backups)
