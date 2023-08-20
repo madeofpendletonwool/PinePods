@@ -57,18 +57,16 @@ async def open_image(file):
             image.save(output, format='JPEG')
             return output.getvalue()
 
-async def optimize_image(content):
+def optimize_image(content):
     with io.BytesIO(content) as f:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(open_image, f)
-            try:
-                return future.result(timeout=1)  # set timeout to 1 second
-            except TimeoutError:
-                print("Image processing took too long, using default.")
-                with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
-                    output = io.BytesIO()
-                    image.save(output, format='JPEG')
-                    return output.getvalue()
+        try:
+            return open_image(f)
+        except Exception:
+            print("Image processing failed, using default.")
+            with Image.open('/pinepods/images/pinepods-logo.jpeg') as image:
+                output = io.BytesIO()
+                image.save(output, format='JPEG')
+                return output.getvalue()
 
 
 @app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
@@ -97,7 +95,7 @@ async def proxy_image_requests(request: Request):
                 content = response.content  # Directly use audio content
 
             elif url.endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                content = await optimize_image(response.content)
+                content = optimize_image(response.content)
             else:
                 content = response.content  # Directly use content if not recognized
 
