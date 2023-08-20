@@ -74,6 +74,7 @@ async def optimize_image(content):
 @app.api_route("/proxy/{proxy_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request, proxy_path: str):
     url = request.query_params.get("url")
+    print("Entered /proxy route")
 
     # Assuming this is a direct filesystem path
     if url.startswith('/pinepods'):
@@ -116,6 +117,7 @@ async def proxy_image_requests(request: Request, proxy_path: str):
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_requests(request: Request, path: str):
+    print("Entered /main route")
     headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
     async with httpx.AsyncClient() as client:
         try:
