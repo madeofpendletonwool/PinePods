@@ -5,6 +5,7 @@ This is the list of previous todos that are now completed
 Version 0.3.1
 
 - [x] Finalize reverse proxy processes and web playing
+- [x] Added some customization to packaging for pwas and favicons on web portals
 
 Version 0.3
 
