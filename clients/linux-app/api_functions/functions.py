@@ -863,5 +863,77 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
         return response.json()["data"]
 
 
-# def update_queued_positions(url, headers, user_id, episode):
-#     pass
+def call_backup_user(url, headers, user_id, backup_dir):
+    import os
+    data = {"user_id": user_id}
+    try:
+        response = requests.post(url + "/backup_user", headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+
+        # Check if the backup_dir exists; if not, create it
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
+        with open(os.path.join(backup_dir, f"user_{user_id}_backup.opml"), 'w') as file:
+            file.write(response.text)
+
+    except requests.exceptions.Timeout:
+        print(f"Request timed out.")
+        return None
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+    else:
+        return True
+
+
+def call_backup_server(url, headers, backup_dir, database_pass):
+    import os
+    print('trying dbbackup')
+
+    data = {"backup_dir": backup_dir, "database_pass": database_pass}
+
+    try:
+        response = requests.get(url + "/backup_server", headers=headers, json=data, timeout=60)
+        response.raise_for_status()
+
+        # Check if the backup_dir exists; if not, create it
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
+        with open(os.path.join(backup_dir, "server_backup.sql"), 'wb') as file:
+            file.write(response.content)
+        return {"success": True, "error_message": None}
+
+    except requests.exceptions.Timeout:
+        return {"success": False, "error_message": "Request timed out."}
+    except requests.exceptions.HTTPError as http_err:
+        return {"success": False, "error_message": f"HTTP error occurred: {http_err} - Is your database password correct?"}
+    except Exception as err:
+        return {"success": False, "error_message": f"Other error occurred: {err}"}
+
+def call_restore_server(url, headers, database_pass, server_restore_data):
+    data = {"database_pass": database_pass, "server_restore_data": server_restore_data}
+
+    try:
+        response = requests.post(url + "/restore_server", headers=headers, json=data, timeout=60)
+        response.raise_for_status()
+        return {"success": True, "error_message": None}
+
+    except requests.exceptions.Timeout:
+        return {"success": False, "error_message": "Request timed out."}
+    except requests.exceptions.HTTPError:
+        return {"success": False, "error_message": f"HTTP error occurred: {response.text} - Is your password correct?"}
+    except Exception as err:
+        return {"success": False, "error_message": f"Other error occurred: {err}"}
+
+def call_import_podcasts(url, headers, user_id, podcasts):
+    data = {
+        "user_id": user_id,
+        "podcasts": podcasts
+    }
+    response = requests.post(url + "/import_podcasts", headers=headers, json=data)
+    return response.json()

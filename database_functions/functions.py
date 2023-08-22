@@ -8,6 +8,7 @@ import datetime
 import time
 import appdirs
 import base64
+import subprocess
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
@@ -107,6 +108,7 @@ def add_admin_user(cnx, user_values):
     
     cursor.close()
 
+
 def add_episodes(cnx, podcast_id, feed_url, artwork_url):
     import datetime
     import feedparser
@@ -122,7 +124,6 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
             if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
                 # get the episode title
                 parsed_title = entry.title
-                
 
                 # get the episode description
                 parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
@@ -137,17 +138,17 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 parsed_release_date = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d")
 
                 # get the URL of the episode artwork, or use the podcast image URL if not available
-                parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+                parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get(
+                    'href', None)
                 if parsed_artwork_url == None:
                     parsed_artwork_url = artwork_url
-
-
 
                 def parse_duration(duration_string: str) -> int:
                     match = re.match(r'(\d+):(\d+)(?::(\d+))?', duration_string)  # Regex to optionally match HH:MM:SS
                     if match:
                         if match.group(3):  # If there is an HH part
-                            parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(match.group(3))
+                            parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(
+                                match.group(3))
                         else:  # It's only MM:SS
                             parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
                     else:
@@ -168,20 +169,20 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 elif entry.length:
                     parsed_duration = parse_duration(entry.length)
 
-
                 # check if the episode already exists
                 check_episode = ("SELECT * FROM Episodes "
-                                "WHERE PodcastID = %s AND EpisodeTitle = %s")
+                                 "WHERE PodcastID = %s AND EpisodeTitle = %s")
                 check_episode_values = (podcast_id, parsed_title)
                 cursor.execute(check_episode, check_episode_values)
                 if cursor.fetchone() is not None:
                     # episode already exists, skip it
                     continue
 
-
                 # insert the episode into the database
                 query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                values = (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, parsed_duration)
+                values = (
+                podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date,
+                parsed_duration)
                 cursor.execute(query, values)
 
                 # check if any rows were affected by the insert operation
@@ -251,18 +252,19 @@ def return_episodes(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+             f"UserEpisodeHistory.ListenDuration "
              f"FROM Episodes "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
              f"WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
              f"AND Podcasts.UserID = %s "
              f"ORDER BY Episodes.EpisodePubDate DESC")
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, user_id))
     rows = cursor.fetchall()
 
     cursor.close()
-    # cnx.close()
 
     if not rows:
         return None
@@ -319,7 +321,10 @@ def return_pods(cnx, user_id):
 
     return rows
 
+
 def refresh_pods(cnx):
+    import concurrent.futures
+
     print('refresh begin')
     cursor = cnx.cursor()
 
@@ -579,7 +584,7 @@ def download_podcast(cnx, url, title, user_id):
     podcast_name = cursor.fetchone()[0]
 
     # Create a directory named after the podcast, inside the main downloads directory
-    download_dir = os.path.join("/opt/pypods/downloads", podcast_name)
+    download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
 
     # Generate the episode filename based on episode ID and user ID
@@ -654,15 +659,28 @@ def check_downloaded(cnx, user_id, title, url):
 def download_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-             f"Podcasts.WebsiteURL, DownloadedEpisodes.DownloadedLocation "
-             f"FROM DownloadedEpisodes "
-             f"INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             f"WHERE DownloadedEpisodes.UserID = %s "
-             f"ORDER BY DownloadedEpisodes.DownloadedDate DESC")
-
+    query = """
+    SELECT 
+        Podcasts.PodcastID, 
+        Podcasts.PodcastName, 
+        Podcasts.ArtworkURL, 
+        Episodes.EpisodeID, 
+        Episodes.EpisodeTitle, 
+        Episodes.EpisodePubDate, 
+        Episodes.EpisodeDescription, 
+        Episodes.EpisodeArtwork, 
+        Episodes.EpisodeURL, 
+        Episodes.EpisodeDuration, 
+        Podcasts.WebsiteURL, 
+        DownloadedEpisodes.DownloadedLocation,
+        UserEpisodeHistory.ListenDuration
+    FROM DownloadedEpisodes 
+    INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID 
+    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID 
+    LEFT JOIN UserEpisodeHistory ON DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
+    WHERE DownloadedEpisodes.UserID = %s 
+    ORDER BY DownloadedEpisodes.DownloadedDate DESC
+    """
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
 
@@ -673,6 +691,7 @@ def download_episode_list(cnx, user_id):
         return None
 
     return rows
+
 
 def save_email_settings(cnx, email_settings):
     cursor = cnx.cursor()
@@ -1254,20 +1273,20 @@ def saved_episode_list(cnx, user_id):
     cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-             f"Podcasts.WebsiteURL "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
+             f"Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
              f"FROM SavedEpisodes "
              f"INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"LEFT JOIN UserEpisodeHistory ON SavedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
              f"WHERE SavedEpisodes.UserID = %s "
              f"ORDER BY SavedEpisodes.SaveDate DESC")
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, user_id))
     rows = cursor.fetchall()
 
     cursor.close()
     # cnx.close()
-
 
     if not rows:
         return None
@@ -2041,10 +2060,12 @@ def get_queued_episodes(cnx, user_id):
         Episodes.EpisodeURL, 
         EpisodeQueue.QueuePosition, 
         Episodes.EpisodeDuration, 
-        EpisodeQueue.QueueDate
+        EpisodeQueue.QueueDate,
+        UserEpisodeHistory.ListenDuration
     FROM EpisodeQueue 
     INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
     INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID 
+    LEFT JOIN UserEpisodeHistory ON EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
     WHERE EpisodeQueue.UserID = %s 
     ORDER BY EpisodeQueue.QueuePosition ASC
     """
@@ -2054,6 +2075,7 @@ def get_queued_episodes(cnx, user_id):
     cursor.close()
 
     return queued_episodes
+
 
 # database_functions.py
 
@@ -2068,12 +2090,15 @@ def queue_bump(cnx, ep_url, title, user_id):
         (ep_url, title, user_id)
     )
     result = cursor.fetchone()
+    print(result)
 
-    # if the episode is in the queue, remove it
     if result is not None:
-        cursor.execute(
-            "DELETE FROM EpisodeQueue WHERE QueueID = %s", (result['QueueID'],)
-        )
+        try:
+            cursor.execute(
+                "DELETE FROM EpisodeQueue WHERE QueueID = %s", (result[0],)
+            )
+        except Exception as e:
+            print(f"Error while deleting episode from queue: {e}")
 
     # decrease the QueuePosition of all other episodes in the queue
     cursor.execute(
@@ -2087,3 +2112,72 @@ def queue_bump(cnx, ep_url, title, user_id):
     cursor.close()
 
     return {"detail": f"{title} moved to the front of the queue."}
+
+
+def backup_user(cnx, user_id):
+    cursor = cnx.cursor(dictionary=True)  # We use dictionary=True to fetch results as dictionaries
+
+    # Fetch podcasts for the user
+    cursor.execute(
+        "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = %s", (user_id,)
+    )
+    podcasts = cursor.fetchall()
+    cursor.close()
+
+    # Construct the OPML content
+    opml_content = '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>Podcast Subscriptions</title>\n  </head>\n  <body>\n'
+
+    for podcast in podcasts:
+        opml_content += f'    <outline text="{podcast["PodcastName"]}" title="{podcast["PodcastName"]}" type="rss" xmlUrl="{podcast["FeedURL"]}" />\n'
+
+    opml_content += '  </body>\n</opml>'
+
+    return opml_content
+
+def backup_server(cnx, backup_dir, database_pass):
+    # Replace with your database and authentication details
+    print(f'pass: {database_pass}')
+    cmd = [
+        "mysqldump",
+        "-h", 'db',
+        "-P", '3306',
+        "-u", "root",
+        "-p" + database_pass,  # You can put the password here directly, but it's not recommended for security reasons
+        "pypods_database"
+    ]
+
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    print("STDOUT:", stdout.decode())
+    print("STDERR:", stderr.decode())
+
+    if process.returncode != 0:
+        # Handle error
+        raise Exception(f"Backup failed with error: {stderr.decode()}")
+
+    return stdout.decode()
+
+def restore_server(cnx, database_pass, server_restore_data):
+    import tempfile
+    # Create a temporary file to store the content. This is because the mysql command reads from a file.
+    with tempfile.NamedTemporaryFile(mode='w+', delete=True) as tempf:
+        tempf.write(server_restore_data)
+        tempf.flush()
+        cmd = [
+            "mysql",
+            "-h", 'db',
+            "-P", '3306',
+            "-u", "root",
+            "-p" + database_pass,
+            "pypods_database"
+        ]
+
+        # Use the file's content as input for the mysql command
+        with open(tempf.name, 'r') as file:
+            process = subprocess.Popen(cmd, stdin=file, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+
+            if process.returncode != 0:
+                raise Exception(f"Restoration failed with error: {stderr.decode()}")
+
+    return "Restoration completed successfully!"

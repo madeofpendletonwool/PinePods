@@ -9,7 +9,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Make sure the package repository is up to date. Also install needed packages via apt
 RUN apt update && \
     apt -qy upgrade && \
-    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev && \
+    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev mariadb-client libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Install needed python packages via pip
@@ -24,7 +24,7 @@ ARG CACHEBUST=1
 
 # Put pinepods Files in place
 # Create structure for pinepods
-RUN git clone -b bug-fixes https://github.com/madeofpendletonwool/pypods.git /pinepods && \
+RUN git clone https://github.com/madeofpendletonwool/pypods.git /pinepods && \
     chmod -R 755 /pinepods
 
 # Begin pinepods Setup
