@@ -407,6 +407,7 @@ def main(page: ft.Page, session_value=None):
             return progress
 
     def check_image(artwork_path):
+        print(f"{proxy_url}{artwork_path}")
         return f"{proxy_url}{artwork_path}"
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
