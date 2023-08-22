@@ -4,19 +4,19 @@ from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 
 # Needed Modules
-from contextlib import contextmanager
 from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
 from mysql.connector.pooling import MySQLConnectionPool
 from mysql.connector import Error
+import psycopg2
+from psycopg2 import pool as pg_pool
+from psycopg2.extras import RealDictCursor
 import os
-from datetime import datetime
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 import secrets
-import requests
 from pydantic import BaseModel, Field
 from typing import Dict
 from typing import List
@@ -24,26 +24,26 @@ from typing import Optional
 from typing import Generator
 import json
 import logging
-from typing import Any
 import argparse
 import sys
 from pyotp import TOTP
 import base64
-import threading
-import time
-import asyncio
 # Internal Modules
 sys.path.append('/pinepods')
 
 import database_functions.functions
 import Auth.Passfunctions
 
+database_type = int(os.getenv('DB_TYPE', 3306))
+if database_type == "postgresql":
+    print(f"You've selected a postgresql database.")
+else:
+    print("You've selected a mariadb database")
+
 secret_key_middle = secrets.token_hex(32)
 
 
 logging.basicConfig(level=logging.INFO)
-
-from database_functions import functions
 
 print('Client API Server is Starting!')
 
@@ -72,14 +72,18 @@ else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/proxy/?url='
 print(f'Proxy url is configured to {proxy_url}')
 
-def get_database_connection() -> MySQLConnectionPool:
+def get_database_connection():
     try:
-        db = connection_pool.get_connection()
+        db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
         yield db
-    except Error as e:
+    except Exception as e:
         raise HTTPException(500, "Unable to connect to the database")
     finally:
-        db.close()
+        if database_type == "postgresql":
+            connection_pool.putconn(db)
+        else:
+            db.close()
+
 
 
 
@@ -90,27 +94,43 @@ def setup_connection_pool():
     db_password = os.environ.get("DB_PASSWORD", "password")
     db_name = os.environ.get("DB_NAME", "pypods_database")
 
-    return pooling.MySQLConnectionPool(
-        pool_name="pinepods_api_pool",
-        pool_size=32,  # Adjust the pool size according to your needs
-        pool_reset_session=True,
-        host=db_host,
-        port=db_port,
-        user=db_user,
-        password=db_password,
-        database=db_name,
-    )
+    if database_type == "postgresql":
+        return pg_pool.SimpleConnectionPool(
+            1,  # minconn
+            32,  # maxconn
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            password=db_password,
+            dbname=db_name
+        )
+    else:  # Default to MariaDB/MySQL
+        return pooling.MySQLConnectionPool(
+            pool_name="pinepods_api_pool",
+            pool_size=32,
+            pool_reset_session=True,
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            password=db_password,
+            database=db_name,
+        )
+
 
 connection_pool = setup_connection_pool()
 
-
 def get_api_keys(cnx):
-    cursor = cnx.cursor(dictionary=True)
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
+
     query = "SELECT * FROM APIKeys"
     cursor.execute(query)
     rows = cursor.fetchall()
     cursor.close()
     return rows
+
 
 def get_api_key(request: Request, api_key: str = Depends(api_key_header), cnx: Generator = Depends(get_database_connection)):
     if api_key is None:
@@ -208,7 +228,7 @@ async def api_verify_password(data: VerifyPasswordInput, cnx = Depends(get_datab
 
 @app.get("/api/data/return_episodes/{user_id}")
 async def api_return_episodes(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    episodes = database_functions.functions.return_episodes(cnx, user_id)
+    episodes = database_functions.functions.return_episodes(database_type, cnx, user_id)
     if episodes is None:
         episodes = []  # Return an empty list instead of raising an exception
     return {"episodes": episodes}
@@ -373,7 +393,7 @@ async def api_get_user_episode_count(user_id: int, cnx = Depends(get_database_co
 
 @app.get("/api/data/get_user_info")
 async def api_get_user_info(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    user_info = database_functions.functions.get_user_info(cnx)
+    user_info = database_functions.functions.get_user_info(database_type, cnx)
     return user_info
 
 class CheckPodcastData(BaseModel):
@@ -403,7 +423,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx = De
 
 @app.get("/api/data/return_pods/{user_id}")
 async def api_return_pods(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    pods = database_functions.functions.return_pods(cnx, user_id)
+    pods = database_functions.functions.return_pods(database_type, cnx, user_id)
     return {"pods": pods}
 
 @app.get("/api/data/user_history/{user_id}")
@@ -413,12 +433,12 @@ async def api_user_history(user_id: int, cnx = Depends(get_database_connection),
 
 @app.get("/api/data/saved_episode_list/{user_id}")
 async def api_saved_episode_list(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    saved_episodes = database_functions.functions.saved_episode_list(cnx, user_id)
+    saved_episodes = database_functions.functions.saved_episode_list(database_type, cnx, user_id)
     return {"saved_episodes": saved_episodes}
 
 @app.post("/api/data/download_episode_list")
 async def api_download_episode_list(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Form(...)):
-    downloaded_episodes = database_functions.functions.download_episode_list(cnx, user_id)
+    downloaded_episodes = database_functions.functions.download_episode_list(database_type, cnx, user_id)
     return {"downloaded_episodes": downloaded_episodes}
 
 @app.post("/api/data/return_selected_episode")
@@ -526,7 +546,7 @@ async def api_delete_api_key(api_id: int, cnx = Depends(get_database_connection)
 
 @app.get("/api/data/get_api_info")
 async def api_get_api_info(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    api_information = database_functions.functions.get_api_info(cnx)
+    api_information = database_functions.functions.get_api_info(database_type, cnx)
     return {"api_info": api_information}
 
 
@@ -572,7 +592,7 @@ class EpisodeMetadata(BaseModel):
 
 @app.post("/api/data/get_episode_metadata")
 async def api_get_episode_metadata(data: EpisodeMetadata, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    episode = database_functions.functions.get_episode_metadata(cnx, data.episode_url, data.episode_title, data.user_id)
+    episode = database_functions.functions.get_episode_metadata(database_type, cnx, data.episode_url, data.episode_title, data.user_id)
     return {"episode": episode}
 
 class MfaSecretData(BaseModel):
@@ -581,7 +601,7 @@ class MfaSecretData(BaseModel):
 
 @app.post("/api/data/save_mfa_secret")
 async def api_save_mfa_secret(data: MfaSecretData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    success = database_functions.functions.save_mfa_secret(cnx, data.user_id, data.mfa_secret)
+    success = database_functions.functions.save_mfa_secret(database_type, cnx, data.user_id, data.mfa_secret)
     if success:
         return {"status": "success"}
     else:
@@ -589,7 +609,7 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx = Depends(get_database_co
 
 @app.get("/api/data/check_mfa_enabled/{user_id}")
 async def api_check_mfa_enabled(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_enabled = database_functions.functions.check_mfa_enabled(cnx, user_id)
+    is_enabled = database_functions.functions.check_mfa_enabled(database_type, cnx, user_id)
     return {"mfa_enabled": is_enabled}
 
 class VerifyMFABody(BaseModel):
@@ -598,7 +618,7 @@ class VerifyMFABody(BaseModel):
 
 @app.post("/api/data/verify_mfa")
 async def api_verify_mfa(body: VerifyMFABody, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    secret = database_functions.functions.get_mfa_secret(cnx, body.user_id)
+    secret = database_functions.functions.get_mfa_secret(database_type, cnx, body.user_id)
 
     if secret is None:
         return {"verified": False}
@@ -618,7 +638,7 @@ class UserIDBody(BaseModel):
     user_id: int
 @app.delete("/api/data/delete_mfa")
 async def api_delete_mfa(body: UserIDBody, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.delete_mfa_secret(cnx, body.user_id)
+    result = database_functions.functions.delete_mfa_secret(database_type, cnx, body.user_id)
     return {"deleted": result}
 
 class AllEpisodes(BaseModel):
@@ -626,7 +646,7 @@ class AllEpisodes(BaseModel):
 
 @app.post("/api/data/get_all_episodes")
 async def api_get_episodes(data: AllEpisodes, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    episodes = database_functions.functions.get_all_episodes(cnx, data.pod_feed)
+    episodes = database_functions.functions.get_all_episodes(database_type, cnx, data.pod_feed)
     return {"episodes": episodes}
 
 class EpisodeToRemove(BaseModel):
@@ -636,7 +656,7 @@ class EpisodeToRemove(BaseModel):
 
 @app.post("/api/data/remove_episode_history")
 async def api_remove_episode_from_history(data: EpisodeToRemove, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    success = database_functions.functions.remove_episode_history(cnx, data.url, data.title, data.user_id)
+    success = database_functions.functions.remove_episode_history(database_type, cnx, data.url, data.title, data.user_id)
     return {"success": success}
 
 # Model for request data
@@ -648,12 +668,12 @@ class TimeZoneInfo(BaseModel):
 # FastAPI endpoint
 @app.post("/api/data/setup_time_info")
 async def setup_timezone_info(data: TimeZoneInfo, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    success = database_functions.functions.setup_timezone_info(cnx, data.user_id, data.timezone, data.hour_pref)
+    success = database_functions.functions.setup_timezone_info(database_type, cnx, data.user_id, data.timezone, data.hour_pref)
     return {"success": success}
 
 @app.get("/api/data/get_time_info")
 async def get_time_info(user_id: int, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    timezone, hour_pref = database_functions.functions.get_time_info(cnx, user_id)
+    timezone, hour_pref = database_functions.functions.get_time_info(database_type, cnx, user_id)
     return {"timezone": timezone, "hour_pref": hour_pref}
 
 class UserLoginUpdate(BaseModel):
@@ -661,7 +681,7 @@ class UserLoginUpdate(BaseModel):
 
 @app.post("/api/data/first_login_done")
 async def first_login_done(data: UserLoginUpdate, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    first_login_status = database_functions.functions.first_login_done(cnx, data.user_id)
+    first_login_status = database_functions.functions.first_login_done(database_type, cnx, data.user_id)
     return {"FirstLogin": first_login_status}
 
 class SelectedEpisodesDelete(BaseModel):
@@ -688,7 +708,7 @@ class SearchPodcastData(BaseModel):
 
 @app.post("/api/data/search_data")
 async def search_data(data: SearchPodcastData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.search_data(cnx, data.search_term, data.user_id)
+    result = database_functions.functions.search_data(database_type, cnx, data.search_term, data.user_id)
     return {"data": result}
 
 class QueuePodData(BaseModel):
@@ -698,7 +718,7 @@ class QueuePodData(BaseModel):
 
 @app.post("/api/data/queue_pod")
 async def queue_pod(data: QueuePodData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.queue_pod(cnx, data.episode_title, data.ep_url, data.user_id)
+    result = database_functions.functions.queue_pod(database_type, cnx, data.episode_title, data.ep_url, data.user_id)
     return {"data": result}
 
 class QueueRmData(BaseModel):
@@ -708,7 +728,7 @@ class QueueRmData(BaseModel):
 
 @app.post("/api/data/remove_queued_pod")
 async def remove_queued_pod(data: QueueRmData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.remove_queued_pod(cnx, data.episode_title, data.ep_url, data.user_id)
+    result = database_functions.functions.remove_queued_pod(database_type, cnx, data.episode_title, data.ep_url, data.user_id)
     return {"data": result}
 
 class QueuedEpisodesData(BaseModel):
@@ -716,7 +736,7 @@ class QueuedEpisodesData(BaseModel):
 
 @app.get("/api/data/get_queued_episodes")
 async def get_queued_episodes(data: QueuedEpisodesData, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.get_queued_episodes(cnx, data.user_id)
+    result = database_functions.functions.get_queued_episodes(database_type, cnx, data.user_id)
     return {"data": result}
 
 class QueueBump(BaseModel):
@@ -739,7 +759,7 @@ class BackupUser(BaseModel):
 @app.post("/api/data/backup_user", response_class=PlainTextResponse)
 async def backup_user(data: BackupUser, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     try:
-        opml_data = database_functions.functions.backup_user(cnx, data.user_id)
+        opml_data = database_functions.functions.backup_user(database_type, cnx, data.user_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return opml_data

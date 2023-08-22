@@ -9,6 +9,8 @@ import time
 import appdirs
 import base64
 import subprocess
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
@@ -248,8 +250,11 @@ def remove_podcast(cnx, podcast_name, user_id):
 def remove_user(cnx, user_name):
     pass
 
-def return_episodes(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def return_episodes(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
@@ -303,8 +308,11 @@ def return_selected_episode(cnx, user_id, title, url):
     return episodes
 
 
-def return_pods(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def return_pods(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = ("SELECT PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
             "FROM Podcasts "
@@ -656,8 +664,11 @@ def check_downloaded(cnx, user_id, title, url):
             cursor.close()
 
 
-def download_episode_list(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def download_episode_list(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = """
     SELECT 
@@ -740,12 +751,6 @@ def get_email_settings(cnx):
         return dict(zip(keys, result))
     else:
         return None
-
-
-def delete_selected_episodes(cnx, user_id, selected_episodes):
-    pass
-def delete_selected_podcasts(cnx, user_id, selected_episodes):
-    pass
 
 def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     cursor = cnx.cursor()
@@ -976,8 +981,11 @@ def set_theme(cnx, user_id, theme):
             cursor.close()
             # cnx.close()
 
-def get_user_info(cnx):
-    cursor = cnx.cursor(dictionary=True)
+def get_user_info(database_type, cnx):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Users.UserID, Users.Fullname, Users.Username, "
              f"Users.Email, Users.IsAdmin "
@@ -995,8 +1003,11 @@ def get_user_info(cnx):
 
     return rows
 
-def get_api_info(cnx):
-    cursor = cnx.cursor(dictionary=True)
+def get_api_info(database_type, cnx):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT APIKeys.APIKeyID, APIKeys.UserID, Users.Username, "
              f"RIGHT(APIKeys.APIKey, 4) as LastFourDigits, "
@@ -1269,8 +1280,11 @@ def get_stats(cnx, user_id):
     return stats
 
 
-def saved_episode_list(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def saved_episode_list(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
@@ -1679,9 +1693,11 @@ def clear_guest_data(cnx):
 
     return "Guest user data cleared successfully"
 
-def get_episode_metadata(cnx, url, title, user_id):
-    cursor = cnx.cursor(dictionary=True)
-    print(url, title, user_id)
+def get_episode_metadata(database_type, cnx, url, title, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = ("SELECT EpisodeID FROM Episodes "
              "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
@@ -1692,7 +1708,6 @@ def get_episode_metadata(cnx, url, title, user_id):
         # Episode not found
         return False
 
-    print(episode_id)
     episode_id = episode_id['EpisodeID']
 
     query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
@@ -1712,8 +1727,11 @@ def get_episode_metadata(cnx, url, title, user_id):
         
     return row
 
-def save_mfa_secret(cnx, user_id, mfa_secret):
-    cursor = cnx.cursor(dictionary=True)
+def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"UPDATE Users "
              f"SET MFA_Secret = %s "
@@ -1729,8 +1747,11 @@ def save_mfa_secret(cnx, user_id, mfa_secret):
         return False
 
 
-def check_mfa_enabled(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def check_mfa_enabled(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
 
@@ -1748,8 +1769,11 @@ def check_mfa_enabled(cnx, user_id):
         print("Error checking MFA status:", e)
         return False
 
-def get_mfa_secret(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def get_mfa_secret(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT MFA_Secret FROM Users WHERE UserID = %s")
 
@@ -1763,8 +1787,11 @@ def get_mfa_secret(cnx, user_id):
         print("Error retrieving MFA secret:", e)
         return None
 
-def delete_mfa_secret(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def delete_mfa_secret(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"UPDATE Users SET MFA_Secret = NULL WHERE UserID = %s")
 
@@ -1778,8 +1805,11 @@ def delete_mfa_secret(cnx, user_id):
         print("Error deleting MFA secret:", e)
         return False
 
-def get_all_episodes(cnx, pod_feed):
-    cursor = cnx.cursor(dictionary=True)
+def get_all_episodes(database_type, cnx, pod_feed):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s")
 
@@ -1793,8 +1823,11 @@ def get_all_episodes(cnx, pod_feed):
         print("Error retrieving Podcast Episodes:", e)
         return None
 
-def remove_episode_history(cnx, url, title, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def remove_episode_history(database_type, cnx, url, title, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = (f"""DELETE FROM UserEpisodeHistory 
                 WHERE UserID = %s AND EpisodeID IN (
@@ -1812,8 +1845,11 @@ def remove_episode_history(cnx, url, title, user_id):
         print("Error removing episode from history:", e)
         return False
 
-def setup_timezone_info(cnx, user_id, timezone, hour_pref):
-    cursor = cnx.cursor(dictionary=True)
+def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = f"""UPDATE Users SET Timezone = %s, TimeFormat = %s, FirstLogin = %s WHERE UserID = %s"""
 
@@ -1827,8 +1863,11 @@ def setup_timezone_info(cnx, user_id, timezone, hour_pref):
         print("Error setting up time info:", e)
         return False
 
-def get_time_info(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def get_time_info(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
     query = (f"""SELECT Timezone, TimeFormat FROM Users WHERE UserID = %s""")
 
     cursor.execute(query, (user_id,))
@@ -1840,8 +1879,11 @@ def get_time_info(cnx, user_id):
     else:
         return None
 
-def first_login_done(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def first_login_done(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     # Query to fetch the FirstLogin status
     query = "SELECT FirstLogin FROM Users WHERE UserID = %s"
@@ -1937,8 +1979,11 @@ def delete_selected_podcasts(cnx, delete_list, user_id):
 
 import time
 
-def search_data(cnx, search_term, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def search_data(database_type, cnx, search_term, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     query = """
     SELECT * FROM Podcasts 
@@ -1961,8 +2006,11 @@ def search_data(cnx, search_term, user_id):
         print("Error retrieving Podcast Episodes:", e)
         return None
 
-def queue_pod(cnx, episode_title, ep_url, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def queue_pod(database_type, cnx, episode_title, ep_url, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     # Fetch the EpisodeID using EpisodeTitle and EpisodeURL
     query_get_episode_id = """
@@ -2005,8 +2053,11 @@ def queue_pod(cnx, episode_title, ep_url, user_id):
 
     return {"detail": "Podcast Episode queued successfully."}
 
-def remove_queued_pod(cnx, episode_title, ep_url, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     # First, retrieve the EpisodeID and QueuePosition of the episode to be removed
     get_queue_data_query = """
@@ -2047,8 +2098,11 @@ def remove_queued_pod(cnx, episode_title, ep_url, user_id):
 
     return {"status": "success"}
 
-def get_queued_episodes(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)
+def get_queued_episodes(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     get_queued_episodes_query = """
     SELECT 
@@ -2114,8 +2168,11 @@ def queue_bump(cnx, ep_url, title, user_id):
     return {"detail": f"{title} moved to the front of the queue."}
 
 
-def backup_user(cnx, user_id):
-    cursor = cnx.cursor(dictionary=True)  # We use dictionary=True to fetch results as dictionaries
+def backup_user(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
 
     # Fetch podcasts for the user
     cursor.execute(
