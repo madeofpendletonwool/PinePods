@@ -96,7 +96,7 @@ count = cursor.fetchone()[0]
 if count == 0:
     cursor.execute("""
         INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
-        VALUES (0, 1, %s)
+        VALUES (false, true, %s)
     """, (key,))
 
 cursor.execute("""
@@ -121,14 +121,14 @@ rows = cursor.fetchone()
 if rows[0] == 0:
     cursor.execute("""
         INSERT INTO EmailSettings (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
-        VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', 1, 'default_username', 'default_password')
+        VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', true, 'default_username', 'default_password')
     """)
 
 
 
 cursor.execute("""
     INSERT INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
-    VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)
+    VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', false)
     ON CONFLICT (Username) DO NOTHING
 """)
 
