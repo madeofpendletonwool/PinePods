@@ -53,7 +53,7 @@ cursor.execute("""
         MFA_Secret VARCHAR(50),
         TimeZone VARCHAR(50) DEFAULT 'UTC',
         TimeFormat INT  DEFAULT 24,
-        FirstLogin BOOLEAN DEFAULT 0
+        FirstLogin BOOLEAN DEFAULT false
     )
 """)
 
@@ -84,8 +84,8 @@ key = Fernet.generate_key()
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS AppSettings (
         AppSettingsID SERIAL PRIMARY KEY,
-        SelfServiceUser BOOLEAN DEFAULT 0,
-        DownloadEnabled BOOLEAN DEFAULT 1,
+        SelfServiceUser BOOLEAN DEFAULT false,
+        DownloadEnabled BOOLEAN DEFAULT true,
         EncryptionKey BYTEA
     )
 """)

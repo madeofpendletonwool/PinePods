@@ -34,7 +34,7 @@ sys.path.append('/pinepods')
 import database_functions.functions
 import Auth.Passfunctions
 
-database_type = int(os.getenv('DB_TYPE', 3306))
+database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
     print(f"You've selected a postgresql database.")
 else:
