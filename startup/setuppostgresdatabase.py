@@ -181,7 +181,7 @@ admin_insert_query = """
 """  # Assuming 'Username' is the unique column
 
 # Execute the INSERT statement with the admin user variables
-cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hash_pw, salt, 1))
+cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hash_pw, salt, true))
 
 cursor.execute("""INSERT INTO UserStats (UserID) VALUES (1) ON CONFLICT (UserID) DO NOTHING""")
 
