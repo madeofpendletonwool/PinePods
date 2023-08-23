@@ -218,7 +218,7 @@ def create_index_if_not_exists(cursor, index_name, table_name, column_name):
     cursor.execute(f"""
         SELECT 1 
         FROM pg_indexes 
-        WHERE indexname = '{index_name}' AND tablename = '{table_name}'
+        WHERE lower(indexname) = lower('{index_name}') AND lower(tablename) = lower('{table_name}')
     """)
     if not cursor.fetchone():
         cursor.execute(f"CREATE INDEX {index_name} ON {table_name}({column_name})")
