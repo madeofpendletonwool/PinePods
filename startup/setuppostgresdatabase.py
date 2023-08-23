@@ -233,7 +233,7 @@ create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "E
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
                     UserSettingID SERIAL PRIMARY KEY,
                     UserID INT UNIQUE,
-                    Theme VARCHAR(255) UNIQUE DEFAULT 'nordic',
+                    Theme VARCHAR(255) DEFAULT 'nordic',
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")
 
