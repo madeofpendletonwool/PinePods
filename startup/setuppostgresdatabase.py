@@ -67,7 +67,7 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                     UserStatsID SERIAL PRIMARY KEY,
-                    UserID INT,
+                    UserID INT UNIQUE,
                     UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PodcastsPlayed INT DEFAULT 0,
                     TimeListened INT DEFAULT 0,
@@ -233,7 +233,7 @@ create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "E
 cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
                     UserSettingID SERIAL PRIMARY KEY,
                     UserID INT UNIQUE,
-                    Theme VARCHAR(255) DEFAULT 'nordic',
+                    Theme VARCHAR(255) UNIQUE DEFAULT 'nordic',
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")
 
