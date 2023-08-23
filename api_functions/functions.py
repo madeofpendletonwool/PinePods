@@ -94,6 +94,7 @@ def call_create_session(url, headers, user_id):
         return session_token
     else:
         print("Error creating session:", response.status_code)
+        print("Error details:", response.text)
         return None
 
 def call_verify_password(url, headers, username, password):
@@ -104,6 +105,7 @@ def call_verify_password(url, headers, username, password):
         return is_password_valid
     else:
         print("Error verifying password:", response.status_code)
+        print("Error details:", response.text)
         return None
 
 
@@ -118,6 +120,7 @@ def call_return_episodes(url, headers, user_id):
             return None
     else:
         print("Error fetching episodes:", response.status_code)
+        print("Error details:", response.text)
         return None
 
 
