@@ -341,8 +341,6 @@ def refresh_pods(cnx):
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall() # fetch the result set
 
-    cursor.nextset()  # move to the next result set
-
     for (podcast_id, feed_url, artwork_url) in result_set:
         print(f'Running for :{podcast_id}')
         add_episodes(cnx, podcast_id, feed_url, artwork_url)
