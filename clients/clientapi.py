@@ -227,7 +227,10 @@ class VerifyPasswordInput(BaseModel):
 
 @app.post("/api/data/verify_password/")
 async def api_verify_password(data: VerifyPasswordInput, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
+    if database_type == 'postgresql':
+        is_password_valid = database_functions.functions.verify_password(cnx, data.username, data.password)
+    else:
+        is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
     return {"is_password_valid": is_password_valid}
 
 
