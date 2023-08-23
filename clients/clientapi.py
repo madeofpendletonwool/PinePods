@@ -84,9 +84,6 @@ def get_database_connection():
         else:
             db.close()
 
-
-
-
 def setup_connection_pool():
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = os.environ.get("DB_PORT", "3306")
@@ -120,14 +117,21 @@ def setup_connection_pool():
 connection_pool = setup_connection_pool()
 
 def get_api_keys(cnx):
+    logging.info("Executing get_api_keys function...")
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
     query = "SELECT * FROM APIKeys"
-    cursor.execute(query)
-    rows = cursor.fetchall()
+    try:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+    except Exception as e:
+        logging.error(f"Database error: {e}")
+        raise
+    logging.info(f"Retrieved API keys: {rows}")
+
     cursor.close()
     return rows
 
