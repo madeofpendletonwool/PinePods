@@ -143,8 +143,8 @@ def get_api_key(request: Request, api_key: str = Depends(api_key_header), cnx: G
     api_keys = get_api_keys(cnx)
 
     for api_key_entry in api_keys:
-        stored_key = api_key_entry["APIKey"]
-        client_id = api_key_entry["APIKeyID"]
+        stored_key = api_key_entry.get("APIKey".lower(), None)
+        client_id = api_key_entry.get("APIKeyID".lower(), None)
 
         if api_key == stored_key:  # Direct comparison instead of using Passlib
             request.session["api_key"] = api_key  # Store the API key in the session
@@ -159,10 +159,11 @@ def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
 
 @app.get('/api/data')
 async def get_data(client_id: str = Depends(get_api_key)):
-    # You can use client_id to fetch specific data for the client
-    # ...
-
-    return {"status": "success", "data": "Your data"}
+    try:
+        return {"status": "success", "data": "Your data"}
+    except Exception as e:
+        logging.error(f"Error in /api/data endpoint: {e}")
+        raise
 
 @app.get('/api/pinepods_check')
 async def pinepods_check():
