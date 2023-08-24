@@ -47,7 +47,9 @@ EOF
 mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
+mkdir -p /opt/pinepods/certs
 
+openssl req -x509 -newkey rsa:4096 -keyout /opt/pinepods/certs/key.pem -out /opt/pinepods/certs/cert.pem -days 365
 echo "127.0.0.1 $HOSTNAME" >> /etc/hosts
 
 # Database Setup
