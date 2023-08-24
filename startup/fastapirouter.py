@@ -21,6 +21,7 @@ logging.basicConfig(level=logging.INFO)
 hostname = str(os.getenv('HOSTNAME', 'localhost'))
 proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))
 print(hostname)
+print(proxy_protocol)
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_api_requests(request: Request, api_path: str):
