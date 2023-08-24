@@ -19,6 +19,7 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 
 hostname = str(os.getenv('HOSTNAME', 'localhost'))
+proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))
 print(hostname)
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -70,6 +71,10 @@ async def proxy_api_requests(request: Request, api_path: str):
 
 @app.api_route("/mover/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
+    if proxy_protocol == 'http':
+        proxy_url = f"http://{hostname}:8000/proxy?url="
+    else:
+        proxy_url = f"https://{hostname}:8000/proxy?url="
     print("Entered /mover route")
     url = request.query_params.get("url")
 
@@ -81,7 +86,7 @@ async def proxy_image_requests(request: Request):
         try:
             response = await client.request(
                 request.method,
-                f"https://{hostname}:8000/proxy?url={url}",
+                f"{proxy_url}{url}",
                 headers=headers,
                 cookies=request.cookies,
                 data=await request.body(),

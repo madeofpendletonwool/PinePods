@@ -12,6 +12,7 @@ export PASSWORD=${PASSWORD:-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c14 ;
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
 export PINEPODS_PORT=$PINEPODS_PORT
+export PROXY_PROTOCOL=$PROXY_PROTOCOL
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"
@@ -64,6 +65,10 @@ fi
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
 
 # Start all services with supervisord
+if [[ $PROXY_PROTOCOL == "http" ]]; then
 supervisord -c /pinepods/startup/supervisord.conf
+else
+supervisord -c /pinepods/startup/supervisord.conf
+fi
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
