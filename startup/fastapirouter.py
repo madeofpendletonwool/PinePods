@@ -100,7 +100,7 @@ async def proxy_requests(request: Request, path: str):
         try:
             response = await client.request(
                 request.method,
-                f"http://{hostname}:8034/{path}",
+                f"http://localhost:8034/{path}",
                 headers=headers,
                 cookies=request.cookies,
                 data=await request.body(),
