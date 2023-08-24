@@ -171,54 +171,54 @@ def main(page: ft.Page, session_value=None):
                 "pinepods_api": self.api_value,
             }
 
-            try:
-                check_response = requests.get(check_url, timeout=10)
-                if check_response.status_code != 200:
-                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
+            # try:
+            #     check_response = requests.get(check_url, timeout=10)
+            #     if check_response.status_code != 200:
+            #         self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+            #         pr_instance.rm_stack()
+            #         self.page.update()
+            #         return
+            #
+            #     check_data = check_response.json()
+            #
+            #     if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
+            #         self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
+            #         pr_instance.rm_stack()
+            #         self.page.update()
+            #         return
+            #
+            #     response = requests.get(self.url, headers=initial_headers, timeout=10)
+            #     response.raise_for_status()
+            #
+            # except MissingSchema:
+            #     self.show_error_snackbar("This doesn't appear to be a proper URL.")
+            # except requests.exceptions.Timeout:
+            #     self.show_error_snackbar("Request timed out. Please check your URL.")
+            # except RequestException as e:
+            #     self.show_error_snackbar(f"Request failed: {e}")
+            #
+            # else:
+            #     if response.status_code == 200:
+            data = response.json()
 
-                check_data = check_response.json()
+            self.show_error_snackbar(f"Connected to {proxy_host}!")
 
-                if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
-                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-                response = requests.get(self.url, headers=initial_headers, timeout=10)
-                response.raise_for_status()
-
-            except MissingSchema:
-                self.show_error_snackbar("This doesn't appear to be a proper URL.")
-            except requests.exceptions.Timeout:
-                self.show_error_snackbar("Request timed out. Please check your URL.")
-            except RequestException as e:
-                self.show_error_snackbar(f"Request failed: {e}")
-
-            else:
-                if response.status_code == 200:
-                    data = response.json()
-
-                    self.show_error_snackbar(f"Connected to {proxy_host}!")
-
-                    if login_screen:
-                        if page.web:
-                            start_login(page)
-                        else:
-                            start_login(page)
-
-                    else:
-                        active_user.user_id = 1
-                        active_user.fullname = 'Guest User'
-                        go_homelogin(page)
-                elif response.status_code == 401:
-                    start_config(self.page)
+            if login_screen:
+                if page.web:
+                    start_login(page)
                 else:
-                    self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
-            # pr_instance.rm_stack()
-            self.page.update()
+                    start_login(page)
+
+    #         else:
+    #             active_user.user_id = 1
+    #             active_user.fullname = 'Guest User'
+    #             go_homelogin(page)
+    #     elif response.status_code == 401:
+    #         start_config(self.page)
+    #     else:
+    #         self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
+    # # pr_instance.rm_stack()
+    # self.page.update()
 
         def show_error_snackbar(self, message):
             self.page.snack_bar = ft.SnackBar(ft.Text(message))
