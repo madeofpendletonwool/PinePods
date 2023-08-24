@@ -18,6 +18,8 @@ app.add_middleware(
 )
 logging.basicConfig(level=logging.INFO)
 
+hostname = str(os.getenv('HOSTNAME', 'localhost'))
+print(hostname)
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_api_requests(request: Request, api_path: str):
@@ -66,9 +68,9 @@ async def proxy_api_requests(request: Request, api_path: str):
             return Response(content=f"Proxy Error: {exc}", status_code=502)
 
 
-@app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/mover/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
-    print("Entered /proxy route")
+    print("Entered /mover route")
     url = request.query_params.get("url")
 
     if not url:
@@ -79,7 +81,7 @@ async def proxy_image_requests(request: Request):
         try:
             response = await client.request(
                 request.method,
-                f"http://localhost:8000/proxy?url={url}",
+                f"https://{hostname}:8000/proxy?url={url}",
                 headers=headers,
                 cookies=request.cookies,
                 data=await request.body(),
