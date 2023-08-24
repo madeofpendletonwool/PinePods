@@ -47,6 +47,9 @@ EOF
 mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
+
+echo "127.0.0.1 $HOSTNAME" >> /etc/hosts
+
 # Database Setup
 if [[ $DB_TYPE == "postgresql" ]]; then
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setuppostgresdatabase.py
