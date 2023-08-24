@@ -18,6 +18,8 @@ app.add_middleware(
 )
 logging.basicConfig(level=logging.INFO)
 
+hostname = int(os.getenv('HOSTNAME', localhost))
+
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_api_requests(request: Request, api_path: str):
@@ -26,7 +28,7 @@ async def proxy_api_requests(request: Request, api_path: str):
         headers = {k: v for k, v in request.headers.items() if k not in ["Host", "Connection"]}
 
         # Build the URL for the proxy request, including the original query parameters
-        proxy_url = f"http://localhost:8032/api/{api_path}"
+        proxy_url = f"https://{hostname}:8032/api/{api_path}"
         if request.query_params:
             proxy_url += f"?{request.query_params}"
 
@@ -79,7 +81,7 @@ async def proxy_image_requests(request: Request):
         try:
             response = await client.request(
                 request.method,
-                f"http://localhost:8000/proxy?url={url}",
+                f"https://hostname:8000/proxy?url={url}",
                 headers=headers,
                 cookies=request.cookies,
                 data=await request.body(),
@@ -98,7 +100,7 @@ async def proxy_requests(request: Request, path: str):
         try:
             response = await client.request(
                 request.method,
-                f"http://localhost:8034/{path}",
+                f"http://{hostname}:8034/{path}",
                 headers=headers,
                 cookies=request.cookies,
                 data=await request.body(),
