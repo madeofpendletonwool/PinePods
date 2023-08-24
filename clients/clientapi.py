@@ -865,6 +865,6 @@ if __name__ == '__main__':
         "clientapi:app",
         host="0.0.0.0",
         port=args.port,
-        ssl_keyfile="/opt/pinepods/certs/key.pem",  # Replace with the path to your key.pem
-        ssl_certfile="/opt/pinepods/certs/cert.pem"  # Replace with the path to your cert.pem
+        # ssl_keyfile="/opt/pinepods/certs/key.pem",  # Replace with the path to your key.pem
+        # ssl_certfile="/opt/pinepods/certs/cert.pem"  # Replace with the path to your cert.pem
     )
