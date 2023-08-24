@@ -49,8 +49,10 @@ mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
 
-openssl req -x509 -newkey rsa:4096 -keyout /opt/pinepods/certs/key.pem -out /opt/pinepods/certs/cert.pem -days 365
+openssl req -x509 -nodes -newkey rsa:4096 -keyout /opt/pinepods/certs/key.pem -out /opt/pinepods/certs/cert.pem -days 365 -subj "/C=US/ST=NY/L=NewYork/O=PinePods/CN=$HOSTNAME"
 echo "127.0.0.1 $HOSTNAME" >> /etc/hosts
+echo "Hosts file written and can be seen below:"
+cat /etc/hosts
 
 # Database Setup
 if [[ $DB_TYPE == "postgresql" ]]; then
