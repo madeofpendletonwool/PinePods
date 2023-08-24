@@ -18,7 +18,7 @@ app.add_middleware(
 )
 logging.basicConfig(level=logging.INFO)
 
-hostname = int(os.getenv('HOSTNAME', 'localhost'))
+hostname = str(os.getenv('HOSTNAME', 'localhost'))
 
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
