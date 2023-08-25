@@ -7,11 +7,12 @@ import gzip
 from io import BytesIO
 import os
 import uvicorn
+proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
 hostname = str(os.getenv('HOSTNAME', 'localhost'))
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000", f"https://{hostname}", f"http://{hostname}"],  # replace <FRONTEND_PORT> with the port of your frontend app
+    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000", f"https://{hostname}", f"http://{hostname}", f"http://{hostname}:{proxy_port}", f"http://{hostname}:{proxy_port}"],  # replace <FRONTEND_PORT> with the port of your frontend app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -151,3 +152,4 @@ if __name__ == '__main__':
     proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
 
     uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)
+    

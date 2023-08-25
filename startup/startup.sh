@@ -13,6 +13,7 @@ export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
 export PINEPODS_PORT=$PINEPODS_PORT
 export PROXY_PROTOCOL=$PROXY_PROTOCOL
+export PINEPODS_PORT=$PINEPODS_PORT
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"
