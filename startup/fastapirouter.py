@@ -11,7 +11,7 @@ hostname = str(os.getenv('HOSTNAME', 'localhost'))
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000", f"https://{HOSTNAME}", f"http://{HOSTNAME}"],  # replace <FRONTEND_PORT> with the port of your frontend app
+    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000", f"https://{hostname}", f"http://{hostname}"],  # replace <FRONTEND_PORT> with the port of your frontend app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
