@@ -152,4 +152,3 @@ if __name__ == '__main__':
     proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
 
     uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)
-    

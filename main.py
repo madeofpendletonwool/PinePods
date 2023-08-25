@@ -66,12 +66,12 @@ session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 #     audio_proxy = f'{proxy_protocol}://{proxy_host}/proxy/'
 # else:
 if proxy_protocol == 'http':
-    proxy_url = f'http://{proxy_host}:8040/mover/?url='
-    audio_proxy = f'http://{proxy_host}:8040/mover/'
+    proxy_url = f'http://{proxy_host}/mover/?url='
+    audio_proxy = f'http://{proxy_host}/mover/'
 
 else:
-    proxy_url = f'https://{proxy_host}:8040/mover/?url='
-    audio_proxy = f'https://{proxy_host}:8040/mover/'
+    proxy_url = f'https://{proxy_host}/mover/?url='
+    audio_proxy = f'https://{proxy_host}/mover/'
 
 
 # --- Create Flask app for caching ------------------------------------------------
