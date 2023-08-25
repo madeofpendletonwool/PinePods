@@ -7,18 +7,18 @@ import gzip
 from io import BytesIO
 import os
 import uvicorn
-
+hostname = str(os.getenv('HOSTNAME', 'localhost'))
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000"],  # replace <FRONTEND_PORT> with the port of your frontend app
+    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000", f"https://{HOSTNAME}", f"http://{HOSTNAME}"],  # replace <FRONTEND_PORT> with the port of your frontend app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 logging.basicConfig(level=logging.INFO)
 
-hostname = str(os.getenv('HOSTNAME', 'localhost'))
+
 proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))
 print(hostname)
 print(proxy_protocol)
