@@ -62,9 +62,11 @@ if [[ $DB_TYPE == "postgresql" ]]; then
 else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
-
+# Periodic refresh
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
-
+# Fix permissions on exim email server folders
+chown -R Debian-exim:Debian-exim /var/log/exim4
+chown -R Debian-exim:Debian-exim /var/spool/exim4
 # Start all services with supervisord
 if [[ $PROXY_PROTOCOL == "http" ]]; then
 supervisord -c /pinepods/startup/supervisord.conf
