@@ -40,6 +40,8 @@ import pytz
 import shutil
 from base64 import urlsafe_b64decode
 
+requests.packages.urllib3.disable_warnings()
+
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Wait for Client API Server to start
