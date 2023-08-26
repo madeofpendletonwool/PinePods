@@ -80,12 +80,13 @@ app = Flask(__name__)
 def preload_audio_file(url, audio_proxy, cache):
     print(url)
     print(audio_proxy)
-    full_url = f"{audio_proxy}?url={url}"
+    full_url = f"{audio_proxy}?url={urllib.parse.quote(url)}"
     print(full_url)
-    response = requests.get(audio_proxy, params={'url': url})
+    response = requests.get(full_url)
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
+
 
 def initialize_audio_routes(app, audio_proxy):
     cache = Cache(app, config={'CACHE_TYPE': 'simple'})
