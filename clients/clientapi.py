@@ -169,7 +169,7 @@ async def get_data(client_id: str = Depends(get_api_key)):
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
-@app.get('/api/verify_key')
+@app.get('/api/data/verify_key')
 async def verify_key(request: Request, cnx = Depends(get_database_connection)):
     api_key = request.headers.get("Api-Key")
     if not api_key:
