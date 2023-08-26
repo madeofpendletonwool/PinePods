@@ -82,7 +82,7 @@ def preload_audio_file(url, proxy_url, cache):
     print(proxy_url)
     full_url = f"{proxy_url}{urllib.parse.quote(url)}"
     print(full_url)
-    response = requests.get(full_url)
+    response = requests.get(full_url, verify=False)
     if response.status_code == 200:
         # Cache the file content
         cache.set(url, response.content)
