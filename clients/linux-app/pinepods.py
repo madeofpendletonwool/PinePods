@@ -298,19 +298,23 @@ def main(page: ft.Page, session_value=None):
         def api_verify(self, server_name, api_value, retain_session=False):
             # pr_instance.touch_stack()
             self.page.update()
-            url = server_name + "/api/data"
+            print(server_name)
             check_url = server_name + "/api/pinepods_check"
-            self.url = url
+            self.url = server_name + "/api/data"  # keep this for later use
+
+            if not api_value:
+                self.show_error_snackbar("API key is required.")
+                pr_instance.rm_stack()
+                self.page.update()
+                return
+
             self.api_value = api_value
             self.headers = {"Api-Key": self.api_value}
-
-            headers = {
-                "pinepods_api": api_value,
-            }
 
             try:
                 print(check_url)
                 check_response = requests.get(check_url, timeout=10)
+                print(check_response.status_code)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
                     pr_instance.rm_stack()
@@ -325,9 +329,6 @@ def main(page: ft.Page, session_value=None):
                     self.page.update()
                     return
 
-                response = requests.get(url, headers=headers, timeout=10)
-                response.raise_for_status()
-
             except MissingSchema:
                 self.show_error_snackbar("This doesn't appear to be a proper URL.")
             except requests.exceptions.Timeout:
@@ -337,8 +338,17 @@ def main(page: ft.Page, session_value=None):
                 start_config(page)
 
             else:
-                if response.status_code == 200:
-                    data = response.json()
+                # If we reach here, it means the pinepods_check was successful.
+                # Do the rest of your logic here.
+                key_check = api_functions.functions.call_verify_key(self.url, self.headers)
+                
+                if not key_check or key_check.get('status') != 'success':
+                    self.show_error_snackbar("Invalid API key.")
+                    pr_instance.rm_stack()
+                    self.page.update()
+                    return
+
+                else:
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
                     saved_session_value = get_saved_session_id_from_file()
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers,
@@ -372,10 +382,7 @@ def main(page: ft.Page, session_value=None):
                         active_user.user_id = 1
                         active_user.fullname = 'Guest User'
                         go_homelogin(page)
-                elif response.status_code == 401:
-                    start_config(self.page)
-                else:
-                    self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
+
             # pr_instance.rm_stack()
             self.page.update()
 

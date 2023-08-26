@@ -80,10 +80,7 @@ else:
 app = Flask(__name__)
 
 def preload_audio_file(url, proxy_url, cache):
-    print(url)
-    print(proxy_url)
     full_url = f"{proxy_url}{urllib.parse.quote(url)}"
-    print(full_url)
     response = requests.get(full_url, verify=False)
     if response.status_code == 200:
         # Cache the file content
@@ -415,7 +412,6 @@ def main(page: ft.Page, session_value=None):
             return progress
 
     def check_image(artwork_path):
-        print(f"{proxy_url}{artwork_path}")
         return f"{proxy_url}{artwork_path}"
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
@@ -708,7 +704,6 @@ def main(page: ft.Page, session_value=None):
                 page.update()
                 # release audio_element if it exists
                 if self.audio_element:
-                    print('releasing')
                     self.audio_element.release()
                     if self.audio_element in page.overlay:
                         page.overlay.remove(self.audio_element)
@@ -1593,7 +1588,6 @@ def main(page: ft.Page, session_value=None):
                     art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
-                    print(art_url_parsed)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
@@ -1898,7 +1892,6 @@ def main(page: ft.Page, session_value=None):
             pod_controls.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
 
             if page.width <= 768 and page.width != 0:
-                print('using toggle pod currently')
                 page_items.search_pods.visible = False
                 page_items.search_location.visible = False
 
@@ -1925,7 +1918,6 @@ def main(page: ft.Page, session_value=None):
         pod_controls.currently_playing.content = ft.Text(current_episode.name_truncated, size=16)
 
         if page.width <= 768 and page.width != 0:
-            print('using toggle pod currently')
             page_items.search_pods.visible = False
             page_items.search_location.visible = False
 
@@ -3358,7 +3350,6 @@ def main(page: ft.Page, session_value=None):
             coffee_contain.alignment = alignment.bottom_center
             image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
             finish_image_path = check_image(image_path)
-            print(finish_image_path)
             pinepods_img = ft.Image(
                 src=finish_image_path,
                 width=100,
@@ -4341,7 +4332,6 @@ def main(page: ft.Page, session_value=None):
                             if e.files:
                                 active_user.import_file = e.files[0].path
 
-                            print('testing')
                             tree = ET.parse(active_user.import_file)
                             root = tree.getroot()
 
@@ -4456,7 +4446,6 @@ def main(page: ft.Page, session_value=None):
                                     subprocess.Popen(["open", path])
                                 else:
                                     subprocess.Popen(["xdg-open", path])
-                            print(backup_dir)
                             open_folder(backup_dir)
 
                         def close_backup_status_win(page):

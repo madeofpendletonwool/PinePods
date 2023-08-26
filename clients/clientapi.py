@@ -169,6 +169,18 @@ async def get_data(client_id: str = Depends(get_api_key)):
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
+@app.get('/api/verify_key')
+async def verify_key(request: Request, cnx = Depends(get_database_connection)):
+    api_key = request.headers.get("Api-Key")
+    if not api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key is missing")
+
+    client_id = get_api_key(request, api_key, cnx)
+    if not client_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+    return {"status": "success"}
+
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     database_functions.functions.clean_expired_sessions(cnx)

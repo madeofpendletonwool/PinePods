@@ -21,8 +21,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))
-print(hostname)
-print(proxy_protocol)
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_api_requests(request: Request, api_path: str):
@@ -73,7 +71,6 @@ async def proxy_api_requests(request: Request, api_path: str):
 
 @app.api_route("/mover/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
-    print("Entered /mover route")
     url = request.query_params.get("url")
 
     if not url:
