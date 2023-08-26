@@ -147,4 +147,5 @@ if __name__ == '__main__':
     # Fetch the PROXY_PORT environment variable. If not set, default to 8040
     proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
 
-    uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)
+    uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port, ssl_keyfile="/opt/pinepods/certs/key.pem", ssl_certfile="/opt/pinepods/certs/cert.pem")
+
