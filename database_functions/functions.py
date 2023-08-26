@@ -1247,6 +1247,16 @@ def enable_disable_self_service(cnx):
     cursor.close()
     # cnx.close()
 
+def verify_api_key(cnx, passed_key):
+    cursor = cnx.cursor()
+    query = "SELECT * FROM APIKeys WHERE APIKey = %s"
+    cursor.execute(query, (passed_key,))
+    result = cursor.fetchone()
+    cursor.close()
+    return True if result else False
+
+
+
 
 def get_stats(cnx, user_id):
     cursor = cnx.cursor()

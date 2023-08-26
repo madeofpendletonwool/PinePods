@@ -175,11 +175,11 @@ async def verify_key(request: Request, cnx = Depends(get_database_connection), a
     if not api_key:
         return {"status": "API key is missing"}
 
-    client_id = get_api_key(request, api_key, cnx)
-    if not client_id:
+    if not database_functions.functions.verify_api_key(cnx, api_key):
         return {"status": "Invalid API key"}
 
     return {"status": "success"}
+
 
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
