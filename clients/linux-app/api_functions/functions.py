@@ -19,9 +19,11 @@ def call_verify_key(url, headers):
     response = requests.get(url + "/verify_key", headers=headers)
     if response.status_code == 200:
         print('Response good!')
-        # print(response.json())
+        return {"status": "success"}
     else:
         print("Error calling verify_key:", response.status_code)
+        return {"status": "error", "code": response.status_code}
+
 
 
 def call_check_saved_session(url, headers, session_value):
