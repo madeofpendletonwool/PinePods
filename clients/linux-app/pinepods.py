@@ -343,7 +343,7 @@ def main(page: ft.Page, session_value=None):
                 key_check = api_functions.functions.call_verify_key(self.url, self.headers)
 
                 if not key_check or key_check.get('status') != 'success':
-                    self.show_error_snackbar(f"Invalid API key: {key_check.get}")
+                    self.show_error_snackbar(f"Invalid API key: {key_check.get('status')}")
                     pr_instance.rm_stack()
                     self.page.update()
                     return
