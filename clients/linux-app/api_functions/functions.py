@@ -16,7 +16,7 @@ def call_clean_expired_sessions(url, headers):
         print("Error calling clean_expired_sessions:", response.status_code)
 
 def call_verify_key(url, headers):
-    response = requests.post(url + "/verify_key/", headers=headers)
+    response = requests.get(url + "/verify_key/", headers=headers, allow_redirects=True)
     if response.status_code == 200:
         print('Response good!')
         # print(response.json())
