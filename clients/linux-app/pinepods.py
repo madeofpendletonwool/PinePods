@@ -341,6 +341,7 @@ def main(page: ft.Page, session_value=None):
                 # If we reach here, it means the pinepods_check was successful.
                 # Do the rest of your logic here.
                 key_check = api_functions.functions.call_verify_key(self.url, self.headers)
+                print(f"Key Check: {key_check}")
 
                 if not key_check or key_check.get('status') != 'success':
                     self.show_error_snackbar(f"Invalid API key: {key_check.get('status')}")
