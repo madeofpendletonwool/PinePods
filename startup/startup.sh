@@ -12,6 +12,8 @@ export PASSWORD=${PASSWORD:-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c14 ;
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
 export PINEPODS_PORT=$PINEPODS_PORT
+export PROXY_PROTOCOL=$PROXY_PROTOCOL
+export PINEPODS_PORT=$PINEPODS_PORT
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"
@@ -47,16 +49,29 @@ EOF
 mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
+mkdir -p /opt/pinepods/certs
+
+openssl req -x509 -nodes -newkey rsa:4096 -keyout /opt/pinepods/certs/key.pem -out /opt/pinepods/certs/cert.pem -days 365 -subj "/C=US/ST=NY/L=NewYork/O=PinePods/CN=$HOSTNAME"
+echo "127.0.0.1 $HOSTNAME" >> /etc/hosts
+echo "Hosts file written and can be seen below:"
+cat /etc/hosts
+
 # Database Setup
 if [[ $DB_TYPE == "postgresql" ]]; then
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setuppostgresdatabase.py
 else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
-
+# Periodic refresh
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
-
+# Fix permissions on exim email server folders
+chown -R Debian-exim:Debian-exim /var/log/exim4
+chown -R Debian-exim:Debian-exim /var/spool/exim4
 # Start all services with supervisord
+if [[ $PROXY_PROTOCOL == "http" ]]; then
 supervisord -c /pinepods/startup/supervisord.conf
+else
+supervisord -c /pinepods/startup/supervisord.conf
+fi
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD

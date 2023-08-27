@@ -244,7 +244,7 @@ active_pod = 'Set at start'
 initial_script_dir = os.path.dirname(os.path.realpath(__file__))
 script_dir = os.path.dirname(os.path.dirname(initial_script_dir))
 
-appname = "pinepods"
+appname = "Pinepods"
 appauthor = "Gooseberry Development"
 
 # user_data_dir would be the equivalent to the home directory you were using
@@ -298,19 +298,23 @@ def main(page: ft.Page, session_value=None):
         def api_verify(self, server_name, api_value, retain_session=False):
             # pr_instance.touch_stack()
             self.page.update()
-            url = server_name + "/api/data"
+            print(server_name)
             check_url = server_name + "/api/pinepods_check"
-            self.url = url
+            self.url = server_name + "/api/data"  # keep this for later use
+
+            if not api_value:
+                self.show_error_snackbar("API key is required.")
+                pr_instance.rm_stack()
+                self.page.update()
+                return
+
             self.api_value = api_value
             self.headers = {"Api-Key": self.api_value}
-
-            headers = {
-                "pinepods_api": api_value,
-            }
 
             try:
                 print(check_url)
                 check_response = requests.get(check_url, timeout=10)
+                print(check_response.status_code)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
                     pr_instance.rm_stack()
@@ -325,9 +329,6 @@ def main(page: ft.Page, session_value=None):
                     self.page.update()
                     return
 
-                response = requests.get(url, headers=headers, timeout=10)
-                response.raise_for_status()
-
             except MissingSchema:
                 self.show_error_snackbar("This doesn't appear to be a proper URL.")
             except requests.exceptions.Timeout:
@@ -337,20 +338,30 @@ def main(page: ft.Page, session_value=None):
                 start_config(page)
 
             else:
-                if response.status_code == 200:
-                    data = response.json()
+                # If we reach here, it means the pinepods_check was successful.
+                # Do the rest of your logic here.
+                key_check = api_functions.functions.call_verify_key(self.url, self.headers)
+                print(f"Key Check: {key_check}")
+
+                if not key_check or key_check.get('status') != 'success':
+                    self.show_error_snackbar(f"Invalid API key: {key_check.get('status')}")
+                    pr_instance.rm_stack()
+                    self.page.update()
+                    return
+
+                else:
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
                     saved_session_value = get_saved_session_id_from_file()
                     check_session = api_functions.functions.call_check_saved_session(self.url, self.headers,
                                                                                      saved_session_value)
-                    global api_url
+                    global search_api_url
                     global proxy_url
                     global proxy_host
                     global proxy_port
                     global proxy_protocol
                     global reverse_proxy
                     global cache
-                    api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(
+                    search_api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(
                         self.url, self.headers)
                     # self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
@@ -372,10 +383,7 @@ def main(page: ft.Page, session_value=None):
                         active_user.user_id = 1
                         active_user.fullname = 'Guest User'
                         go_homelogin(page)
-                elif response.status_code == 401:
-                    start_config(self.page)
-                else:
-                    self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
+
             # pr_instance.rm_stack()
             self.page.update()
 
@@ -2052,10 +2060,12 @@ def main(page: ft.Page, session_value=None):
                 if page_items.search_pods.value:
                     new_search.searchvalue = page_items.search_pods.value
                     new_search.searchlocation = page_items.search_location.value
+                    print(new_search.searchvalue)
+                    print(f'search_api_url: {search_api_url}')
                     pr_instance.touch_stack()
                     page.update()
                     # Run the test_connection function
-                    connection_test_result = internal_functions.functions.test_connection(api_url)
+                    connection_test_result = internal_functions.functions.test_connection(search_api_url)
                     if connection_test_result is not True:
                         page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
                         page.snack_bar.open = True
@@ -2083,7 +2093,7 @@ def main(page: ft.Page, session_value=None):
                     close_search_dlg(page)
                     pr_instance.touch_stack()
                     page.update()
-                    connection_test_result = internal_functions.functions.test_connection(api_url)
+                    connection_test_result = internal_functions.functions.test_connection(search_api_url)
                     if connection_test_result is not True:
                         page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
                         page.snack_bar.open = True
@@ -2212,10 +2222,9 @@ def main(page: ft.Page, session_value=None):
             page.bgcolor = colors.BLUE_GREY
 
             # Home Screen Podcast Layout (Episodes in Newest order)
-            print('pre-run call episodes')
+
             home_episodes = api_functions.functions.call_return_episodes(app_api.url, app_api.headers,
                                                                          active_user.user_id)
-            print(home_episodes)
             home_layout = Pod_View(page)
             active_user.current_pod_view = home_layout
 
@@ -3638,7 +3647,7 @@ def main(page: ft.Page, session_value=None):
 
                 return mapped
 
-            search_results = internal_functions.functions.searchpod(podcast_value, api_url, new_search.searchlocation)
+            search_results = internal_functions.functions.searchpod(podcast_value, search_api_url, new_search.searchlocation)
 
             # Create a ThreadPoolExecutor.
             with ThreadPoolExecutor(max_workers=20) as executor:

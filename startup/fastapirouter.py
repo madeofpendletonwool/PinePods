@@ -7,17 +7,21 @@ import gzip
 from io import BytesIO
 import os
 import uvicorn
-
+proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
+hostname = str(os.getenv('HOSTNAME', 'localhost'))
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000"],  # replace <FRONTEND_PORT> with the port of your frontend app
+    allow_origins=["http://localhost:8040", "http://localhost:8032", "http://localhost:8034", "http://localhost:8000", f"https://{hostname}", f"http://{hostname}", f"http://{hostname}:{proxy_port}", f"http://{hostname}:{proxy_port}"],  # replace <FRONTEND_PORT> with the port of your frontend app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 logging.basicConfig(level=logging.INFO)
 
+
+proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))
+proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
 
 @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_api_requests(request: Request, api_path: str):
@@ -66,9 +70,8 @@ async def proxy_api_requests(request: Request, api_path: str):
             return Response(content=f"Proxy Error: {exc}", status_code=502)
 
 
-@app.api_route("/proxy/", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/mover/", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_image_requests(request: Request):
-    print("Entered /proxy route")
     url = request.query_params.get("url")
 
     if not url:
@@ -140,6 +143,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == '__main__':
     # Fetch the PROXY_PORT environment variable. If not set, default to 8040
-    proxy_port = int(os.getenv('PINEPODS_PORT', 8040))
-
-    uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)
+    if proxy_protocol == 'https':
+        uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port, ssl_keyfile="/opt/pinepods/certs/key.pem", ssl_certfile="/opt/pinepods/certs/cert.pem")
+    else:
+        uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)

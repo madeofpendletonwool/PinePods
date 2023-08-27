@@ -889,10 +889,8 @@ class QueueBump(BaseModel):
     title: str
     user_id: int
 
-
 @app.post("/api/data/queue_bump")
-async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
-                     api_key: str = Depends(get_api_key_from_header)):
+async def queue_bump(data: QueueBump, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     try:
         print(data)
         result = database_functions.functions.queue_bump(cnx, data.ep_url, data.title, data.user_id)
@@ -900,29 +898,35 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
         raise HTTPException(status_code=400, detail=str(e))
     return {"data": result}
 
-
 class BackupUser(BaseModel):
     user_id: int
 
-
 @app.post("/api/data/backup_user", response_class=PlainTextResponse)
-async def backup_user(data: BackupUser, cnx=Depends(get_database_connection)):
+async def backup_user(data: BackupUser, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     try:
         opml_data = database_functions.functions.backup_user(cnx, data.user_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return opml_data
 
-
 class BackupServer(BaseModel):
     backup_dir: str
     database_pass: str
-
-
 @app.get("/api/data/backup_server", response_class=PlainTextResponse)
-async def backup_server(data: BackupServer, cnx=Depends(get_database_connection)):
+async def backup_server(data: BackupServer, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     try:
-        dump_data = database_functions.functions.backup_server(cnx, data.database_pass)
+        dump_data = database_functions.functions.backup_server(cnx, data.backup_dir, data.database_pass)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return dump_data
+
+class RestoreServer(BaseModel):
+    database_pass: str
+    server_restore_data: str
+@app.post("/api/data/restore_server", response_class=PlainTextResponse)
+async def restore_server(data: RestoreServer, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    try:
+        dump_data = database_functions.functions.restore_server(cnx, data.database_pass, data.server_restore_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return dump_data

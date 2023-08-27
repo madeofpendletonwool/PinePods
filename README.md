@@ -72,7 +72,7 @@ services:
     image: madeofpendletonwool/pinepods:latest
     ports:
     # Pinepods Main Port
-      - "8040:8040"
+      - "8040:443"
     environment:
       # Basic Server Info
       HOSTNAME: try.pinepods.online
@@ -83,16 +83,16 @@ services:
       FULLNAME: Pinepods Admin
       EMAIL: user@pinepods.online
       # Database Vars
-      DB_TYPE: mysql
+      DB_TYPE: mariadb
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PINEPODS_PORT: 8040
-      PROXY_PROTOCOL: http
-      REVERSE_PROXY: "False"
+      PINEPODS_PORT: 443
+      PROXY_PROTOCOL: https
+      REVERSE_PROXY: "True"
 
     volumes:
     # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
@@ -114,8 +114,8 @@ Make sure you change these variables to variables specific to yourself.
       FULLNAME: John Pinepods
       EMAIL: john@pinepods.com
       DB_PASSWORD: password # This should match the MSQL_ROOT_PASSWORD
-      PINEPODS_PORT: 8040
-      PROXY_PROTOCOL: http
+      PINEPODS_PORT: 443
+      PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
 ```
 
@@ -132,13 +132,14 @@ The HOSTNAME variable is simply the hostname you'll be using for the name of you
 #### Proxy Info
 
 Second, the PINEPODS_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. Everything all runs over the one port, so you don't need to worry about much as the application itself will then use this proxy to route media though. Just make sure you set up the PINEPODS_PORT variable to be the port you exposed, and then setup PROXY_PROTOCOL and REVERSE_PROXY based on your setup. Pinepods can oc course be run over a reverse proxy. Here's a few examples of different setups
+PINEPODS_PORT can be anything, but if you're running it through a reverse proxy it MUST be 443. You can still map it to any other port externally, but it needs to be 443 interally.
 
 **Recommended:**
 Routed through proxy, secure, with reverse proxy
 
 ```
       HOSTNAME: try.pinepods.online
-      PROXY_PORT: 8033
+      PROXY_PORT: 443
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
 ```
@@ -308,11 +309,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
+- [ ] Implement Postgresql as option for database backend
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
-- [ ] Implement Postgresql as option for database backend
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] How-to guides on doing things in the app
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
