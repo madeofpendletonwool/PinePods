@@ -132,7 +132,7 @@ The HOSTNAME variable is simply the hostname you'll be using for the name of you
 #### Proxy Info
 
 Second, the PINEPODS_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. Everything all runs over the one port, so you don't need to worry about much as the application itself will then use this proxy to route media though. Just make sure you set up the PINEPODS_PORT variable to be the port you exposed, and then setup PROXY_PROTOCOL and REVERSE_PROXY based on your setup. Pinepods can oc course be run over a reverse proxy. Here's a few examples of different setups
-PINEPODS_PORT can be either 443 or 80. If you're using a reverse proxy use 443
+PINEPODS_PORT can be anything, but if you're running it through a reverse proxy it MUST be 443. You can still map it to any other port externally, but it needs to be 443 interally.
 
 **Recommended:**
 Routed through proxy, secure, with reverse proxy
