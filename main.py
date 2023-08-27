@@ -62,11 +62,6 @@ with open("/tmp/web_api_key.txt", "r") as f:
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
-# Initial Vars needed to start and used throughout
-# if reverse_proxy == "True":
-#     proxy_url = f'{proxy_protocol}://{proxy_host}/proxy/?url='
-#     audio_proxy = f'{proxy_protocol}://{proxy_host}/proxy/'
-# else:
 if proxy_protocol == 'http':
     if proxy_port == "80":
         proxy_url = f'http://{proxy_host}/mover/?url='
@@ -118,7 +113,7 @@ audio_playing = False
 active_pod = 'Set at start'
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-appname = "pinepods"
+appname = "Pinepods"
 appauthor = "Gooseberry Development"
 
 # user_data_dir would be the equivalent to the home directory you were using
@@ -179,36 +174,6 @@ def main(page: ft.Page, session_value=None):
                 "pinepods_api": self.api_value,
             }
 
-            # try:
-            #     check_response = requests.get(check_url, timeout=10)
-            #     if check_response.status_code != 200:
-            #         self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-            #         pr_instance.rm_stack()
-            #         self.page.update()
-            #         return
-            #
-            #     check_data = check_response.json()
-            #
-            #     if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
-            #         self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-            #         pr_instance.rm_stack()
-            #         self.page.update()
-            #         return
-            #
-            #     response = requests.get(self.url, headers=initial_headers, timeout=10)
-            #     response.raise_for_status()
-            #
-            # except MissingSchema:
-            #     self.show_error_snackbar("This doesn't appear to be a proper URL.")
-            # except requests.exceptions.Timeout:
-            #     self.show_error_snackbar("Request timed out. Please check your URL.")
-            # except RequestException as e:
-            #     self.show_error_snackbar(f"Request failed: {e}")
-            #
-            # else:
-            #     if response.status_code == 200:
-            # data = response.json()
-
             self.show_error_snackbar(f"Connected to {proxy_host}!")
 
             if login_screen:
@@ -216,17 +181,6 @@ def main(page: ft.Page, session_value=None):
                     start_login(page)
                 else:
                     start_login(page)
-
-    #         else:
-    #             active_user.user_id = 1
-    #             active_user.fullname = 'Guest User'
-    #             go_homelogin(page)
-    #     elif response.status_code == 401:
-    #         start_config(self.page)
-    #     else:
-    #         self.show_error_snackbar(f"Request failed with status code: {response.status_code}")
-    # # pr_instance.rm_stack()
-    # self.page.update()
 
         def show_error_snackbar(self, message):
             self.page.snack_bar = ft.SnackBar(ft.Text(message))
@@ -1080,7 +1034,7 @@ def main(page: ft.Page, session_value=None):
     username_invalid_dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text("Username Invalid!"),
-        content=ft.Text("Usernames must be unique and require at least 6 characters!"),
+        content=ft.Text("Usernames must be unique and require at least 3 characters!"),
         actions=[
             ft.TextButton("Okay", on_click=close_invalid_dlg),
         ],
@@ -1795,9 +1749,9 @@ def main(page: ft.Page, session_value=None):
                 return row_list
 
         if current_episode.audio_playing == True:
-            pod_controls.audio_container.visible == True
+            pod_controls.audio_container.visible = True
         else:
-            pod_controls.audio_container.visible == False
+            pod_controls.audio_container.visible = False
 
         def open_search(e):
             if page.width > 768:
@@ -3452,13 +3406,14 @@ def main(page: ft.Page, session_value=None):
                                             spacing=20,
                                             controls=[
                                                 login_button,
-                                                ft.FilledButton(
+                                                ft.ElevatedButton(
                                                     content=ft.Text(
                                                         "Guest Login",
                                                         weight="w700",
                                                     ),
                                                     width=160,
                                                     height=40,
+                                                    autofocus=True,
                                                     # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
                                                     on_click=lambda e: go_homelogin_guest(page)
                                                     # on_click=lambda e: go_homelogin(e)
@@ -4398,6 +4353,7 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
                         file_picker.pick_files()
 
+
                     user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
                     server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
 
@@ -4432,24 +4388,25 @@ def main(page: ft.Page, session_value=None):
                         backup_dlg.open = False
                         self.page.update()
 
+                    def open_backups():
+                        import subprocess
+                        import platform
+
+                        def open_folder(path):
+                            if platform.system() == "Windows":
+                                os.startfile(path)
+                            elif platform.system() == "Darwin":
+                                subprocess.Popen(["open", path])
+                            else:
+                                subprocess.Popen(["xdg-open", path])
+
+                        open_folder(backup_dir)
+
                     def backup_user():
                         backup_status = api_functions.functions.call_backup_user(app_api.url, app_api.headers,
                                                                                  active_user.user_id, backup_dir)
                         close_backup_dlg(self.page)
                         self.page.update()
-
-                        def open_backups():
-                            import subprocess
-                            import platform
-
-                            def open_folder(path):
-                                if platform.system() == "Windows":
-                                    os.startfile(path)
-                                elif platform.system() == "Darwin":
-                                    subprocess.Popen(["open", path])
-                                else:
-                                    subprocess.Popen(["xdg-open", path])
-                            open_folder(backup_dir)
 
                         def close_backup_status_win(page):
                             backup_stat_dlg.open = False
@@ -4486,11 +4443,87 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
                     def backup_server():
-                        backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers, backup_dir)
+                        close_backup_dlg(self.page)
+                        self.page.update()
+
+                        def run_database_backup(e):
+                            backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers,
+                                                                                       backup_dir,
+                                                                                       backup_database_pass.value)
+                            close_backup_pass_win(self.page)
+                            self.page.update()
+
+                            def close_backup_status_win(page):
+                                backup_stat_dlg.open = False
+                                self.page.update()
+
+                            if backup_status["success"]:
+                                backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}",
+                                                             selectable=True)
+                                folder_location = ft.TextButton("Open Backup Location",
+                                                                on_click=lambda x: (open_backups()))
+                            else:
+                                backup_status_text = ft.Text(
+                                    f"Backup was not successful. Reason: {backup_status['error_message']}")
+                                folder_location = ft.Text("N/A")
+
+                            backup_select_status_row = ft.Row(
+                                controls=[
+                                    ft.TextButton("Close", on_click=lambda x: (close_backup_status_win(self.page)))
+                                ],
+                                alignment=ft.MainAxisAlignment.END
+                            )
+
+                            backup_stat_dlg = ft.AlertDialog(
+                                modal=True,
+                                title=ft.Text(f"Backup Data:"),
+                                content=ft.Column(controls=[
+                                    backup_status_text,
+                                    folder_location,
+                                    backup_select_status_row
+                                ], tight=True),
+                                actions_alignment=ft.MainAxisAlignment.END,
+                            )
+                            self.page.dialog = backup_stat_dlg
+                            backup_stat_dlg.open = True
+                            self.page.update()
+
+                        def close_backup_pass_win(page):
+                            backup_pass_dlg.open = False
+                            self.page.update()
+
+                        backup_pass_text = ft.Text(f"In order to conduct a server wide backup you must provide your database password set during the creation of your Pinepods server. Please enter that below.", selectable=True)
+
+                        backup_select_pass_row = ft.Row(
+                            controls=[
+                                ft.TextButton("Submit", on_click=run_database_backup),
+                                ft.TextButton("Close", on_click=lambda x: (close_backup_pass_win(self.page)))
+                            ],
+                            alignment=ft.MainAxisAlignment.END
+                        )
+                        backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN, hint_text='My_Datab@$$_P@SS', password=True, can_reveal_password=True)
+
+                        backup_pass_dlg = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text(f"Backup Data:"),
+                            content=ft.Column(controls=[
+                                backup_pass_text,
+                                backup_database_pass,
+                                backup_select_pass_row
+                            ],
+                                tight=True),
+                            actions_alignment=ft.MainAxisAlignment.END,
+                        )
+                        self.page.dialog = backup_pass_dlg
+                        backup_pass_dlg.open = True
+                        self.page.update()
 
 
                     user_backup_select = ft.TextButton("Export OPML of Podcasts", on_click=lambda x: (backup_user()))
                     server_backup_select = ft.TextButton("Backup Entire Server", on_click=lambda x: (backup_server()))
+
+                    if not active_user.user_is_admin:
+                        server_backup_select.visible = False
 
                     backup_select_row = ft.Row(
                         controls=[
@@ -4962,8 +4995,8 @@ def main(page: ft.Page, session_value=None):
                         div_row,
                         api_edit_container
                     ]
-                    
-                )
+
+                    )
             settings_view.bgcolor = active_user.bgcolor
             settings_view.scroll = ft.ScrollMode.AUTO
             # Create final page
@@ -5235,6 +5268,7 @@ def main(page: ft.Page, session_value=None):
             self.search_term = ""
             self.feed_url = None
             self.import_file = None
+            self.user_is_admin = None
             # global current_pod_view
             self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
             self.retain_session = ft.Switch(label="Stay Signed in", value=False)
@@ -5269,7 +5303,7 @@ def main(page: ft.Page, session_value=None):
             self.isadmin = new_admin
 
         def verify_user_values(self):
-            self.valid_username = self.username is not None and len(self.username) >= 6
+            self.valid_username = self.username is not None and len(self.username) >= 3
             self.valid_password = self.password is not None and len(self.password) >= 8 and any(
                 c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
             regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
@@ -5449,7 +5483,7 @@ def main(page: ft.Page, session_value=None):
                     modal=True,
                     title=ft.Text(f"Guest user cannot be changed"),
                     actions=[
-                        ft.TextButton("Cancel", on_click=close_modify_dlg)
+                        ft.TextButton("Cancel", on_click=close_modify_dlg_auto)
                     ],
                     actions_alignment=ft.MainAxisAlignment.END
                 )

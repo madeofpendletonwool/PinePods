@@ -63,7 +63,8 @@ proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
-api_url = os.environ.get("API_URL", "https://api.pinepods.online/api/search")
+api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
+print(f'Search API URL: {api_url}')
 
 #Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
