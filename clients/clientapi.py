@@ -1,7 +1,7 @@
 # Fast API
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Body, Path, Form, File, UploadFile, Query, BackgroundTasks, WebSocket
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -173,12 +173,12 @@ async def pinepods_check():
 async def verify_key(request: Request, cnx = Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     print(f"API Key: {api_key}")
     if not api_key:
-        return {"status": "API key is missing"}
+        return JSONResponse(content={"status": "API key is missing"}, status_code=400)
 
     is_valid = database_functions.functions.verify_api_key(cnx, api_key)
     print(f"Is Valid: {is_valid}")
     if not is_valid:
-        return {"status": "Invalid API key"}
+        return JSONResponse(content={"status": "Invalid API key"}, status_code=400)
 
     return {"status": "success"}
 
