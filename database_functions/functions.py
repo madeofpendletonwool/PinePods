@@ -1252,6 +1252,7 @@ def verify_api_key(cnx, passed_key):
     query = "SELECT * FROM APIKeys WHERE APIKey = %s"
     cursor.execute(query, (passed_key,))
     result = cursor.fetchone()
+    print(f"Result: {result}")
     cursor.close()
     return True if result else False
 
