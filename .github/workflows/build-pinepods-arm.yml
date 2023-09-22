@@ -44,6 +44,6 @@ jobs:
         with:
           commands: |
             apt-get update
-            apt-get install docker
+            apt-get install -y docker
             docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tags }} -f ./Dockerfile .
             docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tags }}
