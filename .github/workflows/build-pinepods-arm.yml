@@ -43,5 +43,7 @@ jobs:
         uses: pguyot/arm-runner-action@v2.5.2
         with:
           commands: |
+            apt-get update
+            apt-get install docker
             docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tags }} -f ./Dockerfile .
             docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tags }}
