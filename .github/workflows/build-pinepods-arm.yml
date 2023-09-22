@@ -3,7 +3,7 @@ name: Publish Pinepods Arm Image to DockerHub
 on:
   release:
     types: [published]
-  workflow-dispatch:
+  workflow_dispatch:
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -64,5 +64,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-docker build https://github.com/madeofpendletonwool/PinePods.git\#main -t pinepods-arm
