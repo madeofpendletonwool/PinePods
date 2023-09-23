@@ -24,6 +24,7 @@
     - [Mac Client Install :computer:](#mac-client-install-computer)
     - [Android Install :iphone:](#android-install-iphone)
     - [ios Install :iphone:](#ios-install-iphone)
+  - [Pinepods Firewood](#pinepods-firewood)
   - [Platform Availability](#platform-availability)
   - [ToDo (Listed in order they will be implemented)](#todo-listed-in-order-they-will-be-implemented)
   - [Screenshots :camera:](#screenshots-camera)
@@ -301,6 +302,10 @@ Coming Soon
 ### ios Install :iphone:
 
 Coming Soon
+
+## Pinepods Firewood
+
+A CLI only client that can be used to remotely share your podcasts to is in the works! Check out [Pinepods Firewood!](https://github.com/madeofpendletonwool/pinepods-firewood)
 
 ## Platform Availability
 
