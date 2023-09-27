@@ -229,9 +229,11 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
 
 @app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
+    global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
+    
     key_check = call_verify_key(api_url, api_key, False)
     if key_check["status"] == "success":
-        global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
+
         return {
             "api_url": api_url,
             "proxy_url": proxy_url,
