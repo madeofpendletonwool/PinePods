@@ -165,13 +165,13 @@ def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
     return api_key
 
 
-@app.get('/api/data')
-async def get_data(client_id: str = Depends(get_api_key)):
-    try:
-        return {"status": "success", "data": "Your data"}
-    except Exception as e:
-        logging.error(f"Error in /api/data endpoint: {e}")
-        raise
+# @app.get('/api/data')
+# async def get_data(client_id: str = Depends(get_api_key)):
+#     try:
+#         return {"status": "success", "data": "Your data"}
+#     except Exception as e:
+#         logging.error(f"Error in /api/data endpoint: {e}")
+#         raise
 
 
 @app.get('/api/pinepods_check')
@@ -179,11 +179,17 @@ async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
 
-def call_verify_key(url, headers):
-    response = requests.get(url + "/verify_key", headers=headers)
+def call_verify_key(url, headers, verify_admin_check):
+    cnx = get_database_connection
+    database_functions.functions.verify_api_key(cnx, headers)
     if response.status_code == 200:
         print('Response good!')
-        return {"status": "success"}
+        if verify_admin_check:
+            user_id = database_functions.functions.id_from_api_key(cnx, headers)
+            admin_verify = database_functions.functions.user_admin_check(cnx, user_id)
+            return {"status": "success", "admin_check": admin_verify}
+        else:
+            return {"status": "success"}
     else:
         print("Error calling verify_key:", response.status_code)
         return {"status": "error", "code": response.status_code}
@@ -223,8 +229,8 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
 
 @app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
-    key_check = call_verify_key(api_url, api_key)
-    if key_check:
+    key_check = call_verify_key(api_url, api_key, False)
+    if key_check["status"] == "success":
         global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
         return {
             "api_url": api_url,
