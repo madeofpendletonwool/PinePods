@@ -82,6 +82,8 @@ def get_database_connection():
     try:
         db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
         yield db
+    except HTTPException:
+        raise  # Re-raise the HTTPException to let FastAPI handle it properly
     except Exception as e:
         logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
         logger.error(traceback.format_exc())
@@ -91,7 +93,6 @@ def get_database_connection():
             connection_pool.putconn(db)
         else:
             db.close()
-
 
 def setup_connection_pool():
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
