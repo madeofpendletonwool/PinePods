@@ -74,12 +74,15 @@ else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/mover/?url='
 print(f'Proxy url is configured to {proxy_url}')
 
+logger = logging.getLogger(__name__)
+
 
 def get_database_connection():
     try:
         db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
         yield db
     except Exception as e:
+        logger.error(f"Database connection error: {str(e)}")  # Log the error details
         raise HTTPException(500, "Unable to connect to the database")
     finally:
         if database_type == "postgresql":
@@ -191,6 +194,7 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
+
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
@@ -206,6 +210,7 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
         return result
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
+
 
 @app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
@@ -575,7 +580,7 @@ async def api_add_user(cnx=Depends(get_database_connection), api_key: str = Depe
     hash_pw_bytes = base64.b64decode(user_values.hash_pw)
     salt_bytes = base64.b64decode(user_values.salt)
     database_functions.functions.add_user(cnx, (
-    user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
+        user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
     return {"detail": "User added."}
 
 
