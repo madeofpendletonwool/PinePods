@@ -173,6 +173,19 @@ def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
 #         logging.error(f"Error in /api/data endpoint: {e}")
 #         raise
 
+async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
+    user_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
+
+    is_admin = database_functions.functions.user_admin_check(cnx, user_id)
+
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="User not authorized.")
+
+    return True
+
 
 @app.get('/api/pinepods_check')
 async def pinepods_check():
@@ -193,26 +206,6 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
         return result
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
-
-
-async def verify_api_key_logic(cnx, api_key):
-    print(f"API Key: {api_key}")
-    if not api_key:
-        return JSONResponse(content={"status": "API key is missing"}, status_code=400)
-
-    is_valid = database_functions.functions.verify_api_key(cnx, api_key)
-    print(f"Is Valid: {is_valid}")
-    if not is_valid:
-        return JSONResponse(content={"status": "Invalid API key"}, status_code=400)
-
-    return {"status": "success"}
-
-
-@app.get('/api/data/verify_key')
-async def verify_key(request: Request, cnx=Depends(get_database_connection),
-                     api_key: str = Depends(get_api_key_from_header)):
-    return await verify_api_key_logic(cnx, api_key)
-
 
 @app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
@@ -339,8 +332,7 @@ async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(.
 
 
 @app.post("/api/data/enable_disable_guest")
-async def api_enable_disable_guest(cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
+async def api_enable_disable_guest(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
     database_functions.functions.enable_disable_guest(cnx)
     return {"success": True}
 
