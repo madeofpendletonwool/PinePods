@@ -178,38 +178,6 @@ def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
-
-def call_verify_key(url, headers, verify_admin_check):
-    with next(get_database_connection()) as cnx:
-        response = database_functions.functions.verify_api_key(cnx, headers)
-        if response.status_code == 200:
-            print('Response good!')
-            if verify_admin_check:
-                user_id = database_functions.functions.id_from_api_key(cnx, headers)
-                admin_verify = database_functions.functions.user_admin_check(cnx, user_id)
-                return {"status": "success", "admin_check": admin_verify}
-            else:
-                return {"status": "success"}
-        else:
-            print("Error calling verify_key:", response.status_code)
-            return {"status": "error", "code": response.status_code}
-
-
-@app.get('/api/data/verify_key')
-async def verify_key(request: Request, cnx=Depends(get_database_connection),
-                     api_key: str = Depends(get_api_key_from_header)):
-    print(f"API Key: {api_key}")
-    if not api_key:
-        return JSONResponse(content={"status": "API key is missing"}, status_code=400)
-
-    is_valid = database_functions.functions.verify_api_key(cnx, api_key)
-    print(f"Is Valid: {is_valid}")
-    if not is_valid:
-        return JSONResponse(content={"status": "Invalid API key"}, status_code=400)
-
-    return {"status": "success"}
-
-
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
@@ -227,13 +195,33 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
 
 
+async def verify_api_key_logic(cnx, api_key):
+    print(f"API Key: {api_key}")
+    if not api_key:
+        return JSONResponse(content={"status": "API key is missing"}, status_code=400)
+
+    is_valid = database_functions.functions.verify_api_key(cnx, api_key)
+    print(f"Is Valid: {is_valid}")
+    if not is_valid:
+        return JSONResponse(content={"status": "Invalid API key"}, status_code=400)
+
+    return {"status": "success"}
+
+
+@app.get('/api/data/verify_key')
+async def verify_key(request: Request, cnx=Depends(get_database_connection),
+                     api_key: str = Depends(get_api_key_from_header)):
+    return await verify_api_key_logic(cnx, api_key)
+
+
 @app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
     global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
 
-    key_check = call_verify_key(api_url, api_key, False)
-    if key_check["status"] == "success":
+    cnx = next(get_database_connection())
+    key_check = await verify_api_key_logic(cnx, api_key)
 
+    if key_check["status"] == "success":
         return {
             "api_url": api_url,
             "proxy_url": proxy_url,
