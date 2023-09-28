@@ -180,19 +180,19 @@ async def pinepods_check():
 
 
 def call_verify_key(url, headers, verify_admin_check):
-    cnx = next(get_database_connection())
-    response = database_functions.functions.verify_api_key(cnx, headers)
-    if response.status_code == 200:
-        print('Response good!')
-        if verify_admin_check:
-            user_id = database_functions.functions.id_from_api_key(cnx, headers)
-            admin_verify = database_functions.functions.user_admin_check(cnx, user_id)
-            return {"status": "success", "admin_check": admin_verify}
+    with next(get_database_connection()) as cnx:
+        response = database_functions.functions.verify_api_key(cnx, headers)
+        if response.status_code == 200:
+            print('Response good!')
+            if verify_admin_check:
+                user_id = database_functions.functions.id_from_api_key(cnx, headers)
+                admin_verify = database_functions.functions.user_admin_check(cnx, user_id)
+                return {"status": "success", "admin_check": admin_verify}
+            else:
+                return {"status": "success"}
         else:
-            return {"status": "success"}
-    else:
-        print("Error calling verify_key:", response.status_code)
-        return {"status": "error", "code": response.status_code}
+            print("Error calling verify_key:", response.status_code)
+            return {"status": "error", "code": response.status_code}
 
 
 @app.get('/api/data/verify_key')
