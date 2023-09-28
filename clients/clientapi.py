@@ -215,13 +215,11 @@ async def verify_key(request: Request, cnx=Depends(get_database_connection),
 
 
 @app.get("/api/data/config")
-async def api_config(api_key: str = Depends(get_api_key_from_header)):
+async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
     global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
 
-    cnx = next(get_database_connection())
-    key_check = await verify_api_key_logic(cnx, api_key)
-
-    if key_check["status"] == "success":
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
         return {
             "api_url": api_url,
             "proxy_url": proxy_url,
