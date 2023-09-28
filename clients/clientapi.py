@@ -29,6 +29,7 @@ import argparse
 import sys
 from pyotp import TOTP
 import base64
+import traceback
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -82,7 +83,8 @@ def get_database_connection():
         db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
         yield db
     except Exception as e:
-        logger.error(f"Database connection error: {str(e)}")  # Log the error details
+        logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
+        logger.error(traceback.format_exc())
         raise HTTPException(500, "Unable to connect to the database")
     finally:
         if database_type == "postgresql":
