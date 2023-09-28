@@ -201,18 +201,26 @@ async def pinepods_check():
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
-    database_functions.functions.clean_expired_sessions(cnx)
-    return {"status": "success"}
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        database_functions.functions.clean_expired_sessions(cnx)
+        return {"status": "success"}
+    else:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/check_saved_session/{session_value}", response_model=int)
 async def api_check_saved_session(session_value: str, cnx=Depends(get_database_connection),
                                   api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.check_saved_session(cnx, session_value)
-    if result:
-        return result
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        result = database_functions.functions.check_saved_session(cnx, session_value)
+        if result:
+            return result
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
     else:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/config")
@@ -230,19 +238,28 @@ async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depend
             "reverse_proxy": reverse_proxy,
         }
     else:
-        return "Your API key is either invalid or does not have correct permission"
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
 
 
 @app.get("/api/data/guest_status", response_model=bool)
 async def api_guest_status(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.guest_status(cnx)
-    return result
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        result = database_functions.functions.guest_status(cnx)
+        return result
+    else:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/download_status", response_model=bool)
 async def api_download_status(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    result = database_functions.functions.download_status(cnx)
-    return result
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        result = database_functions.functions.download_status(cnx)
+        return result
+    else:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/user_details/{username}")
