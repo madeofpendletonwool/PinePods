@@ -180,8 +180,8 @@ async def pinepods_check():
 
 
 def call_verify_key(url, headers, verify_admin_check):
-    cnx = get_database_connection
-    database_functions.functions.verify_api_key(cnx, headers)
+    cnx = next(get_database_connection())
+    response = database_functions.functions.verify_api_key(cnx, headers)
     if response.status_code == 200:
         print('Response good!')
         if verify_admin_check:
@@ -230,7 +230,7 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
 @app.get("/api/data/config")
 async def api_config(api_key: str = Depends(get_api_key_from_header)):
     global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
-    
+
     key_check = call_verify_key(api_url, api_key, False)
     if key_check["status"] == "success":
 
