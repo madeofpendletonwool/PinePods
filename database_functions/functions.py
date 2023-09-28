@@ -1299,7 +1299,7 @@ def id_from_api_key(cnx, passed_key):
     result = cursor.fetchone()
     print(f"Result: {result}")
     cursor.close()
-    return result
+    return result[0] if result else None
 
 
 def check_api_permission(cnx, passed_key):
