@@ -285,7 +285,7 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin(api_key, cnx)
+    is_admin = check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from username
