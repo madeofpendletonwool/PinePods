@@ -94,6 +94,7 @@ def get_database_connection():
         else:
             db.close()
 
+
 def setup_connection_pool():
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = os.environ.get("DB_PORT", "3306")
@@ -193,6 +194,15 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
     return True
 
 
+async def check_if_admin_inner(api_key: str, cnx):
+    user_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    if not user_id:
+        return False
+
+    return database_functions.functions.user_admin_check(cnx, user_id)
+
+
 @app.get('/api/pinepods_check')
 async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
@@ -206,7 +216,8 @@ async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
         database_functions.functions.clean_expired_sessions(cnx)
         return {"status": "success"}
     else:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/check_saved_session/{session_value}", response_model=int)
@@ -220,7 +231,8 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
         else:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved session found")
     else:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/config")
@@ -238,8 +250,8 @@ async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depend
             "reverse_proxy": reverse_proxy,
         }
     else:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
-
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/guest_status", response_model=bool)
@@ -249,7 +261,8 @@ async def api_guest_status(cnx=Depends(get_database_connection), api_key: str = 
         result = database_functions.functions.guest_status(cnx)
         return result
     else:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/download_status", response_model=bool)
@@ -259,18 +272,37 @@ async def api_download_status(cnx=Depends(get_database_connection), api_key: str
         result = database_functions.functions.download_status(cnx)
         return result
     else:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
 
 
 @app.get("/api/data/user_details/{username}")
 async def api_get_user_details(username: str, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    is_admin = check_if_admin(api_key, cnx)
+
+    if not is_admin:
+        # Get user ID from username
+        user_id_from_username = database_functions.functions.get_user_id(cnx, username)
+
+        # Get user ID from API key
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+
+        if user_id_from_username != user_id_from_api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="You are not authorized to access these user details")
+
     result = database_functions.functions.get_user_details(cnx, username)
     if result:
         return result
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
 
 class SessionData(BaseModel):
     session_token: str
