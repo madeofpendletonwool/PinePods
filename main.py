@@ -4874,7 +4874,7 @@ def main(page: ft.Page, session_value=None):
                     page.update()
 
                 def delete_api(e):
-                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id)
+                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id, active_user.user_id)
                     modify_api_dlg.open = False
                     page.update()
 
@@ -4894,7 +4894,7 @@ def main(page: ft.Page, session_value=None):
 
             create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
-            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers)
+            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers, active_user.user_id)
 
             # Skip the first entry in api_information
             api_information = api_information[1:]

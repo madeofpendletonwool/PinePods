@@ -314,6 +314,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
+- [ ] Unlock api creation for standard users
+- [ ] Email resets currently broken for non-admins due to lockdown on encryption key. Need to handle encryption server-side
 - [ ] Implement Postgresql as option for database backend
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
@@ -331,6 +333,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
 - [ ] Rotating currently playing
+- [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Customizable login screens
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route

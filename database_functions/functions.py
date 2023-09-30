@@ -280,6 +280,41 @@ def return_episodes(database_type, cnx, user_id):
     return rows
 
 
+def delete_podcast(cnx, url, title, user_id):
+    cursor = cnx.cursor()
+
+    # Get the download ID from the DownloadedEpisodes table
+    query = ("SELECT DownloadID, DownloadedLocation "
+             "FROM DownloadedEpisodes "
+             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
+    cursor.execute(query, (title, url, user_id))
+    result = cursor.fetchone()
+
+    if not result:
+        print("No matching download found.")
+        return
+
+    download_id, downloaded_location = result
+
+    # Delete the downloaded file
+    os.remove(downloaded_location)
+
+    # Remove the entry from the DownloadedEpisodes table
+    query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+    cursor.execute(query, (download_id,))
+    cnx.commit()
+    print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+    # Update UserStats table to increment EpisodesDownloaded count
+    query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+
+    cursor.close()
+    # cnx.close()
+
 def return_selected_episode(cnx, user_id, title, url):
     cursor = cnx.cursor()
     query = ("SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
