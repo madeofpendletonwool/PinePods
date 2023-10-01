@@ -656,8 +656,8 @@ def call_get_api_info(url, headers, user_id):
         return []
 
 
-def call_reset_password_create_code(url, headers, email, reset_code):
-    payload = {"email": email, "reset_code": reset_code}
+def call_reset_password_create_code(url, headers, email, reset_code, user_id):
+    payload = {"email": email, "reset_code": reset_code, "user_id": user_id}
     response = requests.post(url + "/reset_password_create_code", headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()["user_exists"]
@@ -666,8 +666,8 @@ def call_reset_password_create_code(url, headers, email, reset_code):
         return None
 
 
-def call_verify_reset_code(url, headers, email, reset_code):
-    payload = {"email": email, "reset_code": reset_code}
+def call_verify_reset_code(url, headers, email, reset_code, user_id):
+    payload = {"email": email, "reset_code": reset_code, "user_id": user_id}
     response = requests.post(url + "/verify_reset_code", headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()["code_valid"]
@@ -676,8 +676,8 @@ def call_verify_reset_code(url, headers, email, reset_code):
         return False
 
 
-def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw):
-    payload = {"email": user_email, "salt": salt.decode(), "hashed_pw": hashed_pw.decode()}
+def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw, user_id):
+    payload = {"email": user_email, "salt": salt.decode(), "hashed_pw": hashed_pw.decode(), "user_id": user_id}
     response = requests.post(url + "/reset_password_prompt", headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()["message"]
