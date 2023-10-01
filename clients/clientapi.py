@@ -175,12 +175,16 @@ class Web_Key:
     def __init__(self):
         self.web_key = None
 
-    def get_web_key(self, cnx=Depends(get_database_connection)):
+    def get_web_key(self, cnx):
         self.web_key = database_functions.functions.get_web_key(cnx)
 
 
 base_webkey = Web_Key()
-base_webkey.get_web_key()
+# Get a direct database connection
+cnx = get_database_connection()
+base_webkey.get_web_key(cnx)
+# Close the connection if needed, or manage it accordingly
+
 
 
 # @app.get('/api/data')
