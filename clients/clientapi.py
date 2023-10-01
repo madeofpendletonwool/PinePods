@@ -171,6 +171,7 @@ def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return api_key
 
+
 class Web_Key:
     def __init__(self):
         self.web_key = None
@@ -180,11 +181,27 @@ class Web_Key:
 
 
 base_webkey = Web_Key()
-# Get a direct database connection
-cnx = get_database_connection()
-base_webkey.get_web_key(cnx)
-# Close the connection if needed, or manage it accordingly
 
+
+# Get a direct database connection
+def direct_database_connection():
+    try:
+        if database_type == "postgresql":
+            return connection_pool.getconn()
+        else:
+            return connection_pool.get_connection()
+    except Exception as e:
+        logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
+        logger.error(traceback.format_exc())
+        raise RuntimeError("Unable to connect to the database")
+
+
+# Use the non-generator version in your script initialization
+cnx = direct_database_connection()
+base_webkey.get_web_key(cnx)
+
+
+# Close the connection if needed, or manage it accordingly
 
 
 # @app.get('/api/data')
@@ -329,7 +346,6 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
         return result
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
 
 
 class SessionData(BaseModel):
