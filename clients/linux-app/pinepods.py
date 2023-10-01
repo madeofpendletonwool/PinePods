@@ -1,6 +1,5 @@
 # Various flet imports
 import flet as ft
-# from flet import *
 from flet import Text, colors, icons, ButtonStyle, Row, alignment, border_radius, animation, \
     MainAxisAlignment, padding
 # Internal Functions
@@ -5652,7 +5651,7 @@ def main(page: ft.Page, session_value=None):
                         user_div_row,
                         settings_data.setting_option_con,
                         div_row,
-                        api_edit_container
+                        api_edit_container,
                         admin_setting_text,
                         user_row_container,
                         settings_data.user_edit_container,
