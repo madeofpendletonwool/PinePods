@@ -285,7 +285,7 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from username
@@ -407,7 +407,7 @@ async def api_get_user_details_id(user_id: int, cnx=Depends(get_database_connect
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -712,7 +712,7 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -772,7 +772,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -921,7 +921,7 @@ async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -946,7 +946,7 @@ async def api_set_password(user_id: int, salt: str = Body(...), hash_pw: str = B
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -971,7 +971,7 @@ async def api_set_email(cnx=Depends(get_database_connection), api_key: str = Dep
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -996,7 +996,7 @@ async def api_set_username(cnx=Depends(get_database_connection), api_key: str = 
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -1132,7 +1132,7 @@ async def api_delete_api_key(payload: DeleteAPIKeyHeaders, cnx=Depends(get_datab
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -1154,7 +1154,7 @@ async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = 
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -1316,7 +1316,7 @@ async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connectio
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -1375,7 +1375,7 @@ async def api_delete_mfa(body: UserIDBody, cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -1450,7 +1450,7 @@ async def setup_timezone_info(data: TimeZoneInfo, cnx=Depends(get_database_conne
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
@@ -1477,7 +1477,7 @@ async def get_time_info(user_id: int, cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = check_if_admin_inner(api_key, cnx)
+    is_admin = await check_if_admin_inner(api_key, cnx)
 
     if not is_admin:
         # Get user ID from API key
