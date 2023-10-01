@@ -13,6 +13,19 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 
+def get_web_key(cnx):
+    cursor = cnx.cursor()
+    query = "SELECT APIKey FROM APIKeys WHERE UserID = 1"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return result[0]
+    else:
+        return None
+
+
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
 
@@ -314,6 +327,7 @@ def delete_podcast(cnx, url, title, user_id):
 
     cursor.close()
     # cnx.close()
+
 
 def return_selected_episode(cnx, user_id, title, url):
     cursor = cnx.cursor()

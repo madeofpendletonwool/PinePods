@@ -171,6 +171,17 @@ def get_api_key_from_header(api_key: str = Header(None, name="Api-Key")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return api_key
 
+class Web_Key:
+    def __init__(self):
+        self.web_key = None
+
+    def get_web_key(self, cnx=Depends(get_database_connection)):
+        self.web_key = database_functions.functions.get_web_key(cnx)
+
+
+base_webkey = Web_Key()
+base_webkey.get_web_key()
+
 
 # @app.get('/api/data')
 # async def get_data(client_id: str = Depends(get_api_key)):
@@ -201,6 +212,17 @@ async def check_if_admin_inner(api_key: str, cnx):
         return False
 
     return database_functions.functions.user_admin_check(cnx, user_id)
+
+
+async def has_elevated_access(api_key: str, cnx):
+    # Check if it's an admin
+    is_admin = await check_if_admin_inner(api_key, cnx)
+
+    # Check if it's the web key
+    web_key = base_webkey.web_key
+    is_web_key = api_key == web_key
+
+    return is_admin or is_web_key
 
 
 @app.get('/api/pinepods_check')
@@ -285,9 +307,9 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = await check_if_admin_inner(api_key, cnx)
+    elevated_access = await has_elevated_access(api_key, cnx)
 
-    if not is_admin:
+    if not elevated_access:
         # Get user ID from username
         user_id_from_username = database_functions.functions.get_user_id(cnx, username)
 
@@ -303,6 +325,7 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
         return result
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
 
 
 class SessionData(BaseModel):
