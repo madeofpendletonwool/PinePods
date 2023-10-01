@@ -418,9 +418,17 @@ async def api_check_episode_playback(
         cnx=Depends(get_database_connection),
         api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if is_valid_key:
-        key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-        if key_id == user_id:
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
             logging.info(f"Received: user_id={user_id}, episode_title={episode_title}, episode_url={episode_url}")
 
             has_playback, listen_duration = database_functions.functions.check_episode_playback(
@@ -436,10 +444,6 @@ async def api_check_episode_playback(
             raise HTTPException(status_code=403,
                                 detail="You can only check playback for yourself!")
 
-    else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
 
 @app.get("/api/data/user_details_id/{user_id}")
 async def api_get_user_details_id(user_id: int, cnx=Depends(get_database_connection),
@@ -450,9 +454,9 @@ async def api_get_user_details_id(user_id: int, cnx=Depends(get_database_connect
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    is_admin = await check_if_admin_inner(api_key, cnx)
+    elevated_access = await has_elevated_access(api_key, cnx)
 
-    if not is_admin:
+    if not elevated_access:
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
 
