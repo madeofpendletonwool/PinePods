@@ -17,7 +17,6 @@ import os
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from contextlib import contextmanager
 import secrets
 from pydantic import BaseModel, Field
 from typing import Dict
@@ -185,31 +184,17 @@ base_webkey = Web_Key()
 
 
 # Get a direct database connection
-
-@contextmanager
 def direct_database_connection():
-    conn = None
     try:
         if database_type == "postgresql":
-            conn = connection_pool.getconn()
+            return connection_pool.getconn()
         else:
-            conn = connection_pool.get_connection()
-        yield conn
+            return connection_pool.get_connection()
     except Exception as e:
         logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
         logger.error(traceback.format_exc())
-        raise
-    finally:
-        if conn:
-            if database_type == "postgresql":
-                connection_pool.putconn(conn)
-            else:
-                conn.close()
+        raise RuntimeError("Unable to connect to the database")
 
-
-# Usage
-with direct_database_connection() as cnx:
-    base_webkey.get_web_key(cnx)
 
 # Use the non-generator version in your script initialization
 cnx = direct_database_connection()
