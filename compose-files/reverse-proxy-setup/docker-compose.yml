@@ -23,7 +23,6 @@ services:
     environment:
       # Basic Server Info
       HOSTNAME: try.pinepods.online
-      API_SERVER_PORT: 8032
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       # Default Admin User Information
       USERNAME: myadminuser01
@@ -42,7 +41,7 @@ services:
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
     volumes:
-    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
+    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
