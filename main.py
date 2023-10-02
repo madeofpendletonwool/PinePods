@@ -5581,19 +5581,27 @@ def main(page: ft.Page, session_value=None):
 
         def delete_user(self, user_id):
             admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
-            if user_id == active_user.user_id:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
-                page.snack_bar.open = True
-                page.update()
-            elif admin_check == True:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete the final admin user"))
-                page.snack_bar.open = True
-                page.update()
+
+            confirmation = input(f"Are you sure you want to delete user {user_id}? (yes/no): ").strip().lower()
+
+            if confirmation == 'yes' or confirmation == 'y':
+                if user_id == active_user.user_id:
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
+                    page.snack_bar.open = True
+                    page.update()
+                elif admin_check == True:
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete the final admin user"))
+                    page.snack_bar.open = True
+                    page.update()
+                else:
+                    api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
+                    page.snack_bar.open = True
+                    page.update()
             else:
-                api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
-                page.snack_bar.open = True
-                page.update()
+                print("Deletion canceled.")
+                go_homelogin(page)
+
 
         # Active User Stuff --------------------------
 
