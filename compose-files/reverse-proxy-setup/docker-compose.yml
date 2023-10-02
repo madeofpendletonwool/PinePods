@@ -19,7 +19,7 @@ services:
     image: madeofpendletonwool/pinepods:latest
     ports:
     # Pinepods Port
-      - "8040:80"
+      - "8040:8040"
     environment:
       # Basic Server Info
       HOSTNAME: try.pinepods.online
@@ -38,7 +38,7 @@ services:
       DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_PORT: 8000
+      PROXY_PORT: 8040
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
     volumes:
