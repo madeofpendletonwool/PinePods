@@ -316,11 +316,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 - [ ] Unlock api creation for standard users
 - [ ] Email resets currently broken for non-admins due to lockdown on encryption key. Need to handle encryption server-side
-- [ ] Implement Postgresql as option for database backend
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
 - [ ] Allow for episodes to be played without being added
+- [ ] Implement Postgresql as option for database backend
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] How-to guides on doing things in the app
 - [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)

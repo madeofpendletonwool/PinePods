@@ -19,10 +19,10 @@ services:
     image: madeofpendletonwool/pinepods:latest
     ports:
     # Pinepods Port
-      - "8040:80"
+      - "8040:8040"
     environment:
       # Basic Server Info
-      HOSTNAME: try.pinepods.online
+      HOSTNAME: localhost
       API_SERVER_PORT: 8032
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       # Default Admin User Information
@@ -38,9 +38,9 @@ services:
       DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
       # Image/Audio Proxy Vars
-      PROXY_PORT: 8000
-      PROXY_PROTOCOL: https
-      REVERSE_PROXY: "True"
+      PROXY_PORT: 8040
+      PROXY_PROTOCOL: http
+      REVERSE_PROXY: "False"
     volumes:
     # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
