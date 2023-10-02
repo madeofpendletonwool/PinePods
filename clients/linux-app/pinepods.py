@@ -1,6 +1,5 @@
 # Various flet imports
 import flet as ft
-# from flet import *
 from flet import Text, colors, icons, ButtonStyle, Row, alignment, border_radius, animation, \
     MainAxisAlignment, padding
 # Internal Functions
@@ -1472,11 +1471,11 @@ def main(page: ft.Page, session_value=None):
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers,
-                                                                                 user_email, reset_code)
+                                                                                 user_email, reset_code, active_user.user_id)
             if user_exist:
                 def pw_reset(page, user_email, reset_code):
                     code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers,
-                                                                                user_email, reset_code)
+                                                                                user_email, reset_code, active_user.user_id)
                     if code_valid == True:
                         def close_code_pw_reset_dlg(e):
                             code_pw_reset_dlg.open = False
@@ -1486,7 +1485,7 @@ def main(page: ft.Page, session_value=None):
                             if pw_reset_prompt == pw_verify_prompt:
                                 salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
                                 api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers,
-                                                                                   user_email, salt, hash_pw)
+                                                                                   user_email, salt, hash_pw, active_user.user_id)
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
                                 page.snack_bar.open = True
                                 code_pw_reset_dlg.open = False
@@ -2060,8 +2059,6 @@ def main(page: ft.Page, session_value=None):
                 if page_items.search_pods.value:
                     new_search.searchvalue = page_items.search_pods.value
                     new_search.searchlocation = page_items.search_location.value
-                    print(new_search.searchvalue)
-                    print(f'search_api_url: {search_api_url}')
                     pr_instance.touch_stack()
                     page.update()
                     # Run the test_connection function
@@ -5514,7 +5511,112 @@ def main(page: ft.Page, session_value=None):
             pw_reset_container = ft.Container(content=pw_reset_row)
             pw_reset_container.padding = padding.only(left=70, right=50)
 
-            # Check if admin settings should be displayed
+            ### API Key Settings
+
+            edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=16)
+
+            def create_api(e):
+                def close_api_dlg(e):
+                    create_api_dlg.open = False
+                    page.update()
+
+                new_key = api_functions.functions.call_create_api_key(app_api.url, app_api.headers, active_user.user_id)
+
+                create_api_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"New API key listed below"),
+                content=ft.Column(controls=[
+                ft.Text("Be sure to copy your key. There's no way to ever see it again (You can always create a new one if you forget)"),
+                ft.Text(f'Api key: {new_key}', selectable=True),
+                    ], tight=True),
+                actions=[
+                ft.TextButton("Close", on_click=close_api_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+                page.dialog = create_api_dlg
+                create_api_dlg.open = True
+                page.update()
+
+            def open_edit_api(e):
+                def close_api_dlg(e):
+                    modify_api_dlg.open = False
+                    page.update()
+
+                def delete_api(e):
+                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id, active_user.user_id)
+                    modify_api_dlg.open = False
+                    page.update()
+
+                modify_api_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Would you like to delete api {active_user.api_id}?"),
+                actions=[
+                ft.TextButton(content=ft.Text("Delete API", color=ft.colors.RED_400), on_click=delete_api),
+                ft.TextButton("Cancel", on_click=close_api_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+                )
+
+                page.dialog = modify_api_dlg
+                modify_api_dlg.open = True
+                page.update()
+
+            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
+
+            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers, active_user.user_id)
+
+            # Skip the first entry in api_information
+            api_information = api_information[1:]
+
+            api_table_rows = []
+            def create_on_select_changed_lambda(api_id, pages):
+                return lambda e: (setattr(active_user, 'api_id', api_id), open_edit_api(e))
+
+
+            for entry in api_information:
+                api_id = entry['APIKeyID']
+                api_key = '...' + entry['LastFourDigits']
+                username = entry['Username']
+                api_created = entry['Created']
+                
+                # Create a new data row with the user information
+                row = ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(api_id)),
+                        ft.DataCell(ft.Text(api_key)),
+                        ft.DataCell(ft.Text(username)),
+                        ft.DataCell(ft.Text(api_created))
+                    ],
+                    on_select_changed=create_on_select_changed_lambda(api_id, page)
+                )
+                
+                # Append the row to the list of data rows
+                api_table_rows.append(row)
+
+            api_table = ft.DataTable(
+                bgcolor=active_user.main_color, 
+                border=ft.border.all(2, active_user.main_color),
+                border_radius=10,
+                vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
+                horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
+                heading_row_color=active_user.nav_color1,
+                heading_row_height=100,
+                data_row_color={"hovered": active_user.font_color},
+                # show_checkbox_column=True,
+                columns=[
+                ft.DataColumn(ft.Text("API ID"), numeric=True),
+                ft.DataColumn(ft.Text("API Last Four Digits")),
+                ft.DataColumn(ft.Text("User Who Created")),
+                ft.DataColumn(ft.Text("Created At")),
+            ],
+                rows=api_table_rows
+                )
+            api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
+            api_edit_container = ft.Container(content=api_edit_column)
+            api_edit_container.padding=padding.only(left=70, right=50)
+
+            # Check if admin settings should be displayed 
             div_row = ft.Divider(color=active_user.accent_color)
             user_div_row = ft.Divider(color=active_user.accent_color)
             active_user.user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
@@ -5549,6 +5651,7 @@ def main(page: ft.Page, session_value=None):
                         user_div_row,
                         settings_data.setting_option_con,
                         div_row,
+                        api_edit_container,
                         admin_setting_text,
                         user_row_container,
                         settings_data.user_edit_container,

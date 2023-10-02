@@ -1187,11 +1187,11 @@ def main(page: ft.Page, session_value=None):
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers,
-                                                                                 user_email, reset_code)
+                                                                                 user_email, reset_code, active_user.user_id)
             if user_exist:
                 def pw_reset(page, user_email, reset_code):
                     code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers,
-                                                                                user_email, reset_code)
+                                                                                user_email, reset_code, active_user.user_id)
                     if code_valid == True:
                         def close_code_pw_reset_dlg(e):
                             code_pw_reset_dlg.open = False
@@ -1201,7 +1201,7 @@ def main(page: ft.Page, session_value=None):
                             if pw_reset_prompt == pw_verify_prompt:
                                 salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
                                 api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers,
-                                                                                   user_email, salt, hash_pw)
+                                                                                   user_email, salt, hash_pw, active_user.user_id)
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
                                 page.snack_bar.open = True
                                 code_pw_reset_dlg.open = False
@@ -4874,7 +4874,7 @@ def main(page: ft.Page, session_value=None):
                     page.update()
 
                 def delete_api(e):
-                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id)
+                    api_functions.functions.call_delete_api_key(app_api.url, app_api.headers, active_user.api_id, active_user.user_id)
                     modify_api_dlg.open = False
                     page.update()
 
@@ -4894,7 +4894,7 @@ def main(page: ft.Page, session_value=None):
 
             create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
-            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers)
+            api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers, active_user.user_id)
 
             # Skip the first entry in api_information
             api_information = api_information[1:]
@@ -4962,7 +4962,6 @@ def main(page: ft.Page, session_value=None):
                 guest_info.visible = False
                 download_info.visible = False
                 self_service_info.visible = False
-                api_edit_container.visible = False
                 div_row.visible = False
 
             if active_user.user_id == 0:
@@ -4980,6 +4979,8 @@ def main(page: ft.Page, session_value=None):
                         user_div_row,
                         settings_data.setting_import_con,
                         user_div_row,
+                        div_row,
+                        api_edit_container,
                         admin_setting_text,
                         user_row_container,
                         settings_data.user_edit_container,
@@ -4991,9 +4992,7 @@ def main(page: ft.Page, session_value=None):
                         div_row,
                         self_service_info,
                         div_row,
-                        download_info,
-                        div_row,
-                        api_edit_container
+                        download_info
                     ]
 
                     )

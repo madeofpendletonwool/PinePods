@@ -12,6 +12,20 @@ import subprocess
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+
+def get_web_key(cnx):
+    cursor = cnx.cursor()
+    query = "SELECT APIKey FROM APIKeys WHERE UserID = 1"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return result[0]
+    else:
+        return None
+
+
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
 
@@ -56,58 +70,58 @@ def add_podcast(cnx, podcast_values, user_id):
 
 def add_user(cnx, user_values):
     cursor = cnx.cursor()
-    
+
     add_user = ("INSERT INTO Users "
                 "(Fullname, Username, Email, Hashed_PW, Salt, IsAdmin) "
                 "VALUES (%s, %s, %s, %s, %s, 0)")
-    
+
     cursor.execute(add_user, user_values)
-    
+
     user_id = cursor.lastrowid
-    
+
     add_user_settings = ("INSERT INTO UserSettings "
                          "(UserID, Theme) "
                          "VALUES (%s, %s)")
-    
+
     cursor.execute(add_user_settings, (user_id, 'nordic'))
-    
+
     add_user_stats = ("INSERT INTO UserStats "
                       "(UserID) "
                       "VALUES (%s)")
-    
+
     cursor.execute(add_user_stats, (user_id,))
-    
+
     cnx.commit()
-    
+
     cursor.close()
     # cnx.close()
 
 
 def add_admin_user(cnx, user_values):
     cursor = cnx.cursor()
-    
+
     add_user = ("INSERT INTO Users "
                 "(Fullname, Username, Email, Hashed_PW, Salt, IsAdmin) "
                 "VALUES (%s, %s, %s, %s, %s, 1)")
-    
+
     cursor.execute(add_user, user_values)
-    
+
     user_id = cursor.lastrowid
-    
+
     add_user_settings = ("INSERT INTO UserSettings "
                          "(UserID, Theme) "
                          "VALUES (%s, %s)")
-    
+
     cursor.execute(add_user_settings, (user_id, 'nordic'))
 
     add_user_stats = ("INSERT INTO UserStats "
                       "(UserID) "
                       "VALUES (%s)")
-    
+
     cursor.execute(add_user_stats, (user_id,))
-    
+
     cnx.commit()
-    
+
     cursor.close()
 
 
@@ -183,8 +197,9 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
                 # insert the episode into the database
                 query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
                 values = (
-                podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date,
-                parsed_duration)
+                    podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url,
+                    parsed_release_date,
+                    parsed_duration)
                 cursor.execute(query, values)
 
                 # check if any rows were affected by the insert operation
@@ -202,6 +217,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 
     finally:
         cursor.close()
+
 
 def remove_podcast(cnx, podcast_name, user_id):
     cursor = cnx.cursor()
@@ -246,9 +262,9 @@ def remove_podcast(cnx, podcast_name, user_id):
     # cnx.close()
 
 
-
 def remove_user(cnx, user_name):
     pass
+
 
 def return_episodes(database_type, cnx, user_id):
     if database_type == "postgresql":
@@ -276,14 +292,51 @@ def return_episodes(database_type, cnx, user_id):
 
     return rows
 
+
+def delete_podcast(cnx, url, title, user_id):
+    cursor = cnx.cursor()
+
+    # Get the download ID from the DownloadedEpisodes table
+    query = ("SELECT DownloadID, DownloadedLocation "
+             "FROM DownloadedEpisodes "
+             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
+    cursor.execute(query, (title, url, user_id))
+    result = cursor.fetchone()
+
+    if not result:
+        print("No matching download found.")
+        return
+
+    download_id, downloaded_location = result
+
+    # Delete the downloaded file
+    os.remove(downloaded_location)
+
+    # Remove the entry from the DownloadedEpisodes table
+    query = "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
+    cursor.execute(query, (download_id,))
+    cnx.commit()
+    print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
+
+    # Update UserStats table to increment EpisodesDownloaded count
+    query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 "
+             "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+
+    cursor.close()
+    # cnx.close()
+
+
 def return_selected_episode(cnx, user_id, title, url):
     cursor = cnx.cursor()
     query = ("SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
-            "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
-            "Podcasts.PodcastName, Podcasts.WebsiteURL, Podcasts.FeedURL "
-            "FROM Episodes "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s")
+             "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
+             "Podcasts.PodcastName, Podcasts.WebsiteURL, Podcasts.FeedURL "
+             "FROM Episodes "
+             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s")
 
     cursor.execute(query, (title, url))
     result = cursor.fetchall()
@@ -315,8 +368,8 @@ def return_pods(database_type, cnx, user_id):
         cursor = cnx.cursor(dictionary=True)
 
     query = ("SELECT PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
-            "FROM Podcasts "
-            "WHERE UserID = %s")
+             "FROM Podcasts "
+             "WHERE UserID = %s")
 
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
@@ -339,7 +392,7 @@ def refresh_pods(cnx):
     select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL FROM Podcasts"
 
     cursor.execute(select_podcasts)
-    result_set = cursor.fetchall() # fetch the result set
+    result_set = cursor.fetchall()  # fetch the result set
 
     for (podcast_id, feed_url, artwork_url) in result_set:
         print(f'Running for :{podcast_id}')
@@ -347,6 +400,7 @@ def refresh_pods(cnx):
 
     cursor.close()
     # cnx.close()
+
 
 def remove_unavailable_episodes(cnx):
     cursor = cnx.cursor()
@@ -374,8 +428,6 @@ def remove_unavailable_episodes(cnx):
 
     cursor.close()
     # cnx.close()
-
-
 
 
 def get_podcast_id_by_title(cnx, podcast_title):
@@ -433,12 +485,13 @@ def refresh_single_pod(cnx, podcast_id):
             release_date = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d")
 
             # get the URL of the episode artwork, or use the podcast image URL if not available
-            artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None) or artwork_url
+            artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href',
+                                                                                                        None) or artwork_url
 
             # insert the episode into the database
             add_episode = ("INSERT INTO Episodes "
-                            "(PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) "
-                            "VALUES (%s, %s, %s, %s, %s, %s, %s)")
+                           "(PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) "
+                           "VALUES (%s, %s, %s, %s, %s, %s, %s)")
             episode_values = (podcast_id, title, description, audio_url, artwork_url, release_date, 0)
             cursor.execute(add_episode, episode_values)
 
@@ -446,6 +499,7 @@ def refresh_single_pod(cnx, podcast_id):
 
     cursor.close()
     # cnx.close()
+
 
 def record_podcast_history(cnx, episode_title, user_id, episode_pos):
     from datetime import datetime
@@ -464,7 +518,7 @@ def record_podcast_history(cnx, episode_title, user_id, episode_pos):
 
         # Check if a record already exists in the UserEpisodeHistory table
         check_history = ("SELECT * FROM UserEpisodeHistory "
-                          "WHERE EpisodeID = %s AND UserID = %s")
+                         "WHERE EpisodeID = %s AND UserID = %s")
         cursor.execute(check_history, (episode_id, user_id))
         result = cursor.fetchone()
 
@@ -481,8 +535,8 @@ def record_podcast_history(cnx, episode_title, user_id, episode_pos):
         else:
             # Add a new record
             add_history = ("INSERT INTO UserEpisodeHistory "
-                            "(EpisodeID, UserID, ListenDuration, ListenDate) "
-                            "VALUES (%s, %s, %s, %s)")
+                           "(EpisodeID, UserID, ListenDuration, ListenDate) "
+                           "VALUES (%s, %s, %s, %s)")
             new_listen_duration = round(episode_pos)
             now = datetime.now()
             values = (episode_id, user_id, new_listen_duration, now)
@@ -507,6 +561,7 @@ def get_user_id(cnx, username):
     else:
         return 1
 
+
 def get_user_details(cnx, username):
     cursor = cnx.cursor()
     query = "SELECT * FROM Users WHERE Username = %s"
@@ -526,6 +581,7 @@ def get_user_details(cnx, username):
         }
     else:
         return None
+
 
 def get_user_details_id(cnx, user_id):
     cursor = cnx.cursor()
@@ -547,16 +603,17 @@ def get_user_details_id(cnx, user_id):
     else:
         return None
 
+
 def user_history(cnx, user_id):
     cursor = cnx.cursor()
     query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
-            "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-            "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
-            "FROM UserEpisodeHistory "
-            "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
-            "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "WHERE UserEpisodeHistory.UserID = %s "
-            "ORDER BY UserEpisodeHistory.ListenDate")
+             "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
+             "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
+             "FROM UserEpisodeHistory "
+             "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
+             "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             "WHERE UserEpisodeHistory.UserID = %s "
+             "ORDER BY UserEpisodeHistory.ListenDate")
 
     cursor.execute(query, (user_id,))
     # results = cursor.fetchall()
@@ -565,7 +622,6 @@ def user_history(cnx, user_id):
     cursor.close()
     # cnx.close()
     return results
-
 
 
 def download_podcast(cnx, url, title, user_id):
@@ -582,7 +638,6 @@ def download_podcast(cnx, url, title, user_id):
         return False
 
     episode_id, podcast_id = result
-
 
     # Next, using the PodcastID, get the PodcastName from the Podcasts table
     query = ("SELECT PodcastName FROM Podcasts WHERE PodcastID = %s")
@@ -630,6 +685,7 @@ def download_podcast(cnx, url, title, user_id):
 
     return True
 
+
 def check_downloaded(cnx, user_id, title, url):
     cursor = None
     try:
@@ -640,7 +696,7 @@ def check_downloaded(cnx, user_id, title, url):
         cursor.execute(query, (title, url))
         result = cursor.fetchone()
 
-        if result is None:   # add this check
+        if result is None:  # add this check
             return False
 
         episode_id = result[0]
@@ -704,11 +760,15 @@ def download_episode_list(database_type, cnx, user_id):
 
 def save_email_settings(cnx, email_settings):
     cursor = cnx.cursor()
-    
-    query = ("UPDATE EmailSettings SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1")
-    
-    cursor.execute(query, (email_settings['server_name'], email_settings['server_port'], email_settings['from_email'], email_settings['send_mode'], email_settings['encryption'], int(email_settings['auth_required']), email_settings['email_username'], email_settings['email_password']))
-    
+
+    query = (
+        "UPDATE EmailSettings SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1")
+
+    cursor.execute(query, (email_settings['server_name'], email_settings['server_port'], email_settings['from_email'],
+                           email_settings['send_mode'], email_settings['encryption'],
+                           int(email_settings['auth_required']), email_settings['email_username'],
+                           email_settings['email_password']))
+
     cnx.commit()
     cursor.close()
     # cnx.close()
@@ -734,21 +794,24 @@ def get_encryption_key(cnx):
     # Convert the bytearray to a base64 encoded string before returning.
     return base64.b64encode(result_dict['EncryptionKey']).decode()
 
+
 def get_email_settings(cnx):
     cursor = cnx.cursor()
-    
+
     query = "SELECT * FROM EmailSettings"
     cursor.execute(query)
-    
+
     result = cursor.fetchone()
     cursor.close()
     # cnx.close()
-    
+
     if result:
-        keys = ["EmailSettingsID", "Server_Name", "Server_Port", "From_Email", "Send_Mode", "Encryption", "Auth_Required", "Username", "Password"]
+        keys = ["EmailSettingsID", "Server_Name", "Server_Port", "From_Email", "Send_Mode", "Encryption",
+                "Auth_Required", "Username", "Password"]
         return dict(zip(keys, result))
     else:
         return None
+
 
 def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     cursor = cnx.cursor()
@@ -774,6 +837,7 @@ def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     # cnx.close()
 
     return episode_id
+
 
 def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
     cursor = cnx.cursor()
@@ -812,6 +876,7 @@ def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
         # cnx.close()
         return False
 
+
 def episode_remove_queue(cnx, user_id, url, title):
     cursor = cnx.cursor()
 
@@ -823,7 +888,7 @@ def episode_remove_queue(cnx, user_id, url, title):
     if episode_id:
         # Remove the episode from the user's queue
         query = "DELETE FROM EpisodeQueue WHERE UserID = %s AND EpisodeID = %s"
-        cursor.execute(query, (user_id, episode_id[0])) # Extract the episode ID from the tuple
+        cursor.execute(query, (user_id, episode_id[0]))  # Extract the episode ID from the tuple
         cnx.commit()
 
         cursor.close()
@@ -836,6 +901,7 @@ def episode_remove_queue(cnx, user_id, url, title):
         # cnx.close()
         return False
 
+
 def check_usernames(cnx, username):
     cursor = cnx.cursor()
     query = ("SELECT COUNT(*) FROM Users WHERE Username = %s")
@@ -844,6 +910,7 @@ def check_usernames(cnx, username):
     cursor.close()
     # cnx.close()
     return count > 0
+
 
 def record_listen_duration(cnx, url, title, user_id, listen_duration):
     listen_date = datetime.datetime.now()
@@ -875,14 +942,15 @@ def record_listen_duration(cnx, url, title, user_id, listen_duration):
     else:
         # UserEpisodeHistory row does not exist, insert new row
         add_listen_duration = ("INSERT INTO UserEpisodeHistory "
-                            "(UserID, EpisodeID, ListenDate, ListenDuration) "
-                            "VALUES (%s, %s, %s, %s)")
+                               "(UserID, EpisodeID, ListenDate, ListenDuration) "
+                               "VALUES (%s, %s, %s, %s)")
         listen_duration_data = (user_id, episode_id, listen_date, listen_duration)
         cursor.execute(add_listen_duration, listen_duration_data)
 
     cnx.commit()
     cursor.close()
     # cnx.close()
+
 
 def check_episode_playback(cnx, user_id, episode_title, episode_url):
     cursor = None
@@ -922,6 +990,7 @@ def check_episode_playback(cnx, user_id, episode_title, episode_url):
             print('cnx open')
             # cnx.close()
 
+
 def get_episode_listen_time(cnx, user_id, title, url):
     cursor = None
     try:
@@ -947,6 +1016,7 @@ def get_episode_listen_time(cnx, user_id, title, url):
             cursor.close()
             # cnx.close()
 
+
 def get_theme(cnx, user_id):
     cursor = None
     try:
@@ -964,6 +1034,7 @@ def get_theme(cnx, user_id):
             cursor.close()
             # cnx.close()
 
+
 def set_theme(cnx, user_id, theme):
     cursor = None
     try:
@@ -979,6 +1050,7 @@ def set_theme(cnx, user_id, theme):
             cursor.close()
             # cnx.close()
 
+
 def get_user_info(database_type, cnx):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
@@ -988,7 +1060,6 @@ def get_user_info(database_type, cnx):
     query = (f"SELECT Users.UserID, Users.Fullname, Users.Username, "
              f"Users.Email, Users.IsAdmin "
              f"FROM Users ")
-
 
     cursor.execute(query)
     rows = cursor.fetchall()
@@ -1000,6 +1071,7 @@ def get_user_info(database_type, cnx):
         return None
 
     return rows
+
 
 def get_api_info(database_type, cnx):
     if database_type == "postgresql":
@@ -1024,6 +1096,7 @@ def get_api_info(database_type, cnx):
 
     return rows
 
+
 def create_api_key(cnx, user_id):
     import secrets
     import string
@@ -1039,6 +1112,7 @@ def create_api_key(cnx, user_id):
 
     return api_key
 
+
 def delete_api(cnx, api_id):
     cursor = cnx.cursor()
     query = "DELETE FROM APIKeys WHERE APIKeyID = %s"
@@ -1047,6 +1121,7 @@ def delete_api(cnx, api_id):
     cursor.close()
     # cnx.close()
 
+
 def set_username(cnx, user_id, new_username):
     cursor = cnx.cursor()
     query = "UPDATE Users SET Username = %s WHERE UserID = %s"
@@ -1054,6 +1129,7 @@ def set_username(cnx, user_id, new_username):
     cnx.commit()
     cursor.close()
     # cnx.close()
+
 
 def set_password(cnx, user_id, salt, hash_pw):
     cursor = cnx.cursor()
@@ -1072,6 +1148,7 @@ def set_email(cnx, user_id, new_email):
     cursor.close()
     # cnx.close()
 
+
 def set_fullname(cnx, user_id, new_name):
     cursor = cnx.cursor()
     query = "UPDATE Users SET Fullname = %s WHERE UserID = %s"
@@ -1080,17 +1157,18 @@ def set_fullname(cnx, user_id, new_name):
     cursor.close()
     # cnx.close()
 
+
 def set_isadmin(cnx, user_id, isadmin):
     cursor = cnx.cursor()
-    
+
     # Convert boolean isadmin value to integer (0 or 1)
     isadmin_int = int(isadmin)
-    
+
     query = f"UPDATE Users SET IsAdmin = {isadmin_int} WHERE UserID = {user_id}"
-    
+
     cursor.execute(query)
     cnx.commit()
-    
+
     cursor.close()
     # cnx.close()
 
@@ -1149,7 +1227,6 @@ def delete_user(cnx, user_id):
     # cnx.close()
 
 
-
 def user_admin_check(cnx, user_id):
     cursor = cnx.cursor()
     query = f"SELECT IsAdmin FROM Users WHERE UserID = '{user_id}'"
@@ -1158,11 +1235,11 @@ def user_admin_check(cnx, user_id):
     cursor.close()
     # cnx.close()
 
-    
     if result is None:
         return False
-    
+
     return bool(result[0])
+
 
 def final_admin(cnx, user_id):
     cursor = cnx.cursor()
@@ -1184,6 +1261,7 @@ def final_admin(cnx, user_id):
 
     return False
 
+
 def download_status(cnx):
     cursor = cnx.cursor()
     query = "SELECT DownloadEnabled FROM AppSettings"
@@ -1196,6 +1274,7 @@ def download_status(cnx):
         return True
     else:
         return False
+
 
 def guest_status(cnx):
     cursor = cnx.cursor()
@@ -1210,6 +1289,7 @@ def guest_status(cnx):
     else:
         return False
 
+
 def enable_disable_guest(cnx):
     cursor = cnx.cursor()
     query = "UPDATE Users SET Email = CASE WHEN Email = 'inactive' THEN 'active' ELSE 'inactive' END WHERE Username = 'guest'"
@@ -1218,6 +1298,7 @@ def enable_disable_guest(cnx):
     cursor.close()
     # cnx.close()
 
+
 def enable_disable_downloads(cnx):
     cursor = cnx.cursor()
     query = "UPDATE AppSettings SET DownloadEnabled = CASE WHEN DownloadEnabled = 1 THEN 0 ELSE 1 END"
@@ -1225,6 +1306,7 @@ def enable_disable_downloads(cnx):
     cnx.commit()
     cursor.close()
     # cnx.close()
+
 
 def self_service_status(cnx):
     cursor = cnx.cursor()
@@ -1239,6 +1321,7 @@ def self_service_status(cnx):
     else:
         return False
 
+
 def enable_disable_self_service(cnx):
     cursor = cnx.cursor()
     query = "UPDATE AppSettings SET SelfServiceUser = CASE WHEN SelfServiceUser = 0 THEN 1 ELSE 0 END"
@@ -1246,6 +1329,7 @@ def enable_disable_self_service(cnx):
     cnx.commit()
     cursor.close()
     # cnx.close()
+
 
 def verify_api_key(cnx, passed_key):
     cursor = cnx.cursor()
@@ -1257,17 +1341,51 @@ def verify_api_key(cnx, passed_key):
     return True if result else False
 
 
+def id_from_api_key(cnx, passed_key):
+    cursor = cnx.cursor()
+    query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
+    cursor.execute(query, (passed_key,))
+    result = cursor.fetchone()
+    print(f"Result: {result}")
+    cursor.close()
+    return result[0] if result else None
+
+
+def check_api_permission(cnx, passed_key):
+    import tempfile
+    # Create a temporary file to store the content. This is because the mysql command reads from a file.
+    with tempfile.NamedTemporaryFile(mode='w+', delete=True) as tempf:
+        tempf.write(server_restore_data)
+        tempf.flush()
+        cmd = [
+            "mysql",
+            "-h", 'db',
+            "-P", '3306',
+            "-u", "root",
+            "-p" + database_pass,
+            "pypods_database"
+        ]
+
+        # Use the file's content as input for the mysql command
+        with open(tempf.name, 'r') as file:
+            process = subprocess.Popen(cmd, stdin=file, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+
+            if process.returncode != 0:
+                raise Exception(f"Restoration failed with error: {stderr.decode()}")
+
+    return "Restoration completed successfully!"
 
 
 def get_stats(cnx, user_id):
     cursor = cnx.cursor()
-    
+
     query = ("SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded "
              "FROM UserStats "
              "WHERE UserID = %s")
-    
+
     cursor.execute(query, (user_id,))
-    
+
     results = cursor.fetchall()
     result = results[0] if results else None
 
@@ -1282,10 +1400,10 @@ def get_stats(cnx, user_id):
         }
     else:
         stats = None
-    
+
     cursor.close()
     # cnx.close()
-    
+
     return stats
 
 
@@ -1315,6 +1433,7 @@ def saved_episode_list(database_type, cnx, user_id):
         return None
 
     return rows
+
 
 def save_episode(cnx, url, title, user_id):
     # Get the episode ID from the Episodes table
@@ -1348,6 +1467,7 @@ def save_episode(cnx, url, title, user_id):
 
     return True
 
+
 def check_saved(cnx, user_id, title, url):
     cursor = None
     try:
@@ -1376,9 +1496,7 @@ def check_saved(cnx, user_id, title, url):
             # cnx.close()
 
 
-
 def remove_saved_episode(cnx, url, title, user_id):
-
     cursor = cnx.cursor()
 
     # Get the Save ID from the SavedEpisodes table
@@ -1405,7 +1523,7 @@ def remove_saved_episode(cnx, url, title, user_id):
 
     cnx.commit()
     print(f"Removed {cursor.rowcount} entry from the SavedEpisodes table.")
-    
+
     cursor.close()
     # cnx.close()
 
@@ -1418,7 +1536,7 @@ def increment_played(cnx, user_id):
              "WHERE UserID = %s")
     cursor.execute(query, (user_id,))
     cnx.commit()
-    
+
     cursor.close()
     # cnx.close()
 
@@ -1431,27 +1549,28 @@ def increment_listen_time(cnx, user_id):
              "WHERE UserID = %s")
     cursor.execute(query, (user_id,))
     cnx.commit()
-    
+
     cursor.close()
     # cnx.close()
 
 
 def get_user_episode_count(cnx, user_id):
     cursor = cnx.cursor()
-    
+
     query = ("SELECT COUNT(*) "
              "FROM Episodes "
              "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
              "WHERE Podcasts.UserID = %s")
-    
+
     cursor.execute(query, (user_id,))
-    
+
     episode_count = cursor.fetchone()[0]
-    
+
     cursor.close()
     # cnx.close()
 
     return episode_count
+
 
 def check_podcast(cnx, user_id, podcast_name):
     cursor = None
@@ -1481,10 +1600,12 @@ def get_session_file_path():
     session_file_path = os.path.join(data_dir, "session.txt")
     return session_file_path
 
+
 def save_session_to_file(session_id):
     session_file_path = get_session_file_path()
     with open(session_file_path, "w") as file:
         file.write(session_id)
+
 
 def get_saved_session_from_file():
     app_name = 'pinepods'
@@ -1495,6 +1616,7 @@ def get_saved_session_from_file():
             return session_id
     except FileNotFoundError:
         return None
+
 
 def check_saved_session(cnx, session_value):
     cursor = cnx.cursor()
@@ -1567,6 +1689,7 @@ def create_web_session(cnx, user_id, session_value):
     cursor.close()
     # cnx.close()
 
+
 def clean_expired_sessions(cnx):
     current_time = datetime.datetime.now()
     cursor = cnx.cursor()
@@ -1589,9 +1712,10 @@ def user_exists(cnx, username):
     # cnx.close()
     return count > 0
 
+
 def reset_password_create_code(cnx, user_email, reset_code):
     cursor = cnx.cursor()
-    
+
     # Check if a user with this email exists
     check_query = """
         SELECT UserID
@@ -1604,7 +1728,7 @@ def reset_password_create_code(cnx, user_email, reset_code):
         cursor.close()
         # cnx.close()
         return False
-    
+
     # If the user exists, update the reset code and expiry
     reset_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
 
@@ -1626,8 +1750,9 @@ def reset_password_create_code(cnx, user_email, reset_code):
 
     cursor.close()
     # cnx.close()
-    
+
     return True
+
 
 def verify_password(cnx, username: str, password: str) -> bool:
     cursor = cnx.cursor()
@@ -1648,6 +1773,7 @@ def verify_password(cnx, username: str, password: str) -> bool:
     # Compare the hashed password with the stored hash
     return password_hash == hashed_password
 
+
 def verify_reset_code(cnx, user_email, reset_code):
     cursor = cnx.cursor()
 
@@ -1658,20 +1784,21 @@ def verify_reset_code(cnx, user_email, reset_code):
     """
     cursor.execute(select_query, (user_email,))
     result = cursor.fetchone()
-    
+
     cursor.close()
     # cnx.close()
 
     # Check if a user with this email exists
     if result is None:
         return None
-    
+
     # Check if the reset code is valid and not expired
     stored_code, expiry = result
     if stored_code == reset_code and datetime.datetime.now() < expiry:
         return True
-    
+
     return False
+
 
 def reset_password_prompt(cnx, user_email, salt, hashed_pw):
     cursor = cnx.cursor()
@@ -1695,6 +1822,7 @@ def reset_password_prompt(cnx, user_email, salt, hashed_pw):
     # cnx.close()
 
     return "Password Reset Successfully"
+
 
 def clear_guest_data(cnx):
     cursor = cnx.cursor()
@@ -1721,6 +1849,7 @@ def clear_guest_data(cnx):
 
     return "Guest user data cleared successfully"
 
+
 def get_episode_metadata(database_type, cnx, url, title, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
@@ -1738,12 +1867,13 @@ def get_episode_metadata(database_type, cnx, url, title, user_id):
 
     episode_id = episode_id['EpisodeID']
 
-    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
-             f"Podcasts.WebsiteURL "
-             f"FROM Episodes "
-             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             f"WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s")
+    query = (
+        f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+        f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
+        f"Podcasts.WebsiteURL "
+        f"FROM Episodes "
+        f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+        f"WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s")
 
     cursor.execute(query, (episode_id, user_id,))
     row = cursor.fetchone()
@@ -1752,8 +1882,9 @@ def get_episode_metadata(database_type, cnx, url, title, user_id):
 
     if not row:
         raise ValueError(f"No episode found with ID {episode_id} for user {user_id}")
-        
+
     return row
+
 
 def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
     if database_type == "postgresql":
@@ -1764,7 +1895,7 @@ def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
     query = (f"UPDATE Users "
              f"SET MFA_Secret = %s "
              f"WHERE UserID = %s")
-    
+
     try:
         cursor.execute(query, (mfa_secret, user_id))
         cnx.commit()
@@ -1797,6 +1928,7 @@ def check_mfa_enabled(database_type, cnx, user_id):
         print("Error checking MFA status:", e)
         return False
 
+
 def get_mfa_secret(database_type, cnx, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
@@ -1814,6 +1946,7 @@ def get_mfa_secret(database_type, cnx, user_id):
     except Exception as e:
         print("Error retrieving MFA secret:", e)
         return None
+
 
 def delete_mfa_secret(database_type, cnx, user_id):
     if database_type == "postgresql":
@@ -1833,13 +1966,15 @@ def delete_mfa_secret(database_type, cnx, user_id):
         print("Error deleting MFA secret:", e)
         return False
 
+
 def get_all_episodes(database_type, cnx, pod_feed):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s")
+    query = (
+        f"SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s")
 
     try:
         cursor.execute(query, (pod_feed,))
@@ -1850,6 +1985,7 @@ def get_all_episodes(database_type, cnx, pod_feed):
     except Exception as e:
         print("Error retrieving Podcast Episodes:", e)
         return None
+
 
 def remove_episode_history(database_type, cnx, url, title, user_id):
     if database_type == "postgresql":
@@ -1873,6 +2009,7 @@ def remove_episode_history(database_type, cnx, url, title, user_id):
         print("Error removing episode from history:", e)
         return False
 
+
 def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
@@ -1891,6 +2028,7 @@ def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref):
         print("Error setting up time info:", e)
         return False
 
+
 def get_time_info(database_type, cnx, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
@@ -1906,6 +2044,7 @@ def get_time_info(database_type, cnx, user_id):
         return result['Timezone'], result['TimeFormat']
     else:
         return None
+
 
 def first_login_done(database_type, cnx, user_id):
     if database_type == "postgresql":
@@ -1969,6 +2108,7 @@ def delete_selected_episodes(cnx, selected_episodes, user_id):
 
     return "success"
 
+
 def delete_selected_podcasts(cnx, delete_list, user_id):
     cursor = cnx.cursor()
     for podcast_id in delete_list:
@@ -2005,7 +2145,9 @@ def delete_selected_podcasts(cnx, delete_list, user_id):
     cursor.close()
     return "success"
 
+
 import time
+
 
 def search_data(database_type, cnx, search_term, user_id):
     if database_type == "postgresql":
@@ -2033,6 +2175,7 @@ def search_data(database_type, cnx, search_term, user_id):
     except Exception as e:
         print("Error retrieving Podcast Episodes:", e)
         return None
+
 
 def queue_pod(database_type, cnx, episode_title, ep_url, user_id):
     if database_type == "postgresql":
@@ -2081,6 +2224,7 @@ def queue_pod(database_type, cnx, episode_title, ep_url, user_id):
 
     return {"detail": "Podcast Episode queued successfully."}
 
+
 def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
@@ -2125,6 +2269,7 @@ def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
     cursor.close()
 
     return {"status": "success"}
+
 
 def get_queued_episodes(database_type, cnx, user_id):
     if database_type == "postgresql":
@@ -2219,6 +2364,7 @@ def backup_user(database_type, cnx, user_id):
 
     return opml_content
 
+
 def backup_server(cnx, backup_dir, database_pass):
     # Replace with your database and authentication details
     print(f'pass: {database_pass}')
@@ -2241,6 +2387,7 @@ def backup_server(cnx, backup_dir, database_pass):
         raise Exception(f"Backup failed with error: {stderr.decode()}")
 
     return stdout.decode()
+
 
 def restore_server(cnx, database_pass, server_restore_data):
     import tempfile
