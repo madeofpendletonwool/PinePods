@@ -1932,6 +1932,8 @@ async def restore_server(data: RestoreServer, is_admin: bool = Depends(check_if_
 
 
 if __name__ == '__main__':
+    DEBUG_MODE = os.environ.get("DEBUG_MODE", "False") == "True"
+    config_file = "/pinepods/startup/logging_config_debug.ini" if DEBUG_MODE else "/pinepods/startup/logging_config.ini"
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
     args = parser.parse_args()
@@ -1942,7 +1944,7 @@ if __name__ == '__main__':
         "clientapi:app",
         host="0.0.0.0",
         port=args.port,
-        log_config='/pinepods/startup/logging_config.py'
+        log_config=config_file
         # ssl_keyfile="/opt/pinepods/certs/key.pem",
         # ssl_certfile="/opt/pinepods/certs/cert.pem"
     )
