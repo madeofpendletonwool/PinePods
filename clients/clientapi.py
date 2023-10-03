@@ -1491,11 +1491,7 @@ async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connectio
     logging.info(f"Database Type: {database_type}, Connection: {cnx}, User ID: {user_id}")
 
     is_enabled = database_functions.functions.check_mfa_enabled(database_type, cnx, user_id)
-    if is_enabled:
-        return {"mfa_enabled": is_enabled}
-    else:
-        logging.warning(f"User not found: {user_id}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return {"mfa_enabled": is_enabled}
 
 
 class VerifyMFABody(BaseModel):
