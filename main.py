@@ -4892,7 +4892,7 @@ def main(page: ft.Page, session_value=None):
                 modify_api_dlg.open = True
                 page.update()
 
-            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
+            create_api_button = ft.ElevatedButton(f'Generate New API Key for client access', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
             api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers, active_user.user_id)
 
@@ -4978,7 +4978,6 @@ def main(page: ft.Page, session_value=None):
                         settings_data.setting_backup_con,
                         user_div_row,
                         settings_data.setting_import_con,
-                        user_div_row,
                         div_row,
                         api_edit_container,
                         admin_setting_text,

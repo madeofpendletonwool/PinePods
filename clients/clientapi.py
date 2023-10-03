@@ -1488,11 +1488,13 @@ async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connectio
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to check mfa status for other users.")
+    logging.info(f"Database Type: {database_type}, Connection: {cnx}, User ID: {user_id}")
 
     is_enabled = database_functions.functions.check_mfa_enabled(database_type, cnx, user_id)
     if is_enabled:
         return {"mfa_enabled": is_enabled}
     else:
+        logging.warning(f"User not found: {user_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
