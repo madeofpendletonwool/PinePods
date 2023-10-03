@@ -45,6 +45,7 @@ else:
 
 secret_key_middle = secrets.token_hex(32)
 debug_mode = os.environ.get("DEBUG_MODE", "False") == "True"
+print(f"Debug mode set to: {debug_mode}")
 if debug_mode == "True":
     logging.basicConfig(level=logging.INFO)
 else:
