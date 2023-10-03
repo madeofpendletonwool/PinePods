@@ -634,7 +634,7 @@ async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_da
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
-    if key_id == RecordHistoryData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         database_functions.functions.record_podcast_history(cnx, data.episode_title, data.user_id, data.episode_pos)
         return {"detail": "Podcast history recorded."}
     else:
@@ -662,7 +662,7 @@ async def api_download_podcast(data: DownloadPodcastData, cnx=Depends(get_databa
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == DownloadPodcastData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         result = database_functions.functions.download_podcast(cnx, data.episode_url, data.title, data.user_id)
         if result:
             return {"detail": "Podcast downloaded."}
@@ -693,7 +693,7 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == DeletePodcastData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         database_functions.functions.delete_podcast(cnx, data.episode_url, data.title, data.user_id)
         return {"detail": "Podcast deleted."}
     else:
@@ -721,7 +721,7 @@ async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_conne
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == SaveEpisodeData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         success = database_functions.functions.save_episode(cnx, data.episode_url, data.title, data.user_id)
         if success:
             return {"detail": "Episode saved."}
@@ -744,7 +744,7 @@ async def api_remove_saved_episode(data: RemoveSavedEpisodeData, cnx=Depends(get
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if is_valid_key:
         key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-        if key_id == RemoveSavedEpisodeData.user_id:
+        if key_id == data.user_id:
             database_functions.functions.remove_saved_episode(cnx, data.episode_url, data.title, data.user_id)
             return {"detail": "Saved episode removed."}
         else:
@@ -776,7 +776,7 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == RecordListenDurationData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         database_functions.functions.record_listen_duration(cnx, data.episode_url, data.title, data.user_id,
                                                             data.listen_duration)
         return {"detail": "Listen duration recorded."}
@@ -889,7 +889,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
 
-        if RemovePodcastData.user_id != user_id_from_api_key:
+        if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
     database_functions.functions.remove_podcast(cnx, data.podcast_name, data.user_id)
@@ -1333,7 +1333,7 @@ async def api_reset_password_route(payload: ResetPasswordPayload, cnx=Depends(ge
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == ResetPasswordPayload.user_id or is_web_key:
+    if key_id == payload.user_id or is_web_key:
         user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email,
                                                                               payload.reset_code)
         return {"user_exists": user_exists}
@@ -1387,7 +1387,7 @@ async def api_reset_password_verify_route(payload: ResetPasswordPayloadVerify, c
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == ResetPasswordPayloadVerify.user_id or is_web_key:
+    if key_id == payload.user_id or is_web_key:
         message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt,
                                                                      payload.hashed_pw)
         if message is None:
@@ -1431,7 +1431,7 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == EpisodeMetadata.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         episode = database_functions.functions.get_episode_metadata(database_type, cnx, data.episode_url,
                                                                     data.episode_title, data.user_id)
         return {"episode": episode}
@@ -1459,7 +1459,7 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_conn
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == MfaSecretData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         success = database_functions.functions.save_mfa_secret(database_type, cnx, data.user_id, data.mfa_secret)
         if success:
             return {"status": "success"}
@@ -1513,7 +1513,7 @@ async def api_verify_mfa(body: VerifyMFABody, cnx=Depends(get_database_connectio
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == VerifyMFABody.user_id or is_web_key:
+    if key_id == body.user_id or is_web_key:
         secret = database_functions.functions.get_mfa_secret(database_type, cnx, body.user_id)
 
         if secret is None:
@@ -1546,7 +1546,7 @@ async def api_delete_mfa(body: UserIDBody, cnx=Depends(get_database_connection),
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
 
-        if UserIDBody.user_id != user_id_from_api_key:
+        if body.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
 
@@ -1593,7 +1593,7 @@ async def api_remove_episode_from_history(data: EpisodeToRemove, cnx=Depends(get
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == EpisodeToRemove.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         success = database_functions.functions.remove_episode_history(database_type, cnx, data.url, data.title,
                                                                       data.user_id)
         return {"success": success}
@@ -1680,7 +1680,7 @@ async def first_login_done(data: UserLoginUpdate, cnx=Depends(get_database_conne
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == UserLoginUpdate.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         first_login_status = database_functions.functions.first_login_done(database_type, cnx, data.user_id)
         return {"FirstLogin": first_login_status}
     else:
@@ -1707,7 +1707,7 @@ async def delete_selected_episodes(data: SelectedEpisodesDelete, cnx=Depends(get
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == SelectedEpisodesDelete.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         if is_valid_key:
             delete_status = database_functions.functions.delete_selected_episodes(cnx, data.selected_episodes,
                                                                                   data.user_id)
@@ -1738,7 +1738,7 @@ async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx=Depends(get
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == SelectedPodcastsDelete.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         if is_valid_key:
             delete_status = database_functions.functions.delete_selected_podcasts(cnx, data.delete_list,
                                                                                   data.user_id)
@@ -1787,7 +1787,7 @@ async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == QueuePodData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         result = database_functions.functions.queue_pod(database_type, cnx, data.episode_title, data.ep_url,
                                                         data.user_id)
         return {"data": result}
@@ -1814,7 +1814,7 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == QueueRmData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         result = database_functions.functions.remove_queued_pod(database_type, cnx, data.episode_title, data.ep_url,
                                                                 data.user_id)
         return {"data": result}
@@ -1839,7 +1839,7 @@ async def get_queued_episodes(data: QueuedEpisodesData, cnx=Depends(get_database
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == QueuedEpisodesData.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         result = database_functions.functions.get_queued_episodes(database_type, cnx, data.user_id)
         return {"data": result}
     else:
@@ -1866,7 +1866,7 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == QueueBump.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         try:
             print(data)
             result = database_functions.functions.queue_bump(cnx, data.ep_url, data.title, data.user_id)
@@ -1894,7 +1894,7 @@ async def backup_user(data: BackupUser, cnx=Depends(get_database_connection),
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == BackupUser.user_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         try:
             opml_data = database_functions.functions.backup_user(database_type, cnx, data.user_id)
         except Exception as e:
