@@ -17,8 +17,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-debug_mode = os.environ.get("DEBUG_MODE", False)
-if debug_mode:
+debug_mode = os.environ.get("DEBUG_MODE", "False") == "True"
+if debug_mode == "True":
     logging.basicConfig(level=logging.INFO)
 else:
     logging.basicConfig(level=logging.ERROR)

@@ -44,8 +44,8 @@ else:
     print("You've selected a mariadb database")
 
 secret_key_middle = secrets.token_hex(32)
-debug_mode = os.environ.get("DEBUG_MODE", False)
-if debug_mode:
+debug_mode = os.environ.get("DEBUG_MODE", "False") == "True"
+if debug_mode == "True":
     logging.basicConfig(level=logging.INFO)
 else:
     logging.basicConfig(level=logging.ERROR)
@@ -1871,7 +1871,6 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         try:
-            print(data)
             result = database_functions.functions.queue_bump(cnx, data.ep_url, data.title, data.user_id)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
