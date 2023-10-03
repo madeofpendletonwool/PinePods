@@ -17,7 +17,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-logging.basicConfig(level=logging.INFO)
+debug_mode = os.environ.get("DEBUG_MODE", False)
+if debug_mode:
+    logging.basicConfig(level=logging.INFO)
+else:
+    logging.basicConfig(level=logging.ERROR)
 
 
 proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))

@@ -44,8 +44,11 @@ else:
     print("You've selected a mariadb database")
 
 secret_key_middle = secrets.token_hex(32)
-
-logging.basicConfig(level=logging.INFO)
+debug_mode = os.environ.get("DEBUG_MODE", False)
+if debug_mode:
+    logging.basicConfig(level=logging.INFO)
+else:
+    logging.basicConfig(level=logging.ERROR)
 
 print('Client API Server is Starting!')
 
