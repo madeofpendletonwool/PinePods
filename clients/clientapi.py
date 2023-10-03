@@ -44,12 +44,6 @@ else:
     print("You've selected a mariadb database")
 
 secret_key_middle = secrets.token_hex(32)
-debug_mode = os.environ.get("DEBUG_MODE", "False") == "True"
-print(f"Debug mode set to: {debug_mode}")
-if debug_mode == "True":
-    logging.basicConfig(level=logging.INFO)
-else:
-    logging.basicConfig(level=logging.ERROR)
 
 print('Client API Server is Starting!')
 
@@ -1948,6 +1942,8 @@ if __name__ == '__main__':
         "clientapi:app",
         host="0.0.0.0",
         port=args.port,
-        # ssl_keyfile="/opt/pinepods/certs/key.pem",  # Replace with the path to your key.pem
-        # ssl_certfile="/opt/pinepods/certs/cert.pem"  # Replace with the path to your cert.pem
+        log_config='/pinepods/startup/logging_config.py'
+        # ssl_keyfile="/opt/pinepods/certs/key.pem",
+        # ssl_certfile="/opt/pinepods/certs/cert.pem"
     )
+

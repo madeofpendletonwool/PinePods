@@ -17,11 +17,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-debug_mode = os.environ.get("DEBUG_MODE", "False") == "True"
-if debug_mode == "True":
-    logging.basicConfig(level=logging.INFO)
-else:
-    logging.basicConfig(level=logging.ERROR)
 
 
 proxy_protocol = str(os.getenv('PROXY_PROTOCOL', 'http'))
@@ -146,8 +141,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == '__main__':
-    # Fetch the PROXY_PORT environment variable. If not set, default to 8040
     if proxy_protocol == 'https':
-        uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port, ssl_keyfile="/opt/pinepods/certs/key.pem", ssl_certfile="/opt/pinepods/certs/cert.pem")
+        uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port, ssl_keyfile="/opt/pinepods/certs/key.pem", ssl_certfile="/opt/pinepods/certs/cert.pem", log_config='/pinepods/startup/logging_config.py')
     else:
-        uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port)
+        uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port, log_config='logging_config.py')
