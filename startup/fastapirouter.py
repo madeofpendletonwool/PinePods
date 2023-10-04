@@ -141,8 +141,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == '__main__':
-    DEBUG_MODE = os.environ.get("DEBUG_MODE", "False") == "True"
+    # Ensure case-insensitive check for DEBUG_MODE
+    DEBUG_MODE = os.environ.get("DEBUG_MODE", "False").lower() == "true"
     config_file = "/pinepods/startup/logging_config_debug.ini" if DEBUG_MODE else "/pinepods/startup/logging_config.ini"
+
     if proxy_protocol == 'https':
         uvicorn.run("fastapirouter:app", host="0.0.0.0", port=proxy_port, ssl_keyfile="/opt/pinepods/certs/key.pem", ssl_certfile="/opt/pinepods/certs/cert.pem", log_config=config_file)
     else:
