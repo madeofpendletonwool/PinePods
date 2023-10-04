@@ -24,10 +24,10 @@ ARG CACHEBUST=1
 
 # Put pinepods Files in place
 # Create structure for pinepods
-RUN git clone -b api_rebuild https://github.com/madeofpendletonwool/pypods.git /pinepods && \
-    chmod -R 755 /pinepods
+COPY . /pinepods
+RUN chmod -R 755 /pinepods
 
 # Begin pinepods Setup
-ADD startup/startup.sh /
+COPY startup/startup.sh /
 RUN ls -al /
 ENTRYPOINT ["/startup.sh"]
