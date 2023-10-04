@@ -1933,13 +1933,11 @@ async def restore_server(data: RestoreServer, is_admin: bool = Depends(check_if_
 
 if __name__ == '__main__':
     raw_debug_mode = os.environ.get("DEBUG_MODE", "Not Set")
-    print(f"Raw DEBUG_MODE: {raw_debug_mode}, Type: {type(raw_debug_mode)}")
+    logging.error(f"Raw DEBUG_MODE: {raw_debug_mode}, Type: {type(raw_debug_mode)}")
     DEBUG_MODE = os.environ.get("DEBUG_MODE", "False") == "True"
     if DEBUG_MODE:
-        print("Debug Mode Enabled")
         logging.error("Debug Mode Enabled")
     else:
-        print("Debug Mode Disabled")
         logging.error("Debug Mode Disabled")
     config_file = "/pinepods/startup/logging_config_debug.ini" if DEBUG_MODE else "/pinepods/startup/logging_config.ini"
     logging.error(config_file)
