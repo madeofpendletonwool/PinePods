@@ -1935,8 +1935,10 @@ if __name__ == '__main__':
     DEBUG_MODE = os.environ.get("DEBUG_MODE", "False") == "True"
     if DEBUG_MODE:
         print("Debug Mode Enabled")
+        logging.error("Debug Mode Enabled")
     else:
         print("Debug Mode Disabled")
+        logging.error("Debug Mode Disabled")
     config_file = "/pinepods/startup/logging_config_debug.ini" if DEBUG_MODE else "/pinepods/startup/logging_config.ini"
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
