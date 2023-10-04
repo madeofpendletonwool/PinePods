@@ -1932,15 +1932,14 @@ async def restore_server(data: RestoreServer, is_admin: bool = Depends(check_if_
 
 
 if __name__ == '__main__':
-    raw_debug_mode = os.environ.get("DEBUG_MODE", "Not Set")
-    logging.error(f"Raw DEBUG_MODE: {raw_debug_mode}, Type: {type(raw_debug_mode)}")
-    DEBUG_MODE = os.environ.get("DEBUG_MODE", "False") == "True"
+    raw_debug_mode = os.environ.get("DEBUG_MODE", "False")
+    DEBUG_MODE = raw_debug_mode.lower() == "true"
     if DEBUG_MODE:
-        logging.error("Debug Mode Enabled")
+        logging.info("Debug Mode Enabled")
     else:
-        logging.error("Debug Mode Disabled")
+        logging.info("Debug Mode Disabled")
     config_file = "/pinepods/startup/logging_config_debug.ini" if DEBUG_MODE else "/pinepods/startup/logging_config.ini"
-    logging.error(config_file)
+    logging.info(config_file)
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
     args = parser.parse_args()
