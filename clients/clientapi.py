@@ -1940,6 +1940,7 @@ if __name__ == '__main__':
         print("Debug Mode Disabled")
         logging.error("Debug Mode Disabled")
     config_file = "/pinepods/startup/logging_config_debug.ini" if DEBUG_MODE else "/pinepods/startup/logging_config.ini"
+    logging.error(config_file)
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
     args = parser.parse_args()
