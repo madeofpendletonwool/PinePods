@@ -1933,6 +1933,7 @@ async def restore_server(data: RestoreServer, is_admin: bool = Depends(check_if_
 
 if __name__ == '__main__':
     DEBUG_MODE = os.environ.get("DEBUG_MODE", "False") == "True"
+    print(f"Raw DEBUG_MODE: {raw_debug_mode}, Type: {type(raw_debug_mode)}")
     if DEBUG_MODE:
         print("Debug Mode Enabled")
         logging.error("Debug Mode Enabled")
