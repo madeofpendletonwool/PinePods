@@ -2,6 +2,11 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.4
+
+- [x] Unlock api creation for standard users
+- [x] Email resets currently broken for non-admins due to lockdown on encryption key. Need to handle encryption server-side
+
 Version 0.3.1
 
 - [x] Finalize reverse proxy processes and web playing

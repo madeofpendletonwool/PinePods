@@ -1187,11 +1187,11 @@ def main(page: ft.Page, session_value=None):
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers,
-                                                                                 user_email, reset_code, active_user.user_id)
+                                                                                 user_email, reset_code)
             if user_exist:
                 def pw_reset(page, user_email, reset_code):
                     code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers,
-                                                                                user_email, reset_code, active_user.user_id)
+                                                                                user_email, reset_code)
                     if code_valid == True:
                         def close_code_pw_reset_dlg(e):
                             code_pw_reset_dlg.open = False
@@ -1201,7 +1201,7 @@ def main(page: ft.Page, session_value=None):
                             if pw_reset_prompt == pw_verify_prompt:
                                 salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
                                 api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers,
-                                                                                   user_email, salt, hash_pw, active_user.user_id)
+                                                                                   user_email, salt, hash_pw, reset_code)
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
                                 page.snack_bar.open = True
                                 code_pw_reset_dlg.open = False
@@ -1286,7 +1286,7 @@ def main(page: ft.Page, session_value=None):
                     ], tight=True),
                     actions=[
                         ft.TextButton("Submit", on_click=lambda e: pw_reset(page, user_email, code_reset_prompt.value)),
-                        ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+                        ft.TextButton("Cancel", on_click=close_code_pw_dlg)
                     ],
                     actions_alignment=ft.MainAxisAlignment.END
                 )
@@ -4357,6 +4357,9 @@ def main(page: ft.Page, session_value=None):
                     user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
                     server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
 
+                    if not active_user.user_is_admin:
+                        server_import_select.visible = False
+
                     import_select_row = ft.Row(
                         controls=[
                             ft.TextButton("Close", on_click=lambda x: (close_import_dlg(self.page)))
@@ -4366,7 +4369,7 @@ def main(page: ft.Page, session_value=None):
 
                     import_dlg = ft.AlertDialog(
                         modal=True,
-                        title=ft.Text(f"Backup Data:"),
+                        title=ft.Text(f"Import Data:"),
                         content=ft.Column(controls=[
                             ft.Text(
                                 f'Select an option below to import data.',
@@ -4978,7 +4981,7 @@ def main(page: ft.Page, session_value=None):
                         settings_data.setting_backup_con,
                         user_div_row,
                         settings_data.setting_import_con,
-                        div_row,
+                        user_div_row,
                         api_edit_container,
                         admin_setting_text,
                         user_row_container,

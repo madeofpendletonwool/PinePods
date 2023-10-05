@@ -66,6 +66,7 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
+    import ssl
     import socket
 
     try:
@@ -82,7 +83,10 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
 
             # Authenticate if needed.
             if auth_required:
-                smtp.login(username, password)
+                try:  # Trying to login and catching specific SMTPNotSupportedError
+                    smtp.login(username, password)
+                except smtplib.SMTPNotSupportedError:
+                    return 'SMTP AUTH extension not supported by server.'
 
             # Create a message.
             msg = MIMEMultipart()

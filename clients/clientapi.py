@@ -1311,90 +1311,56 @@ async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
-class ResetPasswordPayload(BaseModel):
+class ResetCodePayload(BaseModel):
     email: str
     reset_code: str
-    user_id: int
+
+class ResetPasswordPayload(BaseModel):
+    email: str
+    salt: str
+    hashed_pw: str
 
 
 @app.post("/api/data/reset_password_create_code")
-async def api_reset_password_route(payload: ResetPasswordPayload, cnx=Depends(get_database_connection),
+async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
-    is_web_key = api_key == base_webkey.web_key
-
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == payload.user_id or is_web_key:
-        user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email,
-                                                                              payload.reset_code)
-        return {"user_exists": user_exists}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="You can only create codes for yourself!")
+    user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email,
+                                                                          payload.reset_code)
+    return {"user_exists": user_exists}
 
 
 @app.post("/api/data/verify_reset_code")
-async def api_verify_reset_code_route(payload: ResetPasswordPayload, cnx=Depends(get_database_connection),
+async def api_verify_reset_code_route(payload: ResetCodePayload, cnx=Depends(get_database_connection),
                                       api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
-    is_web_key = api_key == base_webkey.web_key
-
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-
-    # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == ResetPasswordPayload.user_id or is_web_key:
-        code_valid = database_functions.functions.verify_reset_code(cnx, payload.email, payload.reset_code)
-        if code_valid is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        return {"code_valid": code_valid}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="You can only create codes for yourself!")
-
-
-class ResetPasswordPayloadVerify(BaseModel):
-    email: str
-    salt: str
-    hashed_pw: str
-    user_id: int
-
+    code_valid = database_functions.functions.verify_reset_code(cnx, payload.email, payload.reset_code)
+    if code_valid is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"code_valid": code_valid}
 
 @app.post("/api/data/reset_password_prompt")
-async def api_reset_password_verify_route(payload: ResetPasswordPayloadVerify, cnx=Depends(get_database_connection),
+async def api_reset_password_verify_route(payload: ResetPasswordPayload, cnx=Depends(get_database_connection),
                                           api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
-    is_web_key = api_key == base_webkey.web_key
-
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-
-    # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == payload.user_id or is_web_key:
-        message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt,
+    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt,
                                                                      payload.hashed_pw)
-        if message is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        return {"message": message}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="You can only reset your own password!")
-
+    if message is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": message}
 
 @app.post("/api/data/clear_guest_data")
 async def api_clear_guest_data(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):

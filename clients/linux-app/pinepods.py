@@ -1570,7 +1570,7 @@ def main(page: ft.Page, session_value=None):
                     ], tight=True),
                     actions=[
                         ft.TextButton("Submit", on_click=lambda e: pw_reset(page, user_email, code_reset_prompt.value)),
-                        ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+                        ft.TextButton("Cancel", on_click=close_code_pw_dlg)
                     ],
                     actions_alignment=ft.MainAxisAlignment.END
                 )
@@ -5036,7 +5036,7 @@ def main(page: ft.Page, session_value=None):
 
                     import_dlg = ft.AlertDialog(
                         modal=True,
-                        title=ft.Text(f"Backup Data:"),
+                        title=ft.Text(f"Import Data:"),
                         content=ft.Column(controls=[
                             ft.Text(
                                 f'Select an option below to import data.',
@@ -5650,7 +5650,7 @@ def main(page: ft.Page, session_value=None):
                         settings_data.setting_import_con,
                         user_div_row,
                         settings_data.setting_option_con,
-                        div_row,
+                        user_div_row,
                         api_edit_container,
                         admin_setting_text,
                         user_row_container,

@@ -314,8 +314,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
-- [ ] Unlock api creation for standard users
-- [ ] Email resets currently broken for non-admins due to lockdown on encryption key. Need to handle encryption server-side
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
