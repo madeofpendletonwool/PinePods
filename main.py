@@ -4278,6 +4278,7 @@ def main(page: ft.Page, session_value=None):
                         rows=self.user_table_rows
                     )
 
+
                 def import_data(self, e):
                     def close_import_dlg(page):
                         import_dlg.open = False
@@ -4348,7 +4349,81 @@ def main(page: ft.Page, session_value=None):
                         file_picker.pick_files()
 
                     def import_server():
-                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        def import_server_result(e: ft.FilePickerResultEvent):
+                            close_import_dlg(page)
+                            self.page.update()
+
+                            if e.files:
+                                file_path = e.files[0].path
+                                with open(file_path, 'r') as file:
+                                    file_contents = file.read()
+
+                                def run_full_restore(e):
+                                    pr_instance.touch_stack()
+                                    close_restore_pass_win(self.page)
+                                    self.page.update()
+                                    time.sleep(1)
+
+                                    restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, backup_database_pass.value, file_contents)
+                                    if restore_status.get("success") == True:
+                                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Server Restore Successful! Now logging out!"))
+                                        self.page.snack_bar.open = True
+                                        pr_instance.rm_stack()
+                                        self.page.update()
+                                        time.sleep(1.5)
+
+                                        active_user = User(page)
+                                        pr_instance.rm_stack()
+                                        login_username.visible = True
+                                        login_password.visible = True
+
+                                        start_login(page)
+                                        new_nav.navbar.border = ft.border.only(
+                                            right=ft.border.BorderSide(2, active_user.tertiary_color))
+                                        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                                        page.overlay.append(new_nav.navbar_stack)
+                                        new_nav.navbar.visible = False
+                                        self.page.update()
+                                    else:
+                                        error_message = restore_status.get("error_message", "Unknown error.")
+                                        self.page.snack_bar = ft.SnackBar(
+                                            content=ft.Text(f"Server Restore failed: {error_message}"))
+                                        self.page.snack_bar.open = True
+                                        self.page.update()
+
+                                def close_restore_pass_win(page):
+                                    close_restore_pass_dlg.open = False
+                                    self.page.update()
+
+                                backup_pass_text = ft.Text(f"WARNING: You are about to run a full restore on your server! This will remove absolutely everything currently stored in your database and revert to the data that's part of the backup you restore to. If you're unsure what you're doing DO NOT proceed. If you are certain you'd like to restore the database with a previous backup please enter your database root password below.", selectable=True)
+                                backup_occur_text = ft.Text(f"After the restore is complete you will be logged out from Pinepods as the restore operation will restore your users to the users included in the backup. Make certain you know the login details to a user that's an admin in the backup you are about to restore to.")
+
+                                backup_select_pass_row = ft.Row(
+                                    controls=[
+                                        ft.TextButton("Submit", on_click=run_full_restore),
+                                        ft.TextButton("Close", on_click=lambda x: (close_restore_pass_win(self.page)))
+                                    ],
+                                    alignment=ft.MainAxisAlignment.END
+                                )
+                                backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN, hint_text='My_Datab@$$_P@SS', password=True, can_reveal_password=True)
+
+                                close_restore_pass_dlg = ft.AlertDialog(
+                                    modal=True,
+                                    title=ft.Text(f"Restore Data:"),
+                                    content=ft.Column(controls=[
+                                        backup_pass_text,
+                                        backup_occur_text,
+                                        backup_database_pass,
+                                        backup_select_pass_row
+                                    ],
+                                        tight=True),
+                                    actions_alignment=ft.MainAxisAlignment.END,
+                                )
+                                self.page.dialog = close_restore_pass_dlg
+                                close_restore_pass_dlg.open = True
+                                self.page.update()
+
+                        file_picker = ft.FilePicker(on_result=import_server_result)
                         self.page.overlay.append(file_picker)
                         self.page.update()
                         file_picker.pick_files()
