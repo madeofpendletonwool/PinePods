@@ -261,6 +261,17 @@ async def pinepods_check():
     return {"status_code": 200, "pinepods_instance": True}
 
 
+@app.get('/api/data/verify_key')
+async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        database_functions.functions.clean_expired_sessions(cnx)
+        return {"status": "success"}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
@@ -861,8 +872,23 @@ async def api_check_podcast(cnx=Depends(get_database_connection), api_key: str =
 
 
 @app.get("/api/data/user_admin_check/{user_id}")
-async def api_user_admin_check_route(user_id: int, is_admin: bool = Depends(check_if_admin),
+async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header),
                                      cnx=Depends(get_database_connection)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    elevated_access = await has_elevated_access(api_key, cnx)
+
+    if not elevated_access:
+        # Get user ID from API key
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+
+        if user_id != user_id_from_api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="You are not authorized to check admin status for other users")
     is_admin = database_functions.functions.user_admin_check(cnx, user_id)
     return {"is_admin": is_admin}
 
@@ -1315,6 +1341,7 @@ class ResetCodePayload(BaseModel):
     email: str
     reset_code: str
 
+
 class ResetPasswordPayload(BaseModel):
     email: str
     salt: str
@@ -1348,6 +1375,7 @@ async def api_verify_reset_code_route(payload: ResetCodePayload, cnx=Depends(get
         raise HTTPException(status_code=404, detail="User not found")
     return {"code_valid": code_valid}
 
+
 @app.post("/api/data/reset_password_prompt")
 async def api_reset_password_verify_route(payload: ResetPasswordPayload, cnx=Depends(get_database_connection),
                                           api_key: str = Depends(get_api_key_from_header)):
@@ -1357,10 +1385,11 @@ async def api_reset_password_verify_route(payload: ResetPasswordPayload, cnx=Dep
                             detail="Your API key is either invalid or does not have correct permission")
 
     message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt,
-                                                                     payload.hashed_pw)
+                                                                 payload.hashed_pw)
     if message is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": message}
+
 
 @app.post("/api/data/clear_guest_data")
 async def api_clear_guest_data(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
@@ -1683,6 +1712,7 @@ async def delete_selected_episodes(data: SelectedEpisodesDelete, cnx=Depends(get
         raise HTTPException(status_code=403,
                             detail="You can only delete your own selected episodes!")
 
+
 class SelectedPodcastsDelete(BaseModel):
     delete_list: List[int] = Field(..., title="List of Podcast IDs")
     user_id: int = Field(..., title="User ID")
@@ -1713,6 +1743,7 @@ async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx=Depends(get
     else:
         raise HTTPException(status_code=403,
                             detail="You can only delete your own selected podcasts!")
+
 
 class SearchPodcastData(BaseModel):
     search_term: str
@@ -1758,6 +1789,8 @@ async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only add episodes to your own queue!")
+
+
 class QueueRmData(BaseModel):
     episode_title: str
     ep_url: str
@@ -1785,6 +1818,8 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
     else:
         raise HTTPException(status_code=403,
                             detail="You can only remove episodes for your own queue!")
+
+
 class QueuedEpisodesData(BaseModel):
     user_id: int
 
@@ -1809,6 +1844,7 @@ async def get_queued_episodes(data: QueuedEpisodesData, cnx=Depends(get_database
     else:
         raise HTTPException(status_code=403,
                             detail="You can only get episodes from your own queue!")
+
 
 class QueueBump(BaseModel):
     ep_url: str
@@ -1839,6 +1875,8 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only bump the queue for yourself!")
+
+
 class BackupUser(BaseModel):
     user_id: int
 
@@ -1866,6 +1904,7 @@ async def backup_user(data: BackupUser, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make backups for yourself!")
+
 
 class BackupServer(BaseModel):
     backup_dir: str
@@ -1920,4 +1959,3 @@ if __name__ == '__main__':
         # ssl_keyfile="/opt/pinepods/certs/key.pem",
         # ssl_certfile="/opt/pinepods/certs/cert.pem"
     )
-

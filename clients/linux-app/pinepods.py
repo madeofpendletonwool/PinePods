@@ -297,7 +297,6 @@ def main(page: ft.Page, session_value=None):
         def api_verify(self, server_name, api_value, retain_session=False):
             # pr_instance.touch_stack()
             self.page.update()
-            print(server_name)
             check_url = server_name + "/api/pinepods_check"
             self.url = server_name + "/api/data"  # keep this for later use
 
@@ -311,9 +310,7 @@ def main(page: ft.Page, session_value=None):
             self.headers = {"Api-Key": self.api_value}
 
             try:
-                print(check_url)
                 check_response = requests.get(check_url, timeout=10)
-                print(check_response.status_code)
                 if check_response.status_code != 200:
                     self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
                     pr_instance.rm_stack()
@@ -1829,7 +1826,6 @@ def main(page: ft.Page, session_value=None):
                     art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
-                    print(art_url_parsed)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
                         icon=ft.icons.NOT_STARTED,
@@ -3117,7 +3113,10 @@ def main(page: ft.Page, session_value=None):
                             download_list.refresh_downloaded_episodes()
                             self.page.update()
                     else:
-                        print("No episodes or podcasts selected for deletion.")
+                        page.snack_bar = ft.SnackBar(
+                            content=ft.Text(f"No episodes or podcasts selected for deletion."))
+                        page.snack_bar.open = True
+                        self.page.update()
 
                     if local_list.selected_episodes or local_list.delete_list:
                         # delete selected episodes first
@@ -3131,7 +3130,10 @@ def main(page: ft.Page, session_value=None):
                             local_list.delete_local_selected_podcasts(local_list.delete_list)
 
                     else:
-                        print("No episodes or podcasts selected for deletion.")
+                        page.snack_bar = ft.SnackBar(
+                            content=ft.Text(f"No episodes or podcasts selected for deletion."))
+                        page.snack_bar.open = True
+                        self.page.update()
 
                 def create_downloading_layout(self):
                     self.active_downloader.value = active_user.downloading[
@@ -4359,6 +4361,8 @@ def main(page: ft.Page, session_value=None):
             )
 
         if page.route == "/settings" or page.route == "/settings":
+            active_user.user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
+                                                              int(active_user.user_id))
 
             class Settings:
                 def __init__(self, page):
@@ -4392,13 +4396,14 @@ def main(page: ft.Page, session_value=None):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
                                                                                            active_user.user_id)
                     self.mfa_check()
-                    # New User Creation Setup
-                    self.user_table_rows = []
-                    self.user_table_load()
-                    # Email Settings Setup
-                    self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-                    self.email_table_rows = []
-                    self.email_table_load()
+                    if active_user.user_is_admin:
+                        # New User Creation Setup
+                        self.user_table_rows = []
+                        self.user_table_load()
+                        # Email Settings Setup
+                        self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
+                        self.email_table_rows = []
+                        self.email_table_load()
 
                 def settings_backup_data(self):
                     backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
@@ -5280,6 +5285,7 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
             settings_data = Settings(page)
+            print("made it past class")
 
             # User Settings
             user_setting = ft.Text(
@@ -5320,198 +5326,204 @@ def main(page: ft.Page, session_value=None):
             theme_row_container = ft.Container(content=theme_row)
             theme_row_container.padding = padding.only(left=70, right=50)
 
-            # Admin Only Settings
+            print("made it past themes")
 
-            admin_setting = ft.Text(
-                "Administration Settings:", color=active_user.font_color,
-                size=30,
-                font_family="RobotoSlab",
-                weight=ft.FontWeight.W_300,
-            )
-            admin_setting_text = ft.Container(content=admin_setting)
-            admin_setting_text.padding = padding.only(left=70, right=50)
+            if active_user.user_is_admin:
+                # Admin Only Settings
 
-            # New User Creation Elements
-            new_user = User(page)
-            user_text = Text('Create New User:', color=active_user.font_color, size=16)
-            user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods',
-                                     border_color=active_user.accent_color, color=active_user.accent_color,
-                                     focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color,
-                                     focused_border_color=active_user.accent_color,
-                                     cursor_color=active_user.accent_color)
-            user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com',
-                                      border_color=active_user.accent_color, color=active_user.accent_color,
-                                      focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color,
-                                      focused_border_color=active_user.accent_color,
-                                      cursor_color=active_user.accent_color)
-            user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999',
+                admin_setting = ft.Text(
+                    "Administration Settings:", color=active_user.font_color,
+                    size=30,
+                    font_family="RobotoSlab",
+                    weight=ft.FontWeight.W_300,
+                )
+                admin_setting_text = ft.Container(content=admin_setting)
+                admin_setting_text.padding = padding.only(left=70, right=50)
+
+                # New User Creation Elements
+                new_user = User(page)
+                user_text = Text('Create New User:', color=active_user.font_color, size=16)
+                user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods',
                                          border_color=active_user.accent_color, color=active_user.accent_color,
-                                         focused_bgcolor=active_user.accent_color,
-                                         focused_color=active_user.accent_color,
+                                         focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color,
                                          focused_border_color=active_user.accent_color,
                                          cursor_color=active_user.accent_color)
-            user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True,
-                                         can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!',
-                                         border_color=active_user.accent_color, color=active_user.accent_color,
-                                         focused_bgcolor=active_user.accent_color,
-                                         focused_color=active_user.accent_color,
-                                         focused_border_color=active_user.accent_color,
-                                         cursor_color=active_user.accent_color)
-            user_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color,
-                                            color=active_user.accent_color, on_click=lambda x: (
-                    new_user.set_username(user_username.value),
-                    new_user.set_password(user_password.value),
-                    new_user.set_email(user_email.value),
-                    new_user.set_name(user_name.value),
-                    new_user.verify_user_values(),
-                    # new_user.popup_user_values(e),
-                    new_user.create_user(),
-                    new_user.user_created_prompt(),
-                    settings_data.user_table_update()))
-            user_column = ft.Column(
-                controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
-            )
-            user_row = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                alignment=ft.MainAxisAlignment.START,
-                controls=[user_column])
-            user_row_container = ft.Container(content=user_row)
-            user_row_container.padding = padding.only(left=70, right=50)
-            # Download Disable Settings
-            settings_data.disable_download_text = ft.Text(
-                'Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):',
-                color=active_user.font_color, size=16)
-            download_info_col = ft.Column(
-                controls=[settings_data.disable_download_text, settings_data.disable_download_notify,
-                          settings_data.download_info_button])
-            download_info = ft.Container(content=download_info_col)
-            download_info.padding = padding.only(left=70, right=50)
-
-            # Guest User Settings
-            settings_data.disable_guest_text = ft.Text(
-                'Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):',
-                color=active_user.font_color, size=16)
-            guest_info_col = ft.Column(controls=[settings_data.disable_guest_text, settings_data.disable_guest_notify,
-                                                 settings_data.guest_info_button])
-            guest_info = ft.Container(content=guest_info_col)
-            guest_info.padding = padding.only(left=70, right=50)
-
-            # User Self Service Creation
-            settings_data.self_service_text = ft.Text(
-                'Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):',
-                color=active_user.font_color, size=16)
-            self_service_info_col = ft.Column(
-                controls=[settings_data.self_service_text, settings_data.self_service_notify,
-                          settings_data.self_service_button])
-            self_service_info = ft.Container(content=self_service_info_col)
-            self_service_info.padding = padding.only(left=70, right=50)
-
-            # User Self Service PW Resets
-
-            def auth_box_check(e):
-                if new_user.auth_enabled == True:
-                    pw_reset_auth_user.disabled = True
-                    pw_reset_auth_pw.disabled = True
-                    new_user.auth_enabled = 0
-                else:
-                    pw_reset_auth_user.disabled = False
-                    pw_reset_auth_pw.disabled = False
-                    new_user.auth_enabled = 1
-                page.update()
-
-            pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color,
-                                 size=16)
-            pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
-
-            pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.COMPUTER,
-                                                hint_text='smtp.pinepods.online', border_color=active_user.accent_color,
-                                                color=active_user.accent_color,
-                                                focused_bgcolor=active_user.accent_color,
-                                                focused_color=active_user.accent_color,
-                                                focused_border_color=active_user.accent_color,
-                                                cursor_color=active_user.accent_color)
-            pw_reset_port = ft.TextField(label="Port", hint_text='587', border_color=active_user.accent_color,
-                                         color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
-                                         focused_color=active_user.accent_color,
-                                         focused_border_color=active_user.accent_color,
-                                         cursor_color=active_user.accent_color)
-            pw_reset_email = ft.TextField(label="From Address", icon=ft.icons.EMAIL,
-                                          hint_text='pwresets@pinepods.online', border_color=active_user.accent_color,
-                                          color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
-                                          focused_color=active_user.accent_color,
+                user_email = ft.TextField(label="Email", icon=ft.icons.EMAIL, hint_text='ilovepinepods@pinepods.com',
+                                          border_color=active_user.accent_color, color=active_user.accent_color,
+                                          focused_bgcolor=active_user.accent_color, focused_color=active_user.accent_color,
                                           focused_border_color=active_user.accent_color,
                                           cursor_color=active_user.accent_color)
-            pw_reset_send_mode = ft.Dropdown(width=250, label="Send Mode",
-                                             options=[
-                                                 ft.dropdown.Option("SMTP"),
-                                                 # ft.dropdown.Option("Sendmail"),
-                                             ], icon=ft.icons.SEND, border_color=active_user.accent_color,
+                user_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999',
+                                             border_color=active_user.accent_color, color=active_user.accent_color,
+                                             focused_bgcolor=active_user.accent_color,
+                                             focused_color=active_user.accent_color,
+                                             focused_border_color=active_user.accent_color,
+                                             cursor_color=active_user.accent_color)
+                user_password = ft.TextField(label="password", icon=ft.icons.PASSWORD, password=True,
+                                             can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!',
+                                             border_color=active_user.accent_color, color=active_user.accent_color,
+                                             focused_bgcolor=active_user.accent_color,
+                                             focused_color=active_user.accent_color,
+                                             focused_border_color=active_user.accent_color,
+                                             cursor_color=active_user.accent_color)
+                user_submit = ft.ElevatedButton(text="Submit!", bgcolor=active_user.main_color,
+                                                color=active_user.accent_color, on_click=lambda x: (
+                        new_user.set_username(user_username.value),
+                        new_user.set_password(user_password.value),
+                        new_user.set_email(user_email.value),
+                        new_user.set_name(user_name.value),
+                        new_user.verify_user_values(),
+                        # new_user.popup_user_values(e),
+                        new_user.create_user(),
+                        new_user.user_created_prompt(),
+                        settings_data.user_table_update()))
+                user_column = ft.Column(
+                    controls=[user_text, user_name, user_email, user_username, user_password, user_submit]
+                )
+                user_row = ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
+                    controls=[user_column])
+                user_row_container = ft.Container(content=user_row)
+                user_row_container.padding = padding.only(left=70, right=50)
+                # Download Disable Settings
+                settings_data.disable_download_text = ft.Text(
+                    'Download Podcast Options (You may consider disabling the ability to download podcasts to the server if your server is open to the public):',
+                    color=active_user.font_color, size=16)
+                download_info_col = ft.Column(
+                    controls=[settings_data.disable_download_text, settings_data.disable_download_notify,
+                              settings_data.download_info_button])
+                download_info = ft.Container(content=download_info_col)
+                download_info.padding = padding.only(left=70, right=50)
+
+                # Guest User Settings
+                settings_data.disable_guest_text = ft.Text(
+                    'Guest User Settings (Disabling is highly recommended if PinePods is exposed to the internet):',
+                    color=active_user.font_color, size=16)
+                guest_info_col = ft.Column(controls=[settings_data.disable_guest_text, settings_data.disable_guest_notify,
+                                                     settings_data.guest_info_button])
+                guest_info = ft.Container(content=guest_info_col)
+                guest_info.padding = padding.only(left=70, right=50)
+
+                # User Self Service Creation
+                settings_data.self_service_text = ft.Text(
+                    'Self Service Settings (Disabling is highly recommended if PinePods is exposed to the internet):',
+                    color=active_user.font_color, size=16)
+                self_service_info_col = ft.Column(
+                    controls=[settings_data.self_service_text, settings_data.self_service_notify,
+                              settings_data.self_service_button])
+                self_service_info = ft.Container(content=self_service_info_col)
+                self_service_info.padding = padding.only(left=70, right=50)
+                print("In admin settings")
+                # User Self Service PW Resets
+
+                def auth_box_check(e):
+                    if new_user.auth_enabled == True:
+                        pw_reset_auth_user.disabled = True
+                        pw_reset_auth_pw.disabled = True
+                        new_user.auth_enabled = 0
+                    else:
+                        pw_reset_auth_user.disabled = False
+                        pw_reset_auth_pw.disabled = False
+                        new_user.auth_enabled = 1
+                    page.update()
+
+                pw_reset_text = Text('Set Email Settings for Self Service Password Resets', color=active_user.font_color,
+                                     size=16)
+                pw_reset_change = Text('Change Existing values:', color=active_user.font_color, size=16)
+
+                pw_reset_server_name = ft.TextField(label="Server Address", icon=ft.icons.COMPUTER,
+                                                    hint_text='smtp.pinepods.online', border_color=active_user.accent_color,
+                                                    color=active_user.accent_color,
+                                                    focused_bgcolor=active_user.accent_color,
+                                                    focused_color=active_user.accent_color,
+                                                    focused_border_color=active_user.accent_color,
+                                                    cursor_color=active_user.accent_color)
+                pw_reset_port = ft.TextField(label="Port", hint_text='587', border_color=active_user.accent_color,
                                              color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
                                              focused_color=active_user.accent_color,
-                                             focused_border_color=active_user.accent_color)
-            pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",
-                                              options=[
-                                                  ft.dropdown.Option("None"),
-                                                  ft.dropdown.Option("STARTTLS"),
-                                                  ft.dropdown.Option("SSL/TLS"),
-                                              ], icon=ft.icons.ENHANCED_ENCRYPTION,
-                                              border_color=active_user.accent_color, color=active_user.accent_color,
-                                              focused_bgcolor=active_user.accent_color,
-                                              focused_color=active_user.accent_color,
-                                              focused_border_color=active_user.accent_color)
-            pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, on_change=auth_box_check,
-                                        check_color=active_user.accent_color)
-            pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='user@pinepods.online',
-                                              border_color=active_user.accent_color, color=active_user.accent_color,
-                                              focused_bgcolor=active_user.accent_color,
+                                             focused_border_color=active_user.accent_color,
+                                             cursor_color=active_user.accent_color)
+                pw_reset_email = ft.TextField(label="From Address", icon=ft.icons.EMAIL,
+                                              hint_text='pwresets@pinepods.online', border_color=active_user.accent_color,
+                                              color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
                                               focused_color=active_user.accent_color,
                                               focused_border_color=active_user.accent_color,
                                               cursor_color=active_user.accent_color)
-            pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.LOCK, hint_text='Ema1L!P@$$', password=True,
-                                            can_reveal_password=True, border_color=active_user.accent_color,
-                                            color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
-                                            focused_color=active_user.accent_color,
-                                            focused_border_color=active_user.accent_color,
-                                            cursor_color=active_user.accent_color)
-            pw_reset_auth_user.disabled = True
-            pw_reset_auth_pw.disabled = True
-            pw_reset_test = ft.ElevatedButton(text="Test Send and Submit", bgcolor=active_user.main_color,
-                                              color=active_user.accent_color, on_click=lambda x: (
-                    new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value,
-                                                 pw_reset_send_mode.value, pw_reset_encryption.value,
-                                                 pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value),
-                    settings_data.email_table_update()
-                ))
-            pw_reset_server_row = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                alignment=ft.MainAxisAlignment.START,
-                controls=[pw_reset_server_name, ft.Text(':', size=24), pw_reset_port])
-            pw_reset_send_row = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                alignment=ft.MainAxisAlignment.START,
-                controls=[pw_reset_send_mode, pw_reset_encryption])
-            pw_reset_auth_row = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                alignment=ft.MainAxisAlignment.START,
-                controls=[pw_reset_auth_user, pw_reset_auth_pw])
+                pw_reset_send_mode = ft.Dropdown(width=250, label="Send Mode",
+                                                 options=[
+                                                     ft.dropdown.Option("SMTP"),
+                                                     # ft.dropdown.Option("Sendmail"),
+                                                 ], icon=ft.icons.SEND, border_color=active_user.accent_color,
+                                                 color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
+                                                 focused_color=active_user.accent_color,
+                                                 focused_border_color=active_user.accent_color)
+                pw_reset_encryption = ft.Dropdown(width=250, label="Encryption",
+                                                  options=[
+                                                      ft.dropdown.Option("None"),
+                                                      ft.dropdown.Option("STARTTLS"),
+                                                      ft.dropdown.Option("SSL/TLS"),
+                                                  ], icon=ft.icons.ENHANCED_ENCRYPTION,
+                                                  border_color=active_user.accent_color, color=active_user.accent_color,
+                                                  focused_bgcolor=active_user.accent_color,
+                                                  focused_color=active_user.accent_color,
+                                                  focused_border_color=active_user.accent_color)
+                pw_reset_auth = ft.Checkbox(label="Authentication Required", value=False, on_change=auth_box_check,
+                                            check_color=active_user.accent_color)
+                pw_reset_auth_user = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='user@pinepods.online',
+                                                  border_color=active_user.accent_color, color=active_user.accent_color,
+                                                  focused_bgcolor=active_user.accent_color,
+                                                  focused_color=active_user.accent_color,
+                                                  focused_border_color=active_user.accent_color,
+                                                  cursor_color=active_user.accent_color)
+                pw_reset_auth_pw = ft.TextField(label="Password", icon=ft.icons.LOCK, hint_text='Ema1L!P@$$', password=True,
+                                                can_reveal_password=True, border_color=active_user.accent_color,
+                                                color=active_user.accent_color, focused_bgcolor=active_user.accent_color,
+                                                focused_color=active_user.accent_color,
+                                                focused_border_color=active_user.accent_color,
+                                                cursor_color=active_user.accent_color)
+                pw_reset_auth_user.disabled = True
+                pw_reset_auth_pw.disabled = True
+                pw_reset_test = ft.ElevatedButton(text="Test Send and Submit", bgcolor=active_user.main_color,
+                                                  color=active_user.accent_color, on_click=lambda x: (
+                        new_user.test_email_settings(pw_reset_server_name.value, pw_reset_port.value, pw_reset_email.value,
+                                                     pw_reset_send_mode.value, pw_reset_encryption.value,
+                                                     pw_reset_auth.value, pw_reset_auth_user.value, pw_reset_auth_pw.value),
+                        settings_data.email_table_update()
+                    ))
+                pw_reset_server_row = ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
+                    controls=[pw_reset_server_name, ft.Text(':', size=24), pw_reset_port])
+                pw_reset_send_row = ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
+                    controls=[pw_reset_send_mode, pw_reset_encryption])
+                pw_reset_auth_row = ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
+                    controls=[pw_reset_auth_user, pw_reset_auth_pw])
 
-            pw_reset_buttons = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                alignment=ft.MainAxisAlignment.START,
-                controls=[pw_reset_test])
+                pw_reset_buttons = ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
+                    controls=[pw_reset_test])
 
-            pw_reset_column = ft.Column(
-                controls=[pw_reset_text, pw_reset_change, pw_reset_server_row, pw_reset_send_row, pw_reset_email,
-                          pw_reset_auth, pw_reset_auth_row, pw_reset_buttons]
-            )
-            pw_reset_row = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                alignment=ft.MainAxisAlignment.START,
-                controls=[pw_reset_column])
-            pw_reset_container = ft.Container(content=pw_reset_row)
-            pw_reset_container.padding = padding.only(left=70, right=50)
+                pw_reset_column = ft.Column(
+                    controls=[pw_reset_text, pw_reset_change, pw_reset_server_row, pw_reset_send_row, pw_reset_email,
+                              pw_reset_auth, pw_reset_auth_row, pw_reset_buttons]
+                )
+                pw_reset_row = ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.START,
+                    controls=[pw_reset_column])
+                pw_reset_container = ft.Container(content=pw_reset_row)
+                pw_reset_container.padding = padding.only(left=70, right=50)
 
             ### API Key Settings
+
+
+            print("in api key start")
 
             edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=16)
 
@@ -5616,57 +5628,78 @@ def main(page: ft.Page, session_value=None):
             api_edit_container = ft.Container(content=api_edit_column)
             api_edit_container.padding=padding.only(left=70, right=50)
 
+            print("past api key")
+
             # Check if admin settings should be displayed 
             div_row = ft.Divider(color=active_user.accent_color)
             user_div_row = ft.Divider(color=active_user.accent_color)
-            active_user.user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
-                                                                          int(active_user.user_id))
-            if active_user.user_is_admin == True:
-                pass
-            else:
-                admin_setting_text.visible = False
-                user_row_container.visible = False
-                settings_data.user_edit_container.visible = False
-                pw_reset_container.visible = False
-                settings_data.email_edit_container.visible = False
-                guest_info.visible = False
-                download_info.visible = False
-                self_service_info.visible = False
-                div_row.visible = False
+            # if active_user.user_is_admin == True:
+            #     pass
+            # else:
+            #     admin_setting_text.visible = False
+            #     user_row_container.visible = False
+            #     settings_data.user_edit_container.visible = False
+            #     pw_reset_container.visible = False
+            #     settings_data.email_edit_container.visible = False
+            #     guest_info.visible = False
+            #     download_info.visible = False
+            #     self_service_info.visible = False
+            #     div_row.visible = False
 
             if active_user.user_id == 0:
                 settings_data.mfa_container.visible = False
 
+            print("before page create")
             # Create search view object
-            settings_view = ft.View("/settings",
-                    [
-                        user_setting_text,
-                        theme_row_container,
-                        user_div_row,
-                        settings_data.mfa_container,
-                        user_div_row,
-                        settings_data.setting_backup_con,
-                        user_div_row,
-                        settings_data.setting_import_con,
-                        user_div_row,
-                        settings_data.setting_option_con,
-                        user_div_row,
-                        api_edit_container,
-                        admin_setting_text,
-                        user_row_container,
-                        settings_data.user_edit_container,
-                        div_row,
-                        pw_reset_container,
-                        settings_data.email_edit_container,
-                        div_row,
-                        guest_info,
-                        div_row,
-                        self_service_info,
-                        div_row,
-                        download_info
-                    ]
+            if active_user.user_is_admin == True:
+                settings_view = ft.View("/settings",
+                        [
+                            user_setting_text,
+                            theme_row_container,
+                            user_div_row,
+                            settings_data.mfa_container,
+                            user_div_row,
+                            settings_data.setting_backup_con,
+                            user_div_row,
+                            settings_data.setting_import_con,
+                            user_div_row,
+                            settings_data.setting_option_con,
+                            user_div_row,
+                            api_edit_container,
+                            admin_setting_text,
+                            user_row_container,
+                            settings_data.user_edit_container,
+                            div_row,
+                            pw_reset_container,
+                            settings_data.email_edit_container,
+                            div_row,
+                            guest_info,
+                            div_row,
+                            self_service_info,
+                            div_row,
+                            download_info
+                        ]
 
-                    )
+                        )
+            else:
+                # Create search view object
+                settings_view = ft.View("/settings",
+                        [
+                            user_setting_text,
+                            theme_row_container,
+                            user_div_row,
+                            settings_data.mfa_container,
+                            user_div_row,
+                            settings_data.setting_backup_con,
+                            user_div_row,
+                            settings_data.setting_import_con,
+                            user_div_row,
+                            settings_data.setting_option_con,
+                            user_div_row,
+                            api_edit_container
+                        ]
+
+                        )
             settings_view.bgcolor = active_user.bgcolor
             settings_view.scroll = ft.ScrollMode.AUTO
             # Create final page
