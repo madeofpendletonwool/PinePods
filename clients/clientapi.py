@@ -1,7 +1,7 @@
 # Fast API
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
-    BackgroundTasks
-from fastapi.security import APIKeyHeader
+    BackgroundTasks, security
+from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 
 # Needed Modules
@@ -48,6 +48,7 @@ secret_key_middle = secrets.token_hex(32)
 print('Client API Server is Starting!')
 
 app = FastAPI()
+security = HTTPBasic()
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(SessionMiddleware, secret_key=secret_key_middle)
 
@@ -194,6 +195,11 @@ def direct_database_connection():
         raise RuntimeError("Unable to connect to the database")
 
 
+async def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
+    # Use credentials.username and credentials.password where needed
+    return credentials
+
+
 # Use the non-generator version in your script initialization
 cnx = direct_database_connection()
 base_webkey.get_web_key(cnx)
@@ -270,6 +276,29 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
     else:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
+
+@app.get('/api/data/get_user')
+async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        retrieved_id = database_functions.functions.get_api_user(cnx, api_key)
+        logging.error(f"here's id: {retrieved_id}")
+        return {"status": "success", "retrieved_id": retrieved_id}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="Your api-key appears to be incorrect.")
+
+@app.get('/api/data/get_key')
+async def verify_key(cnx=Depends(get_database_connection),
+                     credentials: HTTPBasicCredentials = Depends(get_current_user)):
+    logging.info(f"creds: {credentials.username}, {credentials.password}")
+    is_password_valid = Auth.Passfunctions.verify_password(cnx, credentials.username, credentials.password)
+    if is_password_valid:
+        retrieved_key = database_functions.functions.get_api_key(cnx, credentials.username)
+        return {"status": "success", "retrieved_key": retrieved_key}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="Your credentials appear to be incorrect.")
 
 
 @app.post("/api/data/clean_expired_sessions/")

@@ -215,6 +215,7 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
     def pod_url_add(page):
+        print('running url add')
         def close_pod_url_dlg(page):
             pod_url_dlg.open = False
             page.update()
@@ -266,7 +267,7 @@ def main(page: ft.Page, session_value=None):
 
         page.dialog = pod_url_dlg
         pod_url_dlg.open = True
-
+        page.update()
 
     def invalid_username():
         page.dialog = username_invalid_dlg
@@ -3824,7 +3825,7 @@ def main(page: ft.Page, session_value=None):
                 def settings_backup_data(self):
                     backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
                     backup_option_desc = Text(
-                        "Note: This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
+                        "Note: Backing up over the web will backup to a local location on the server. Use on the client edition to backup locally. This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
                         color=active_user.font_color)
                     self.settings_backup_button = ft.ElevatedButton(f'Backup Data',
                                                                    on_click=self.backup_data,
@@ -3838,14 +3839,10 @@ def main(page: ft.Page, session_value=None):
                 def settings_import_data(self):
                     import_option_text = Text('Import Data:', color=active_user.font_color, size=16)
                     import_option_desc = Text(
-                        "Note: This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
+                        "Note: Can only be used on the client edition. This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
                         color=active_user.font_color)
-                    self.settings_import_button = ft.ElevatedButton(f'Import Data',
-                                                                   on_click=self.import_data,
-                                                                   bgcolor=active_user.main_color,
-                                                                   color=active_user.accent_color)
                     setting_import_col = ft.Column(
-                        controls=[import_option_text, import_option_desc, self.settings_import_button])
+                        controls=[import_option_text, import_option_desc])
                     self.setting_import_con = ft.Container(content=setting_import_col)
                     self.setting_import_con.padding = padding.only(left=70, right=50)
 
@@ -4289,8 +4286,9 @@ def main(page: ft.Page, session_value=None):
 
                         def import_pick_result(e: ft.FilePickerResultEvent):
                             if e.files:
+                                print(e.files)
                                 active_user.import_file = e.files[0].path
-
+                            print(active_user.import_file)
                             tree = ET.parse(active_user.import_file)
                             root = tree.getroot()
 
@@ -4492,8 +4490,6 @@ def main(page: ft.Page, session_value=None):
 
                         if backup_status == True:
                             backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}", selectable=True)
-                            folder_location = ft.TextButton("Open Backup Location",
-                                                                 on_click=lambda x: (open_backups()))
                         else:
                             backup_status_text = ft.Text("Backup was not successful. Try again!")
                             folder_location = ft.Text("N/A")
@@ -4510,7 +4506,6 @@ def main(page: ft.Page, session_value=None):
                             title=ft.Text(f"Backup Data:"),
                             content=ft.Column(controls=[
                                 backup_status_text,
-                                folder_location,
                                 backup_select_status_row
                             ],
                                 tight=True),

@@ -222,44 +222,53 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 def remove_podcast(cnx, podcast_name, user_id):
     cursor = cnx.cursor()
 
-    # Get the PodcastID for the given podcast name
-    select_podcast_id = "SELECT PodcastID FROM Podcasts WHERE PodcastName = %s"
-    cursor.execute(select_podcast_id, (podcast_name,))
-    podcast_id = cursor.fetchone()[0]
+    try:
+        # Get the PodcastID for the given podcast name
+        select_podcast_id = "SELECT PodcastID FROM Podcasts WHERE PodcastName = %s"
+        cursor.execute(select_podcast_id, (podcast_name,))
+        result = cursor.fetchall()  # fetch all results
+        podcast_id = result[0][0] if result else None
 
-    # Delete user episode history entries associated with the podcast
-    delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-    cursor.execute(delete_history, (podcast_id,))
+        # If there's no podcast ID found, raise an error or exit the function early
+        if podcast_id is None:
+            raise ValueError("No podcast found with name {}".format(podcast_name))
 
-    # Delete downloaded episodes associated with the podcast
-    delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-    cursor.execute(delete_downloaded, (podcast_id,))
+        # Delete user episode history entries associated with the podcast
+        delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_history, (podcast_id,))
 
-    # Delete saved episodes associated with the podcast
-    delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-    cursor.execute(delete_saved, (podcast_id,))
+        # Delete downloaded episodes associated with the podcast
+        delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_downloaded, (podcast_id,))
 
-    # Delete episode queue items associated with the podcast
-    delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-    cursor.execute(delete_queue, (podcast_id,))
+        # Delete saved episodes associated with the podcast
+        delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_saved, (podcast_id,))
 
-    # Delete episodes associated with the podcast
-    delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
-    cursor.execute(delete_episodes, (podcast_id,))
+        # Delete episode queue items associated with the podcast
+        delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_queue, (podcast_id,))
 
-    # Delete the podcast
-    delete_podcast = "DELETE FROM Podcasts WHERE PodcastName = %s"
-    cursor.execute(delete_podcast, (podcast_name,))
+        # Delete episodes associated with the podcast
+        delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
+        cursor.execute(delete_episodes, (podcast_id,))
 
-    # Update UserStats table to decrement PodcastsAdded count
-    query = ("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 "
-             "WHERE UserID = %s")
-    cursor.execute(query, (user_id,))
+        # Delete the podcast
+        delete_podcast = "DELETE FROM Podcasts WHERE PodcastName = %s"
+        cursor.execute(delete_podcast, (podcast_name,))
 
-    cnx.commit()
+        # Update UserStats table to decrement PodcastsAdded count
+        query = ("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 "
+                 "WHERE UserID = %s")
+        cursor.execute(query, (user_id,))
 
-    cursor.close()
-    # cnx.close()
+        cnx.commit()
+    except mysql.connector.Error as err:
+        print("Error: {}".format(err))
+        cnx.rollback()
+    finally:
+        cursor.close()
+        # cnx.close()
 
 
 def remove_user(cnx, user_name):
@@ -1339,6 +1348,60 @@ def verify_api_key(cnx, passed_key):
     print(f"Result: {result}")
     cursor.close()
     return True if result else False
+
+
+def get_api_key(cnx, username):
+    try:
+        with cnx.cursor() as cursor:
+            # Get the UserID
+            query = "SELECT UserID FROM Users WHERE username = %s"
+            cursor.execute(query, (username,))
+            result = cursor.fetchone()
+
+            # Check if a result is returned. If not, return None
+            if result is None:
+                print("No user found with the provided username.")
+                return None
+
+            user_id = result[0]
+
+            # Get the API Key using the fetched UserID, and limit the results to 1
+            query = "SELECT APIKey FROM APIKeys WHERE UserID = %s LIMIT 1"
+            cursor.execute(query, (user_id,))
+            result = cursor.fetchone()
+
+            # Check and return the API key or create a new one if not found
+            if result:
+                print(f"Result: {result}")
+                return result[0]  # Adjust the index if the API key is in a different column
+            else:
+                print("No API key found for the provided user. Creating a new one...")
+                return create_api_key(cnx, user_id)
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return f"An error occurred: {str(e)}"
+
+
+def get_api_user(cnx, api_key):
+    try:
+        with cnx.cursor() as cursor:
+            # Get the API Key using the fetched UserID, and limit the results to 1
+            query = "SELECT UserID FROM APIKeys WHERE APIKey = %s LIMIT 1"
+            cursor.execute(query, (api_key,))
+            result = cursor.fetchone()
+
+            # Check and return the API key or create a new one if not found
+            if result:
+                print(f"Result: {result}")
+                return result[0]  # Adjust the index if the API key is in a different column
+            else:
+                print(f"ApiKey Not Found")
+                return "ApiKey Not Found"
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return f"An error occurred: {str(e)}"
 
 
 def id_from_api_key(cnx, passed_key):

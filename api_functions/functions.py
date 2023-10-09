@@ -1,7 +1,11 @@
 import requests
 import secrets
 import json
+import logging
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+logging.error(f"Database error")
 
 
 def generate_session_token():
@@ -26,6 +30,38 @@ def call_verify_key(url, headers):
     else:
         print("Error calling verify_key:", response.status_code)
         return {"status": "error", "code": response.status_code}
+
+
+def call_get_key(url, username, password):
+    print('test')
+    from requests.auth import HTTPBasicAuth
+    try:
+        response = requests.get(url + "/get_key", auth=HTTPBasicAuth(username, password))
+        if response.status_code == 200:
+            print('Response good!')
+            return response.json()  # Assumes the API key is returned in JSON response
+        else:
+            print("Error calling verify_key:", response.status_code)
+            return {"status": "error", "code": response.status_code}
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def call_get_user(url, headers):
+    print('test')
+    from requests.auth import HTTPBasicAuth
+    try:
+        response = requests.get(url + "/get_user", headers=headers)
+        if response.status_code == 200:
+            print('Response good!')
+            return response.json()  # Assumes the API key is returned in JSON response
+        else:
+            print("Error calling verify_key:", response.status_code)
+            return {"status": "error", "code": response.status_code}
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 def call_check_saved_session(url, headers, session_value):
