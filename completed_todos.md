@@ -2,6 +2,16 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.4
+
+- [x] Unlock api creation for standard users - The API has been completely re-written to follow along the permissions that users actually have. Meaning users can easily request their own api keys and sign into the client with admin consent
+- [x] Signing into the client edition is now possible with either an API key or username and password sign in. It gives the option to choose which you would prefer. 
+- [x] Email resets currently broken for non-admins due to lockdown on encryption key. Need to handle encryption server-side
+- [x] Client version images load a lot faster now
+- [x] Fixed issue with audio container not reappearing after entering playing fullscreen
+- [x] Fixed Issue with Queue Bump Not working right
+- [x] Added verification when deleting user
+
 Version 0.3.1
 
 - [x] Finalize reverse proxy processes and web playing

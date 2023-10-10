@@ -40,6 +40,8 @@ services:
       PROXY_PORT: 8040
       PROXY_PROTOCOL: https
       REVERSE_PROXY: "True"
+      # Enable or Disable Debug Mode for additional Printing
+      DEBUG_MODE: False
     volumes:
     # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.

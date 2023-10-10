@@ -1,7 +1,11 @@
 import requests
 import secrets
 import json
+import logging
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+logging.error(f"Database error")
 
 
 def generate_session_token():
@@ -26,6 +30,41 @@ def call_verify_key(url, headers):
     else:
         print("Error calling verify_key:", response.status_code)
         return {"status": "error", "code": response.status_code}
+
+
+def call_get_key(url, username, password):
+    print('test')
+    from requests.auth import HTTPBasicAuth
+    try:
+        response = requests.get(url + "/get_key", auth=HTTPBasicAuth(username, password))
+        if response.status_code == 200:
+            print('Response good!')
+            return response.json()  # Assumes the API key is returned in JSON response
+        else:
+            print("Error calling verify_key:", response.status_code)
+            return {"status": "error", "code": response.status_code}
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def call_get_user(url, headers):
+    print('test')
+    from requests.auth import HTTPBasicAuth
+    try:
+        response = requests.get(url + "/get_user", headers=headers)
+        print(f'Response status code: {response.status_code}')
+        print(f'Response text: {response.text}')  # Add this to debug the response content
+        if response.status_code == 200:
+            print('Response good!')
+            return response.json()  # Assumes the API key is returned in JSON response
+        else:
+            print("Error calling verify_key:", response.status_code)
+            return {"status": "error", "code": response.status_code}
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+        return {"status": "error", "message": str(e)}
+
 
 
 def call_check_saved_session(url, headers, session_value):
@@ -58,7 +97,6 @@ def call_guest_status(url, headers):
     response = requests.get(url + "/guest_status", headers=headers)
     if response.status_code == 200:
         is_active = response.json()
-        print("Guest status:", is_active)
         return is_active
     else:
         print("Error fetching guest status:", response.status_code)
@@ -122,7 +160,6 @@ def call_verify_password(url, headers, username, password):
                              headers=headers)
     if response.status_code == 200:
         is_password_valid = response.json()["is_password_valid"]
-        print("Is password valid:", is_password_valid)
         return is_password_valid
     else:
         print("Error verifying password:", response.status_code)
@@ -137,7 +174,6 @@ def call_return_episodes(url, headers, user_id):
         if episodes:
             return episodes
         else:
-            print("No episodes found.")
             return None
     else:
         print("Error fetching episodes:", response.status_code)
@@ -188,10 +224,8 @@ def call_add_podcast(url, headers, podcast_values, user_id):
     if response.status_code == 200:
         success = response.json()["success"]
         if success:
-            print("Podcast added successfully")
             return True
         else:
-            print("Podcast already exists for the user")
             return False
     else:
         print("Error adding podcast:", response.status_code)
@@ -203,10 +237,8 @@ def call_enable_disable_guest(url, headers):
     if response.status_code == 200:
         success = response.json()["success"]
         if success:
-            print("Guest account status changed successfully")
             return True
         else:
-            print("Error changing guest account status")
             return False
     else:
         print("Error changing guest account status:", response.status_code)
@@ -218,10 +250,8 @@ def call_enable_disable_downloads(url, headers):
     if response.status_code == 200:
         success = response.json()["success"]
         if success:
-            print("Download Option Changed Successfully")
             return True
         else:
-            print("Error changing Download Status")
             return False
     else:
         print("Error changing Download Status:", response.status_code)
@@ -233,10 +263,8 @@ def call_enable_disable_self_service(url, headers):
     if response.status_code == 200:
         success = response.json()["success"]
         if success:
-            print("Self-service status changed successfully")
             return True
         else:
-            print("Error changing self-service status")
             return False
     else:
         print("Error changing self-service status:", response.status_code)
@@ -247,7 +275,6 @@ def call_self_service_status(url, headers):
     response = requests.get(url + "/self_service_status", headers=headers)
     if response.status_code == 200:
         status = response.json()["status"]
-        print(f'Self Service Status: {status}')
         return status
     else:
         print("Error fetching self-service status:", response.status_code)
@@ -257,7 +284,7 @@ def call_self_service_status(url, headers):
 def call_increment_listen_time(url, headers, user_id):
     response = requests.put(url + f"/increment_listen_time/{user_id}", headers=headers)
     if response.status_code == 200:
-        print("Listen time incremented.")
+        return True
     else:
         print("Error incrementing listen time:", response.status_code)
 
@@ -265,7 +292,7 @@ def call_increment_listen_time(url, headers, user_id):
 def call_increment_played(url, headers, user_id):
     response = requests.put(url + f"/increment_played/{user_id}", headers=headers)
     if response.status_code == 200:
-        print("Played count incremented.")
+        return True
     else:
         print("Error incrementing played count:", response.status_code)
 
@@ -278,7 +305,7 @@ def call_record_podcast_history(url, headers, episode_title, user_id, episode_po
     }
     response = requests.post(url + f"/record_podcast_history", headers=headers, json=data)
     if response.status_code == 200:
-        print("Podcast history recorded.")
+        return True
     else:
         print("Error recording podcast history:", response.status_code)
 
@@ -291,7 +318,6 @@ def call_download_podcast(url, headers, episode_url, title, user_id):
     }
     response = requests.post(url + f"/download_podcast", headers=headers, json=data)
     if response.status_code == 200:
-        print("Podcast downloaded.")
         return True
     else:
         print("Error downloading podcast:", response.status_code)
@@ -306,7 +332,7 @@ def call_delete_podcast(url, headers, episode_url, title, user_id):
     }
     response = requests.post(url + f"/delete_podcast", headers=headers, json=data)
     if response.status_code == 200:
-        print("Podcast deleted.")
+        return True
     else:
         print("Error deleting podcast:", response.status_code)
 
@@ -319,7 +345,7 @@ def call_save_episode(url, headers, episode_url, title, user_id):
     }
     response = requests.post(url + f"/save_episode", headers=headers, json=data)
     if response.status_code == 200:
-        print("Episode saved.")
+        return True
     else:
         print("Error saving episode:", response.status_code)
 
@@ -332,7 +358,7 @@ def call_remove_saved_episode(url, headers, episode_url, title, user_id):
     }
     response = requests.post(url + f"/remove_saved_episode", headers=headers, json=data)
     if response.status_code == 200:
-        print("Saved episode removed.")
+        return True
     else:
         print("Error removing saved episode:", response.status_code)
 
@@ -346,7 +372,7 @@ def call_record_listen_duration(url, headers, episode_url, title, user_id, liste
     }
     response = requests.post(url + f"/record_listen_duration", headers=headers, json=data)
     if response.status_code == 200:
-        print("Listen duration recorded.")
+        return True
     else:
         print("Error recording listen duration:", response.status_code)
 
@@ -354,7 +380,7 @@ def call_record_listen_duration(url, headers, episode_url, title, user_id, liste
 def call_refresh_pods(url, headers):
     response = requests.get(url + f"/refresh_pods", headers=headers)
     if response.status_code == 200:
-        print("Podcasts refreshed.")
+        return True
     else:
         print("Error refreshing podcasts:", response.status_code)
 
@@ -450,7 +476,6 @@ def call_get_encryption_key(url, headers):
     response = requests.get(url + "/get_encryption_key", headers=headers)
     if response.status_code == 200:
         encryption_key = response.json()['encryption_key']
-        print("Encryption key:", encryption_key)
         return encryption_key
     else:
         print("Error getting encryption key:", response.status_code)
@@ -490,7 +515,7 @@ def call_save_email_settings(url, headers, server_name, server_port, from_email,
 
     response = requests.post(url + "/save_email_settings", headers=headers, json=data)
     if response.status_code == 200:
-        print("Email settings saved.")
+        return True
     else:
         print("Error saving email settings:", response.status_code)
         print("Response body:", response.json())
@@ -533,7 +558,7 @@ def call_add_user(url, headers, fullname, username, email, hash_pw, salt):
     user_values = {"fullname": fullname, "username": username, "email": email, "hash_pw": hash_pw, "salt": salt}
     response = requests.post(url + "/add_user", headers=headers, json=user_values)
     if response.status_code == 200:
-        print("User added successfully.")
+        return True
     else:
         print("Error adding user:", response.status_code)
 
@@ -542,7 +567,7 @@ def call_set_fullname(url, headers, user_id, new_name):
     params = {"new_name": new_name}
     response = requests.put(url + f"/set_fullname/{user_id}", headers=headers, params=params)
     if response.status_code == 200:
-        print("Fullname updated successfully.")
+        return True
     else:
         print("Error updating fullname:", response.status_code)
 
@@ -551,7 +576,7 @@ def call_set_password(url, headers, user_id, salt, hash_pw):
     data = {"salt": salt, "hash_pw": hash_pw}
     response = requests.put(url + f"/set_password/{user_id}", headers=headers, json=data)
     if response.status_code == 200:
-        print("Password updated successfully.")
+        return True
     else:
         print("Error updating password:", response.status_code)
 
@@ -590,7 +615,7 @@ def call_final_admin(url, headers, user_id):
 def call_delete_user(url, headers, user_id):
     response = requests.delete(url + f"/user/delete/{user_id}", headers=headers)
     if response.status_code == 200:
-        print("User deleted")
+        return True
     else:
         print("Error deleting user:", response.status_code)
 
@@ -639,7 +664,7 @@ def call_delete_api_key(url, headers, api_id, user_id):
     response = requests.delete(url + f"/delete_api_key", headers=headers, json=payload)
 
     if response.status_code == 200:
-        print("API key deleted successfully.")
+        return True
     else:
         print("Error deleting API key:", response.status_code)
         print("Error message:", response.text)
@@ -656,18 +681,20 @@ def call_get_api_info(url, headers, user_id):
         return []
 
 
-def call_reset_password_create_code(url, headers, email, reset_code, user_id):
-    payload = {"email": email, "reset_code": reset_code, "user_id": user_id}
+def call_reset_password_create_code(url, headers, email, reset_code):
+    payload = {"email": email, "reset_code": reset_code}
     response = requests.post(url + "/reset_password_create_code", headers=headers, json=payload)
+    # ... rest of the code
+
     if response.status_code == 200:
         return response.json()["user_exists"]
     else:
-        print("Error resetting password:", response.status_code)
+        print("Error creating password reset code:", response.status_code)
         return None
 
 
-def call_verify_reset_code(url, headers, email, reset_code, user_id):
-    payload = {"email": email, "reset_code": reset_code, "user_id": user_id}
+def call_verify_reset_code(url, headers, email, reset_code):
+    payload = {"email": email, "reset_code": reset_code}
     response = requests.post(url + "/verify_reset_code", headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()["code_valid"]
@@ -676,8 +703,8 @@ def call_verify_reset_code(url, headers, email, reset_code, user_id):
         return False
 
 
-def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw, user_id):
-    payload = {"email": user_email, "salt": salt.decode(), "hashed_pw": hashed_pw.decode(), "user_id": user_id}
+def call_reset_password_prompt(url, headers, user_email, salt, hashed_pw, reset_code):
+    payload = {"email": user_email, "salt": salt.decode(), "hashed_pw": hashed_pw.decode(), "reset_code": reset_code}
     response = requests.post(url + "/reset_password_prompt", headers=headers, json=payload)
     if response.status_code == 200:
         return response.json()["message"]
@@ -926,6 +953,7 @@ def call_queued_episodes(url, headers, user_id):
 def call_queue_bump(url, headers, ep_url, title, user_id):
     data = {"ep_url": ep_url, "title": title, "user_id": user_id}
     try:
+        print(f"Sending data to /queue_bump: {data}")
         response = requests.post(url + "/queue_bump", headers=headers, json=data, timeout=30)
         response.raise_for_status()  # Raise an exception for HTTP errors
     except requests.exceptions.Timeout:
@@ -933,6 +961,7 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
         return None
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
+        print(f"Server response: {response.text}")
         return None
     except Exception as err:
         print(f"Other error occurred: {err}")
@@ -970,7 +999,6 @@ def call_backup_user(url, headers, user_id, backup_dir):
 
 def call_backup_server(url, headers, backup_dir, database_pass):
     import os
-    print('trying dbbackup')
 
     data = {"backup_dir": backup_dir, "database_pass": database_pass}
 

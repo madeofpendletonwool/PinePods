@@ -14,6 +14,7 @@ export API_URL=$API_URL
 export PINEPODS_PORT=$PINEPODS_PORT
 export PROXY_PROTOCOL=$PROXY_PROTOCOL
 export PINEPODS_PORT=$PINEPODS_PORT
+export DEBUG_MODE=${DEBUG_MODE:-'False'}
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"
@@ -68,8 +69,9 @@ echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
 chown -R Debian-exim:Debian-exim /var/log/exim4
 chown -R Debian-exim:Debian-exim /var/spool/exim4
 # Start all services with supervisord
-if [[ $PROXY_PROTOCOL == "http" ]]; then
-supervisord -c /pinepods/startup/supervisord.conf
+echo $DEBUG_MODE
+if [[ $DEBUG_MODE == "true" ]]; then
+supervisord -c /pinepods/startup/supervisordebug.conf
 else
 supervisord -c /pinepods/startup/supervisord.conf
 fi

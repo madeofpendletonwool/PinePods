@@ -215,6 +215,7 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
     def pod_url_add(page):
+        print('running url add')
         def close_pod_url_dlg(page):
             pod_url_dlg.open = False
             page.update()
@@ -266,7 +267,7 @@ def main(page: ft.Page, session_value=None):
 
         page.dialog = pod_url_dlg
         pod_url_dlg.open = True
-
+        page.update()
 
     def invalid_username():
         page.dialog = username_invalid_dlg
@@ -1187,11 +1188,11 @@ def main(page: ft.Page, session_value=None):
             reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers,
-                                                                                 user_email, reset_code, active_user.user_id)
+                                                                                 user_email, reset_code)
             if user_exist:
                 def pw_reset(page, user_email, reset_code):
                     code_valid = api_functions.functions.call_verify_reset_code(app_api.url, app_api.headers,
-                                                                                user_email, reset_code, active_user.user_id)
+                                                                                user_email, reset_code)
                     if code_valid == True:
                         def close_code_pw_reset_dlg(e):
                             code_pw_reset_dlg.open = False
@@ -1201,7 +1202,7 @@ def main(page: ft.Page, session_value=None):
                             if pw_reset_prompt == pw_verify_prompt:
                                 salt, hash_pw = Auth.Passfunctions.hash_password(pw_reset_prompt)
                                 api_functions.functions.call_reset_password_prompt(app_api.url, app_api.headers,
-                                                                                   user_email, salt, hash_pw, active_user.user_id)
+                                                                                   user_email, salt, hash_pw, reset_code)
                                 page.snack_bar = ft.SnackBar(content=ft.Text('Password Reset! You can now log in!'))
                                 page.snack_bar.open = True
                                 code_pw_reset_dlg.open = False
@@ -1286,7 +1287,7 @@ def main(page: ft.Page, session_value=None):
                     ], tight=True),
                     actions=[
                         ft.TextButton("Submit", on_click=lambda e: pw_reset(page, user_email, code_reset_prompt.value)),
-                        ft.TextButton("Cancel", on_click=close_self_service_pw_dlg)
+                        ft.TextButton("Cancel", on_click=close_code_pw_dlg)
                     ],
                     actions_alignment=ft.MainAxisAlignment.END
                 )
@@ -1404,8 +1405,6 @@ def main(page: ft.Page, session_value=None):
                 self.top_row_container = ft.Container(content=self.top_row, expand=True)
                 self.top_row_container.padding = ft.padding.only(left=60)
                 self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[self.top_row_container])
-                if current_episode.audio_playing == True:
-                    pod_controls.audio_container.visible = True
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.
@@ -3824,7 +3823,7 @@ def main(page: ft.Page, session_value=None):
                 def settings_backup_data(self):
                     backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
                     backup_option_desc = Text(
-                        "Note: This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
+                        "Note: Backing up over the web will backup to a local location on the server. Use on the client edition to backup locally. This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
                         color=active_user.font_color)
                     self.settings_backup_button = ft.ElevatedButton(f'Backup Data',
                                                                    on_click=self.backup_data,
@@ -3838,14 +3837,10 @@ def main(page: ft.Page, session_value=None):
                 def settings_import_data(self):
                     import_option_text = Text('Import Data:', color=active_user.font_color, size=16)
                     import_option_desc = Text(
-                        "Note: This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
+                        "Note: Can only be used on the client edition. This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
                         color=active_user.font_color)
-                    self.settings_import_button = ft.ElevatedButton(f'Import Data',
-                                                                   on_click=self.import_data,
-                                                                   bgcolor=active_user.main_color,
-                                                                   color=active_user.accent_color)
                     setting_import_col = ft.Column(
-                        controls=[import_option_text, import_option_desc, self.settings_import_button])
+                        controls=[import_option_text, import_option_desc])
                     self.setting_import_con = ft.Container(content=setting_import_col)
                     self.setting_import_con.padding = padding.only(left=70, right=50)
 
@@ -4278,6 +4273,7 @@ def main(page: ft.Page, session_value=None):
                         rows=self.user_table_rows
                     )
 
+
                 def import_data(self, e):
                     def close_import_dlg(page):
                         import_dlg.open = False
@@ -4288,8 +4284,9 @@ def main(page: ft.Page, session_value=None):
 
                         def import_pick_result(e: ft.FilePickerResultEvent):
                             if e.files:
+                                print(e.files)
                                 active_user.import_file = e.files[0].path
-
+                            print(active_user.import_file)
                             tree = ET.parse(active_user.import_file)
                             root = tree.getroot()
 
@@ -4348,7 +4345,81 @@ def main(page: ft.Page, session_value=None):
                         file_picker.pick_files()
 
                     def import_server():
-                        file_picker = ft.FilePicker(on_result=import_pick_result)
+                        def import_server_result(e: ft.FilePickerResultEvent):
+                            close_import_dlg(page)
+                            self.page.update()
+
+                            if e.files:
+                                file_path = e.files[0].path
+                                with open(file_path, 'r') as file:
+                                    file_contents = file.read()
+
+                                def run_full_restore(e):
+                                    pr_instance.touch_stack()
+                                    close_restore_pass_win(self.page)
+                                    self.page.update()
+                                    time.sleep(1)
+
+                                    restore_status = api_functions.functions.call_restore_server(app_api.url, app_api.headers, backup_database_pass.value, file_contents)
+                                    if restore_status.get("success") == True:
+                                        self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Server Restore Successful! Now logging out!"))
+                                        self.page.snack_bar.open = True
+                                        pr_instance.rm_stack()
+                                        self.page.update()
+                                        time.sleep(1.5)
+
+                                        active_user = User(page)
+                                        pr_instance.rm_stack()
+                                        login_username.visible = True
+                                        login_password.visible = True
+
+                                        start_login(page)
+                                        new_nav.navbar.border = ft.border.only(
+                                            right=ft.border.BorderSide(2, active_user.tertiary_color))
+                                        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
+                                        page.overlay.append(new_nav.navbar_stack)
+                                        new_nav.navbar.visible = False
+                                        self.page.update()
+                                    else:
+                                        error_message = restore_status.get("error_message", "Unknown error.")
+                                        self.page.snack_bar = ft.SnackBar(
+                                            content=ft.Text(f"Server Restore failed: {error_message}"))
+                                        self.page.snack_bar.open = True
+                                        self.page.update()
+
+                                def close_restore_pass_win(page):
+                                    close_restore_pass_dlg.open = False
+                                    self.page.update()
+
+                                backup_pass_text = ft.Text(f"WARNING: You are about to run a full restore on your server! This will remove absolutely everything currently stored in your database and revert to the data that's part of the backup you restore to. If you're unsure what you're doing DO NOT proceed. If you are certain you'd like to restore the database with a previous backup please enter your database root password below.", selectable=True)
+                                backup_occur_text = ft.Text(f"After the restore is complete you will be logged out from Pinepods as the restore operation will restore your users to the users included in the backup. Make certain you know the login details to a user that's an admin in the backup you are about to restore to.")
+
+                                backup_select_pass_row = ft.Row(
+                                    controls=[
+                                        ft.TextButton("Submit", on_click=run_full_restore),
+                                        ft.TextButton("Close", on_click=lambda x: (close_restore_pass_win(self.page)))
+                                    ],
+                                    alignment=ft.MainAxisAlignment.END
+                                )
+                                backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN, hint_text='My_Datab@$$_P@SS', password=True, can_reveal_password=True)
+
+                                close_restore_pass_dlg = ft.AlertDialog(
+                                    modal=True,
+                                    title=ft.Text(f"Restore Data:"),
+                                    content=ft.Column(controls=[
+                                        backup_pass_text,
+                                        backup_occur_text,
+                                        backup_database_pass,
+                                        backup_select_pass_row
+                                    ],
+                                        tight=True),
+                                    actions_alignment=ft.MainAxisAlignment.END,
+                                )
+                                self.page.dialog = close_restore_pass_dlg
+                                close_restore_pass_dlg.open = True
+                                self.page.update()
+
+                        file_picker = ft.FilePicker(on_result=import_server_result)
                         self.page.overlay.append(file_picker)
                         self.page.update()
                         file_picker.pick_files()
@@ -4356,6 +4427,9 @@ def main(page: ft.Page, session_value=None):
 
                     user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
                     server_import_select = ft.TextButton("Import Entire Server Information", on_click=lambda x: (import_server()))
+
+                    if not active_user.user_is_admin:
+                        server_import_select.visible = False
 
                     import_select_row = ft.Row(
                         controls=[
@@ -4366,7 +4440,7 @@ def main(page: ft.Page, session_value=None):
 
                     import_dlg = ft.AlertDialog(
                         modal=True,
-                        title=ft.Text(f"Backup Data:"),
+                        title=ft.Text(f"Import Data:"),
                         content=ft.Column(controls=[
                             ft.Text(
                                 f'Select an option below to import data.',
@@ -4414,8 +4488,6 @@ def main(page: ft.Page, session_value=None):
 
                         if backup_status == True:
                             backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}", selectable=True)
-                            folder_location = ft.TextButton("Open Backup Location",
-                                                                 on_click=lambda x: (open_backups()))
                         else:
                             backup_status_text = ft.Text("Backup was not successful. Try again!")
                             folder_location = ft.Text("N/A")
@@ -4432,7 +4504,6 @@ def main(page: ft.Page, session_value=None):
                             title=ft.Text(f"Backup Data:"),
                             content=ft.Column(controls=[
                                 backup_status_text,
-                                folder_location,
                                 backup_select_status_row
                             ],
                                 tight=True),
@@ -4892,7 +4963,7 @@ def main(page: ft.Page, session_value=None):
                 modify_api_dlg.open = True
                 page.update()
 
-            create_api_button = ft.ElevatedButton(f'Generate New API Key for Current User', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
+            create_api_button = ft.ElevatedButton(f'Generate New API Key for client access', on_click=create_api, bgcolor=active_user.main_color, color=active_user.accent_color)
 
             api_information = api_functions.functions.call_get_api_info(app_api.url, app_api.headers, active_user.user_id)
 
@@ -4979,7 +5050,6 @@ def main(page: ft.Page, session_value=None):
                         user_div_row,
                         settings_data.setting_import_con,
                         user_div_row,
-                        div_row,
                         api_edit_container,
                         admin_setting_text,
                         user_row_container,
