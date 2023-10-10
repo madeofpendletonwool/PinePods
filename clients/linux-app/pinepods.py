@@ -201,6 +201,7 @@ def check_saved_server_vals():
 def generate_session_token():
     return secrets.token_hex(32)
 
+
 def download_image(img_url, save_path):
     response = requests.get(img_url)
     if response.status_code == 200:  # OK
@@ -208,6 +209,7 @@ def download_image(img_url, save_path):
             img_file.write(response.content)
     else:
         print(f"Failed to download {img_url}. Status code: {response.status_code}")
+
 
 def ensure_images_are_downloaded():
     if not os.path.exists(assets_dir):
@@ -498,8 +500,8 @@ def main(page: ft.Page, session_value=None):
                     if login_screen == True:
                         user_id = api_functions.functions.call_get_user(self.url, self.headers)
                         login_details = api_functions.functions.call_get_user_details_id(app_api.url,
-                                                                                      app_api.headers,
-                                                                                      user_id['retrieved_id'])
+                                                                                         app_api.headers,
+                                                                                         user_id['retrieved_id'])
                         active_user.user_id = login_details['UserID']
                         active_user.fullname = login_details['Fullname']
                         active_user.username = login_details['Username']
@@ -6271,8 +6273,9 @@ def main(page: ft.Page, session_value=None):
                     ], tight=True),
                     actions=[
                         ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
-                            modify_user.delete_user(user_id),
-                            close_modify_dlg()
+                            close_modify_dlg(),
+                            self.page.update(),
+                            modify_user.delete_user(user_id)
                         )),
                         ft.TextButton("Confirm Changes", on_click=lambda x: (
                             modify_user.set_username(user_modify_username.value),
@@ -6334,19 +6337,49 @@ def main(page: ft.Page, session_value=None):
 
         def delete_user(self, user_id):
             admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
+            def show_snack_bar(message):
+                if page.snack_bar:
+                    page.remove(page.snack_bar)
+
+                page.snack_bar = ft.SnackBar(content=ft.Text(message))
+                page.snack_bar.open = True
+
             if user_id == active_user.user_id:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
-                page.snack_bar.open = True
-                page.update()
-            elif admin_check == True:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete the final admin user"))
-                page.snack_bar.open = True
-                page.update()
+                show_snack_bar("Cannot delete your own user")
+            elif admin_check:
+                show_snack_bar("Cannot delete the final admin user")
             else:
+                # Confirmation dialog
+                dlg_modal = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Please confirm"),
+                    content=ft.Text("Do you really want to delete User?"),
+                    actions=[
+                        ft.TextButton("Yes", on_click=lambda e: perform_delete(user_id)),
+                        ft.TextButton("No", on_click=lambda e: close_dialog()),
+                    ],
+                    actions_alignment=ft.MainAxisAlignment.END,
+                    on_dismiss=lambda e: print("Modal dialog dismissed!"),
+                )
+
+                # Show the confirmation dialog
+                page.dialog = dlg_modal
+                dlg_modal.open = True
+                page.update()
+
+            def close_dialog():
+                # Close the confirmation dialog
+                page.dialog.open = False
+                page.update()
+
+            def perform_delete(user_id):
+
                 api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
                 page.snack_bar.open = True
                 page.update()
+
+                close_dialog()
 
         # Active User Stuff --------------------------
 

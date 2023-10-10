@@ -4980,7 +4980,7 @@ def main(page: ft.Page, session_value=None):
                 api_key = '...' + entry['LastFourDigits']
                 username = entry['Username']
                 api_created = entry['Created']
-                
+
                 # Create a new data row with the user information
                 row = ft.DataRow(
                     cells=[
@@ -4991,12 +4991,12 @@ def main(page: ft.Page, session_value=None):
                     ],
                     on_select_changed=create_on_select_changed_lambda(api_id, page)
                 )
-                
+
                 # Append the row to the list of data rows
                 api_table_rows.append(row)
 
             api_table = ft.DataTable(
-                bgcolor=active_user.main_color, 
+                bgcolor=active_user.main_color,
                 border=ft.border.all(2, active_user.main_color),
                 border_radius=10,
                 vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
@@ -5017,7 +5017,7 @@ def main(page: ft.Page, session_value=None):
             api_edit_container = ft.Container(content=api_edit_column)
             api_edit_container.padding=padding.only(left=70, right=50)
 
-            # Check if admin settings should be displayed 
+            # Check if admin settings should be displayed
             div_row = ft.Divider(color=active_user.accent_color)
             user_div_row = ft.Divider(color=active_user.accent_color)
             user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
@@ -5588,8 +5588,9 @@ def main(page: ft.Page, session_value=None):
                     ], tight=True),
                     actions=[
                         ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
-                            modify_user.delete_user(user_id),
-                            close_modify_dlg()
+                            close_modify_dlg(),
+                            self.page.update(),
+                            modify_user.delete_user(user_id)
                         )),
                         ft.TextButton("Confirm Changes", on_click=lambda x: (
                             modify_user.set_username(user_modify_username.value),
@@ -5652,7 +5653,13 @@ def main(page: ft.Page, session_value=None):
         #Deleting the User with verification
 
         def delete_user(self, user_id):
-            admin_check = ApiFunctions.functions.call_final_admin(None, None, user_id)
+            admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
+            def show_snack_bar(message):
+                if page.snack_bar:
+                    page.remove(page.snack_bar)
+
+                page.snack_bar = ft.SnackBar(content=ft.Text(message))
+                page.snack_bar.open = True
 
             if user_id == active_user.user_id:
                 show_snack_bar("Cannot delete your own user")
@@ -5688,16 +5695,8 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
                 page.snack_bar.open = True
                 page.update()
-            
+
                 close_dialog()
-
-            def show_snack_bar(message):
-                if page.snack_bar:
-                    page.remove(page.snack_bar)
-
-                page.snack_bar = ft.SnackBar(content=ft.Text(message))
-                page.snack_bar.open = True
-
 
         # Active User Stuff --------------------------
 
