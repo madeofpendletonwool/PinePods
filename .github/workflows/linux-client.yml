@@ -37,7 +37,6 @@ jobs:
         cp clients/linux-app/pinepods.desktop linuxapp/
         chmod +x clients/linux-app/install.sh
         cp clients/linux-app/install.sh linuxapp/
-        tar -cvf pinepods.tar -C linuxapp/ .
         
         
 #     - name: Get Latest Tag
@@ -47,5 +46,5 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: Pinepods-Linux
-        path: pinepods.tar
+        path: linuxapp/
 
