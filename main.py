@@ -5649,21 +5649,55 @@ def main(page: ft.Page, session_value=None):
                 page.snack_bar.open = True
                 page.update()
 
+        #Deleting the User with verification
+
         def delete_user(self, user_id):
-            admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
+            admin_check = ApiFunctions.functions.call_final_admin(None, None, user_id)
+
             if user_id == active_user.user_id:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete your own user"))
-                page.snack_bar.open = True
-                page.update()
-            elif admin_check == True:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Cannot delete the final admin user"))
-                page.snack_bar.open = True
-                page.update()
+                show_snack_bar("Cannot delete your own user")
+            elif admin_check:
+                show_snack_bar("Cannot delete the final admin user")
             else:
+                # Confirmation dialog
+                dlg_modal = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Please confirm"),
+                    content=ft.Text("Do you really want to delete User?"),
+                    actions=[
+                        ft.TextButton("Yes", on_click=lambda e: perform_delete(user_id)),
+                        ft.TextButton("No", on_click=lambda e: close_dialog()),
+                    ],
+                    actions_alignment=ft.MainAxisAlignment.END,
+                    on_dismiss=lambda e: print("Modal dialog dismissed!"),
+                )
+
+                # Show the confirmation dialog
+                page.dialog = dlg_modal
+                dlg_modal.open = True
+                page.update()
+
+            def close_dialog():
+                # Close the confirmation dialog
+                page.dialog.open = False
+                page.update()
+
+            def perform_delete(user_id):
+
                 api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
                 page.snack_bar.open = True
                 page.update()
+            
+                close_dialog()
+
+            def show_snack_bar(message):
+                if page.snack_bar:
+                    page.remove(page.snack_bar)
+
+                page.snack_bar = ft.SnackBar(content=ft.Text(message))
+                page.snack_bar.open = True
+
 
         # Active User Stuff --------------------------
 
