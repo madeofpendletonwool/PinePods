@@ -16,8 +16,6 @@ import json
 import re
 import urllib
 import urllib.request
-import asyncio
-import websockets
 from requests.exceptions import RequestException, MissingSchema
 import os
 import requests
@@ -203,6 +201,31 @@ def check_saved_server_vals():
 def generate_session_token():
     return secrets.token_hex(32)
 
+def download_image(img_url, save_path):
+    response = requests.get(img_url)
+    if response.status_code == 200:  # OK
+        with open(save_path, 'wb') as img_file:
+            img_file.write(response.content)
+    else:
+        print(f"Failed to download {img_url}. Status code: {response.status_code}")
+
+def ensure_images_are_downloaded():
+    if not os.path.exists(assets_dir):
+        os.makedirs(assets_dir)
+    logo_image_filepath = os.path.join(assets_dir, "pinepods-appicon.png")
+
+    for i in range(1, 14):  # images 1.jpeg to 13.jpeg
+        image_filename = f"{i}.jpeg"
+        image_filepath = os.path.join(assets_dir, image_filename)
+
+        if not os.path.exists(image_filepath):
+            image_url = f"{proxy_url}/pinepods/images/logo_random/{image_filename}"
+            download_image(image_url, image_filepath)
+    logo_filepath = os.path.join(assets_dir, "pinepods-appicon.png")
+    if not os.path.exists(logo_filepath):
+        logo_image_url = f"{proxy_url}/pinepods/images/pinepods-appicon.png"
+        download_image(logo_image_url, logo_image_filepath)
+
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
 
@@ -253,6 +276,7 @@ appauthor = "Gooseberry Development"
 user_data_dir = appdirs.user_data_dir(appname, appauthor)
 metadata_dir = os.path.join(user_data_dir, 'metadata')
 backup_dir = os.path.join(user_data_dir, 'backups')
+assets_dir = os.path.join(user_data_dir, 'assets')
 
 
 def main(page: ft.Page, session_value=None):
@@ -344,12 +368,9 @@ def main(page: ft.Page, session_value=None):
             else:
                 # If we reach here, it means the pinepods_check was successful.
                 # Do the rest of your logic here.
-                print("calling key")
                 api_key = api_functions.functions.call_get_key(self.url, self.username.value, self.password.value)
-                print(f"Key Check: {api_key['retrieved_key']}")
 
                 if not api_key or api_key.get('status') != 'success':
-                    print("in status")
                     page.go("/server_config")
                     self.show_error_snackbar(f"Invalid User Credentials: {api_key.get('status')}")
                     pr_instance.rm_stack()
@@ -357,7 +378,6 @@ def main(page: ft.Page, session_value=None):
                     return
 
                 else:
-                    print("in else")
                     self.headers = {"Api-Key": api_key['retrieved_key']}
                     self.api_value = api_key['retrieved_key']
                     api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
@@ -446,7 +466,6 @@ def main(page: ft.Page, session_value=None):
                 # If we reach here, it means the pinepods_check was successful.
                 # Do the rest of your logic here.
                 key_check = api_functions.functions.call_verify_key(self.url, self.headers)
-                print(f"Key Check: {key_check}")
 
                 if not key_check or key_check.get('status') != 'success':
                     page.go("/server_config")
@@ -472,14 +491,12 @@ def main(page: ft.Page, session_value=None):
                     # self.show_error_snackbar(f"Connected to {proxy_host}!")
                     # Initialize the audio routes
                     cache = initialize_audio_routes(app, proxy_url)
-                    print('after cache')
 
                     if retain_session == True:
                         save_server_vals(self.api_value, server_name)
 
                     if login_screen == True:
-                        user_id = api_functions.functions.call_get_user(server_name, self.headers)
-                        print(f'userid: {user_id}')
+                        user_id = api_functions.functions.call_get_user(self.url, self.headers)
                         login_details = api_functions.functions.call_get_user_details_id(app_api.url,
                                                                                       app_api.headers,
                                                                                       user_id['retrieved_id'])
@@ -555,7 +572,7 @@ def main(page: ft.Page, session_value=None):
                                                                     active_user.user_id)
             pr_instance.rm_stack()
             close_pod_url_dlg(page)
-            if return_value == True:
+            if return_value:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
                 page.snack_bar.open = True
                 page.update()
@@ -676,7 +693,7 @@ def main(page: ft.Page, session_value=None):
             return progress
 
     def check_image(artwork_path):
-        return f"{proxy_url}{artwork_path}"
+        return f"{artwork_path}"
 
     def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
                          pod_feed_url, pod_website):
@@ -1212,8 +1229,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                audio_con_art_fallback = os.path.join('/pinepods', "images", "logo_random",
-                                                      f"{audio_con_artwork_no}.jpeg")
+                audio_con_art_fallback = os.path.join(assets_dir, f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
                 self.audio_con_art_url_parsed = audio_con_art_url_parsed
@@ -1259,8 +1275,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
                 audio_con_artwork_no = random.randint(1, 12)
-                audio_con_art_fallback = os.path.join('/pinepods', "images", "logo_random",
-                                                      f"{audio_con_artwork_no}.jpeg")
+                audio_con_art_fallback = os.path.join(assets_dir, f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
                 self.audio_con_art_url_parsed = audio_con_art_url_parsed
@@ -1483,11 +1498,9 @@ def main(page: ft.Page, session_value=None):
         page.go("/first_time_config")
 
     def start_login_e(e):
-        print("it work")
         page.go("/login")
 
     def start_login(page):
-        print("it work")
         page.go("/login")
 
     def open_mfa_login(e):
@@ -1522,6 +1535,7 @@ def main(page: ft.Page, session_value=None):
         page.go("/userstats")
 
     def open_currently_playing(e):
+        active_user.show_audio_container = False
         page.go("/playing")
 
     def open_episode_select(page, url, title):
@@ -1536,27 +1550,8 @@ def main(page: ft.Page, session_value=None):
     def open_search(e):
         page.go("/user_search")
 
-    def go_homelogin_guest(page):
-        active_user.user_id = 1
-        active_user.fullname = 'Guest User'
-        active_user.theme_select()
-        # Theme user elements
-        page.banner.bgcolor = active_user.accent_color
-        page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
-        page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue'. For more information on PinePods and the features it has please check out the documentation website listed below. For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR.
-    """, color=active_user.main_color
-                                      )
-        page.banner.actions = [
-            ft.ElevatedButton('Open PinePods Github Repo', on_click=open_repo, bgcolor=active_user.main_color,
-                              color=active_user.accent_color),
-            ft.ElevatedButton('Open PinePods Documentation Site', on_click=open_doc_site,
-                              bgcolor=active_user.main_color, color=active_user.accent_color),
-            ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
-        ]
-        page.go("/first_time_config")
-
     def go_homelogin(page):
+        ensure_images_are_downloaded()
         active_user.theme_select()
         # Theme user elements
         page.banner.bgcolor = active_user.accent_color
@@ -1820,8 +1815,6 @@ def main(page: ft.Page, session_value=None):
                 self.top_row_container = ft.Container(content=self.top_row, expand=True)
                 self.top_row_container.padding = ft.padding.only(left=60)
                 self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[self.top_row_container])
-                if current_episode.audio_playing == True:
-                    pod_controls.audio_container.visible = True
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.
@@ -1960,7 +1953,7 @@ def main(page: ft.Page, session_value=None):
                             entry_description = ft.Text(ep_desc, selectable=True)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
                     art_no = random.randint(1, 12)
-                    art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{art_no}.jpeg")
+                    art_fallback = os.path.join(assets_dir, f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
@@ -2158,7 +2151,7 @@ def main(page: ft.Page, session_value=None):
                 entry_description = ft.Text(ep_desc, width=800)
                 entry_released = ft.Text(pub_date)
                 artwork_no = random.randint(1, 12)
-                artwork_url = os.path.join('/pinepods', "images", "logo_random", f"{artwork_no}.jpeg")
+                artwork_url = os.path.join(assets_dir, f"{artwork_no}.jpeg")
                 art_url_parsed = check_image(artwork_url)
                 entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                 ep_play_button = ft.IconButton(
@@ -2793,7 +2786,7 @@ def main(page: ft.Page, session_value=None):
                     entry_description = ft.Text(ep_desc, width=800)
                     entry_released = ft.Text(pub_date)
                     artwork_no = random.randint(1, 12)
-                    artwork_url = os.path.join('/pinepods', "images", "logo_random", f"{artwork_no}.jpeg")
+                    artwork_url = os.path.join(assets_dir, f"{artwork_no}.jpeg")
                     art_url_parsed = check_image(artwork_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
                     ep_play_button = ft.IconButton(
@@ -3939,7 +3932,7 @@ def main(page: ft.Page, session_value=None):
                                      ], ft.MainAxisAlignment.CENTER, ft.CrossAxisAlignment.CENTER)
             coffee_contain = ft.Container(content=coffee_info)
             coffee_contain.alignment = alignment.bottom_center
-            image_path = os.path.join('/pinepods', "images", "pinepods-appicon.png")
+            image_path = os.path.join(assets_dir, "pinepods-appicon.png")
             finish_image_path = check_image(image_path)
             pinepods_img = ft.Image(
                 src=finish_image_path,
@@ -4005,7 +3998,7 @@ def main(page: ft.Page, session_value=None):
                                         text_align="center",
                                     ),
                                     ft.Text(
-                                        "Welcome to PinePods. Let's begin by connecting to your server. Please enter your server name and API Key below. Keep in mind that if you setup Pinepods with a reverse proxy it's unlikely that you need a port number in your url",
+                                        "Welcome to PinePods. Let's get you signed in! Please enter your server name and API Key below. If you don't have an API key click 'Login with user' to sign in with username and password. Keep in mind that if you setup Pinepods with a reverse proxy it's unlikely that you need a port number in your url",
                                         size=14,
                                         weight="w700",
                                         text_align="center",
@@ -4099,7 +4092,6 @@ def main(page: ft.Page, session_value=None):
             )
             if page.web:
                 active_user.retain_session.visible = False
-            print("still work")
             login_startpage = ft.Column(
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -4131,7 +4123,7 @@ def main(page: ft.Page, session_value=None):
                                         text_align="center",
                                     ),
                                     ft.Text(
-                                        "Please login with your user account to start listening to podcasts. If you didn't set a default user up please check the docker logs for a default account and credentials",
+                                        "Please login with your user account to start listening to podcasts. If you didn't set a default user up please check the docker logs for a default account and credentials. If you forgot your password you can reset it from the web client.",
                                         size=14,
                                         weight="w700",
                                         text_align="center",
@@ -4155,36 +4147,6 @@ def main(page: ft.Page, session_value=None):
                                             login_api_button
                                         ],
                                     ),
-                                    ft.Row(
-                                        alignment="center",
-                                        spacing=20,
-                                        controls=[
-                                            ft.Text("Haven't created a user yet?"),
-                                            ft.OutlinedButton(text="Create New User", on_click=self_service_user)
-
-                                        ]
-
-                                    ),
-                                    ft.Row(
-                                        alignment="center",
-                                        spacing=20,
-                                        controls=[
-                                            ft.Text("Forgot Password?"),
-                                            ft.OutlinedButton(
-                                                content=ft.Text(
-                                                    "Reset Password",
-                                                    weight="w700",
-                                                ),
-                                                width=160,
-                                                height=40,
-                                                # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: reset_credentials(page)
-                                                # on_click=lambda e: go_homelogin(e)
-                                            ),
-
-                                        ]
-
-                                    )
                                 ],
                             ),
                         ),
@@ -4951,7 +4913,6 @@ def main(page: ft.Page, session_value=None):
                         def import_pick_result(e: ft.FilePickerResultEvent):
                             if e.files:
                                 active_user.import_file = e.files[0].path
-                            print(active_user.import_file)
                             tree = ET.parse(active_user.import_file)
                             root = tree.getroot()
 
@@ -5362,7 +5323,6 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
             settings_data = Settings(page)
-            print("made it past class")
 
             # User Settings
             user_setting = ft.Text(
@@ -5402,8 +5362,6 @@ def main(page: ft.Page, session_value=None):
                 controls=[theme_column])
             theme_row_container = ft.Container(content=theme_row)
             theme_row_container.padding = padding.only(left=70, right=50)
-
-            print("made it past themes")
 
             if active_user.user_is_admin:
                 # Admin Only Settings
@@ -5494,7 +5452,6 @@ def main(page: ft.Page, session_value=None):
                               settings_data.self_service_button])
                 self_service_info = ft.Container(content=self_service_info_col)
                 self_service_info.padding = padding.only(left=70, right=50)
-                print("In admin settings")
 
                 # User Self Service PW Resets
 
@@ -5611,9 +5568,6 @@ def main(page: ft.Page, session_value=None):
                 pw_reset_container.padding = padding.only(left=70, right=50)
 
             ### API Key Settings
-
-            print("in api key start")
-
             edit_api_text = ft.Text('Create or remove API keys for clients:', color=active_user.font_color, size=16)
 
             def create_api(e):
@@ -5720,9 +5674,6 @@ def main(page: ft.Page, session_value=None):
             api_edit_column = ft.Column(controls=[edit_api_text, create_api_button, api_table])
             api_edit_container = ft.Container(content=api_edit_column)
             api_edit_container.padding = padding.only(left=70, right=50)
-
-            print("past api key")
-
             # Check if admin settings should be displayed 
             div_row = ft.Divider(color=active_user.accent_color)
             user_div_row = ft.Divider(color=active_user.accent_color)
@@ -5741,8 +5692,6 @@ def main(page: ft.Page, session_value=None):
 
             if active_user.user_id == 0:
                 settings_data.mfa_container.visible = False
-
-            print("before page create")
             # Create search view object
             if active_user.user_is_admin == True:
                 settings_view = ft.View("/settings",
@@ -5820,7 +5769,7 @@ def main(page: ft.Page, session_value=None):
 
             ep_podcast_name = ft.Text("ep_pod_name")
             display_pod_art_no = random.randint(1, 12)
-            display_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_pod_art_no}.jpeg")
+            display_pod_art_fallback = os.path.join(assets_dir, f"{display_pod_art_no}.jpeg")
             display_pod_art_url = ep_artwork if ep_artwork else display_pod_art_fallback
             display_pod_art_parsed = check_image(display_pod_art_url)
             pod_image = ft.Image(src=display_pod_art_parsed, width=300, height=300)
@@ -5909,7 +5858,7 @@ def main(page: ft.Page, session_value=None):
         if page.route == "/playing" or page.route == "/playing":
             pod_controls.audio_container.visible = False
             pod_controls.audio_container.update()
-            page.update()
+            pod_controls.page.update()
             fs_container_image = current_episode.audio_con_art_url_parsed
             fs_container_image_landing = ft.Image(src=fs_container_image, width=300, height=300)
             fs_container_image_landing.border_radius = ft.border_radius.all(45)
@@ -6071,6 +6020,7 @@ def main(page: ft.Page, session_value=None):
             self.feed_url = None
             self.import_file = None
             self.user_is_admin = None
+            self.show_audio_container = True
             # global current_pod_view
             self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
             self.retain_session = ft.Switch(label="Stay Signed in", value=False)

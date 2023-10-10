@@ -2369,7 +2369,7 @@ def get_queued_episodes(database_type, cnx, user_id):
 
 # database_functions.py
 
-def queue_bump(cnx, ep_url, title, user_id):
+def queue_bump(database_type, cnx, ep_url, title, user_id):
     cursor = cnx.cursor()
 
     # check if the episode is already in the queue
@@ -2396,7 +2396,7 @@ def queue_bump(cnx, ep_url, title, user_id):
     )
 
     # add the episode to the front of the queue
-    queue_pod(cnx, title, ep_url, user_id)
+    queue_pod(database_type, cnx, title, ep_url, user_id)
 
     cnx.commit()
     cursor.close()

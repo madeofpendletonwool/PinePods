@@ -1405,8 +1405,6 @@ def main(page: ft.Page, session_value=None):
                 self.top_row_container = ft.Container(content=self.top_row, expand=True)
                 self.top_row_container.padding = ft.padding.only(left=60)
                 self.top_bar = ft.Row(vertical_alignment=ft.CrossAxisAlignment.START, controls=[self.top_row_container])
-                if current_episode.audio_playing == True:
-                    pod_controls.audio_container.visible = True
 
             def refresh_episodes(self):
                 # Fetch new podcast episodes from the server.

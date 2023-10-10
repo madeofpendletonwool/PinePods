@@ -53,6 +53,8 @@ def call_get_user(url, headers):
     from requests.auth import HTTPBasicAuth
     try:
         response = requests.get(url + "/get_user", headers=headers)
+        print(f'Response status code: {response.status_code}')
+        print(f'Response text: {response.text}')  # Add this to debug the response content
         if response.status_code == 200:
             print('Response good!')
             return response.json()  # Assumes the API key is returned in JSON response
@@ -62,6 +64,7 @@ def call_get_user(url, headers):
     except requests.RequestException as e:
         print(f"Request failed: {e}")
         return {"status": "error", "message": str(e)}
+
 
 
 def call_check_saved_session(url, headers, session_value):
@@ -950,6 +953,7 @@ def call_queued_episodes(url, headers, user_id):
 def call_queue_bump(url, headers, ep_url, title, user_id):
     data = {"ep_url": ep_url, "title": title, "user_id": user_id}
     try:
+        print(f"Sending data to /queue_bump: {data}")
         response = requests.post(url + "/queue_bump", headers=headers, json=data, timeout=30)
         response.raise_for_status()  # Raise an exception for HTTP errors
     except requests.exceptions.Timeout:
@@ -957,6 +961,7 @@ def call_queue_bump(url, headers, ep_url, title, user_id):
         return None
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
+        print(f"Server response: {response.text}")
         return None
     except Exception as err:
         print(f"Other error occurred: {err}")

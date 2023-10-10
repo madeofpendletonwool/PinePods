@@ -1897,7 +1897,7 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         try:
-            result = database_functions.functions.queue_bump(cnx, data.ep_url, data.title, data.user_id)
+            result = database_functions.functions.queue_bump(database_type, cnx, data.ep_url, data.title, data.user_id)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
         return {"data": result}
