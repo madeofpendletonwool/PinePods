@@ -4423,6 +4423,11 @@ def main(page: ft.Page, session_value=None):
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
                                                                                            active_user.user_id)
                     self.mfa_check()
+                    # Setup gpodder functionality
+                    self.check_gpodder_status = api_functions.functions.call_check_gpodder_access(app_api.url, app_api.headers,
+                                                                                           active_user.user_id)
+                    self.gpodder_setup()
+
                     if active_user.user_is_admin:
                         # New User Creation Setup
                         self.user_table_rows = []
@@ -4433,6 +4438,19 @@ def main(page: ft.Page, session_value=None):
                         self.email_table_rows = []
                         self.email_table_load()
 
+                def gpodder_setup(self):
+                    gpodder_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
+                    gpodder_option_desc = Text(
+                        "Note: This option allows you to setup gpodder sync in Pinepods. Click the sign in button below to sync your podcasts up. Note that if you have any existing subscriptions in your gpodder account Pinepods will add those to it's database and then sync any additional subscriptions it already has up with Gpodder. From there, Pinepods will occasionally sync with gpodder. Otherwise, you can manually run a sync from here once signed in.",
+                        color=active_user.font_color)
+                    self.gpodder_sign_in_button = ft.ElevatedButton(f'Sign in',
+                                                                    on_click=self.gpodder_sign_in,
+                                                                    bgcolor=active_user.main_color,
+                                                                    color=active_user.accent_color)
+                    gpodder_backup_col = ft.Column(
+                        controls=[gpodder_option_text, gpodder_option_desc, self.gpodder_sign_in_button])
+                    self.setting_gpodder_con = ft.Container(content=gpodder_backup_col)
+                    self.setting_gpodder_con.padding = padding.only(left=70, right=50)
                 def settings_backup_data(self):
                     backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
                     backup_option_desc = Text(
@@ -4613,6 +4631,23 @@ def main(page: ft.Page, session_value=None):
                     self.page.dialog = mfa_dlg
                     mfa_dlg.open = True
                     self.page.update()
+
+                def gpodder_sign_in(self, e):
+                    api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
+                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
+                    self.page.snack_bar.open = True
+                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
+                                                                                             app_api.headers)
+                    if self.download_status_bool:
+                        self.download_info_button.text = 'Disable Podcast Server Downloads'
+                        self.download_info_button.on_click = self.download_option_change
+                    else:
+                        self.download_info_button.text = 'Enable Podcast Server Downloads'
+                        self.download_info_button.on_click = self.download_option_change
+
+                    self.disable_download_notify.visible = False
+                    self.page.update()
+
 
                 def guest_check(self):
                     if self.guest_status_bool:

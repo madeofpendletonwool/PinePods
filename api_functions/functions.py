@@ -1046,3 +1046,10 @@ def call_import_podcasts(url, headers, user_id, podcasts):
     }
     response = requests.post(url + "/import_podcasts", headers=headers, json=data)
     return response.json()
+
+def call_check_gpodder_access(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+    response = requests.post(url + "/gpodder_status", headers=headers, json=data)
+    return response.json()
