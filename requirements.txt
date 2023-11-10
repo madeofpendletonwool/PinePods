@@ -31,4 +31,5 @@ mutagen
 asyncio
 websockets
 pytz
-psycopg2
+psycopg2-binary
+mygpoclient

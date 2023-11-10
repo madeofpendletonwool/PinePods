@@ -211,10 +211,12 @@ def download_image(img_url, save_path):
         print(f"Failed to download {img_url}. Status code: {response.status_code}")
 
 
-def ensure_images_are_downloaded():
+def ensure_images_are_downloaded(server_name):
+    logging.info("Starting to ensure images are downloaded")
+
     if not os.path.exists(assets_dir):
+        logging.info(f"Assets directory {assets_dir} not found, creating it.")
         os.makedirs(assets_dir)
-    logo_image_filepath = os.path.join(assets_dir, "pinepods-appicon.png")
 
     for i in range(1, 14):  # images 1.jpeg to 13.jpeg
         image_filename = f"{i}.jpeg"
@@ -222,11 +224,20 @@ def ensure_images_are_downloaded():
 
         if not os.path.exists(image_filepath):
             image_url = f"{proxy_url}/pinepods/images/logo_random/{image_filename}"
-            download_image(image_url, image_filepath)
+            logging.info(f"Downloading image from {image_url}")
+            try:
+                download_image(image_url, image_filepath)
+            except Exception as e:
+                logging.error(f"Error downloading {image_url}: {e}")
+
     logo_filepath = os.path.join(assets_dir, "pinepods-appicon.png")
     if not os.path.exists(logo_filepath):
         logo_image_url = f"{proxy_url}/pinepods/images/pinepods-appicon.png"
-        download_image(logo_image_url, logo_image_filepath)
+        logging.info(f"Downloading logo image from {logo_image_url}")
+        try:
+            download_image(logo_image_url, logo_filepath)
+        except Exception as e:
+            logging.error(f"Error downloading {logo_image_url}: {e}")
 
 
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
@@ -271,7 +282,7 @@ active_pod = 'Set at start'
 initial_script_dir = os.path.dirname(os.path.realpath(__file__))
 script_dir = os.path.dirname(os.path.dirname(initial_script_dir))
 
-appname = "Pinepods"
+appname = "pinepods"
 appauthor = "Gooseberry Development"
 
 # user_data_dir would be the equivalent to the home directory you were using
@@ -326,12 +337,14 @@ def main(page: ft.Page, session_value=None):
             self.headers = None
             self.cred_headers = None
             self.page = page
+            self.server_name = None
 
         def api_verify_username(self, server_name, username, password, retain_session=False):
             # pr_instance.touch_stack()
             self.page.update()
             check_url = server_name + "/api/pinepods_check"
             self.url = server_name + "/api/data"  # keep this for later use
+            self.server_name = server_name
 
             if not username and password:
                 self.show_error_snackbar("Username and Password required")
@@ -499,9 +512,11 @@ def main(page: ft.Page, session_value=None):
 
                     if login_screen == True:
                         user_id = api_functions.functions.call_get_user(self.url, self.headers)
+                        print(user_id)
                         login_details = api_functions.functions.call_get_user_details_id(app_api.url,
                                                                                          app_api.headers,
                                                                                          user_id['retrieved_id'])
+                        print(login_details)
                         active_user.user_id = login_details['UserID']
                         active_user.fullname = login_details['Fullname']
                         active_user.username = login_details['Username']
@@ -513,6 +528,7 @@ def main(page: ft.Page, session_value=None):
                             if check_session:
                                 active_user.saved_login(check_session)
                             else:
+                                print('going home')
                                 go_homelogin(page)
 
                     else:
@@ -1553,9 +1569,11 @@ def main(page: ft.Page, session_value=None):
         page.go("/user_search")
 
     def go_homelogin(page):
-        ensure_images_are_downloaded()
+        ensure_images_are_downloaded(app_api.server_name)
+        print('image fail')
         active_user.theme_select()
         # Theme user elements
+        print('in home')
         page.banner.bgcolor = active_user.accent_color
         page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
         page.banner.content = ft.Text("""
@@ -4424,8 +4442,8 @@ def main(page: ft.Page, session_value=None):
                                                                                            active_user.user_id)
                     self.mfa_check()
                     # Setup gpodder functionality
-                    self.check_gpodder_status = api_functions.functions.call_check_gpodder_access(app_api.url, app_api.headers,
-                                                                                           active_user.user_id)
+                    # self.check_gpodder_status = api_functions.functions.call_check_gpodder_access(app_api.url, app_api.headers, active_user.user_id)
+                    print('setting')
                     self.gpodder_setup()
 
                     if active_user.user_is_admin:
@@ -4439,7 +4457,7 @@ def main(page: ft.Page, session_value=None):
                         self.email_table_load()
 
                 def gpodder_setup(self):
-                    gpodder_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
+                    gpodder_option_text = Text('Gpodder Sync:', color=active_user.font_color, size=16)
                     gpodder_option_desc = Text(
                         "Note: This option allows you to setup gpodder sync in Pinepods. Click the sign in button below to sync your podcasts up. Note that if you have any existing subscriptions in your gpodder account Pinepods will add those to it's database and then sync any additional subscriptions it already has up with Gpodder. From there, Pinepods will occasionally sync with gpodder. Otherwise, you can manually run a sync from here once signed in.",
                         color=active_user.font_color)
@@ -4633,22 +4651,47 @@ def main(page: ft.Page, session_value=None):
                     self.page.update()
 
                 def gpodder_sign_in(self, e):
-                    api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
-                    self.page.snack_bar.open = True
-                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
-                                                                                             app_api.headers)
-                    if self.download_status_bool:
-                        self.download_info_button.text = 'Disable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
-                    else:
-                        self.download_info_button.text = 'Enable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
+                    nextcloud_server_box = ft.TextField(label="Server Name", icon=ft.icons.LOCK_CLOCK, hint_text='https://nextcloud.myserver.com')
+                    def auth_gpod(e):
+                        print('Initiating OAuth2 Authentication')
 
-                    self.disable_download_notify.visible = False
+                        nextcloud_server = nextcloud_server_box.value
+                        client_id = 'YOUR_CLIENT_ID'  # Your app's client ID
+                        redirect_uri = 'YOUR_REDIRECT_URI'  # Redirect URI registered with Nextcloud
+
+                        # Construct the authorization URL
+                        auth_url = f"{nextcloud_server}/apps/oauth2/authorize?response_type=code&client_id={client_id}&redirect_uri={redirect_uri}"
+
+                        # TODO: Open this URL in a web browser or web view for the user to authenticate
+                        # After user authenticates, Nextcloud will redirect to the redirect_uri with a code
+                        # You need to capture this code and exchange it for an access token
+
+                    def close_gpodder_diag(page):
+                        gpodder_diag.open = False
+                        self.page.update()
+
+                    gpodder_diag_select_row = ft.Row(
+                        controls=[
+                            ft.TextButton("Confirm", on_click=auth_gpod),
+                            ft.TextButton("Cancel", on_click=lambda x: (close_gpodder_diag(page)))
+                        ],
+                                                alignment=ft.MainAxisAlignment.END
+                    )
+                    gpodder_diag = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Nextcloud Server Name:"),
+                        content=ft.Column(controls=[
+                            ft.Text(f'Please enter your nextcloud server name below.', selectable=True),
+                            # ], tight=True),
+                            nextcloud_server_box,
+                                                        gpodder_diag_select_row
+                        ],
+                            tight=True),
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    self.page.dialog = gpodder_diag
+                    gpodder_diag.open = True
                     self.page.update()
-
-
                 def guest_check(self):
                     if self.guest_status_bool:
                         self.guest_status = 'enabled'
@@ -5360,6 +5403,7 @@ def main(page: ft.Page, session_value=None):
                         self.page.update()
 
             settings_data = Settings(page)
+            print('after setting')
 
             # User Settings
             user_setting = ft.Text(
@@ -5744,7 +5788,10 @@ def main(page: ft.Page, session_value=None):
                                             user_div_row,
                                             settings_data.setting_option_con,
                                             user_div_row,
+                                            settings_data.setting_gpodder_con,
+                                            user_div_row,
                                             api_edit_container,
+                                            div_row,
                                             admin_setting_text,
                                             user_row_container,
                                             settings_data.user_edit_container,
