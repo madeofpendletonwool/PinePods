@@ -301,6 +301,53 @@ def return_episodes(database_type, cnx, user_id):
 
     return rows
 
+def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
+
+    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+             f"UserEpisodeHistory.ListenDuration "
+             f"FROM Episodes "
+             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+             f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
+             f"WHERE Podcasts.PodcastID = %s "
+             f"AND Podcasts.UserID = %s "
+             f"ORDER BY Episodes.EpisodePubDate DESC")
+
+    cursor.execute(query, (user_id, podcast_id, user_id))
+    rows = cursor.fetchall()
+
+    cursor.close()
+
+    if not rows:
+        return None
+
+    return rows
+
+def get_podcast_id(database_type, cnx, user_id, podcast_feed):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
+
+    # Adjusted query to select only the PodcastID based on FeedURL and UserID
+    query = (f"SELECT PodcastID "
+             f"FROM Podcasts "
+             f"WHERE FeedURL = %s AND UserID = %s")
+
+    cursor.execute(query, (podcast_feed, user_id))
+    row = cursor.fetchone()  # Fetching only one row as we expect a single result
+
+    cursor.close()
+
+    if not row:
+        return None
+
+    return row['PodcastID']  # Assuming the column name is 'PodcastID'
+
 
 def delete_podcast(cnx, url, title, user_id):
     cursor = cnx.cursor()

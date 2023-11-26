@@ -469,6 +469,59 @@ async def api_return_episodes(user_id: int, cnx=Depends(get_database_connection)
                             detail="You can only return episodes of your own!")
 
 
+class PodcastData(BaseModel):
+    podcast_id: int
+    user_id: int
+@app.post("/api/data/podcast_episodes")
+async def api_podcast_episodes(data: PodcastData, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user, or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        episodes = database_functions.functions.return_podcast_episodes(database_type, cnx, data.user_id, data.podcast_id)
+        if episodes is None:
+            episodes = []  # Return an empty list instead of raising an exception
+        return {"episodes": episodes}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only return episodes of your own!")
+
+class PodcastIDData(BaseModel):
+    podcast_feed: str
+    user_id: int
+@app.get("/api/data/get_podcast_id")
+async def api_podcast_id(data: PodcastData, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user, or it's the web API key
+    if key_id == user_id or is_web_key:
+        episodes = database_functions.functions.get_podcast_id(database_type, cnx, data.user_id, data.podcast_feed)
+        if episodes is None:
+            episodes = []  # Return an empty list instead of raising an exception
+        return {"episodes": episodes}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only return pocast ids of your own podcasts!")
+
+
+
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
         user_id: int = Form(...),
@@ -858,6 +911,7 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
 
     if not is_valid_key:
+        logging.error(f"not valid key")
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
@@ -870,11 +924,13 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
-        episode_count = database_functions.functions.get_user_episode_count(cnx, user_id)
-        if episode_count:
-            return episode_count
-        else:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    episode_count = database_functions.functions.get_user_episode_count(cnx, user_id)
+    if episode_count:
+        print(episode_count)
+        logging.error(f"here's count: {episode_count}")
+        return episode_count
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
 @app.get("/api/data/get_user_info")

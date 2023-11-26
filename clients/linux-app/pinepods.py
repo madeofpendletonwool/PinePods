@@ -1513,8 +1513,7 @@ def main(page: ft.Page, session_value=None):
         page.go(top_view.route)
 
     def open_poddisplay(e):
-        pr_instance.touch_stack()
-        page.update()
+        print('open poddisplay')
         page.go("/poddisplay")
 
     def open_settings(e):
@@ -3353,6 +3352,8 @@ def main(page: ft.Page, session_value=None):
                                                                         active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
             # First Podcast Info
+            pr_instance.touch_stack()
+            page.update()
             display_pod_art_no = secrets.SystemRandom().randint(1, 12)
             display_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_pod_art_no}.jpeg")
             display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
@@ -3888,7 +3889,7 @@ def main(page: ft.Page, session_value=None):
 
             user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers,
                                                                                 active_user.user_id)
-
+            print(user_ep_count)
             user_title = ft.Text(f"Stats for {active_user.fullname}:", size=20, weight="bold")
             date_display = ft.Text(f'{active_user.username} created on {stats_created_date}', size=16)
             pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to', size=16)
