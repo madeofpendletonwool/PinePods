@@ -307,7 +307,7 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
              f"UserEpisodeHistory.ListenDuration "
              f"FROM Episodes "
@@ -423,7 +423,7 @@ def return_pods(database_type, cnx, user_id):
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = ("SELECT PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
+    query = ("SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
              "FROM Podcasts "
              "WHERE UserID = %s")
 
