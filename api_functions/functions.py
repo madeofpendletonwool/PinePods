@@ -13,11 +13,10 @@ def generate_session_token():
 
 
 def call_clean_expired_sessions(url, headers):
-    # print(f'in clean expired call {headers}')
+    # print('clean expired call {headers}')
     response = requests.post(url + "/clean_expired_sessions/", headers=headers)
     if response.status_code == 200:
-        print('Response good!')
-        # print(response.json())
+        print(response.json())
     else:
         print("Error calling clean_expired_sessions:", response.status_code)
 
@@ -25,7 +24,6 @@ def call_clean_expired_sessions(url, headers):
 def call_verify_key(url, headers):
     response = requests.get(url + "/verify_key", headers=headers)
     if response.status_code == 200:
-        print('Response good!')
         return {"status": "success"}
     else:
         print("Error calling verify_key:", response.status_code)
@@ -33,12 +31,10 @@ def call_verify_key(url, headers):
 
 
 def call_get_key(url, username, password):
-    print('test')
     from requests.auth import HTTPBasicAuth
     try:
         response = requests.get(url + "/get_key", auth=HTTPBasicAuth(username, password))
         if response.status_code == 200:
-            print('Response good!')
             return response.json()  # Assumes the API key is returned in JSON response
         else:
             print("Error calling verify_key:", response.status_code)
@@ -49,14 +45,12 @@ def call_get_key(url, username, password):
 
 
 def call_get_user(url, headers):
-    print('test')
     from requests.auth import HTTPBasicAuth
     try:
         response = requests.get(url + "/get_user", headers=headers)
         print(f'Response status code: {response.status_code}')
         print(f'Response text: {response.text}')  # Add this to debug the response content
         if response.status_code == 200:
-            print('Response good!')
             return response.json()  # Assumes the API key is returned in JSON response
         else:
             print("Error calling verify_key:", response.status_code)
@@ -169,6 +163,40 @@ def call_verify_password(url, headers, username, password):
 
 def call_return_episodes(url, headers, user_id):
     response = requests.get(url + f"/return_episodes/{user_id}", headers=headers)
+    if response.status_code == 200:
+        episodes = response.json()["episodes"]
+        if episodes:
+            return episodes
+        else:
+            return None
+    else:
+        print("Error fetching episodes:", response.status_code)
+        print("Error details:", response.text)
+        return None
+
+def call_podcast_episodes(url, headers, user_id, podcast_id):
+    data = {
+        "user_id": str(user_id),
+        "podcast_id": str(podcast_id)
+    }
+    response = requests.get(url + f"/podcast_episodes", headers=headers, data=data)
+    if response.status_code == 200:
+        episodes = response.json()["episodes"]
+        if episodes:
+            return episodes
+        else:
+            return None
+    else:
+        print("Error fetching episodes:", response.status_code)
+        print("Error details:", response.text)
+        return None
+
+def call_get_podcast_id(url, headers, user_id, podcast_feed):
+    data = {
+        "user_id": str(user_id),
+        "podcast_feed": str(podcast_feed)
+    }
+    response = requests.get(url + f"/podcast_episodes", headers=headers, data=data)
     if response.status_code == 200:
         episodes = response.json()["episodes"]
         if episodes:
@@ -399,8 +427,10 @@ def call_get_user_episode_count(url, headers, user_id):
     response = requests.get(url + f"/get_user_episode_count?user_id={user_id}", headers=headers)
     if response.status_code == 200:
         episode_count = response.json()
+        print(f'ya counts: {episode_count}')
         return episode_count
     else:
+        print("error")
         print("Error getting user episode count:", response.status_code)
         return None
 
@@ -582,8 +612,8 @@ def call_set_password(url, headers, user_id, salt, hash_pw):
 
 
 def call_set_email(url, headers, user_id, email):
-    data = {"user_id": self.user_id, "new_email": self.email}
-    response = requests.put(app_api.url + "/user/set_email", headers=app_api.headers, json=data)
+    data = {"user_id": user_id, "new_email": email}
+    response = requests.put(url + "/user/set_email", headers=headers, json=data)
     if response.status_code != 200:
         print("Error updating email:", response.status_code)
 

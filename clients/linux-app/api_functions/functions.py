@@ -180,6 +180,40 @@ def call_return_episodes(url, headers, user_id):
         print("Error details:", response.text)
         return None
 
+def call_podcast_episodes(url, headers, user_id, podcast_id):
+    data = {
+        "user_id": str(user_id),
+        "podcast_id": str(podcast_id)
+    }
+    response = requests.get(url + f"/podcast_episodes", headers=headers, data=data)
+    if response.status_code == 200:
+        episodes = response.json()["episodes"]
+        if episodes:
+            return episodes
+        else:
+            return None
+    else:
+        print("Error fetching episodes:", response.status_code)
+        print("Error details:", response.text)
+        return None
+
+def call_get_podcast_id(url, headers, user_id, podcast_feed):
+    data = {
+        "user_id": str(user_id),
+        "podcast_feed": str(podcast_feed)
+    }
+    response = requests.get(url + f"/podcast_episodes", headers=headers, data=data)
+    if response.status_code == 200:
+        episodes = response.json()["episodes"]
+        if episodes:
+            return episodes
+        else:
+            return None
+    else:
+        print("Error fetching episodes:", response.status_code)
+        print("Error details:", response.text)
+        return None
+
 
 def call_check_episode_playback(url, headers, user_id, episode_title, episode_url):
     payload = {
@@ -399,8 +433,10 @@ def call_get_user_episode_count(url, headers, user_id):
     response = requests.get(url + f"/get_user_episode_count?user_id={user_id}", headers=headers)
     if response.status_code == 200:
         episode_count = response.json()
+        print(f'ya counts: {episode_count}')
         return episode_count
     else:
+        print("error")
         print("Error getting user episode count:", response.status_code)
         return None
 
