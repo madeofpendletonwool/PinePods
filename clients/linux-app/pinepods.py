@@ -20,7 +20,6 @@ from requests.exceptions import RequestException, MissingSchema
 import os
 import requests
 import time
-import random
 import string
 import datetime
 from dateutil import parser
@@ -93,7 +92,7 @@ def decrypt_data(encrypted_data, key):
 
 password = get_encryption_password()
 if password is None:
-    password = "".join(random.choices(string.ascii_letters + string.digits, k=32))
+    password = "".join(secrets.SystemRandom().choices(string.ascii_letters + string.digits, k=32))
     set_encryption_password(password)
 
 
@@ -1246,7 +1245,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.currently_playing.content = ft.Text(self.name_truncated, size=16)
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
-                audio_con_artwork_no = random.randint(1, 12)
+                audio_con_artwork_no = secrets.SystemRandom().randint(1, 12)
                 audio_con_art_fallback = os.path.join(assets_dir, f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1292,7 +1291,7 @@ def main(page: ft.Page, session_value=None):
                 pod_controls.currently_playing.content = ft.Text(self.name_truncated, size=16)
                 pod_controls.current_time.content = ft.Text(self.length, color=active_user.font_color)
                 pod_controls.podcast_length.content = ft.Text(self.length)
-                audio_con_artwork_no = random.randint(1, 12)
+                audio_con_artwork_no = secrets.SystemRandom().randint(1, 12)
                 audio_con_art_fallback = os.path.join(assets_dir, f"{audio_con_artwork_no}.jpeg")
                 audio_con_art_url = self.artwork if self.artwork else audio_con_art_fallback
                 audio_con_art_url_parsed = check_image(audio_con_art_url)
@@ -1530,8 +1529,7 @@ def main(page: ft.Page, session_value=None):
         page.go(top_view.route)
 
     def open_poddisplay(e):
-        pr_instance.touch_stack()
-        page.update()
+        print('open poddisplay')
         page.go("/poddisplay")
 
     def open_settings(e):
@@ -1602,7 +1600,6 @@ def main(page: ft.Page, session_value=None):
             page.update()
 
         def create_reset_code(page, user_email):
-            import random
             from cryptography.fernet import Fernet
 
             def close_code_pw_dlg(e):
@@ -1610,7 +1607,7 @@ def main(page: ft.Page, session_value=None):
                 page.update()
 
             # Generate a random reset code
-            reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+            reset_code = ''.join(secrets.SystemRandom().choices(string.ascii_uppercase + string.digits, k=8))
 
             user_exist = api_functions.functions.call_reset_password_create_code(app_api.url, app_api.headers,
                                                                                  user_email, reset_code,
@@ -1972,7 +1969,7 @@ def main(page: ft.Page, session_value=None):
                             # display plain text
                             entry_description = ft.Text(ep_desc, selectable=True)
                     entry_released = ft.Text(f'Released on: {pub_date}', color=active_user.font_color)
-                    art_no = random.randint(1, 12)
+                    art_no = secrets.SystemRandom().randint(1, 12)
                     art_fallback = os.path.join(assets_dir, f"{art_no}.jpeg")
                     art_url = ep_artwork if ep_artwork else art_fallback
                     art_url_parsed = check_image(art_url)
@@ -2170,7 +2167,7 @@ def main(page: ft.Page, session_value=None):
                 entry_title = ft.Text(f'{pod_name} - {ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                 entry_description = ft.Text(ep_desc, width=800)
                 entry_released = ft.Text(pub_date)
-                artwork_no = random.randint(1, 12)
+                artwork_no = secrets.SystemRandom().randint(1, 12)
                 artwork_url = os.path.join(assets_dir, f"{artwork_no}.jpeg")
                 art_url_parsed = check_image(artwork_url)
                 entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
@@ -2805,7 +2802,7 @@ def main(page: ft.Page, session_value=None):
                     entry_title = ft.Text(f'{pod_name} - {ep_title}', width=600, style=ft.TextThemeStyle.TITLE_MEDIUM)
                     entry_description = ft.Text(ep_desc, width=800)
                     entry_released = ft.Text(pub_date)
-                    artwork_no = random.randint(1, 12)
+                    artwork_no = secrets.SystemRandom().randint(1, 12)
                     artwork_url = os.path.join(assets_dir, f"{artwork_no}.jpeg")
                     art_url_parsed = check_image(artwork_url)
                     entry_artwork_url = ft.Image(src=art_url_parsed, width=150, height=150)
@@ -2840,7 +2837,7 @@ def main(page: ft.Page, session_value=None):
                     for podcast_name, podcasts in podcasts_by_local_name.items():
                         podcast_id = podcasts[0]['PodcastID']
 
-                        download_pod_art_no = random.randint(1, 12)
+                        download_pod_art_no = secrets.SystemRandom().randint(1, 12)
                         download_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                                  f"{download_pod_art_no}.jpeg")
 
@@ -2948,7 +2945,7 @@ def main(page: ft.Page, session_value=None):
                                     local_download_ep_url)
                             local_download_entry_released = ft.Text(f'Released on: {local_download_pub_date}',
                                                                     color=active_user.font_color)
-                            local_download_art_no = random.randint(1, 12)
+                            local_download_art_no = secrets.SystemRandom().randint(1, 12)
                             local_download_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                                        f"{local_download_art_no}.jpeg")
                             local_download_art_url = local_download_ep_artwork if local_download_ep_artwork else local_download_art_fallback
@@ -3373,7 +3370,9 @@ def main(page: ft.Page, session_value=None):
                                                                         active_user.user_id, clicked_podcast.name)
             # Creating attributes for page layout
             # First Podcast Info
-            display_pod_art_no = random.randint(1, 12)
+            pr_instance.touch_stack()
+            page.update()
+            display_pod_art_no = secrets.SystemRandom().randint(1, 12)
             display_pod_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_pod_art_no}.jpeg")
             display_pod_art_url = clicked_podcast.artwork if clicked_podcast.artwork else display_pod_art_fallback
             display_pod_art_parsed = check_image(display_pod_art_url)
@@ -3474,7 +3473,7 @@ def main(page: ft.Page, session_value=None):
                         'href', None)
                     if parsed_artwork_url == None:
                         parsed_artwork_url = clicked_podcast.artwork
-                    display_art_no = random.randint(1, 12)
+                    display_art_no = secrets.SystemRandom().randint(1, 12)
                     display_art_fallback = os.path.join('/pinepods', "images", "logo_random", f"{display_art_no}.jpeg")
                     display_art_url = parsed_artwork_url if parsed_artwork_url else display_art_fallback
 
@@ -3643,7 +3642,7 @@ def main(page: ft.Page, session_value=None):
 
                     if pod_list_data is None:
                         pod_list_title = 'No Podcasts added yet'
-                        artwork_no = random.randint(1, 12)
+                        artwork_no = secrets.SystemRandom().randint(1, 12)
                         art_url = os.path.dirname(os.path.realpath(__file__))
                         pod_list_artwork = os.path.join(art_url, "assets", "logo_random", f"{artwork_no}.jpeg")
                         pod_list_desc = "Looks like you haven't added any podcasts yet. Search for podcasts you enjoy in the upper right portion of the screen and click the plus button to add them. They will begin to show up here and new episodes will be put into the main feed. You'll also be able to start downloading and saving episodes. Enjoy the listening!"
@@ -3828,7 +3827,7 @@ def main(page: ft.Page, session_value=None):
                     for k, v in d.items():
                         if k == 'title':
                             # Parse webpages needed to extract podcast artwork
-                            search_art_no = random.randint(1, 12)
+                            search_art_no = secrets.SystemRandom().randint(1, 12)
                             search_art_fallback = os.path.join('/pinepods', "images", "logo_random",
                                                                f"{search_art_no}.jpeg")
                             search_art_url = d['artwork'] if d['artwork'] else search_art_fallback
@@ -3908,7 +3907,6 @@ def main(page: ft.Page, session_value=None):
 
             user_ep_count = api_functions.functions.call_get_user_episode_count(app_api.url, app_api.headers,
                                                                                 active_user.user_id)
-
             user_title = ft.Text(f"Stats for {active_user.fullname}:", size=20, weight="bold")
             date_display = ft.Text(f'{active_user.username} created on {stats_created_date}', size=16)
             pods_played_display = ft.Text(f'{stats_pods_played} Podcasts listened to', size=16)
@@ -5852,7 +5850,7 @@ def main(page: ft.Page, session_value=None):
                 ep_duration = entry['EpisodeDuration']
 
             ep_podcast_name = ft.Text("ep_pod_name")
-            display_pod_art_no = random.randint(1, 12)
+            display_pod_art_no = secrets.SystemRandom().randint(1, 12)
             display_pod_art_fallback = os.path.join(assets_dir, f"{display_pod_art_no}.jpeg")
             display_pod_art_url = ep_artwork if ep_artwork else display_pod_art_fallback
             display_pod_art_parsed = check_image(display_pod_art_url)

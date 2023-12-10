@@ -2,6 +2,12 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.4.1
+
+- [x] Fixed issue where get_user_episode_count wasn't displaying episode numbers. There was a syntax error in the api call
+- [x] Added /api/data/podcast_episodes and /api/data/get_podcast_id api calls. These are needed for Pinepods Firewood
+
+
 Version 0.4
 
 - [x] Unlock api creation for standard users - The API has been completely re-written to follow along the permissions that users actually have. Meaning users can easily request their own api keys and sign into the client with admin consent
