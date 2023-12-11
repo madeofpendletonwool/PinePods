@@ -2414,6 +2414,52 @@ def get_queued_episodes(database_type, cnx, user_id):
     return queued_episodes
 
 
+def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token):
+    cursor = cnx.cursor()
+
+    # Check if the user already has gPodder settings
+    cursor.execute(
+        "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
+        (gpodder_url, gpodder_token, user_id)
+    )
+    result = cursor.fetchone()
+
+    cnx.commit()  # Commit changes to the database
+    cursor.close()
+
+def remove_gpodder_settings(database_type, cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Reset gPodder settings to default for the specified user
+    cursor.execute(
+        "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
+        ('', '', user_id)
+    )
+
+    cnx.commit()  # Commit changes to the database
+    cursor.close()
+
+def check_gpodder_settings(database_type, cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Query to check if gPodder settings exist for the specified user
+    cursor.execute(
+        "SELECT GpodderUrl, GpodderToken FROM Users WHERE UserID = %s",
+        (user_id,)
+    )
+
+    result = cursor.fetchone()
+
+    cursor.close()
+
+    # Check if gPodder settings are not empty
+    if result and result[0] and result[1]:
+        return True  # gPodder is set up
+    else:
+        return False  # gPodder is not set up
+
+
+
 # database_functions.py
 
 def queue_bump(database_type, cnx, ep_url, title, user_id):

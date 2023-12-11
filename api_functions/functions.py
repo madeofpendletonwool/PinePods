@@ -60,7 +60,6 @@ def call_get_user(url, headers):
         return {"status": "error", "message": str(e)}
 
 
-
 def call_check_saved_session(url, headers, session_value):
     response = requests.get(url + f"/check_saved_session/{session_value}", headers=headers)
     if response.status_code == 200:
@@ -1077,9 +1076,62 @@ def call_import_podcasts(url, headers, user_id, podcasts):
     response = requests.post(url + "/import_podcasts", headers=headers, json=data)
     return response.json()
 
+
 def call_check_gpodder_access(url, headers, user_id):
     data = {
         "user_id": user_id
     }
     response = requests.post(url + "/gpodder_status", headers=headers, json=data)
     return response.json()
+
+
+def call_check_user_gpodder_status(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+    response = requests.post(url + "/gpodder_status", headers=headers, json=data)
+    return response.json()
+
+
+def call_add_gpodder_settings(url, headers, user_id, gpodder_url, gpodder_token, encryption_key):
+    from cryptography.fernet import Fernet
+
+    if encryption_key is None:
+        print("Cannot save settings without encryption key.")
+        return
+
+    cipher_suite = Fernet(encryption_key)
+
+    # Only encrypt password if it's not None
+    if gpodder_token is not None:
+        encrypted_password = cipher_suite.encrypt(gpodder_token.encode())
+        # Decode encrypted password back to string
+        decoded_token = encrypted_password.decode()
+    else:
+        decoded_token = None
+
+    data = {
+        "user_id": user_id,
+        "gpodder_url": gpodder_url,
+        "gpodder_token": decoded_token
+    }
+
+    response = requests.post(url + "/add_gpodder_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving gpodder settings:", response.status_code)
+        print("Response body:", response.json())
+
+def call_remove_gpodder_settings(url, headers, user_id):
+
+    data = {
+        "user_id": user_id
+    }
+
+    response = requests.post(url + "/remove_gpodder_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving gpodder settings:", response.status_code)
+        print("Response body:", response.json())

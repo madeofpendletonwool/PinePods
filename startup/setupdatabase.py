@@ -5,8 +5,11 @@ from cryptography.fernet import Fernet
 import string
 import secrets
 import bcrypt
+import logging
 
 sys.path.append('/pinepods')
+
+logging.basicConfig(encoding='utf-8', level=logging.DEBUG)
 
 import database_functions.functions
 # import Auth.Passfunctions
@@ -59,7 +62,9 @@ cursor.execute("""
         MFA_Secret VARCHAR(50),
         TimeZone VARCHAR(50) DEFAULT 'UTC',
         TimeFormat INT  DEFAULT 24,
-        FirstLogin TINYINT(1) DEFAULT 0
+        FirstLogin TINYINT(1) DEFAULT 0,
+        GpodderUrl VARCHAR(255) DEFAULT '',
+        GpodderToken TEXT DEFAULT ''
     )
 """)
 
@@ -137,12 +142,13 @@ cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW
 
 # Create the web Key
 def create_api_key(cnx, user_id=1):
-    cursor = cnx.cursor()
+    cursor_key = cnx.cursor()
 
     # Check if API key exists for user_id
-    query = "SELECT APIKey FROM APIKeys WHERE UserID = %s"
-    cursor.execute(query, (user_id,))
-    result = cursor.fetchone()
+    query = f"SELECT APIKey FROM APIKeys WHERE UserID = {user_id}"
+    cursor_key.execute(query)
+
+    result = cursor_key.fetchone()
 
     if result:
         api_key = result[0]
@@ -152,14 +158,17 @@ def create_api_key(cnx, user_id=1):
         alphabet = string.ascii_letters + string.digits
         api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
 
-        query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
-        cursor.execute(query, (user_id, api_key))
+        # Note the quotes around {api_key}
+        query = f"INSERT INTO APIKeys (UserID, APIKey) VALUES ({user_id}, '{api_key}')"
+        cursor_key.execute(query)
+
         cnx.commit()
 
-    cursor.close()
+    cursor_key.close()
     return api_key
 
 web_api_key = create_api_key(cnx)
+
 
 with open("/tmp/web_api_key.txt", "w") as f:
     f.write(web_api_key)

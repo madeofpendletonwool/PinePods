@@ -1,5 +1,4 @@
-mysql.connector
-mysql-connector-python
+mysql-connector-python==8.1.0
 flet
 requests
 python-dateutil

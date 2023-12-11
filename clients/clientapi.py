@@ -1930,6 +1930,83 @@ async def get_queued_episodes(data: QueuedEpisodesData, cnx=Depends(get_database
         raise HTTPException(status_code=403,
                             detail="You can only get episodes from your own queue!")
 
+class GpodderSettings(BaseModel):
+    user_id: int
+    gpodder_url: str
+    gpodder_token: str
+
+
+@app.get("/api/data/add_gpodder_settings")
+async def add_gpodder_settings(data: GpodderSettings, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, data.gpodder_url, data.gpodder_token)
+        return {"data": result}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only add your own gpodder data!")
+
+class RemoveGpodderSettings(BaseModel):
+    user_id: int
+
+@app.get("/api/data/remove_gpodder_settings")
+async def remove_gpodder_settings(data: RemoveGpodderSettings, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        result = database_functions.functions.remove_gpodder_settings(database_type, cnx, data.user_id)
+        return {"data": result}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only remove your own gpodder data!")
+
+class CheckGpodderSettings(BaseModel):
+    user_id: int
+
+@app.get("/api/data/check_gpodder_settings")
+async def remove_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        result = database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id)
+        return {"data": result}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only remove your own gpodder data!")
+
+
+
 
 class QueueBump(BaseModel):
     ep_url: str
