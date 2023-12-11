@@ -1,10 +1,12 @@
 import feedparser
 import pprint
+import requests
+
 
 def search_podcast(e):
     if not search_pods.value:
         search_pods.error_text = "Please enter a podcast to seach for"
-        page.update()   
+        page.update()
     else:
         podcast_value = search_pods.value
         page.clean()
@@ -26,43 +28,45 @@ def search_podcast(e):
             data=True
         )
         page.add(back_button)
-        #cycle through podcasts and add results to page
+        # cycle through podcasts and add results to page
         pod_number = 1
 
         for d in return_results:
             # print(d['title'])
             for k, v in d.items():
                 if k == 'title':
-                # Defining the attributes of each podcast that will be displayed on screen
+                    # Defining the attributes of each podcast that will be displayed on screen
                     pod_image = ft.Image(src=d['image'], width=150, height=150)
                     pod_title = ft.TextButton(
-                        text=d['title'], 
+                        text=d['title'],
                         on_click=evaluate_podcast
-                        )
+                    )
                     pod_desc = ft.Text(d['description'], no_wrap=False)
                     # Episode Count and subtitle
                     pod_ep_title = ft.Text('Episode Count:', weight=ft.FontWeight.BOLD)
                     pod_ep_count = ft.Text(d['episodeCount'])
                     pod_ep_info = ft.Row(controls=[pod_ep_title, pod_ep_count])
-                # Creating column and row for search layout
+                    # Creating column and row for search layout
                     search_column = ft.Column(
                         wrap=True,
                         controls=[pod_title, pod_desc, pod_ep_info]
                     )
                     search_row = ft.Row(
                         wrap=True,
-                        alignment=ft.MainAxisAlignment.START, 
+                        alignment=ft.MainAxisAlignment.START,
                         controls=[pod_image, search_column])
-                    
 
                     page.add(search_row)
                     pod_number += 1
+
 
 def parse_feed(feed_url):
     d = feedparser.parse(feed_url)
     return d
 
-def send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body):
+
+def send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password,
+               subject, body):
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
@@ -79,7 +83,6 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
                 smtp.starttls()
             else:  # No encryption
                 smtp = smtplib.SMTP(server_name, server_port, timeout=10)
-
 
             # Authenticate if needed.
             if auth_required:
@@ -122,6 +125,45 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
         return f'Failed to send email: {str(e)}'
 
 
+def sync_with_nextcloud(nextcloud_url, nextcloud_token):
+    print("Starting Nextcloud Sync")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    # Sync Subscriptions
+    sync_subscriptions(nextcloud_url, headers)
+
+    # Sync Episode Actions
+    sync_episode_actions(nextcloud_url, headers)
+
+
+def sync_subscriptions(nextcloud_url, headers, user_id):
+    # Implement fetching and updating subscriptions
+    # Example GET request to fetch subscriptions
+    response = requests.get(f"{nextcloud_url}/index.php/apps/gpoddersync/subscriptions", headers=headers)
+    # Handle the response
+    print(response.json())
+
+
+def sync_subscription_change(nextcloud_url, headers, add, remove):
+    payload = {
+        "add": add,
+        "remove": remove
+    }
+    response = requests.post(f"{nextcloud_url}/index.php/apps/gpoddersync/subscription_change/create", json=payload,
+                             headers=headers)
+    # Handle the response
+
+
+def sync_episode_actions(nextcloud_url, headers):
+    print('test')
+    # Implement fetching and creating episode actions
+    # Similar to the sync_subscriptions method
+
+
 if __name__ == "__main__":
     # Example usage
     feed_url = "https://feeds.npr.org/510318/podcast.xml"
@@ -140,7 +182,8 @@ if __name__ == "__main__":
             content = entry.get('content', [{}])[0].get('value', entry.description)
             print("Content/Description: ", content)
             print("Audio File: ", audio_file)
-            parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href', None)
+            parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get('href',
+                                                                                                               None)
             print(parsed_artwork_url)
         else:
             print("\n")

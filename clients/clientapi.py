@@ -2005,6 +2005,22 @@ async def remove_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_da
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
 
+@app.get("/api/data/refresh_nextcloud_subscriptions")
+async def refresh_nextcloud_subscription(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+
+    try:
+        users = database_functions.functions.get_nextcloud_users(database_type, cnx)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        for user_id, gpodder_url, gpodder_token in users:
+            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"status": "success", "message": "Nextcloud subscriptions refreshed"}
+
 
 
 

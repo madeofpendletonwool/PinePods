@@ -12,6 +12,10 @@ import subprocess
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+sys.path.append('../')
+from app_functions.functions import sync_subscription_change
+from internal_functions.functions import get_podcast_values
+
 
 def get_web_key(cnx):
     cursor = cnx.cursor()
@@ -301,21 +305,23 @@ def return_episodes(database_type, cnx, user_id):
 
     return rows
 
+
 def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = (f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-             f"UserEpisodeHistory.ListenDuration "
-             f"FROM Episodes "
-             f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
-             f"WHERE Podcasts.PodcastID = %s "
-             f"AND Podcasts.UserID = %s "
-             f"ORDER BY Episodes.EpisodePubDate DESC")
+    query = (
+        f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+        f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+        f"UserEpisodeHistory.ListenDuration "
+        f"FROM Episodes "
+        f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+        f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
+        f"WHERE Podcasts.PodcastID = %s "
+        f"AND Podcasts.UserID = %s "
+        f"ORDER BY Episodes.EpisodePubDate DESC")
 
     cursor.execute(query, (user_id, podcast_id, user_id))
     rows = cursor.fetchall()
@@ -326,6 +332,7 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
         return None
 
     return rows
+
 
 def get_podcast_id(database_type, cnx, user_id, podcast_feed):
     if database_type == "postgresql":
@@ -423,9 +430,10 @@ def return_pods(database_type, cnx, user_id):
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = ("SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
-             "FROM Podcasts "
-             "WHERE UserID = %s")
+    query = (
+        "SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
+        "FROM Podcasts "
+        "WHERE UserID = %s")
 
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
@@ -2427,6 +2435,21 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
     cnx.commit()  # Commit changes to the database
     cursor.close()
 
+
+def get_gpodder_settings(database_type, cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Check if the user already has gPodder settings
+    cursor.execute(
+        "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
+        (gpodder_url, gpodder_token, user_id)
+    )
+    result = cursor.fetchone()
+
+    cnx.commit()  # Commit changes to the database
+    cursor.close()
+
+
 def remove_gpodder_settings(database_type, cnx, user_id):
     cursor = cnx.cursor()
 
@@ -2438,6 +2461,7 @@ def remove_gpodder_settings(database_type, cnx, user_id):
 
     cnx.commit()  # Commit changes to the database
     cursor.close()
+
 
 def check_gpodder_settings(database_type, cnx, user_id):
     cursor = cnx.cursor()
@@ -2458,6 +2482,63 @@ def check_gpodder_settings(database_type, cnx, user_id):
     else:
         return False  # gPodder is not set up
 
+
+def get_nextcloud_users(database_type, cnx):
+    cursor = cnx.cursor()
+
+    # Query to select users with set Nextcloud gPodder URLs and Tokens
+    query = "SELECT UserID, GpodderUrl, GpodderToken FROM Users WHERE GpodderUrl <> '' AND GpodderToken <> ''"
+    cursor.execute(query)
+
+    # Fetch all matching records
+    users = cursor.fetchall()
+    cursor.close()
+
+    return users
+
+
+def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token):
+    # Fetch Nextcloud subscriptions
+    response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions",
+                            headers={"Authorization": f"Bearer {gpodder_token}"})
+    if response.status_code != 200:
+        # Handle error
+        return
+
+    nextcloud_podcasts = response.json()["add"]  # Assuming "add" contains the list of subscribed feeds
+
+    # Fetch local podcast subscriptions
+    cursor = cnx.cursor()
+    cursor.execute("SELECT FeedURL FROM Podcasts WHERE UserID = %s", (user_id,))
+    local_podcasts = [row[0] for row in cursor.fetchall()]
+
+    # Determine podcasts to add or remove
+    podcasts_to_add = set(nextcloud_podcasts) - set(local_podcasts)
+    podcasts_to_remove = set(local_podcasts) - set(nextcloud_podcasts)
+
+    # Update local database
+    # Add new podcasts
+    for feed_url in podcasts_to_add:
+        podcast_values = get_podcast_values(feed_url, user_id)
+        return_value = add_podcast(cnx, podcast_values, user_id)
+        if return_value:
+            print(f"{feed_url} added!")
+        else:
+            print(f"error adding {feed_url}")
+
+    # Remove podcasts no longer in the subscription
+    for feed_url in podcasts_to_remove:
+        cursor.execute("SELECT PodcastName FROM Podcasts WHERE FeedURL = %s", feed_url)
+        result = cursor.fetchone()
+        remove_podcast(cnx, result, user_id)
+
+    cnx.commit()
+    cursor.close()
+
+    # Notify Nextcloud of changes made locally (if any)
+    if podcasts_to_add or podcasts_to_remove:
+        sync_subscription_change(gpodder_url, {"Authorization": f"Bearer {gpodder_token}"}, list(podcasts_to_add),
+                                 list(podcasts_to_remove))
 
 
 # database_functions.py

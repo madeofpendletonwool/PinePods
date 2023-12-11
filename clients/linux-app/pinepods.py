@@ -6446,8 +6446,6 @@ def main(page: ft.Page, session_value=None):
                                                              self.encryption, self.auth_required, self.email_username,
                                                              self.email_password)
 
-        def sync_with_nextcloud(self):
-            print("Starting Nextcloud Sync")
 
         # Modify User Stuff---------------------------
         def open_edit_user(self, username, admin, fullname, email, user_id):
