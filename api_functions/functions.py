@@ -173,6 +173,7 @@ def call_return_episodes(url, headers, user_id):
         print("Error details:", response.text)
         return None
 
+
 def call_podcast_episodes(url, headers, user_id, podcast_id):
     data = {
         "user_id": str(user_id),
@@ -189,6 +190,7 @@ def call_podcast_episodes(url, headers, user_id, podcast_id):
         print("Error fetching episodes:", response.status_code)
         print("Error details:", response.text)
         return None
+
 
 def call_get_podcast_id(url, headers, user_id, podcast_feed):
     data = {
@@ -1081,8 +1083,11 @@ def call_check_gpodder_access(url, headers, user_id):
     data = {
         "user_id": user_id
     }
-    response = requests.post(url + "/gpodder_status", headers=headers, json=data)
-    return response.json()
+    try:
+        response = requests.get(url + "/check_gpodder_settings", headers=headers, json=data)
+        return response.json()
+    except Exception as err:
+        return {"success": False, "error_message": f"Other error occurred: {err}"}
 
 
 def call_check_user_gpodder_status(url, headers, user_id):
@@ -1093,27 +1098,12 @@ def call_check_user_gpodder_status(url, headers, user_id):
     return response.json()
 
 
-def call_add_gpodder_settings(url, headers, user_id, gpodder_url, gpodder_token, encryption_key):
-    from cryptography.fernet import Fernet
-
-    if encryption_key is None:
-        print("Cannot save settings without encryption key.")
-        return
-
-    cipher_suite = Fernet(encryption_key)
-
-    # Only encrypt password if it's not None
-    if gpodder_token is not None:
-        encrypted_password = cipher_suite.encrypt(gpodder_token.encode())
-        # Decode encrypted password back to string
-        decoded_token = encrypted_password.decode()
-    else:
-        decoded_token = None
+def call_add_gpodder_settings(url, headers, user_id, gpodder_url, gpodder_token):
 
     data = {
         "user_id": user_id,
         "gpodder_url": gpodder_url,
-        "gpodder_token": decoded_token
+        "gpodder_token": gpodder_token
     }
 
     response = requests.post(url + "/add_gpodder_settings", headers=headers, json=data)
@@ -1123,8 +1113,8 @@ def call_add_gpodder_settings(url, headers, user_id, gpodder_url, gpodder_token,
         print("Error saving gpodder settings:", response.status_code)
         print("Response body:", response.json())
 
-def call_remove_gpodder_settings(url, headers, user_id):
 
+def call_remove_gpodder_settings(url, headers, user_id):
     data = {
         "user_id": user_id
     }

@@ -10,4 +10,4 @@ API_KEY=$(cat /tmp/web_api_key.txt)
 echo "Refreshing now!"
 curl "http://localhost:8032/api/data/refresh_pods" -H "Api-Key: $API_KEY" >> /cron.log 2>&1
 echo "Refreshing Nextcloud Subscription now!"
-curl "http://localhost:8032/api/data/refresh_nextcloud_subscription" -H "Api-Key: $API_KEY" >> /cron.log 2>&1
+curl -X GET -H "Api-Key: $API_KEY" http://localhost:8032/api/data/refresh_nextcloud_subscriptions >> /cron.log 2>&1

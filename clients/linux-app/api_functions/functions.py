@@ -13,11 +13,10 @@ def generate_session_token():
 
 
 def call_clean_expired_sessions(url, headers):
-    # print(f'in clean expired call {headers}')
+    # print('clean expired call {headers}')
     response = requests.post(url + "/clean_expired_sessions/", headers=headers)
     if response.status_code == 200:
-        print('Response good!')
-        # print(response.json())
+        print(response.json())
     else:
         print("Error calling clean_expired_sessions:", response.status_code)
 
@@ -25,7 +24,6 @@ def call_clean_expired_sessions(url, headers):
 def call_verify_key(url, headers):
     response = requests.get(url + "/verify_key", headers=headers)
     if response.status_code == 200:
-        print('Response good!')
         return {"status": "success"}
     else:
         print("Error calling verify_key:", response.status_code)
@@ -33,12 +31,10 @@ def call_verify_key(url, headers):
 
 
 def call_get_key(url, username, password):
-    print('test')
     from requests.auth import HTTPBasicAuth
     try:
         response = requests.get(url + "/get_key", auth=HTTPBasicAuth(username, password))
         if response.status_code == 200:
-            print('Response good!')
             return response.json()  # Assumes the API key is returned in JSON response
         else:
             print("Error calling verify_key:", response.status_code)
@@ -49,14 +45,12 @@ def call_get_key(url, username, password):
 
 
 def call_get_user(url, headers):
-    print('test')
     from requests.auth import HTTPBasicAuth
     try:
         response = requests.get(url + "/get_user", headers=headers)
         print(f'Response status code: {response.status_code}')
         print(f'Response text: {response.text}')  # Add this to debug the response content
         if response.status_code == 200:
-            print('Response good!')
             return response.json()  # Assumes the API key is returned in JSON response
         else:
             print("Error calling verify_key:", response.status_code)
@@ -64,7 +58,6 @@ def call_get_user(url, headers):
     except requests.RequestException as e:
         print(f"Request failed: {e}")
         return {"status": "error", "message": str(e)}
-
 
 
 def call_check_saved_session(url, headers, session_value):
@@ -180,6 +173,7 @@ def call_return_episodes(url, headers, user_id):
         print("Error details:", response.text)
         return None
 
+
 def call_podcast_episodes(url, headers, user_id, podcast_id):
     data = {
         "user_id": str(user_id),
@@ -196,6 +190,7 @@ def call_podcast_episodes(url, headers, user_id, podcast_id):
         print("Error fetching episodes:", response.status_code)
         print("Error details:", response.text)
         return None
+
 
 def call_get_podcast_id(url, headers, user_id, podcast_feed):
     data = {
@@ -618,8 +613,8 @@ def call_set_password(url, headers, user_id, salt, hash_pw):
 
 
 def call_set_email(url, headers, user_id, email):
-    data = {"user_id": self.user_id, "new_email": self.email}
-    response = requests.put(app_api.url + "/user/set_email", headers=app_api.headers, json=data)
+    data = {"user_id": user_id, "new_email": email}
+    response = requests.put(url + "/user/set_email", headers=headers, json=data)
     if response.status_code != 200:
         print("Error updating email:", response.status_code)
 
@@ -1082,3 +1077,68 @@ def call_import_podcasts(url, headers, user_id, podcasts):
     }
     response = requests.post(url + "/import_podcasts", headers=headers, json=data)
     return response.json()
+
+
+def call_check_gpodder_access(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+    try:
+        response = requests.get(url + "/check_gpodder_settings", headers=headers, json=data)
+        return response.json()
+    except Exception as err:
+        return {"success": False, "error_message": f"Other error occurred: {err}"}
+
+
+def call_check_user_gpodder_status(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+    response = requests.post(url + "/gpodder_status", headers=headers, json=data)
+    return response.json()
+
+
+def call_add_gpodder_settings(url, headers, user_id, gpodder_url, gpodder_token, encryption_key):
+    print(f'in call: {gpodder_token}')
+    from cryptography.fernet import Fernet
+
+    if encryption_key is None:
+        print("Cannot save settings without encryption key.")
+        return
+
+    cipher_suite = Fernet(encryption_key)
+
+    # Only encrypt password if it's not None
+    if gpodder_token is not None:
+        encrypted_password = cipher_suite.encrypt(gpodder_token.encode())
+        # Decode encrypted password back to string
+        decoded_token = encrypted_password.decode()
+        print(f'after decode: {decoded_token}')
+    else:
+        decoded_token = None
+
+    data = {
+        "user_id": user_id,
+        "gpodder_url": gpodder_url,
+        "gpodder_token": decoded_token
+    }
+
+    response = requests.post(url + "/add_gpodder_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving gpodder settings:", response.status_code)
+        print("Response body:", response.json())
+
+
+def call_remove_gpodder_settings(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+
+    response = requests.post(url + "/remove_gpodder_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving gpodder settings:", response.status_code)
+        print("Response body:", response.json())

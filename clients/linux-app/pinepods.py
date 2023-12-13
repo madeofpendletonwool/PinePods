@@ -4438,9 +4438,12 @@ def main(page: ft.Page, session_value=None):
                     # MFA Settings Setup
                     self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
                                                                                            active_user.user_id)
+                    print('in settings')
                     self.mfa_check()
                     # Setup gpodder functionality
                     self.check_gpodder_status = api_functions.functions.call_check_gpodder_access(app_api.url, app_api.headers, active_user.user_id)
+                    print(self.check_gpodder_status)
+                    print('checked gpod settings')
                     self.gpodder_setup()
 
                     if active_user.user_is_admin:
@@ -4456,7 +4459,8 @@ def main(page: ft.Page, session_value=None):
                 def gpodder_setup(self):
                     gpodder_option_text = Text('Gpodder Sync:', color=active_user.font_color, size=16)
 
-                    if self.check_gpodder_status:
+                    if self.check_gpodder_status['data']:
+                        print('in true')
                         gpodder_option_desc = Text(
                             "Note: Signing out of Gpodder Sync will remove the syncing that Pinepods does occasionally with Gpodder. This will not remove any podcasts from your account.",
                             color=active_user.font_color)
@@ -4465,6 +4469,7 @@ def main(page: ft.Page, session_value=None):
                                                                         bgcolor=active_user.main_color,
                                                                         color=active_user.accent_color)
                     else:
+                        print('in false')
                         gpodder_option_desc = Text(
                             "Note: This option allows you to setup gpodder sync in Pinepods. Click the sign in button below to sync your podcasts up. Note that if you have any existing subscriptions in your gpodder account Pinepods will add those to it's database and then sync any additional subscriptions it already has up with Gpodder. From there, Pinepods will occasionally sync with gpodder. Otherwise, you can manually run a sync from here once signed in.",
                             color=active_user.font_color)
@@ -4472,10 +4477,12 @@ def main(page: ft.Page, session_value=None):
                                                                         on_click=self.gpodder_sign_in,
                                                                         bgcolor=active_user.main_color,
                                                                         color=active_user.accent_color)
-                        gpodder_backup_col = ft.Column(
-                            controls=[gpodder_option_text, gpodder_option_desc, self.gpodder_sign_in_button])
-                        self.setting_gpodder_con = ft.Container(content=gpodder_backup_col)
-                        self.setting_gpodder_con.padding = padding.only(left=70, right=50)
+                    gpodder_backup_col = ft.Column(
+                        controls=[gpodder_option_text, gpodder_option_desc, self.gpodder_sign_in_button])
+                    self.setting_gpodder_con = ft.Container(content=gpodder_backup_col)
+                    self.setting_gpodder_con.padding = padding.only(left=70, right=50)
+                    print('bottom setup')
+
 
                 def settings_backup_data(self):
                     backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
@@ -4658,10 +4665,8 @@ def main(page: ft.Page, session_value=None):
                     mfa_dlg.open = True
                     self.page.update()
 
-                # Example usage in a Flet application
-
                 def gpodder_sign_in(self, e):
-                    from threading import Thread
+                    from threading import Thread, Event
                     print('sign in start')
                     class NextcloudAuthenticator:
                         LOGIN_ENDPOINT = "/index.php/login/v2"
@@ -4669,7 +4674,8 @@ def main(page: ft.Page, session_value=None):
                         def __init__(self, server_url, page, on_success_callback):
                             self.server_url = server_url
                             self.page = page
-                            self.authenticated = False
+                            self.auth_completed_event = Event()
+                            self.credentials = None
                             self.headers = {"User-Agent": "Pinepods"}
                             self.on_success_callback = on_success_callback
 
@@ -4680,27 +4686,21 @@ def main(page: ft.Page, session_value=None):
                             thread.start()
 
                         def poll_for_auth_completion(self, endpoint, token):
-                            while not self.authenticated:
+                            while not self.auth_completed_event.is_set():
                                 try:
+                                    print(f"Polling {endpoint} with token {token}")
                                     res = requests.post(endpoint, json={"token": token}, headers=self.headers)
+                                    print(f"Response from server: {res.status_code}, {res.text}")
                                     if res.status_code == 200:
-                                        credentials = res.json()
-                                        self.store_credentials(credentials)
-                                        self.authenticated = True
-                                        # Notify the application or update the UI
-                                        self.authenticated = True
+                                        self.credentials = res.json()
+                                        print(f"Credentials received: {self.credentials}")
+                                        self.auth_completed_event.set()
                                         if self.on_success_callback:
-                                            self.on_success_callback()  # Call the success callback
+                                            self.on_success_callback(self.credentials)  # Pass credentials directly
                                         break
-                                    # Implement a delay between polling attempts
                                     time.sleep(5)
                                 except Exception as e:
-                                    print("Error while polling: ", e)
-                                    break
-
-                        def store_credentials(self, credentials):
-                            # Use keyring or another secure method to store credentials
-                            keyring.set_password("Nextcloud", credentials["loginName"], credentials["appPassword"])
+                                    print(f"Error while polling: {e}")
 
                         def _initiate_login(self):
                             auth_url = f"{self.server_url}{self.LOGIN_ENDPOINT}"
@@ -4712,8 +4712,9 @@ def main(page: ft.Page, session_value=None):
                                     # Store polling endpoint and token for later use
                                     self.poll_endpoint = response["poll"]["endpoint"]
                                     self.poll_token = response["poll"]["token"]
-                                    active_user.nextcloud_endpoint = self.poll_endpoint
-                                    active_user.nextcloud_token = self.poll_token
+                                    print(f'nextcloud info: token: {self.poll_token} endpoint: {self.poll_endpoint}')
+                                    # active_user.nextcloud_endpoint = self.poll_endpoint
+                                    # active_user.nextcloud_token = self.poll_token
 
                                     # Now start polling in a separate thread
                                     poll_thread = Thread(target=self.poll_for_auth_completion,
@@ -4764,21 +4765,35 @@ def main(page: ft.Page, session_value=None):
                         actions_alignment=ft.MainAxisAlignment.END,
                     )
 
-                    def on_auth_success():
-                        page.snack_bar = ft.SnackBar(ft.Text(f"You Have Authenticated with Nextcloud. Podcast Sync Will Now Begin!"))
+                    def on_auth_success(credentials):
+                        print(credentials)
+
+                        # Assigning credentials to active_user
+                        active_user.nextcloud_endpoint = credentials['server']
+                        active_user.nextcloud_token = credentials['appPassword']
+
+                        # Rest of the code
+                        page.snack_bar = ft.SnackBar(
+                            ft.Text(f"You Have Authenticated with Nextcloud. Podcast Sync Will Now Begin!"))
                         page.snack_bar.open = True
+                        close_gpodder_wait_diag(page)
                         pr_instance.rm_stack()
                         page.update()
-                        encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
-                        encryption_key_bytes = base64.b64decode(encryption_key)
+
+                        # Ensure the token is being passed correctly
+                        print(f'Nextcloud token after auth success: {active_user.nextcloud_token}')
+
                         api_functions.functions.call_add_gpodder_settings(
                             app_api.url,
                             app_api.headers,
                             active_user.user_id,
                             active_user.nextcloud_endpoint,
-                            active_user.nexcloud_token,
-                            encryption_key_bytes)
-                        active_user.sync_with_nextcloud()
+                            active_user.nextcloud_token,
+                            )
+
+                        # Optionally call active_user.sync_with_nextcloud() if needed
+
+                        # active_user.sync_with_nextcloud()
                     # Code to handle what happens after successful authentication
 
                     def on_auth_click(page, server_value):
@@ -4791,7 +4806,7 @@ def main(page: ft.Page, session_value=None):
                         gpodder_wait_diag.open = True
                         page.update()
                         server_url = server_value.value
-                        auth = NextcloudAuthenticator(server_url, page, on_auth_success)
+                        auth = NextcloudAuthenticator(server_url, page, lambda creds: on_auth_success(creds))
                         auth.start_login()
                         # on_auth_success()
                     # auth_button = ft.TextButton(text="Sign In", on_click=on_auth_click)

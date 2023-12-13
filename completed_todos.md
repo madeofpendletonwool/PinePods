@@ -2,6 +2,11 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.5.0
+
+- [x] v0.1 of Pinepods Firewood released!
+- [x] Nextcloud Gpodder Support added to Pinepods!
+
 Version 0.4.1
 
 - [x] Fixed issue where get_user_episode_count wasn't displaying episode numbers. There was a syntax error in the api call

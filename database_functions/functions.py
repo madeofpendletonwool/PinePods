@@ -2423,12 +2423,26 @@ def get_queued_episodes(database_type, cnx, user_id):
 
 
 def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token):
-    cursor = cnx.cursor()
+    the_key = get_encryption_key(cnx)
 
-    # Check if the user already has gPodder settings
+    cursor = cnx.cursor()
+    from cryptography.fernet import Fernet
+
+    encryption_key_bytes = base64.b64decode(the_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Only encrypt password if it's not None
+    if gpodder_token is not None:
+        encrypted_password = cipher_suite.encrypt(gpodder_token.encode())
+        # Decode encrypted password back to string
+        decoded_token = encrypted_password.decode()
+    else:
+        decoded_token = None
+
     cursor.execute(
         "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
-        (gpodder_url, gpodder_token, user_id)
+        (gpodder_url, decoded_token, user_id)
     )
     result = cursor.fetchone()
 
@@ -2501,20 +2515,22 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpo
     # Fetch Nextcloud subscriptions
     response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions",
                             headers={"Authorization": f"Bearer {gpodder_token}"})
+    print(f"Response status: {response.status_code}, Content: {response.text}")
     if response.status_code != 200:
-        # Handle error
+        print("Error fetching Nextcloud subscriptions")
         return
 
-    nextcloud_podcasts = response.json()["add"]  # Assuming "add" contains the list of subscribed feeds
+    nextcloud_podcasts = response.json().get("add", [])
+    print(f"Nextcloud podcasts: {nextcloud_podcasts}")
 
-    # Fetch local podcast subscriptions
     cursor = cnx.cursor()
     cursor.execute("SELECT FeedURL FROM Podcasts WHERE UserID = %s", (user_id,))
     local_podcasts = [row[0] for row in cursor.fetchall()]
+    print(f"Local podcasts: {local_podcasts}")
 
-    # Determine podcasts to add or remove
     podcasts_to_add = set(nextcloud_podcasts) - set(local_podcasts)
     podcasts_to_remove = set(local_podcasts) - set(nextcloud_podcasts)
+    print(f"Podcasts to add: {podcasts_to_add}, Podcasts to remove: {podcasts_to_remove}")
 
     # Update local database
     # Add new podcasts
