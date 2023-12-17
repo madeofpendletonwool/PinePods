@@ -8,6 +8,12 @@ import Auth.Passfunctions
 import api_functions.functions
 from api_functions.functions import call_api_config
 import app_functions.functions
+import helpers
+from helpers import navigation
+from helpers import controls
+from helpers import api
+from helpers import settings
+from helpers import user
 
 # Others
 import socket
@@ -44,7 +50,6 @@ from collections import defaultdict
 from math import pi
 import traceback
 import pytz
-import shutil
 from base64 import urlsafe_b64decode
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -201,77 +206,7 @@ def generate_session_token():
     return secrets.token_hex(32)
 
 
-def download_image(img_url, save_path):
-    response = requests.get(img_url)
-    if response.status_code == 200:  # OK
-        with open(save_path, 'wb') as img_file:
-            img_file.write(response.content)
-    else:
-        print(f"Failed to download {img_url}. Status code: {response.status_code}")
-
-
-def ensure_images_are_downloaded(server_name):
-    logging.info("Starting to ensure images are downloaded")
-
-    if not os.path.exists(assets_dir):
-        logging.info(f"Assets directory {assets_dir} not found, creating it.")
-        os.makedirs(assets_dir)
-
-    for i in range(1, 14):  # images 1.jpeg to 13.jpeg
-        image_filename = f"{i}.jpeg"
-        image_filepath = os.path.join(assets_dir, image_filename)
-
-        if not os.path.exists(image_filepath):
-            image_url = f"{proxy_url}/pinepods/images/logo_random/{image_filename}"
-            logging.info(f"Downloading image from {image_url}")
-            try:
-                download_image(image_url, image_filepath)
-            except Exception as e:
-                logging.error(f"Error downloading {image_url}: {e}")
-
-    logo_filepath = os.path.join(assets_dir, "pinepods-appicon.png")
-    if not os.path.exists(logo_filepath):
-        logo_image_url = f"{proxy_url}/pinepods/images/pinepods-appicon.png"
-        logging.info(f"Downloading logo image from {logo_image_url}")
-        try:
-            download_image(logo_image_url, logo_filepath)
-        except Exception as e:
-            logging.error(f"Error downloading {logo_image_url}: {e}")
-
-
 session_id = secrets.token_hex(32)  # Generate a 64-character hexadecimal string
-
-# --- Create Flask app for caching ------------------------------------------------
-app = Flask(__name__)
-
-
-def preload_audio_file(url, proxy_url, cache):
-    response = requests.get(proxy_url, params={'url': url})
-    if response.status_code == 200:
-        # Cache the file content
-        cache.set(url, response.content)
-
-
-def initialize_audio_routes(app, proxy_url):
-    cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-
-    @app.route('/preload/<path:url>')
-    def route_preload_audio_file(url):
-        preload_audio_file(url, proxy_url, cache)
-        return ""
-
-    @app.route('/cached_audio/<path:url>')
-    def serve_cached_audio(url):
-        content = cache.get(url)
-
-        if content is not None:
-            response = Response(content, content_type='audio/mpeg')
-            return response
-        else:
-            return "", 404
-
-    return cache
-
 
 # Make login Screen start on boot
 login_screen = True
@@ -293,6 +228,8 @@ assets_dir = os.path.join(user_data_dir, 'assets')
 
 def main(page: ft.Page, session_value=None):
     # ---Flet Various Functions---------------------------------------------------------------
+
+    nav = helpers.navigation.Navigation(page)
 
     class AnimatedButton:
         def __init__(self, rotate_button, download_ep_row_content, entry_seemore=None):
@@ -327,661 +264,19 @@ def main(page: ft.Page, session_value=None):
                 self.rotate_pos = False
                 page.update()
 
-    class API:
-        def __init__(self, page):
-            self.url = None
-            self.api_value = None
-            self.username = None
-            self.password = None
-            self.headers = None
-            self.cred_headers = None
-            self.page = page
-            self.server_name = None
-
-        def api_verify_username(self, server_name, username, password, retain_session=False):
-            # pr_instance.touch_stack()
-            self.page.update()
-            check_url = server_name + "/api/pinepods_check"
-            self.url = server_name + "/api/data"  # keep this for later use
-            self.server_name = server_name
-
-            if not username and password:
-                self.show_error_snackbar("Username and Password required")
-                pr_instance.rm_stack()
-                self.page.update()
-                return
-
-            self.username = username
-            self.password = password
-            self.cred_headers = {"username": self.username, "password": self.password}
-
-            try:
-                check_response = requests.get(check_url, timeout=10)
-                if check_response.status_code != 200:
-                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-                check_data = check_response.json()
-
-                if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
-                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-            except MissingSchema:
-                self.show_error_snackbar("This doesn't appear to be a proper URL.")
-            except requests.exceptions.Timeout:
-                self.show_error_snackbar("Request timed out. Please check your URL.")
-            except RequestException as e:
-                self.show_error_snackbar(f"Request failed: {e}")
-                start_config(page)
-
-            else:
-                # If we reach here, it means the pinepods_check was successful.
-                # Do the rest of your logic here.
-                api_key = api_functions.functions.call_get_key(self.url, self.username.value, self.password.value)
-
-                if not api_key or api_key.get('status') != 'success':
-                    page.go("/server_config")
-                    self.show_error_snackbar(f"Invalid User Credentials: {api_key.get('status')}")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-                else:
-                    self.headers = {"Api-Key": api_key['retrieved_key']}
-                    self.api_value = api_key['retrieved_key']
-                    api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
-                    saved_session_value = get_saved_session_id_from_file()
-                    check_session = api_functions.functions.call_check_saved_session(self.url, self.headers,
-                                                                                     saved_session_value)
-                    global search_api_url
-                    global proxy_url
-                    global proxy_host
-                    global proxy_port
-                    global proxy_protocol
-                    global reverse_proxy
-                    global cache
-                    search_api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(
-                        self.url, self.headers)
-                    # self.show_error_snackbar(f"Connected to {proxy_host}!")
-                    # Initialize the audio routes
-                    cache = initialize_audio_routes(app, proxy_url)
-
-                    if retain_session == True:
-                        save_server_vals(self.api_value, server_name)
-
-                    if login_screen == True:
-                        login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers,
-                                                                                      username.value)
-                        active_user.user_id = login_details['UserID']
-                        active_user.fullname = login_details['Fullname']
-                        active_user.username = login_details['Username']
-                        active_user.email = login_details['Email']
-                        if page.web:
-                            start_login(page)
-                        else:
-                            if check_session:
-                                active_user.saved_login(check_session)
-                            else:
-                                go_homelogin(page)
-
-                    else:
-                        active_user.user_id = 1
-                        active_user.fullname = 'Guest User'
-                        go_homelogin(page)
-
-            # pr_instance.rm_stack()
-            self.page.update()
-
-        def api_verify(self, server_name, api_value, retain_session=False):
-            # pr_instance.touch_stack()
-            self.page.update()
-            check_url = server_name + "/api/pinepods_check"
-            self.url = server_name + "/api/data"  # keep this for later use
-
-            if not api_value:
-                self.show_error_snackbar("API key is required.")
-                pr_instance.rm_stack()
-                self.page.update()
-                return
-
-            self.api_value = api_value
-            self.headers = {"Api-Key": self.api_value}
-
-            try:
-                check_response = requests.get(check_url, timeout=10)
-                if check_response.status_code != 200:
-                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-                check_data = check_response.json()
-
-                if "pinepods_instance" not in check_data or not check_data["pinepods_instance"]:
-                    self.show_error_snackbar("Unable to find a Pinepods instance at this URL.")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-            except MissingSchema:
-                self.show_error_snackbar("This doesn't appear to be a proper URL.")
-            except requests.exceptions.Timeout:
-                self.show_error_snackbar("Request timed out. Please check your URL.")
-            except RequestException as e:
-                self.show_error_snackbar(f"Request failed: {e}")
-                start_config(page)
-
-            else:
-                # If we reach here, it means the pinepods_check was successful.
-                # Do the rest of your logic here.
-                key_check = api_functions.functions.call_verify_key(self.url, self.headers)
-
-                if not key_check or key_check.get('status') != 'success':
-                    page.go("/server_config")
-                    self.show_error_snackbar(f"Invalid API key: {key_check.get('status')}")
-                    pr_instance.rm_stack()
-                    self.page.update()
-                    return
-
-                else:
-                    api_functions.functions.call_clean_expired_sessions(self.url, self.headers)
-                    saved_session_value = get_saved_session_id_from_file()
-                    check_session = api_functions.functions.call_check_saved_session(self.url, self.headers,
-                                                                                     saved_session_value)
-                    global search_api_url
-                    global proxy_url
-                    global proxy_host
-                    global proxy_port
-                    global proxy_protocol
-                    global reverse_proxy
-                    global cache
-                    search_api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy = call_api_config(
-                        self.url, self.headers)
-                    # self.show_error_snackbar(f"Connected to {proxy_host}!")
-                    # Initialize the audio routes
-                    cache = initialize_audio_routes(app, proxy_url)
-
-                    if retain_session == True:
-                        save_server_vals(self.api_value, server_name)
-
-                    if login_screen == True:
-                        user_id = api_functions.functions.call_get_user(self.url, self.headers)
-                        print(user_id)
-                        login_details = api_functions.functions.call_get_user_details_id(app_api.url,
-                                                                                         app_api.headers,
-                                                                                         user_id['retrieved_id'])
-                        print(login_details)
-                        active_user.user_id = login_details['UserID']
-                        active_user.fullname = login_details['Fullname']
-                        active_user.username = login_details['Username']
-                        active_user.email = login_details['Email']
-
-                        if page.web:
-                            start_login(page)
-                        else:
-                            if check_session:
-                                active_user.saved_login(check_session)
-                            else:
-                                print('going home')
-                                go_homelogin(page)
-
-                    else:
-                        active_user.user_id = 1
-                        active_user.fullname = 'Guest User'
-                        go_homelogin(page)
-
-            # pr_instance.rm_stack()
-            self.page.update()
-
-        def show_error_snackbar(self, message):
-            self.page.snack_bar = ft.SnackBar(ft.Text(message))
-            self.page.snack_bar.open = True
-            self.page.update()
-
         def on_click_snacks(self):
             self.page.snack_bar = ft.SnackBar(ft.Text(f"Here's a snack"))
             self.page.snack_bar.open = True
             self.page.update()
 
-    app_api = API(page)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
-                     pod_feed_url, pod_website, page):
-        pr_instance.touch_stack()
+    parsed_audio_url = os.path.join(current_dir, "Audio", "750-milliseconds-of-silence.mp3")
+    parsed_title = 'nothing playing'
+
+    def go_home(e):
         page.update()
-        categories = json.dumps(pod_categories)
-        podcast_values = (
-            pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url,
-            pod_website,
-            active_user.user_id)
-        return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
-                                                                active_user.user_id)
-        pr_instance.rm_stack()
-        if return_value == True:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
-            page.snack_bar.open = True
-            page.update()
-        else:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Already Added!"))
-            page.snack_bar.open = True
-            page.update()
-
-    def pod_url_add(page):
-        def close_pod_url_dlg(page):
-            pod_url_dlg.open = False
-            page.update()
-
-        def close_pod_url_auto_dlg(e):
-            pod_url_dlg.open = False
-            page.update()
-
-        def add_feed(e):
-            active_user.feed_url = pod_url_box.value
-            pr_instance.touch_stack()
-            page.update()
-            podcast_values = internal_functions.functions.get_podcast_values(active_user.feed_url, active_user.user_id)
-            return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
-                                                                    active_user.user_id)
-            pr_instance.rm_stack()
-            close_pod_url_dlg(page)
-            if return_value:
-                page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
-                page.snack_bar.open = True
-                page.update()
-            else:
-                page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Already Added!"))
-                page.snack_bar.open = True
-                page.update()
-
-        pod_url_box = ft.TextField(label="Podcast Feed URL", icon=ft.icons.ADD_LINK,
-                                   hint_text='https://mycoolpodcast/episodes/rss')
-        pod_url_select_row = ft.Row(
-            controls=[
-                ft.TextButton("Confirm", on_click=add_feed),
-                ft.TextButton("Cancel", on_click=close_pod_url_auto_dlg)
-            ],
-            alignment=ft.MainAxisAlignment.END
-        )
-
-        pod_url_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Confirm MFA:"),
-            content=ft.Column(controls=[
-                ft.Text(f'Input Podcast Feed URL below to add to database.', selectable=True),
-                # ], tight=True),
-                pod_url_box,
-                # actions=[
-                pod_url_select_row
-            ],
-                tight=True),
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-
-        page.dialog = pod_url_dlg
-        pod_url_dlg.open = True
-        page.update()
-
-    def close_dlg(e):
-        user_dlg.open = False
-        page.update()
-        go_home
-
-    def character_limit(screen_width):
-        if screen_width < 400:
-            return 40
-        elif screen_width < 768:
-            return 50
-        elif screen_width < 768:
-            return 60
-        elif screen_width < 800:
-            return 25
-        elif screen_width < 900:
-            return 35
-        elif screen_width < 1000:
-            return 40
-        elif screen_width < 1100:
-            return 45
-        elif screen_width < 1200:
-            return 55
-        elif screen_width < 1300:
-            return 70
-        else:
-            return None
-
-    def truncate_text(text, max_chars):
-        if max_chars and len(text) > max_chars:
-            return text[:max_chars] + '...'
-        else:
-            return text
-
-    def on_click_wronguser(page):
-        page.snack_bar = ft.SnackBar(ft.Text(f"Wrong username or password. Please try again!"))
-        page.snack_bar.open = True
-        page.update()
-
-    def on_click_novalues(page):
-        page.snack_bar = ft.SnackBar(ft.Text(f"Please enter a username and a password before selecting Login"))
-        page.snack_bar.open = True
-        page.update()
-
-    def launch_clicked_url(e):
-        page.launch_url(e.data)
-
-    def launch_pod_site(e):
-        page.launch_url(clicked_podcast.website)
-
-    def setup_user_for_otp():
-        # generate a new secret for the user
-        secret = pyotp.random_base32()
-
-        # create a provisioning URL that the user can scan with their OTP app
-        provisioning_url = pyotp.totp.TOTP(secret).provisioning_uri(name=active_user.email, issuer_name='PinePods')
-
-        # convert this provisioning URL into a QR code and display it to the user
-        # generate the QR code
-        img = qrcode.make(provisioning_url)
-
-        # Get current timestamp
-        active_user.mfa_timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-
-        # Save it to a file with a unique name
-        filename = f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png"  # for example
-        img.save(filename)
-        active_user.mfa_secret = secret
-
-        return filename
-
-    def seconds_to_time(seconds):
-        minutes, seconds = divmod(seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        return '{:02d}:{:02d}:{:02d}'.format(hours, minutes, seconds)
-
-    def get_progress(listen_time, duration):
-        if duration == 0:
-            progress = 0
-            return progress
-        else:
-            progress = listen_time / duration
-            return progress
-
-    def check_image(artwork_path):
-        return f"{artwork_path}"
-
-    def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
-                         pod_feed_url, pod_website):
-        global clicked_podcast
-        clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description,
-                                  feedurl=pod_feed_url, website=pod_website, categories=pod_categories,
-                                  episode_count=pod_episode_count)
-        return clicked_podcast
-
-    def save_episode_metadata(episode):
-        # Create the directory if it doesn't already exist
-        os.makedirs(metadata_dir, exist_ok=True)
-
-        # The filename will be based on the episode's ID
-        filename = f'{episode["EpisodeID"]}.json'
-        file_path = os.path.join(metadata_dir, filename)
-
-        # Save the metadata to the file
-        with open(file_path, 'w') as f:
-            json.dump(episode, f)
-
-    def download_episode_file(episode_url, podcast_name):
-        download_dir = os.path.join(metadata_dir, 'downloads', podcast_name)
-        os.makedirs(download_dir, exist_ok=True)
-
-        response = requests.get(episode_url, stream=True)
-
-        # The filename will be the last part of the URL
-        filename = episode_url.split('/')[-1]
-        file_path = os.path.join(download_dir, filename)
-
-        with open(file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:  # filter out keep-alive new chunks
-                    f.write(chunk)
-
-        return file_path
-
-    def locally_download_episode(url, title, page):
-        pr_instance.touch_stack()
-        # First, retrieve the episode's metadata from the database
-        episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title,
-                                                                    active_user.user_id)
-
-        # Check if the episode metadata file already exists
-        episode_file = os.path.join(metadata_dir, f'{episode["EpisodeID"]}.json')
-
-        if os.path.exists(episode_file):
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode already downloaded!"))
-            page.snack_bar.open = True
-            pr_instance.rm_stack()
-            page.update()
-            return
-
-        page.update()
-
-        # Next, download the actual episode data (the audio file)
-        episode_local_path = download_episode_file(episode["EpisodeURL"], episode["PodcastName"])
-
-        # Add the local path to the episode metadata
-        episode['EpisodeLocalPath'] = episode_local_path
-        # Store the episode's metadata locally
-        save_episode_metadata(episode)
-        page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode Downloaded!"))
-        page.snack_bar.open = True
-        pr_instance.rm_stack()
-        page.update()
-
-    def download_full_podcast(podcast_name, pod_feed, page):
-        # First, get the list of all episodes in the podcast from the feed
-        episode_list = api_functions.functions.call_get_all_episodes(app_api.url, app_api.headers, pod_feed)
-
-        # If there are no episodes, return early
-        if not episode_list:
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found for podcast: {podcast_name}"))
-            page.snack_bar.open = True
-            page.update()
-            return
-
-        # Check if downloads are enabled
-        download_status = api_functions.functions.call_download_status(app_api.url, app_api.headers)
-        if not download_status:
-            page.snack_bar = ft.SnackBar(content=ft.Text(
-                f"Downloads are currently disabled! If you'd like to download episodes ask your administrator to enable the option."))
-            page.snack_bar.open = True
-            page.update()
-            return
-
-        # Add all episode URLs to the downloading list
-        for episode in episode_list:
-            active_user.downloading.append(episode['EpisodeURL'])
-            active_user.downloading_name.append(episode['EpisodeTitle'])
-
-        # Create a progress ring and add it to the page
-        pr_instance.touch_stack()
-        page.update()
-
-        # For each episode in the podcast, try to download it
-        for episode in episode_list:
-            url = episode['EpisodeURL']
-            title = episode['EpisodeTitle']
-
-            # Check if the episode is already downloaded
-            check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers,
-                                                                            active_user.user_id, title, url)
-            if check_downloads:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} is already downloaded!"))
-                page.snack_bar.open = True
-                page.update()
-                continue
-
-            # If it's not already downloaded, download the episode
-            current_episode.url = url
-            current_episode.title = title
-            current_episode.download_pod()
-
-            # Remove the downloaded episode URL from the downloading list
-            active_user.downloading.remove(url)
-            active_user.downloading_name.remove(title)
-
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
-            page.snack_bar.open = True
-            page.update()
-
-        # When all episodes are downloaded, remove the progress ring
-        if pr_instance.active_pr == True:
-            pr_instance.rm_stack()
-        page.update()
-
-    def download_full_podcast_locally(podcast_name, pod_feed, page):
-        # Retrieve all the episodes of the podcast
-        episodes = api_functions.functions.call_get_all_episodes(app_api.url, app_api.headers, pod_feed)
-
-        if episodes is not None:
-            # Add all episode URLs to the downloading list
-            for episode in episodes:
-                active_user.downloading.append(episode['EpisodeURL'])
-                active_user.downloading_name.append(episode['EpisodeTitle'])
-
-            pr_instance.touch_stack()
-            page.update()
-
-            # Loop over each episode and download it
-            for episode in episodes:
-                # Get the episode details
-                url = episode['EpisodeURL']
-                title = episode['EpisodeTitle']
-
-                # Download the actual episode data (the audio file)
-                episode_local_path = download_episode_file(url, podcast_name)
-
-                # Remove the downloaded episode URL from the downloading list
-                active_user.downloading.remove(url)
-                active_user.downloading_name.remove(title)
-
-                # Add the local path to the episode metadata
-                episode['EpisodeLocalPath'] = episode_local_path
-
-                # Store the episode's metadata locally
-                save_episode_metadata(episode)
-
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"All episodes of {podcast_name} downloaded!"))
-            page.snack_bar.open = True
-            pr_instance.rm_stack()
-            page.update()
-        else:
-            print(f"No episodes found for podcast {podcast_name}")
-
-    def load_local_downloaded_episodes(user_id):
-        downloaded_episodes = []
-
-        try:
-            for filename in os.listdir(metadata_dir):
-                if filename.endswith(".json"):
-                    json_file_path = os.path.join(metadata_dir, filename)
-                    with open(json_file_path, 'r') as file:
-                        episode_metadata = json.load(file)
-                        downloaded_episodes.append(episode_metadata)
-        except FileNotFoundError:
-            print(f"No local downloaded episodes found for user {user_id}")
-
-        return downloaded_episodes
-
-    class Podcast:
-        def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None,
-                     categories=None, episode_count=None):
-            self.name = name
-            self.artwork = artwork
-            self.author = author
-            self.description = description
-            self.feedurl = feedurl
-            self.website = website
-            self.categories = categories
-            self.episode_count = episode_count
-
-    class MyHTMLParser(HTMLParser):
-        def __init__(self):
-            self.is_html = False
-            super().__init__()
-
-        def handle_starttag(self, tag, attrs):
-            self.is_html = True
-
-    def is_html(text):
-        parser = MyHTMLParser()
-        parser.feed(text)
-        return parser.is_html
-
-    def self_service_user(self):
-        def close_self_serv_dlg(page):
-            self_service_dlg.open = False
-            self.page.update()
-
-        self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
-
-        if not self_service_status:
-            self_service_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"User Creation"),
-                content=ft.Column(controls=[
-                    ft.Text(
-                        "Self Service User Creation is disabled. If you'd like an account please contact the admin or have them enable self service.")
-                ], tight=True),
-                actions=[
-                    ft.TextButton("Close", on_click=close_self_serv_dlg)
-                ],
-                actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
-            )
-            self.page.dialog = self_service_dlg
-            self_service_dlg.open = True
-            self.page.update()
-
-        elif self_service_status:
-            new_user = User(page)
-
-            self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP,
-                                             hint_text='John PinePods')
-            self_service_email = ft.TextField(label="Email", icon=ft.icons.EMAIL,
-                                              hint_text='ilovepinepods@pinepods.com')
-            self_service_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999')
-            self_service_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True,
-                                                 can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-            self_service_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"Create User:"),
-                content=ft.Column(controls=[
-                    self_service_name,
-                    self_service_email,
-                    self_service_username,
-                    self_service_password
-                ],
-                    tight=True),
-                actions=[
-                    ft.TextButton("Create User", on_click=lambda x: (
-                        new_user.set_username(self_service_username.value),
-                        new_user.set_password(self_service_password.value),
-                        new_user.set_email(self_service_email.value),
-                        new_user.set_name(self_service_name.value),
-                        new_user.verify_user_values_snack(),
-                        new_user.create_user(),
-                        new_user.user_created_snack(),
-                        close_self_serv_dlg(page)
-                    )),
-
-                    ft.TextButton("Cancel", on_click=lambda x: close_self_serv_dlg(page))
-                ],
-                actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
-            )
-            self.page.dialog = self_service_dlg
-            self_service_dlg.open = True
-            self.page.update()
+        page.go("/")
 
     class Toggle_Pod:
         initialized = False
@@ -1098,10 +393,9 @@ def main(page: ft.Page, session_value=None):
                     if self.audio_element in page.overlay:
                         page.overlay.remove(self.audio_element)
                         self.page.update()
-                if self.local == False:
+                if not self.local:
                     # Preload the audio file and cache it
-                    global cache
-                    preload_audio_file(self.url, proxy_url, cache)
+                    app_api.preload_audio_file(self.url, app_api.proxy_url, app_api.cache)
 
                     self.audio_element = ft.Audio(src=f'{self.url}', autoplay=True, volume=1,
                                                   on_state_changed=lambda e: self.on_state_changed(e.data))
@@ -1450,6 +744,417 @@ def main(page: ft.Page, session_value=None):
             api_functions.functions.call_record_listen_duration(app_api.url, app_api.headers, self.url, self.name,
                                                                 active_user.user_id, listen_duration)
 
+    current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
+
+    pod_controls = helpers.controls.PodcastControls(page, current_episode)
+    active_user = helpers.user.User(page, pod_controls)
+    nav.active_user = active_user
+    app_api = helpers.api.API(page, key, salt, active_user)
+
+    def send_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
+                     pod_feed_url, pod_website, page):
+        pr_instance.touch_stack()
+        page.update()
+        categories = json.dumps(pod_categories)
+        podcast_values = (
+            pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url,
+            pod_website,
+            active_user.user_id)
+        return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
+                                                                active_user.user_id)
+        pr_instance.rm_stack()
+        if return_value == True:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
+            page.snack_bar.open = True
+            page.update()
+        else:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Already Added!"))
+            page.snack_bar.open = True
+            page.update()
+
+    def pod_url_add(page):
+        def close_pod_url_dlg(page):
+            pod_url_dlg.open = False
+            page.update()
+
+        def close_pod_url_auto_dlg(e):
+            pod_url_dlg.open = False
+            page.update()
+
+        def add_feed(e):
+            active_user.feed_url = pod_url_box.value
+            pr_instance.touch_stack()
+            page.update()
+            podcast_values = internal_functions.functions.get_podcast_values(active_user.feed_url, active_user.user_id)
+            return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers, podcast_values,
+                                                                    active_user.user_id)
+            pr_instance.rm_stack()
+            close_pod_url_dlg(page)
+            if return_value:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Added Successfully!"))
+                page.snack_bar.open = True
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Podcast Already Added!"))
+                page.snack_bar.open = True
+                page.update()
+
+        pod_url_box = ft.TextField(label="Podcast Feed URL", icon=ft.icons.ADD_LINK,
+                                   hint_text='https://mycoolpodcast/episodes/rss')
+        pod_url_select_row = ft.Row(
+            controls=[
+                ft.TextButton("Confirm", on_click=add_feed),
+                ft.TextButton("Cancel", on_click=close_pod_url_auto_dlg)
+            ],
+            alignment=ft.MainAxisAlignment.END
+        )
+
+        pod_url_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Confirm MFA:"),
+            content=ft.Column(controls=[
+                ft.Text(f'Input Podcast Feed URL below to add to database.', selectable=True),
+                # ], tight=True),
+                pod_url_box,
+                # actions=[
+                pod_url_select_row
+            ],
+                tight=True),
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
+        page.dialog = pod_url_dlg
+        pod_url_dlg.open = True
+        page.update()
+
+    def close_dlg(e):
+        user_dlg.open = False
+        page.update()
+        go_home
+
+    def character_limit(screen_width):
+        if screen_width < 400:
+            return 40
+        elif screen_width < 768:
+            return 50
+        elif screen_width < 768:
+            return 60
+        elif screen_width < 800:
+            return 25
+        elif screen_width < 900:
+            return 35
+        elif screen_width < 1000:
+            return 40
+        elif screen_width < 1100:
+            return 45
+        elif screen_width < 1200:
+            return 55
+        elif screen_width < 1300:
+            return 70
+        else:
+            return None
+
+    def truncate_text(text, max_chars):
+        if max_chars and len(text) > max_chars:
+            return text[:max_chars] + '...'
+        else:
+            return text
+
+    def launch_clicked_url(e):
+        page.launch_url(e.data)
+
+    def launch_pod_site(e):
+        page.launch_url(clicked_podcast.website)
+
+    def seconds_to_time(seconds):
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return '{:02d}:{:02d}:{:02d}'.format(hours, minutes, seconds)
+
+    def get_progress(listen_time, duration):
+        if duration == 0:
+            progress = 0
+            return progress
+        else:
+            progress = listen_time / duration
+            return progress
+
+    def check_image(artwork_path):
+        return f"{artwork_path}"
+
+    def evaluate_podcast(pod_title, pod_artwork, pod_author, pod_categories, pod_description, pod_episode_count,
+                         pod_feed_url, pod_website):
+        global clicked_podcast
+        clicked_podcast = Podcast(name=pod_title, artwork=pod_artwork, author=pod_author, description=pod_description,
+                                  feedurl=pod_feed_url, website=pod_website, categories=pod_categories,
+                                  episode_count=pod_episode_count)
+        return clicked_podcast
+
+    def save_episode_metadata(episode):
+        # Create the directory if it doesn't already exist
+        os.makedirs(metadata_dir, exist_ok=True)
+
+        # The filename will be based on the episode's ID
+        filename = f'{episode["EpisodeID"]}.json'
+        file_path = os.path.join(metadata_dir, filename)
+
+        # Save the metadata to the file
+        with open(file_path, 'w') as f:
+            json.dump(episode, f)
+
+    def download_episode_file(episode_url, podcast_name):
+        download_dir = os.path.join(metadata_dir, 'downloads', podcast_name)
+        os.makedirs(download_dir, exist_ok=True)
+
+        response = requests.get(episode_url, stream=True)
+
+        # The filename will be the last part of the URL
+        filename = episode_url.split('/')[-1]
+        file_path = os.path.join(download_dir, filename)
+
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:  # filter out keep-alive new chunks
+                    f.write(chunk)
+
+        return file_path
+
+    def locally_download_episode(url, title, page):
+        pr_instance.touch_stack()
+        # First, retrieve the episode's metadata from the database
+        episode = api_functions.functions.call_get_episode_metadata(app_api.url, app_api.headers, url, title,
+                                                                    active_user.user_id)
+
+        # Check if the episode metadata file already exists
+        episode_file = os.path.join(metadata_dir, f'{episode["EpisodeID"]}.json')
+
+        if os.path.exists(episode_file):
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode already downloaded!"))
+            page.snack_bar.open = True
+            pr_instance.rm_stack()
+            page.update()
+            return
+
+        page.update()
+
+        # Next, download the actual episode data (the audio file)
+        episode_local_path = download_episode_file(episode["EpisodeURL"], episode["PodcastName"])
+
+        # Add the local path to the episode metadata
+        episode['EpisodeLocalPath'] = episode_local_path
+        # Store the episode's metadata locally
+        save_episode_metadata(episode)
+        page.snack_bar = ft.SnackBar(content=ft.Text(f"Podcast Episode Downloaded!"))
+        page.snack_bar.open = True
+        pr_instance.rm_stack()
+        page.update()
+
+    def download_full_podcast(podcast_name, pod_feed, page):
+        # First, get the list of all episodes in the podcast from the feed
+        episode_list = api_functions.functions.call_get_all_episodes(app_api.url, app_api.headers, pod_feed)
+
+        # If there are no episodes, return early
+        if not episode_list:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"No episodes found for podcast: {podcast_name}"))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        # Check if downloads are enabled
+        download_status = api_functions.functions.call_download_status(app_api.url, app_api.headers)
+        if not download_status:
+            page.snack_bar = ft.SnackBar(content=ft.Text(
+                f"Downloads are currently disabled! If you'd like to download episodes ask your administrator to enable the option."))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        # Add all episode URLs to the downloading list
+        for episode in episode_list:
+            active_user.downloading.append(episode['EpisodeURL'])
+            active_user.downloading_name.append(episode['EpisodeTitle'])
+
+        # Create a progress ring and add it to the page
+        pr_instance.touch_stack()
+        page.update()
+
+        # For each episode in the podcast, try to download it
+        for episode in episode_list:
+            url = episode['EpisodeURL']
+            title = episode['EpisodeTitle']
+
+            # Check if the episode is already downloaded
+            check_downloads = api_functions.functions.call_check_downloaded(app_api.url, app_api.headers,
+                                                                            active_user.user_id, title, url)
+            if check_downloads:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} is already downloaded!"))
+                page.snack_bar.open = True
+                page.update()
+                continue
+
+            # If it's not already downloaded, download the episode
+            current_episode.url = url
+            current_episode.title = title
+            current_episode.download_pod()
+
+            # Remove the downloaded episode URL from the downloading list
+            active_user.downloading.remove(url)
+            active_user.downloading_name.remove(title)
+
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"Episode: {title} has been downloaded!"))
+            page.snack_bar.open = True
+            page.update()
+
+        # When all episodes are downloaded, remove the progress ring
+        if pr_instance.active_pr == True:
+            pr_instance.rm_stack()
+        page.update()
+
+    def download_full_podcast_locally(podcast_name, pod_feed, page):
+        # Retrieve all the episodes of the podcast
+        episodes = api_functions.functions.call_get_all_episodes(app_api.url, app_api.headers, pod_feed)
+
+        if episodes is not None:
+            # Add all episode URLs to the downloading list
+            for episode in episodes:
+                active_user.downloading.append(episode['EpisodeURL'])
+                active_user.downloading_name.append(episode['EpisodeTitle'])
+
+            pr_instance.touch_stack()
+            page.update()
+
+            # Loop over each episode and download it
+            for episode in episodes:
+                # Get the episode details
+                url = episode['EpisodeURL']
+                title = episode['EpisodeTitle']
+
+                # Download the actual episode data (the audio file)
+                episode_local_path = download_episode_file(url, podcast_name)
+
+                # Remove the downloaded episode URL from the downloading list
+                active_user.downloading.remove(url)
+                active_user.downloading_name.remove(title)
+
+                # Add the local path to the episode metadata
+                episode['EpisodeLocalPath'] = episode_local_path
+
+                # Store the episode's metadata locally
+                save_episode_metadata(episode)
+
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"All episodes of {podcast_name} downloaded!"))
+            page.snack_bar.open = True
+            pr_instance.rm_stack()
+            page.update()
+        else:
+            print(f"No episodes found for podcast {podcast_name}")
+
+    def load_local_downloaded_episodes(user_id):
+        downloaded_episodes = []
+
+        try:
+            for filename in os.listdir(metadata_dir):
+                if filename.endswith(".json"):
+                    json_file_path = os.path.join(metadata_dir, filename)
+                    with open(json_file_path, 'r') as file:
+                        episode_metadata = json.load(file)
+                        downloaded_episodes.append(episode_metadata)
+        except FileNotFoundError:
+            print(f"No local downloaded episodes found for user {user_id}")
+
+        return downloaded_episodes
+
+    class Podcast:
+        def __init__(self, name=None, artwork=None, author=None, description=None, feedurl=None, website=None,
+                     categories=None, episode_count=None):
+            self.name = name
+            self.artwork = artwork
+            self.author = author
+            self.description = description
+            self.feedurl = feedurl
+            self.website = website
+            self.categories = categories
+            self.episode_count = episode_count
+
+    class MyHTMLParser(HTMLParser):
+        def __init__(self):
+            self.is_html = False
+            super().__init__()
+
+        def handle_starttag(self, tag, attrs):
+            self.is_html = True
+
+    def is_html(text):
+        parser = MyHTMLParser()
+        parser.feed(text)
+        return parser.is_html
+
+    def self_service_user(self):
+        def close_self_serv_dlg(page):
+            self_service_dlg.open = False
+            self.page.update()
+
+        self_service_status = api_functions.functions.call_self_service_status(app_api.url, app_api.headers)
+
+        if not self_service_status:
+            self_service_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"User Creation"),
+                content=ft.Column(controls=[
+                    ft.Text(
+                        "Self Service User Creation is disabled. If you'd like an account please contact the admin or have them enable self service.")
+                ], tight=True),
+                actions=[
+                    ft.TextButton("Close", on_click=close_self_serv_dlg)
+                ],
+                actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
+            )
+            self.page.dialog = self_service_dlg
+            self_service_dlg.open = True
+            self.page.update()
+
+        elif self_service_status:
+            new_user = helpers.user.User(page, app_api, pr_instance, nav)
+
+            self_service_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP,
+                                             hint_text='John PinePods')
+            self_service_email = ft.TextField(label="Email", icon=ft.icons.EMAIL,
+                                              hint_text='ilovepinepods@pinepods.com')
+            self_service_username = ft.TextField(label="Username", icon=ft.icons.PERSON, hint_text='pinepods_user1999')
+            self_service_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True,
+                                                 can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
+            self_service_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Create User:"),
+                content=ft.Column(controls=[
+                    self_service_name,
+                    self_service_email,
+                    self_service_username,
+                    self_service_password
+                ],
+                    tight=True),
+                actions=[
+                    ft.TextButton("Create User", on_click=lambda x: (
+                        new_user.set_username(self_service_username.value),
+                        new_user.set_password(self_service_password.value),
+                        new_user.set_email(self_service_email.value),
+                        new_user.set_name(self_service_name.value),
+                        new_user.verify_user_values_snack(),
+                        new_user.create_user(),
+                        new_user.user_created_snack(),
+                        close_self_serv_dlg(page)
+                    )),
+
+                    ft.TextButton("Cancel", on_click=lambda x: close_self_serv_dlg(page))
+                ],
+                actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
+            )
+            self.page.dialog = self_service_dlg
+            self_service_dlg.open = True
+            self.page.update()
+
+
+
     # ---Flet Various Elements----------------------------------------------------------------
     def close_invalid_dlg(e):
         username_invalid_dlg.open = False
@@ -1511,17 +1216,8 @@ def main(page: ft.Page, session_value=None):
     def start_config(page):
         page.go("/server_config")
 
-    def first_time_config(page):
-        page.go("/first_time_config")
-
     def start_login_e(e):
         page.go("/login")
-
-    def start_login(page):
-        page.go("/login")
-
-    def open_mfa_login(e):
-        page.go("/mfalogin")
 
     def view_pop(e):
         page.views.pop()
@@ -1565,33 +1261,6 @@ def main(page: ft.Page, session_value=None):
 
     def open_search(e):
         page.go("/user_search")
-
-    def go_homelogin(page):
-        ensure_images_are_downloaded(app_api.server_name)
-        print('image fail')
-        active_user.theme_select()
-        # Theme user elements
-        print('in home')
-        page.banner.bgcolor = active_user.accent_color
-        page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
-        page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue'. For more information on PinePods and the features it has please check out the documentation website listed below. For comments, feature requests, pull requests, and bug reports please open an issue, or fork PinePods from the repository and create a PR.
-    """, color=active_user.main_color
-                                      )
-        page.banner.actions = [
-            ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color,
-                              color=active_user.accent_color),
-            ft.ElevatedButton('Open PinePods Documentation Site', on_click=open_doc_site,
-                              bgcolor=active_user.main_color, color=active_user.accent_color),
-            ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
-        ]
-        global new_nav
-        new_nav = NavBar(page)
-        new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
-        page.overlay.append(new_nav.navbar_stack)
-        page.update()
-        page.go("/")
 
     def reset_credentials(page):
 
@@ -1747,41 +1416,6 @@ def main(page: ft.Page, session_value=None):
         page.dialog = create_self_service_pw_dlg
         create_self_service_pw_dlg.open = True
         page.update()
-
-    def go_theme_rebuild(page):
-        active_user.theme_select()
-        # Theme user elements
-        page.banner.bgcolor = active_user.accent_color
-        page.banner.leading = ft.Icon(ft.icons.WAVING_HAND, color=active_user.main_color, size=40)
-        page.banner.content = ft.Text("""
-    Welcome to PinePods! PinePods is an app built to save, listen, download, organize, and manage a selection of podcasts. Using the search function you can search for your favorite podcast, from there, click the add button to save your podcast to the database. PinePods will begin displaying new episodes of that podcast from then on to the homescreen when released. In addition, from search you can click on a podcast to view and listen to specific episodes. From the sidebar you can select your saved podcasts and manage them, view and manage your downloaded podcasts, edit app settings, check your listening history, and listen through episodes from your saved 'queue.' For comments, feature requests, pull requests, and bug reports please open an issue, for fork PinePods from the repository:
-    """, color=active_user.main_color
-                                      )
-        page.banner.actions = [
-            ft.ElevatedButton('Open PinePods Repo', on_click=open_repo, bgcolor=active_user.main_color,
-                              color=active_user.accent_color),
-            ft.IconButton(icon=ft.icons.EXIT_TO_APP, on_click=close_banner, bgcolor=active_user.main_color)
-        ]
-        pod_controls.audio_container.bgcolor = active_user.main_color
-        pod_controls.audio_scrubber.active_color = active_user.nav_color2
-        pod_controls.audio_scrubber.inactive_color = active_user.nav_color2
-        pod_controls.audio_scrubber.thumb_color = active_user.accent_color
-        pod_controls.play_button.icon_color = active_user.accent_color
-        pod_controls.pause_button.icon_color = active_user.accent_color
-        pod_controls.seek_button.icon_color = active_user.accent_color
-        pod_controls.currently_playing.color = active_user.font_color
-        pod_controls.current_time.color = active_user.font_color
-        pod_controls.podcast_length.color = active_user.font_color
-
-        new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
-        page.overlay.append(new_nav.navbar_stack)
-        page.update()
-        page.go("/")
-
-    def go_home(e):
-        page.update()
-        page.go("/")
 
     class PR:
         def __init__(self, page):
@@ -1988,8 +1622,8 @@ def main(page: ft.Page, session_value=None):
                         icon_size=40,
                         tooltip="Resume Episode",
                         on_click=lambda x, url=ep_url, title=ep_title, artwork=ep_artwork,
-                                        listen_duration=listen_duration: resume_selected_episode(url, title, artwork,
-                                                                                                 listen_duration)
+                                        listen_time=listen_duration: resume_selected_episode(url, title, artwork,
+                                                                                                 listen_time)
                     )
                     if self.page_type == "saved":
                         popup_button = ft.PopupMenuButton(
@@ -2206,7 +1840,7 @@ def main(page: ft.Page, session_value=None):
                     pr_instance.touch_stack()
                     page.update()
                     # Run the test_connection function
-                    connection_test_result = internal_functions.functions.test_connection(search_api_url)
+                    connection_test_result = internal_functions.functions.test_connection(app_api.search_api_url)
                     if connection_test_result is not True:
                         page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
                         page.snack_bar.open = True
@@ -2234,7 +1868,7 @@ def main(page: ft.Page, session_value=None):
                     close_search_dlg(page)
                     pr_instance.touch_stack()
                     page.update()
-                    connection_test_result = internal_functions.functions.test_connection(search_api_url)
+                    connection_test_result = internal_functions.functions.test_connection(app_api.search_api_url)
                     if connection_test_result is not True:
                         page.snack_bar = ft.SnackBar(content=ft.Text(connection_test_result))
                         page.snack_bar.open = True
@@ -2960,10 +2594,10 @@ def main(page: ft.Page, session_value=None):
                                     tooltip="Resume Episode",
                                     on_click=lambda x, url=local_download_ep_url, title=local_download_ep_title,
                                                     artwork=local_download_ep_artwork,
-                                                    listen_duration=listen_duration: resume_selected_local_episode(url,
+                                                    listen_time=listen_duration: resume_selected_local_episode(url,
                                                                                                                    title,
                                                                                                                    artwork,
-                                                                                                                   listen_duration)
+                                                                                                                   listen_time)
                                 )
                                 local_download_ep_play_button = ft.IconButton(
                                     icon=ft.icons.NOT_STARTED,
@@ -3002,12 +2636,12 @@ def main(page: ft.Page, session_value=None):
                                     icon_size=40,
                                     tooltip="Resume Episode",
                                     on_click=lambda x,
-                                                    url=f'{proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
+                                                    url=f'{app_api.proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
                                                     title=local_download_ep_title,
                                                     artwork=local_download_ep_artwork,
-                                                    listen_duration=listen_duration: resume_selected_episode(url, title,
+                                                    listen_time=listen_duration: resume_selected_episode(url, title,
                                                                                                              artwork,
-                                                                                                             listen_duration)
+                                                                                                             listen_time)
                                 )
                                 local_download_ep_play_button = ft.IconButton(
                                     icon=ft.icons.NOT_STARTED,
@@ -3015,7 +2649,7 @@ def main(page: ft.Page, session_value=None):
                                     icon_size=40,
                                     tooltip="Play Episode",
                                     on_click=lambda x,
-                                                    url=f'{proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
+                                                    url=f'{app_api.proxy_url}{urllib.parse.quote(local_download_ep_local_url)}',
                                                     title=local_download_ep_title,
                                                     artwork=local_download_ep_artwork: play_selected_episode(url, title,
                                                                                                              artwork)
@@ -3808,7 +3442,7 @@ def main(page: ft.Page, session_value=None):
 
                 return mapped
 
-            search_results = internal_functions.functions.searchpod(podcast_value, search_api_url,
+            search_results = internal_functions.functions.searchpod(podcast_value, app_api.search_api_url,
                                                                     new_search.searchlocation)
 
             # Create a ThreadPoolExecutor.
@@ -3931,7 +3565,7 @@ def main(page: ft.Page, session_value=None):
                 e.control.update()
 
             # Creator info
-            coffee_info = ft.Column([ft.Text('PinePods is a creation of Collin Pendleton.', ft.TextAlign.CENTER),
+            coffee_info = ft.Column([ft.Text('PinePods is a creation by Collin Pendleton.', ft.TextAlign.CENTER),
                                      ft.Text('A lot of work has gone into making this app.', ft.TextAlign.CENTER),
                                      ft.Text('Thank you for using it!', ft.TextAlign.CENTER),
                                      ft.Text(
@@ -4025,11 +3659,11 @@ def main(page: ft.Page, session_value=None):
                                     ft.Container(
                                         padding=padding.only(bottom=20)
                                     ),
-                                    server_name,
+                                    active_user.server_name,
                                     ft.Container(
                                         padding=padding.only(bottom=10)
                                     ),
-                                    app_api_key,
+                                    active_user.app_api_key,
                                     ft.Container(
                                         padding=padding.only(bottom=10)
                                     ),
@@ -4046,8 +3680,8 @@ def main(page: ft.Page, session_value=None):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to log in, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: app_api.api_verify(server_name.value,
-                                                                                      app_api_key.value,
+                                                on_click=lambda e: app_api.api_verify(active_user.server_name.value,
+                                                                                      active_user.app_api_key.value,
                                                                                       retain_session.value)),
                                             ft.FilledButton(
                                                 content=ft.Text(
@@ -4094,7 +3728,7 @@ def main(page: ft.Page, session_value=None):
                 width=160,
                 height=40,
                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                on_click=lambda e: app_api.api_verify_username(server_name.value, login_username, login_password,
+                on_click=lambda e: app_api.api_verify_username(active_user.server_name.value, active_user.login_username, active_user.login_password,
                                                                active_user.retain_session.value)
                 # on_click=lambda e: go_homelogin(e)
             )
@@ -4150,11 +3784,11 @@ def main(page: ft.Page, session_value=None):
                                     ft.Container(
                                         padding=ft.padding.only(bottom=5)
                                     ),
-                                    server_name,
+                                    active_user.server_name,
 
-                                    login_username,
+                                    active_user.login_username,
 
-                                    login_password,
+                                    active_user.login_password,
 
                                     retain_session_contained,
                                     ft.Row(
@@ -4233,7 +3867,7 @@ def main(page: ft.Page, session_value=None):
                                     ft.Container(
                                         padding=padding.only(bottom=20)
                                     ),
-                                    mfa_prompt,
+                                    active_user.mfa_prompt,
                                     ft.Container(
                                         padding=padding.only(bottom=10)
                                     ),
@@ -4249,7 +3883,7 @@ def main(page: ft.Page, session_value=None):
                                                 width=160,
                                                 height=40,
                                                 # Now, if we want to login, we also need to send some info back to the server and check if the credentials are correct or if they even exists.
-                                                on_click=lambda e: active_user.mfa_login(mfa_prompt)
+                                                on_click=lambda e: active_user.mfa_login(active_user.mfa_prompt)
                                                 # on_click=lambda e: go_homelogin(e)
                                             ),
                                         ],
@@ -4407,1158 +4041,8 @@ def main(page: ft.Page, session_value=None):
             active_user.user_is_admin = api_functions.functions.call_user_admin_check(app_api.url, app_api.headers,
                                                                                       int(active_user.user_id))
 
-            class Settings:
-                def __init__(self, page):
-                    self.page = page
-                    self.app_api = app_api
-                    # Guest login Setup
-                    self.guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
-                    self.disable_guest_notify = ft.Text(
-                        f'Guest user is currently {"enabled" if self.guest_status_bool else "disabled"}')
-                    self.guest_check()
-                    # Self Service user create setup
-                    self.self_service_bool = api_functions.functions.call_self_service_status(app_api.url,
-                                                                                              app_api.headers)
-                    self.self_service_notify = ft.Text(
-                        f'Self Service user creation is currently {"enabled" if self.self_service_bool else "disabled"}')
-                    self.self_service_check()
-                    # local settings clear
-                    self.settings_clear_options()
-                    # Backup Settings Setup
-                    self.settings_backup_data()
-                    # Import Settings Setup
-                    self.settings_import_data()
-                    # Server Downloads Setup
-                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
-                                                                                             app_api.headers)
-                    self.disable_download_notify = ft.Text(
-                        f'Downloads are currently {"enabled" if self.download_status_bool else "disabled"}')
-                    self.downloads_check()
-
-                    # MFA Settings Setup
-                    self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
-                                                                                           active_user.user_id)
-                    print('in settings')
-                    self.mfa_check()
-                    # Setup gpodder functionality
-                    self.check_gpodder_status = api_functions.functions.call_check_gpodder_access(app_api.url, app_api.headers, active_user.user_id)
-                    print(self.check_gpodder_status)
-                    print('checked gpod settings')
-                    self.gpodder_setup()
-
-                    if active_user.user_is_admin:
-                        # New User Creation Setup
-                        self.user_table_rows = []
-                        self.user_table_load()
-                        # Email Settings Setup
-                        self.email_information = api_functions.functions.call_get_email_info(app_api.url,
-                                                                                             app_api.headers)
-                        self.email_table_rows = []
-                        self.email_table_load()
-
-                def gpodder_setup(self):
-                    gpodder_option_text = Text('Gpodder Sync:', color=active_user.font_color, size=16)
-
-                    if self.check_gpodder_status['data']:
-                        print('in true')
-                        gpodder_option_desc = Text(
-                            "Note: Signing out of Gpodder Sync will remove the syncing that Pinepods does occasionally with Gpodder. This will not remove any podcasts from your account.",
-                            color=active_user.font_color)
-                        self.gpodder_sign_in_button = ft.ElevatedButton(f'Sign Out of Gpodder Sync',
-                                                                        on_click=self.gpodder_sign_out,
-                                                                        bgcolor=active_user.main_color,
-                                                                        color=active_user.accent_color)
-                    else:
-                        print('in false')
-                        gpodder_option_desc = Text(
-                            "Note: This option allows you to setup gpodder sync in Pinepods. Click the sign in button below to sync your podcasts up. Note that if you have any existing subscriptions in your gpodder account Pinepods will add those to it's database and then sync any additional subscriptions it already has up with Gpodder. From there, Pinepods will occasionally sync with gpodder. Otherwise, you can manually run a sync from here once signed in.",
-                            color=active_user.font_color)
-                        self.gpodder_sign_in_button = ft.ElevatedButton(f'Sign in',
-                                                                        on_click=self.gpodder_sign_in,
-                                                                        bgcolor=active_user.main_color,
-                                                                        color=active_user.accent_color)
-                    gpodder_backup_col = ft.Column(
-                        controls=[gpodder_option_text, gpodder_option_desc, self.gpodder_sign_in_button])
-                    self.setting_gpodder_con = ft.Container(content=gpodder_backup_col)
-                    self.setting_gpodder_con.padding = padding.only(left=70, right=50)
-                    print('bottom setup')
-
-
-                def settings_backup_data(self):
-                    backup_option_text = Text('Backup Data:', color=active_user.font_color, size=16)
-                    backup_option_desc = Text(
-                        "Note: This option allows you to backup data in Pinepods. This can be used to backup podcasts to an opml file, or if you're an admin, it can also backup server information for a full restore. Like users, and current server settings.",
-                        color=active_user.font_color)
-                    self.settings_backup_button = ft.ElevatedButton(f'Backup Data',
-                                                                    on_click=self.backup_data,
-                                                                    bgcolor=active_user.main_color,
-                                                                    color=active_user.accent_color)
-                    setting_backup_col = ft.Column(
-                        controls=[backup_option_text, backup_option_desc, self.settings_backup_button])
-                    self.setting_backup_con = ft.Container(content=setting_backup_col)
-                    self.setting_backup_con.padding = padding.only(left=70, right=50)
-
-                def settings_import_data(self):
-                    import_option_text = Text('Import Data:', color=active_user.font_color, size=16)
-                    import_option_desc = Text(
-                        "Note: This option allows you to import backed up data into Pinepods. You can import OPML files for podcast rss feeds and, if you're an admin, you can import entire server information.",
-                        color=active_user.font_color)
-                    self.settings_import_button = ft.ElevatedButton(f'Import Data',
-                                                                    on_click=self.import_data,
-                                                                    bgcolor=active_user.main_color,
-                                                                    color=active_user.accent_color)
-                    setting_import_col = ft.Column(
-                        controls=[import_option_text, import_option_desc, self.settings_import_button])
-                    self.setting_import_con = ft.Container(content=setting_import_col)
-                    self.setting_import_con.padding = padding.only(left=70, right=50)
-
-                def settings_clear_options(self):
-                    setting_option_text = Text('Clear existing client data:', color=active_user.font_color, size=16)
-                    setting_option_desc = Text(
-                        "Note: This will clear all your local client data. If you have locally downloaded episodes they will be deleted and your saved configuration will be removed. You'll need to setup both your server configuration and your user login",
-                        color=active_user.font_color)
-                    self.settings_clear_button = ft.ElevatedButton(f'Clear Client',
-                                                                   on_click=active_user.logout_pinepods_clear_local,
-                                                                   bgcolor=active_user.main_color,
-                                                                   color=active_user.accent_color)
-                    setting_option_col = ft.Column(
-                        controls=[setting_option_text, setting_option_desc, self.settings_clear_button])
-                    self.setting_option_con = ft.Container(content=setting_option_col)
-                    self.setting_option_con.padding = padding.only(left=70, right=50)
-
-                def update_mfa_status(self):
-                    self.check_mfa_status = api_functions.functions.call_check_mfa_enabled(
-                        self.app_api.url, self.app_api.headers, active_user.user_id
-                    )
-                    if self.check_mfa_status:
-                        self.mfa_button.text = f'Re-Setup MFA for your account'
-                        self.mfa_button.on_click = self.mfa_option_change
-                        if 'mfa_remove_button' not in dir(self):  # create mfa_remove_button if it doesn't exist
-                            self.mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account',
-                                                                       on_click=self.remove_mfa,
-                                                                       bgcolor=active_user.main_color,
-                                                                       color=active_user.accent_color)
-                        if self.mfa_button_row is None:
-                            self.mfa_button_row = ft.Row()
-                        self.mfa_button_row.controls = [self.mfa_button, self.mfa_remove_button]
-                    else:
-                        self.mfa_button.text = f'Setup MFA for your account'
-                        self.mfa_button.on_click = self.setup_mfa
-                        if 'mfa_remove_button' in dir(
-                                self):  # remove mfa_remove_button from mfa_button_row.controls if it exists
-                            self.mfa_button_row.controls = [self.mfa_button]
-                    self.mfa_container.content = self.mfa_column
-                    self.page.update()
-
-                def remove_mfa(self, e):
-                    delete_confirm = api_functions.functions.call_delete_mfa_secret(app_api.url, app_api.headers,
-                                                                                    active_user.user_id)
-                    if delete_confirm:
-                        self.page.snack_bar = ft.SnackBar(content=ft.Text(
-                            f"MFA now removed from your account. You'll no longer be prompted at login"))
-                        self.page.snack_bar.open = True
-                        self.update_mfa_status()
-                        self.page.update()
-                    else:
-                        self.page.snack_bar = ft.SnackBar(
-                            content=ft.Text(f"Error removing MFA settings. Maybe it's not already setup?"))
-                        self.page.snack_bar.open = True
-                        self.page.update()
-
-                def setup_mfa(self, e):
-                    def close_mfa_dlg(e):
-                        mfa_dlg.open = False
-                        os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
-                        self.page.update()
-
-                    def close_validate_mfa_dlg(page):
-                        validate_mfa_dlg.open = False
-                        try:
-                            os.remove(f"{user_data_dir}/{active_user.user_id}_qrcode_{active_user.mfa_timestamp}.png")
-                        except:
-                            pass
-                        self.page.update()
-
-                    def complete_mfa(e):
-                        # Get the OTP entered by the user
-                        close_validate_mfa_dlg(self.page)
-                        self.page.update()
-
-                        entered_otp = mfa_confirm_box.value
-
-                        # Verify the OTP
-                        totp = pyotp.TOTP(active_user.mfa_secret)
-                        if totp.verify(entered_otp, valid_window=1):
-                            # If the OTP is valid, save the MFA secret
-                            api_functions.functions.call_save_mfa_secret(app_api.url, app_api.headers,
-                                                                         active_user.user_id, active_user.mfa_secret)
-
-                            # Close the dialog and show a success message
-                            close_validate_mfa_dlg(self.page)
-                            self.page.snack_bar = ft.SnackBar(
-                                content=ft.Text(f"MFA now configured! On next login you'll be prompted for your code!"))
-                            self.page.snack_bar.open = True
-                            self.update_mfa_status()
-                            return True
-                        else:
-                            # If the OTP is not valid, show an error message
-                            self.page.snack_bar = ft.SnackBar(content=ft.Text(
-                                f"The entered OTP is incorrect. It also may have timed out before you entered it. Please cancel and try again."))
-                            self.page.snack_bar.open = True
-                        self.page.update()
-
-                    mfa_confirm_box = ft.TextField(label="MFA Code", icon=ft.icons.LOCK_CLOCK, hint_text='123456')
-                    mfa_validate_select_row = ft.Row(
-                        controls=[
-                            ft.TextButton("Confirm", on_click=complete_mfa),
-                            ft.TextButton("Cancel", on_click=lambda x: (close_validate_mfa_dlg(page)))
-                        ],
-                        alignment=ft.MainAxisAlignment.END
-                    )
-                    validate_mfa_dlg = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Text(f"Confirm MFA:"),
-                        content=ft.Column(controls=[
-                            ft.Text(f'Please confirm the code from your authenticator app.', selectable=True),
-                            # ], tight=True),
-                            mfa_confirm_box,
-                            # actions=[
-                            mfa_validate_select_row
-                        ],
-                            tight=True),
-                        actions_alignment=ft.MainAxisAlignment.END,
-                    )
-
-                    def validate_mfa(e):
-                        close_mfa_dlg(self.page)
-                        self.page.update()
-                        time.sleep(.3)
-
-                        self.page.dialog = validate_mfa_dlg
-                        validate_mfa_dlg.open = True
-                        self.page.update()
-
-                    img_data_url = setup_user_for_otp()
-                    mfa_select_row = ft.Row(
-                        controls=[
-                            ft.TextButton("Continue", on_click=validate_mfa),
-                            ft.TextButton("Close", on_click=lambda x: (close_mfa_dlg(self.page)))
-                        ],
-                        alignment=ft.MainAxisAlignment.END
-                    )
-                    mfa_dlg = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Text(f"Setup MFA:"),
-                        content=ft.Column(controls=[
-                            ft.Text(
-                                f'Scan the code below with your authenticator app and then click continue to validate your code.',
-                                selectable=True),
-                            ft.Image(src=img_data_url, width=200, height=200),
-                            ft.Text(f'MFA Secret for manual entry: {active_user.mfa_secret}', selectable=True),
-                            ft.Text('Enter TOTP as the type if doing manual entry', selectable=True),
-                            mfa_select_row
-                        ],
-                            tight=True),
-                        actions_alignment=ft.MainAxisAlignment.END,
-                    )
-                    self.page.dialog = mfa_dlg
-                    mfa_dlg.open = True
-                    self.page.update()
-
-                def gpodder_sign_in(self, e):
-                    from threading import Thread, Event
-                    print('sign in start')
-                    class NextcloudAuthenticator:
-                        LOGIN_ENDPOINT = "/index.php/login/v2"
-
-                        def __init__(self, server_url, page, on_success_callback):
-                            self.server_url = server_url
-                            self.page = page
-                            self.auth_completed_event = Event()
-                            self.credentials = None
-                            self.headers = {"User-Agent": "Pinepods"}
-                            self.on_success_callback = on_success_callback
-
-                        def start_login(self):
-                            # Start authentication in a new thread to avoid blocking the UI
-                            thread = Thread(target=self._initiate_login)
-                            thread.daemon = True
-                            thread.start()
-
-                        def poll_for_auth_completion(self, endpoint, token):
-                            while not self.auth_completed_event.is_set():
-                                try:
-                                    print(f"Polling {endpoint} with token {token}")
-                                    res = requests.post(endpoint, json={"token": token}, headers=self.headers)
-                                    print(f"Response from server: {res.status_code}, {res.text}")
-                                    if res.status_code == 200:
-                                        self.credentials = res.json()
-                                        print(f"Credentials received: {self.credentials}")
-                                        self.auth_completed_event.set()
-                                        if self.on_success_callback:
-                                            self.on_success_callback(self.credentials)  # Pass credentials directly
-                                        break
-                                    time.sleep(5)
-                                except Exception as e:
-                                    print(f"Error while polling: {e}")
-
-                        def _initiate_login(self):
-                            auth_url = f"{self.server_url}{self.LOGIN_ENDPOINT}"
-                            try:
-                                res = requests.post(auth_url, headers=self.headers)
-                                if res.status_code == 200:
-                                    response = res.json()
-                                    self._open_url_in_browser(response["login"])
-                                    # Store polling endpoint and token for later use
-                                    self.poll_endpoint = response["poll"]["endpoint"]
-                                    self.poll_token = response["poll"]["token"]
-                                    print(f'nextcloud info: token: {self.poll_token} endpoint: {self.poll_endpoint}')
-                                    # active_user.nextcloud_endpoint = self.poll_endpoint
-                                    # active_user.nextcloud_token = self.poll_token
-
-                                    # Now start polling in a separate thread
-                                    poll_thread = Thread(target=self.poll_for_auth_completion,
-                                                         args=(self.poll_endpoint, self.poll_token))
-                                    poll_thread.start()
-                                else:
-                                    print("Authentication initiation failed: ", res.status_code)
-                                    # Handle failed authentication initiation
-                            except Exception as e:
-                                print("Error during authentication initiation: ", e)
-                                # Handle exceptions (network issues, etc.)
-
-                        def _open_url_in_browser(self, url):
-                            # Use Flet's method to open the URL
-                            self.page.launch_url(url)
-
-                    print('server box below')
-
-                    server_box = ft.TextField(label="Server URL", hint_text='https://nextcloud.myserver.com')
-
-                    def auto_close_gpodder_wait_diag(e):
-                        print('cancel select')
-                        gpodder_wait_diag.open = False
-                        pr_instance.rm_stack()
-                        page.update()
-
-                    def close_gpodder_wait_diag(page):
-                        print('cancel select')
-                        gpodder_wait_diag.open = False
-                        pr_instance.rm_stack()
-                        page.update()
-
-                    gpodder_wait_diag_row = ft.Row(
-                        controls=[
-                            ft.TextButton("Cancel", on_click=lambda x: (close_gpodder_wait_diag(page)))
-                        ],
-                        alignment=ft.MainAxisAlignment.END
-                    )
-                    gpodder_wait_diag = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Text(f"Logging Into Nextcloud!"),
-                        content=ft.Column(controls=[
-                            ft.Text(f'Please login to {server_box.value} from your browser.', selectable=True),
-                            gpodder_wait_diag_row
-
-                        ],
-                            tight=True),
-                        actions_alignment=ft.MainAxisAlignment.END,
-                    )
-
-                    def on_auth_success(credentials):
-                        print(credentials)
-
-                        # Assigning credentials to active_user
-                        active_user.nextcloud_endpoint = credentials['server']
-                        active_user.nextcloud_token = credentials['appPassword']
-
-                        # Rest of the code
-                        page.snack_bar = ft.SnackBar(
-                            ft.Text(f"You Have Authenticated with Nextcloud. Podcast Sync Will Now Begin!"))
-                        page.snack_bar.open = True
-                        close_gpodder_wait_diag(page)
-                        pr_instance.rm_stack()
-                        page.update()
-
-                        # Ensure the token is being passed correctly
-                        print(f'Nextcloud token after auth success: {active_user.nextcloud_token}')
-
-                        api_functions.functions.call_add_gpodder_settings(
-                            app_api.url,
-                            app_api.headers,
-                            active_user.user_id,
-                            active_user.nextcloud_endpoint,
-                            active_user.nextcloud_token,
-                            )
-
-                        # Optionally call active_user.sync_with_nextcloud() if needed
-
-                        # active_user.sync_with_nextcloud()
-                    # Code to handle what happens after successful authentication
-
-                    def on_auth_click(page, server_value):
-                        close_gpodder_diag(page)
-                        time.sleep(0.1)
-                        page.update()
-                        pr_instance.touch_stack()
-
-                        self.page.dialog = gpodder_wait_diag
-                        gpodder_wait_diag.open = True
-                        page.update()
-                        server_url = server_value.value
-                        auth = NextcloudAuthenticator(server_url, page, lambda creds: on_auth_success(creds))
-                        auth.start_login()
-                        # on_auth_success()
-                    # auth_button = ft.TextButton(text="Sign In", on_click=on_auth_click)
-                    # Add server_box and auth_button to your Flet UI in the appropriate place
-
-                    def close_gpodder_diag(page):
-                        gpodder_diag.open = False
-                        self.page.update()
-
-                    print('after close')
-
-                    gpodder_diag_select_row = ft.Row(
-                        controls=[
-                            ft.TextButton("Confirm", on_click=lambda x: (on_auth_click(page, server_box))),
-                            ft.TextButton("Cancel", on_click=lambda x: (close_gpodder_diag(page)))
-                        ],
-                        alignment=ft.MainAxisAlignment.END
-                    )
-                    gpodder_diag = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Text(f"Nextcloud Server Name:"),
-                        content=ft.Column(controls=[
-                            ft.Text(f'Please enter your nextcloud server name below.', selectable=True),
-                            # ], tight=True),
-                            server_box,
-                            gpodder_diag_select_row
-                        ],
-                            tight=True),
-                        actions_alignment=ft.MainAxisAlignment.END,
-                    )
-                    self.page.dialog = gpodder_diag
-                    gpodder_diag.open = True
-                    self.page.update()
-
-                def gpodder_sign_out(self, e):
-                    api_functions.functions.call_remove_gpodder_settings(app_api.url, app_api.headers, active_user.user_id)
-                    page.snack_bar = ft.SnackBar(ft.Text(f"You've been signed out from Gpodder Sync."))
-                    page.snack_bar.open = True
-                    self.page.update()
-
-                def guest_check(self):
-                    if self.guest_status_bool:
-                        self.guest_status = 'enabled'
-                        self.guest_info_button = ft.ElevatedButton(f'Disable Guest User',
-                                                                   on_click=self.guest_user_change,
-                                                                   bgcolor=active_user.main_color,
-                                                                   color=active_user.accent_color)
-                    else:
-                        self.guest_status = 'disabled'
-                        self.guest_info_button = ft.ElevatedButton(f'Enable Guest User',
-                                                                   on_click=self.guest_user_change,
-                                                                   bgcolor=active_user.main_color,
-                                                                   color=active_user.accent_color)
-
-                def self_service_check(self):
-                    if self.self_service_bool:
-                        self.self_service_status = 'enabled'
-                        self.self_service_button = ft.ElevatedButton(f'Disable Self Service User Creation',
-                                                                     on_click=self.self_service_change,
-                                                                     bgcolor=active_user.main_color,
-                                                                     color=active_user.accent_color)
-                    else:
-                        self.self_service_status = 'disabled'
-                        self.self_service_button = ft.ElevatedButton(f'Enable Self Service User Creation',
-                                                                     on_click=self.self_service_change,
-                                                                     bgcolor=active_user.main_color,
-                                                                     color=active_user.accent_color)
-
-                def downloads_check(self):
-                    if self.download_status_bool:
-                        self.download_info_button = ft.ElevatedButton(f'Disable Podcast Downloads',
-                                                                      on_click=self.download_option_change,
-                                                                      bgcolor=active_user.main_color,
-                                                                      color=active_user.accent_color)
-                    else:
-                        self.download_info_button = ft.ElevatedButton(f'Enable Podcast Downloads',
-                                                                      on_click=self.download_option_change,
-                                                                      bgcolor=active_user.main_color,
-                                                                      color=active_user.accent_color)
-
-                def mfa_check(self):
-                    self.mfa_warning = ft.Text(
-                        'Note: when setting up MFA you have 1 minute to enter the code or it will expire. If it expires just cancel and try again.',
-                        color=active_user.font_color, size=12)
-
-                    if self.check_mfa_status:
-                        self.mfa_text = ft.Text(f'Setup MFA', color=active_user.font_color,
-                                                size=16)
-                        self.mfa_button = ft.ElevatedButton(f'Re-Setup MFA for your account',
-                                                            on_click=self.mfa_option_change,
-                                                            bgcolor=active_user.main_color,
-                                                            color=active_user.accent_color)
-                        self.mfa_remove_button = ft.ElevatedButton(f'Remove MFA for your account',
-                                                                   on_click=self.remove_mfa,
-                                                                   bgcolor=active_user.main_color,
-                                                                   color=active_user.accent_color)
-                        self.mfa_button_row = ft.Row(
-                            controls=[self.mfa_button, self.mfa_remove_button])
-                        self.mfa_column = ft.Column(controls=[self.mfa_text, self.mfa_warning, self.mfa_button_row])
-                    else:
-                        self.mfa_text = ft.Text(f'Setup MFA', color=active_user.font_color,
-                                                size=16)
-                        self.mfa_button = ft.ElevatedButton(f'Setup MFA for your account', on_click=self.setup_mfa,
-                                                            bgcolor=active_user.main_color,
-                                                            color=active_user.accent_color)
-                        self.mfa_column = ft.Column(controls=[self.mfa_text, self.mfa_warning, self.mfa_button])
-
-                    # Update mfa_container content
-                    self.mfa_container = ft.Container(content=self.mfa_column)
-                    self.mfa_container.padding = padding.only(left=70, right=50)
-                    self.mfa_container.content = self.mfa_column
-                    self.page.update()
-
-                def email_table_load(self):
-                    server_info = self.email_information['Server_Name'] + ':' + str(
-                        self.email_information['Server_Port'])
-                    from_email = self.email_information['From_Email']
-                    send_mode = self.email_information['Send_Mode']
-                    encryption = self.email_information['Encryption']
-                    auth = self.email_information['Auth_Required']
-
-                    if auth == 1:
-                        auth_user = self.email_information['Username']
-                    else:
-                        auth_user = 'Auth not defined!'
-
-                    # Create a new data row with the user information
-                    row = ft.DataRow(
-                        cells=[
-                            ft.DataCell(ft.Text(server_info)),
-                            ft.DataCell(ft.Text(from_email)),
-                            ft.DataCell(ft.Text(send_mode)),
-                            ft.DataCell(ft.Text(encryption)),
-                            ft.DataCell(ft.Text(auth_user))
-                        ]
-                    )
-
-                    # Append the row to the list of data rows
-                    self.email_table_rows.append(row)
-
-                    self.email_table = ft.DataTable(
-                        bgcolor=active_user.main_color,
-                        border=ft.border.all(2, active_user.main_color),
-                        border_radius=10,
-                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                        heading_row_color=active_user.nav_color1,
-                        heading_row_height=100,
-                        data_row_color={"hovered": active_user.font_color},
-                        # show_checkbox_column=True,
-                        columns=[
-                            ft.DataColumn(ft.Text("Server Name"), numeric=True),
-                            ft.DataColumn(ft.Text("From Email")),
-                            ft.DataColumn(ft.Text("Send Mode")),
-                            ft.DataColumn(ft.Text("Encryption?")),
-                            ft.DataColumn(ft.Text("Username"))
-                        ],
-                        rows=self.email_table_rows
-                    )
-                    pw_reset_current = Text('Existing Email Server Values:', color=active_user.font_color, size=16)
-                    self.email_edit_column = ft.Column(controls=[pw_reset_current, self.email_table])
-                    self.email_edit_container = ft.Container(content=self.email_edit_column)
-                    self.email_edit_container.padding = padding.only(left=70, right=50)
-
-                def create_email_table(self):
-                    return ft.DataTable(
-                        bgcolor=active_user.main_color,
-                        border=ft.border.all(2, active_user.main_color),
-                        border_radius=10,
-                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                        heading_row_color=active_user.nav_color1,
-                        heading_row_height=100,
-                        data_row_color={"hovered": active_user.font_color},
-                        # show_checkbox_column=True,
-                        columns=[
-                            ft.DataColumn(ft.Text("Server Name"), numeric=True),
-                            ft.DataColumn(ft.Text("From Email")),
-                            ft.DataColumn(ft.Text("Send Mode")),
-                            ft.DataColumn(ft.Text("Encryption?")),
-                            ft.DataColumn(ft.Text("Username"))
-                        ],
-                        rows=self.email_table_rows
-                    )
-
-                def email_table_update(self):
-                    self.email_information = api_functions.functions.call_get_email_info(app_api.url, app_api.headers)
-                    self.email_table_rows.clear()
-                    server_info = self.email_information['Server_Name'] + ':' + str(
-                        self.email_information['Server_Port'])
-                    from_email = self.email_information['From_Email']
-                    send_mode = self.email_information['Send_Mode']
-                    encryption = self.email_information['Encryption']
-                    auth = self.email_information['Auth_Required']
-
-                    if auth == 1:
-                        auth_user = self.email_information['Username']
-                    else:
-                        auth_user = 'Auth not defined!'
-
-                    # Create a new data row with the user information
-                    row = ft.DataRow(
-                        cells=[
-                            ft.DataCell(ft.Text(server_info)),
-                            ft.DataCell(ft.Text(from_email)),
-                            ft.DataCell(ft.Text(send_mode)),
-                            ft.DataCell(ft.Text(encryption)),
-                            ft.DataCell(ft.Text(auth_user))
-                        ]
-                    )
-                    # Append the row to the list of data rows
-                    self.email_table_rows.append(row)
-                    self.email_table = self.create_email_table()
-                    self.page.update()
-
-                def user_table_load(self):
-                    edit_user_text = ft.Text('Modify existing Users (Select a user to modify properties):',
-                                             color=active_user.font_color, size=16)
-                    user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
-
-                    for entry in user_information:
-                        user_id = entry['UserID']
-                        fullname = entry['Fullname']
-                        username = entry['Username']
-                        email = entry['Email']
-                        is_admin_numeric = entry['IsAdmin']
-                        if is_admin_numeric == 1:
-                            is_admin = 'yes'
-                        else:
-                            is_admin = 'no'
-
-                        # Create a new data row with the user information
-                        row = ft.DataRow(
-                            cells=[
-                                ft.DataCell(ft.Text(user_id)),
-                                ft.DataCell(ft.Text(fullname)),
-                                ft.DataCell(ft.Text(username)),
-                                ft.DataCell(ft.Text(email)),
-                                ft.DataCell(ft.Text(str(is_admin))),
-                            ],
-                            on_select_changed=(
-                                lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy,
-                                       user_id_copy:
-                                lambda x: (modify_user.open_edit_user(username_copy, is_admin_numeric_copy,
-                                                                      fullname_copy, email_copy, user_id_copy),
-                                           self.user_table_update())
-                            )(username, is_admin_numeric, fullname, email, user_id)
-                        )
-
-                        # Append the row to the list of data rows
-                        self.user_table_rows.append(row)
-
-                    self.user_table = ft.DataTable(
-                        bgcolor=active_user.main_color,
-                        border=ft.border.all(2, active_user.main_color),
-                        border_radius=10,
-                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                        heading_row_color=active_user.nav_color1,
-                        heading_row_height=100,
-                        data_row_color={"hovered": active_user.font_color},
-                        columns=[
-                            ft.DataColumn(ft.Text("User ID"), numeric=True),
-                            ft.DataColumn(ft.Text("Fullname")),
-                            ft.DataColumn(ft.Text("Username")),
-                            ft.DataColumn(ft.Text("Email")),
-                            ft.DataColumn(ft.Text("Admin User"))
-                        ],
-                        rows=self.user_table_rows
-                    )
-                    self.user_edit_column = ft.Column(controls=[edit_user_text, self.user_table])
-                    self.user_edit_container = ft.Container(content=self.user_edit_column)
-                    self.user_edit_container.padding = padding.only(left=70, right=50)
-
-                def user_table_update(self):
-                    user_information = api_functions.functions.call_get_user_info(app_api.url, app_api.headers)
-                    self.user_table_rows.clear()
-
-                    for entry in user_information:
-                        user_id = entry['UserID']
-                        fullname = entry['Fullname']
-                        username = entry['Username']
-                        email = entry['Email']
-                        is_admin_numeric = entry['IsAdmin']
-                        if is_admin_numeric == 1:
-                            is_admin = 'yes'
-                        else:
-                            is_admin = 'no'
-
-                        # Create a new data row with the user information
-                        row = ft.DataRow(
-                            cells=[
-                                ft.DataCell(ft.Text(user_id)),
-                                ft.DataCell(ft.Text(fullname)),
-                                ft.DataCell(ft.Text(username)),
-                                ft.DataCell(ft.Text(email)),
-                                ft.DataCell(ft.Text(str(is_admin))),
-                            ],
-                            on_select_changed=(
-                                lambda username_copy, is_admin_numeric_copy, fullname_copy, email_copy, user_id_copy:
-                                lambda x: (modify_user.open_edit_user(username_copy, is_admin_numeric_copy,
-                                                                      fullname_copy, email_copy, user_id_copy),
-                                           self.user_table_update())
-                            )(username, is_admin_numeric, fullname, email, user_id)
-                        )
-
-                        self.user_table_rows.append(row)
-                    self.user_table = self.create_user_table()
-                    self.page.update()
-
-                def create_user_table(self):
-                    return ft.DataTable(
-                        bgcolor=active_user.main_color,
-                        border=ft.border.all(2, active_user.main_color),
-                        border_radius=10,
-                        vertical_lines=ft.border.BorderSide(3, active_user.tertiary_color),
-                        horizontal_lines=ft.border.BorderSide(1, active_user.tertiary_color),
-                        heading_row_color=active_user.nav_color1,
-                        heading_row_height=100,
-                        data_row_color={"hovered": active_user.font_color},
-                        columns=[
-                            ft.DataColumn(ft.Text("User ID"), numeric=True),
-                            ft.DataColumn(ft.Text("Fullname")),
-                            ft.DataColumn(ft.Text("Username")),
-                            ft.DataColumn(ft.Text("Email")),
-                            ft.DataColumn(ft.Text("Admin User"))
-                        ],
-                        rows=self.user_table_rows
-                    )
-
-                def import_data(self, e):
-                    def close_import_dlg(page):
-                        import_dlg.open = False
-                        self.page.update()
-
-                    def import_user():
-                        import xml.etree.ElementTree as ET
-
-                        def import_pick_result(e: ft.FilePickerResultEvent):
-                            if e.files:
-                                active_user.import_file = e.files[0].path
-                            tree = ET.parse(active_user.import_file)
-                            root = tree.getroot()
-
-                            podcasts = []
-                            for outline in root.findall('.//outline'):
-                                podcast_data = {
-                                    'title': outline.get('title'),
-                                    'xmlUrl': outline.get('xmlUrl')
-                                }
-                                podcasts.append(podcast_data)
-
-                            pr_instance.touch_stack()
-                            close_import_dlg(page)
-                            page.update()
-                            for podcast in podcasts:
-
-                                if not podcast.get('title') or not podcast.get('xmlUrl'):
-                                    close_import_dlg(page)
-                                    page.snack_bar = ft.SnackBar(
-                                        content=ft.Text(f"This does not appear to be a valid opml file"))
-                                    page.snack_bar.open = True
-                                    self.page.update()
-                                    return False
-
-                                # Get the podcast values
-                                podcast_values = internal_functions.functions.get_podcast_values(podcast['xmlUrl'],
-                                                                                                 active_user.user_id)
-
-                                # Call add_podcast for each podcast
-                                return_value = api_functions.functions.call_add_podcast(app_api.url, app_api.headers,
-                                                                                        podcast_values,
-                                                                                        active_user.user_id)
-                                if return_value:
-                                    page.snack_bar = ft.SnackBar(
-                                        content=ft.Text(f"{podcast_values[0]} Imported!")
-                                    )
-                                else:
-                                    page.snack_bar = ft.SnackBar(
-                                        content=ft.Text(f"{podcast_values[0]} already added!")
-                                    )
-                                page.snack_bar.open = True
-                                self.page.update()
-
-                            if pr_instance.active_pr == True:
-                                pr_instance.rm_stack()
-                            page.snack_bar = ft.SnackBar(
-                                content=ft.Text(
-                                    f"OPML Successfully imported! You should now be subscribed to podcasts defined in the file!"))
-                            page.snack_bar.open = True
-                            self.page.update()
-
-                            return True
-
-                        file_picker = ft.FilePicker(on_result=import_pick_result)
-                        self.page.overlay.append(file_picker)
-                        self.page.update()
-                        file_picker.pick_files()
-
-                    def import_server():
-                        def import_server_result(e: ft.FilePickerResultEvent):
-                            close_import_dlg(page)
-                            self.page.update()
-
-                            if e.files:
-                                file_path = e.files[0].path
-                                with open(file_path, 'r') as file:
-                                    file_contents = file.read()
-
-                                def run_full_restore(e):
-                                    pr_instance.touch_stack()
-                                    close_restore_pass_win(self.page)
-                                    self.page.update()
-                                    time.sleep(1)
-
-                                    restore_status = api_functions.functions.call_restore_server(app_api.url,
-                                                                                                 app_api.headers,
-                                                                                                 backup_database_pass.value,
-                                                                                                 file_contents)
-                                    if restore_status.get("success") == True:
-                                        self.page.snack_bar = ft.SnackBar(
-                                            content=ft.Text(f"Server Restore Successful! Now logging out!"))
-                                        self.page.snack_bar.open = True
-                                        pr_instance.rm_stack()
-                                        self.page.update()
-                                        time.sleep(1.5)
-
-                                        active_user = User(page)
-                                        pr_instance.rm_stack()
-                                        login_username.visible = True
-                                        login_password.visible = True
-
-                                        start_login(page)
-                                        new_nav.navbar.border = ft.border.only(
-                                            right=ft.border.BorderSide(2, active_user.tertiary_color))
-                                        new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
-                                        page.overlay.append(new_nav.navbar_stack)
-                                        new_nav.navbar.visible = False
-                                        self.page.update()
-                                    else:
-                                        error_message = restore_status.get("error_message", "Unknown error.")
-                                        self.page.snack_bar = ft.SnackBar(
-                                            content=ft.Text(f"Server Restore failed: {error_message}"))
-                                        self.page.snack_bar.open = True
-                                        self.page.update()
-
-                                def close_restore_pass_win(page):
-                                    close_restore_pass_dlg.open = False
-                                    self.page.update()
-
-                                backup_pass_text = ft.Text(
-                                    f"WARNING: You are about to run a full restore on your server! This will remove absolutely everything currently stored in your database and revert to the data that's part of the backup you restore to. If you're unsure what you're doing DO NOT proceed. If you are certain you'd like to restore the database with a previous backup please enter your database root password below.",
-                                    selectable=True)
-                                backup_occur_text = ft.Text(
-                                    f"After the restore is complete you will be logged out from Pinepods as the restore operation will restore your users to the users included in the backup. Make certain you know the login details to a user that's an admin in the backup you are about to restore to.")
-
-                                backup_select_pass_row = ft.Row(
-                                    controls=[
-                                        ft.TextButton("Submit", on_click=run_full_restore),
-                                        ft.TextButton("Close", on_click=lambda x: (close_restore_pass_win(self.page)))
-                                    ],
-                                    alignment=ft.MainAxisAlignment.END
-                                )
-                                backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN,
-                                                                    hint_text='My_Datab@$$_P@SS', password=True,
-                                                                    can_reveal_password=True)
-
-                                close_restore_pass_dlg = ft.AlertDialog(
-                                    modal=True,
-                                    title=ft.Text(f"Restore Data:"),
-                                    content=ft.Column(controls=[
-                                        backup_pass_text,
-                                        backup_occur_text,
-                                        backup_database_pass,
-                                        backup_select_pass_row
-                                    ],
-                                        tight=True),
-                                    actions_alignment=ft.MainAxisAlignment.END,
-                                )
-                                self.page.dialog = close_restore_pass_dlg
-                                close_restore_pass_dlg.open = True
-                                self.page.update()
-
-                        file_picker = ft.FilePicker(on_result=import_server_result)
-                        self.page.overlay.append(file_picker)
-                        self.page.update()
-                        file_picker.pick_files()
-
-                    user_import_select = ft.TextButton("Import OPML of Podcasts", on_click=lambda x: (import_user()))
-                    server_import_select = ft.TextButton("Import Entire Server Information",
-                                                         on_click=lambda x: (import_server()))
-
-                    if not active_user.user_is_admin:
-                        server_import_select.visible = False
-
-                    import_select_row = ft.Row(
-                        controls=[
-                            ft.TextButton("Close", on_click=lambda x: (close_import_dlg(self.page)))
-                        ],
-                        alignment=ft.MainAxisAlignment.END
-                    )
-
-                    import_dlg = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Text(f"Import Data:"),
-                        content=ft.Column(controls=[
-                            ft.Text(
-                                f'Select an option below to import data.',
-                                selectable=True),
-                            user_import_select,
-                            server_import_select,
-                            import_select_row
-                        ],
-                            tight=True),
-                        actions_alignment=ft.MainAxisAlignment.END,
-                    )
-                    self.page.dialog = import_dlg
-                    import_dlg.open = True
-                    self.page.update()
-
-                def backup_data(self, e):
-                    def close_backup_dlg(page):
-                        backup_dlg.open = False
-                        self.page.update()
-
-                    def open_backups():
-                        import subprocess
-                        import platform
-
-                        def open_folder(path):
-                            if platform.system() == "Windows":
-                                os.startfile(path)
-                            elif platform.system() == "Darwin":
-                                subprocess.Popen(["open", path])
-                            else:
-                                subprocess.Popen(["xdg-open", path])
-
-                        open_folder(backup_dir)
-
-                    def backup_user():
-                        backup_status = api_functions.functions.call_backup_user(app_api.url, app_api.headers,
-                                                                                 active_user.user_id, backup_dir)
-                        close_backup_dlg(self.page)
-                        self.page.update()
-
-                        def close_backup_status_win(page):
-                            backup_stat_dlg.open = False
-                            self.page.update()
-
-                        if backup_status == True:
-                            backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}",
-                                                         selectable=True)
-                            folder_location = ft.TextButton("Open Backup Location",
-                                                            on_click=lambda x: (open_backups()))
-                        else:
-                            backup_status_text = ft.Text("Backup was not successful. Try again!")
-                            folder_location = ft.Text("N/A")
-
-                        backup_select_status_row = ft.Row(
-                            controls=[
-                                ft.TextButton("Close", on_click=lambda x: (close_backup_status_win(self.page)))
-                            ],
-                            alignment=ft.MainAxisAlignment.END
-                        )
-
-                        backup_stat_dlg = ft.AlertDialog(
-                            modal=True,
-                            title=ft.Text(f"Backup Data:"),
-                            content=ft.Column(controls=[
-                                backup_status_text,
-                                folder_location,
-                                backup_select_status_row
-                            ],
-                                tight=True),
-                            actions_alignment=ft.MainAxisAlignment.END,
-                        )
-                        self.page.dialog = backup_stat_dlg
-                        backup_stat_dlg.open = True
-                        self.page.update()
-
-                    def backup_server():
-                        close_backup_dlg(self.page)
-                        self.page.update()
-
-                        def run_database_backup(e):
-                            backup_status = api_functions.functions.call_backup_server(app_api.url, app_api.headers,
-                                                                                       backup_dir,
-                                                                                       backup_database_pass.value)
-                            close_backup_pass_win(self.page)
-                            self.page.update()
-
-                            def close_backup_status_win(page):
-                                backup_stat_dlg.open = False
-                                self.page.update()
-
-                            if backup_status["success"]:
-                                backup_status_text = ft.Text(f"Backup Successful! File Saved to: {backup_dir}",
-                                                             selectable=True)
-                                folder_location = ft.TextButton("Open Backup Location",
-                                                                on_click=lambda x: (open_backups()))
-                            else:
-                                backup_status_text = ft.Text(
-                                    f"Backup was not successful. Reason: {backup_status['error_message']}")
-                                folder_location = ft.Text("N/A")
-
-                            backup_select_status_row = ft.Row(
-                                controls=[
-                                    ft.TextButton("Close", on_click=lambda x: (close_backup_status_win(self.page)))
-                                ],
-                                alignment=ft.MainAxisAlignment.END
-                            )
-
-                            backup_stat_dlg = ft.AlertDialog(
-                                modal=True,
-                                title=ft.Text(f"Backup Data:"),
-                                content=ft.Column(controls=[
-                                    backup_status_text,
-                                    folder_location,
-                                    backup_select_status_row
-                                ], tight=True),
-                                actions_alignment=ft.MainAxisAlignment.END,
-                            )
-                            self.page.dialog = backup_stat_dlg
-                            backup_stat_dlg.open = True
-                            self.page.update()
-
-                        def close_backup_pass_win(page):
-                            backup_pass_dlg.open = False
-                            self.page.update()
-
-                        backup_pass_text = ft.Text(
-                            f"In order to conduct a server wide backup you must provide your database password set during the creation of your Pinepods server. Please enter that below.",
-                            selectable=True)
-
-                        backup_select_pass_row = ft.Row(
-                            controls=[
-                                ft.TextButton("Submit", on_click=run_database_backup),
-                                ft.TextButton("Close", on_click=lambda x: (close_backup_pass_win(self.page)))
-                            ],
-                            alignment=ft.MainAxisAlignment.END
-                        )
-                        backup_database_pass = ft.TextField(label="Database Password", icon=ft.icons.HANDYMAN,
-                                                            hint_text='My_Datab@$$_P@SS', password=True,
-                                                            can_reveal_password=True)
-
-                        backup_pass_dlg = ft.AlertDialog(
-                            modal=True,
-                            title=ft.Text(f"Backup Data:"),
-                            content=ft.Column(controls=[
-                                backup_pass_text,
-                                backup_database_pass,
-                                backup_select_pass_row
-                            ],
-                                tight=True),
-                            actions_alignment=ft.MainAxisAlignment.END,
-                        )
-                        self.page.dialog = backup_pass_dlg
-                        backup_pass_dlg.open = True
-                        self.page.update()
-
-                    user_backup_select = ft.TextButton("Export OPML of Podcasts", on_click=lambda x: (backup_user()))
-                    server_backup_select = ft.TextButton("Backup Entire Server", on_click=lambda x: (backup_server()))
-
-                    if not active_user.user_is_admin:
-                        server_backup_select.visible = False
-
-                    backup_select_row = ft.Row(
-                        controls=[
-                            ft.TextButton("Close", on_click=lambda x: (close_backup_dlg(self.page)))
-                        ],
-                        alignment=ft.MainAxisAlignment.END
-                    )
-
-                    backup_dlg = ft.AlertDialog(
-                        modal=True,
-                        title=ft.Text(f"Backup Data:"),
-                        content=ft.Column(controls=[
-                            ft.Text(
-                                f'Select an option below to backup information.',
-                                selectable=True),
-                            user_backup_select,
-                            server_backup_select,
-                            backup_select_row
-                        ],
-                            tight=True),
-                        actions_alignment=ft.MainAxisAlignment.END,
-                    )
-                    self.page.dialog = backup_dlg
-                    backup_dlg.open = True
-                    self.page.update()
-
-                def guest_user_change(self, e):
-                    api_functions.functions.call_enable_disable_guest(app_api.url, app_api.headers)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Guest user modified!"))
-                    self.page.snack_bar.open = True
-                    self.guest_status_bool = api_functions.functions.call_guest_status(app_api.url, app_api.headers)
-                    if self.guest_status_bool:
-                        self.guest_info_button.text = 'Disable Guest User'
-                        self.guest_info_button.on_click = self.guest_user_change
-                        self.guest_status = 'enabled'
-                    else:
-                        self.guest_info_button.text = 'Enable Guest User'
-                        self.guest_info_button.on_click = self.guest_user_change
-                        self.guest_status = 'disabled'
-
-                    self.disable_guest_notify.visible = False
-                    self.page.update()
-
-                def self_service_change(self, e):
-                    api_functions.functions.call_enable_disable_self_service(app_api.url, app_api.headers)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Self Service Settings Adjusted!"))
-                    self.page.snack_bar.open = True
-                    self.self_service_bool = api_functions.functions.call_self_service_status(app_api.url,
-                                                                                              app_api.headers)
-                    if self.self_service_bool:
-                        self.self_service_button.text = 'Disable Self Service User Creation'
-                        self.self_service_button.on_click = self.self_service_change
-                        self.self_service_status = 'enabled'
-                    else:
-                        self.self_service_button.text = 'Enable Self Service User Creation'
-                        self.self_service_button.on_click = self.self_service_change
-                        self.self_service_status = 'disabled'
-
-                    self.self_service_notify.visible = False
-                    self.page.update()
-
-                def download_option_change(self, e):
-                    api_functions.functions.call_enable_disable_downloads(app_api.url, app_api.headers)
-                    self.page.snack_bar = ft.SnackBar(content=ft.Text(f"Download Option Modified!"))
-                    self.page.snack_bar.open = True
-                    self.download_status_bool = api_functions.functions.call_download_status(app_api.url,
-                                                                                             app_api.headers)
-                    if self.download_status_bool:
-                        self.download_info_button.text = 'Disable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
-                    else:
-                        self.download_info_button.text = 'Enable Podcast Server Downloads'
-                        self.download_info_button.on_click = self.download_option_change
-
-                    self.disable_download_notify.visible = False
-                    self.page.update()
-
-                def mfa_option_change(self, e):
-                    mfa_setup_check = self.setup_mfa()
-                    if mfa_setup_check == True:
-                        self.mfa_check()
-                        self.page.update()
-                    else:
-                        self.page.update()
-
-            settings_data = Settings(page)
-            print('after setting')
+            settings_data = helpers.Settings(page, app_api, active_user, app_api.url, app_api.headers, user_data_dir,
+                                             pr_instance, modify_user, active_user.login_username, active_user.login_password, nav.new_nav)
 
             # User Settings
             user_setting = ft.Text(
@@ -5590,7 +4074,7 @@ def main(page: ft.Page, session_value=None):
                                      ]
                                      )
             theme_submit = ft.ElevatedButton("Submit", bgcolor=active_user.main_color, color=active_user.accent_color,
-                                             on_click=lambda event: active_user.set_theme(theme_drop.value))
+                                             on_click=lambda event: active_user.set_theme(theme_drop.value, nav.new_nav))
             theme_column = ft.Column(controls=[theme_text, theme_drop, theme_submit])
             theme_row = ft.Row(
                 vertical_alignment=ft.CrossAxisAlignment.START,
@@ -5612,7 +4096,7 @@ def main(page: ft.Page, session_value=None):
                 admin_setting_text.padding = padding.only(left=70, right=50)
 
                 # New User Creation Elements
-                new_user = User(page)
+                new_user = helpers.user.User(page, app_api)
                 user_text = Text('Create New User:', color=active_user.font_color, size=16)
                 user_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP, hint_text='John PinePods',
                                          border_color=active_user.accent_color, color=active_user.accent_color,
@@ -6226,694 +4710,8 @@ def main(page: ft.Page, session_value=None):
         page.banner.open = True
         page.update()
 
-    # Login/User Changes------------------------------------------------------
-    class User:
-        email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-
-        def __init__(self, page):
-            self.username = None
-            self.password = None
-            self.email = None
-            self.main_color = 'colors.BLUE_GREY'
-            self.bgcolor = 'colors.BLUE_GREY'
-            self.accent_color = 'colors.BLUE_GREY'
-            self.tertiary_color = 'colors.BLUE_GREY'
-            self.font_color = 'colors.BLUE_GREY'
-            self.user_id = None
-            self.page = page
-            self.fullname = 'Login First'
-            self.isadmin = None
-            self.navbar_stack = None
-            self.new_user_valid = False
-            self.invalid_value = False
-            self.api_id = 0
-            self.mfa_secret = None
-            self.downloading = []
-            self.downloading_name = []
-            self.auth_enabled = 0
-            self.timezone = 'UTC'
-            self.hour_pref = 24
-            self.first_login_finished = 0
-            self.first_start = 0
-            self.search_term = ""
-            self.feed_url = None
-            self.import_file = None
-            self.user_is_admin = None
-            self.show_audio_container = True
-            # global current_pod_view
-            self.current_pod_view = None  # This global variable will hold the current active Pod_View instance
-            self.retain_session = ft.Switch(label="Stay Signed in", value=False)
-            self.nextcloud_endpoint = None
-            self.nexcloud_token = None
-
-        # New User Stuff ----------------------------
-
-        def set_username(self, new_username):
-            if new_username is None or not new_username.strip():
-                self.username = None
-            else:
-                self.username = new_username
-
-        def set_password(self, new_password):
-            if new_password is None or not new_password.strip():
-                self.password = None
-            else:
-                self.password = new_password
-
-        def set_email(self, new_email):
-            if new_email is None or not new_email.strip():
-                self.email = None
-            else:
-                self.email = new_email
-
-        def set_name(self, new_name):
-            if new_name is None or not new_name.strip():
-                self.fullname = None
-            else:
-                self.fullname = new_name
-
-        def set_admin(self, new_admin):
-            self.isadmin = new_admin
-
-        def verify_user_values(self):
-            self.valid_username = self.username is not None and len(self.username) >= 3
-            self.valid_password = self.password is not None and len(self.password) >= 8 and any(
-                c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
-            regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-            self.valid_email = self.email is not None and re.match(self.email_regex, self.email) is not None
-            invalid_value = False
-            if not self.valid_username:
-                self.page.dialog = username_invalid_dlg
-                username_invalid_dlg.open = True
-                self.page.update()
-                invalid_value = True
-            elif not self.valid_password:
-                self.page.dialog = password_invalid_dlg
-                password_invalid_dlg.open = True
-                self.page.update()
-                invalid_value = True
-            elif not self.valid_email:
-                self.page.dialog = email_invalid_dlg
-                email_invalid_dlg.open = True
-                self.page.update()
-                invalid_value = True
-            elif api_functions.functions.call_check_usernames(app_api.url, app_api.headers, self.username):
-                self.page.dialog = username_exists_dlg
-                username_exists_dlg.open = True
-                self.page.update()
-                invalid_value = True
-            self.new_user_valid = not invalid_value
-
-        def verify_user_values_snack(self):
-            self.valid_username = self.username is not None and len(self.username) >= 6
-            self.valid_password = self.password is not None and len(self.password) >= 8 and any(
-                c.isupper() for c in self.password) and any(c.isdigit() for c in self.password)
-            regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-            self.valid_email = self.email is not None and re.match(self.email_regex, self.email) is not None
-            invalid_value = False
-            if not self.valid_username:
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Usernames must be unique and require at least 6 characters"))
-                page.snack_bar.open = True
-                self.page.update()
-                self.invalid_value = True
-            elif not self.valid_password:
-                page.snack_bar = ft.SnackBar(content=ft.Text(
-                    f"Passwords require at least 8 characters, a number, a capital letter and a special character!"))
-                page.snack_bar.open = True
-                self.page.update()
-                self.invalid_value = True
-            elif not self.valid_email:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Email appears to be non-standard email layout!"))
-                page.snack_bar.open = True
-                self.page.update()
-                self.invalid_value = True
-            elif api_functions.functions.call_check_usernames(app_api.url, app_api.headers, self.username):
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"This username appears to be already taken"))
-                page.snack_bar.open = True
-                self.page.update()
-                self.invalid_value = True
-            if self.invalid_value:
-                self.new_user_valid = False
-            else:
-                self.new_user_valid = not invalid_value
-
-        def user_created_prompt(self):
-            if self.new_user_valid:
-                self.page.dialog = user_dlg
-                user_dlg.open = True
-                self.page.update()
-
-        def user_created_snack(self):
-            if self.new_user_valid:
-                page.snack_bar = ft.SnackBar(content=ft.Text(
-                    f"New user created successfully. You may now login and begin using Pinepods. Enjoy!"))
-                page.snack_bar.open = True
-                page.update()
-
-        def popup_user_values(self, e):
-            pass
-
-        def create_user(self):
-            if self.new_user_valid:
-                salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
-                hash_pw_str = base64.b64encode(hash_pw).decode()
-                salt_str = base64.b64encode(salt).decode()
-                api_functions.functions.call_add_user(app_api.url, app_api.headers, self.fullname, self.username,
-                                                      self.email, hash_pw_str, salt_str)
-
-        def test_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required,
-                                username=None, password=None):
-            def close_email_dlg(e):
-                send_email_dlg.open = False
-                page.update()
-
-            pr_instance.touch_stack()
-            page.update()
-
-            def save_email_settings(e):
-                encryption_key = api_functions.functions.call_get_encryption_key(app_api.url, app_api.headers)
-                encryption_key_bytes = base64.b64decode(encryption_key)
-                api_functions.functions.call_save_email_settings(
-                    app_api.url,
-                    app_api.headers,
-                    self.server_name,
-                    self.server_port,
-                    self.from_email,
-                    self.send_mode,
-                    self.encryption,
-                    self.auth_required,
-                    self.email_username,
-                    self.email_password,
-                    encryption_key_bytes
-                )
-                send_email_dlg.open = False
-                page.update()
-
-            self.server_name = server_name
-            self.server_port = int(server_port)
-            self.from_email = from_email
-            self.send_mode = send_mode
-            self.encryption = encryption
-            self.auth_required = auth_required
-            self.email_username = username
-            self.email_password = password
-
-            subject = "Test email from pinepods"
-            body = "If you got this your email settings are working! Great Job! Don't forget to hit save."
-            to_email = active_user.email
-            email_result = app_functions.functions.send_email(server_name, server_port, from_email, to_email, send_mode,
-                                                              encryption, auth_required, username, password, subject,
-                                                              body)
-
-            pr_instance.rm_stack()
-            send_email_dlg = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(f"Email Send Test"),
-                content=ft.Column(controls=[
-                    ft.Text(f"Test email send result: {email_result}", selectable=True),
-                    ft.Text(
-                        f'If the email sent successfully be sure to hit save. This will save your settings to the database for later use with resetting passwords.',
-                        selectable=True),
-                ], tight=True),
-                actions=[
-                    ft.TextButton("Save", on_click=save_email_settings),
-                    ft.TextButton("Close", on_click=close_email_dlg)
-                ],
-                actions_alignment=ft.MainAxisAlignment.END
-            )
-            page.dialog = send_email_dlg
-            send_email_dlg.open = True
-            page.update()
-
-        def adjust_email_settings(self, server_name, server_port, from_email, send_mode, encryption, auth_required,
-                                  username, password):
-            self.server_name = server_name
-            self.server_port = server_port
-            self.from_email = from_email
-            self.send_mode = send_mode
-            self.encryption = encryption
-            self.auth_required = auth_required
-            self.email_username = username
-            self.email_password = password
-            api_functions.functions.call_save_email_settings(app_api.url, app_api.headers, self.server_name,
-                                                             self.server_port, self.from_email, self.send_mode,
-                                                             self.encryption, self.auth_required, self.email_username,
-                                                             self.email_password)
-
-
-        # Modify User Stuff---------------------------
-        def open_edit_user(self, username, admin, fullname, email, user_id):
-            def close_modify_dlg():
-                modify_user_dlg.open = False
-                self.page.update()
-
-            def close_modify_dlg_auto(e):
-                modify_user_dlg.open = False
-                page.update()
-
-            if username == 'guest':
-                modify_user_dlg = ft.AlertDialog(
-                    modal=True,
-                    title=ft.Text(f"Guest user cannot be changed"),
-                    actions=[
-                        ft.TextButton("Cancel", on_click=close_modify_dlg_auto)
-                    ],
-                    actions_alignment=ft.MainAxisAlignment.END
-                )
-                self.page.dialog = modify_user_dlg
-                modify_user_dlg.open = True
-                self.page.update()
-            else:
-                self.user_id = user_id
-                if admin == 1:
-                    admin_box = True
-                else:
-                    admin_box = False
-
-                self.username = username
-                user_modify_name = ft.TextField(label="Full Name", icon=ft.icons.CARD_MEMBERSHIP,
-                                                hint_text='John PinePods')
-                user_modify_email = ft.TextField(label="Email", icon=ft.icons.EMAIL,
-                                                 hint_text='ilovepinepods@pinepods.com')
-                user_modify_username = ft.TextField(label="Username", icon=ft.icons.PERSON,
-                                                    hint_text='pinepods_user1999')
-                user_modify_password = ft.TextField(label="Password", icon=ft.icons.PASSWORD, password=True,
-                                                    can_reveal_password=True, hint_text='mY_SuPeR_S3CrEt!')
-                user_modify_admin = ft.Checkbox(label="Set User as Admin", value=admin_box)
-                modify_user_dlg = ft.AlertDialog(
-                    modal=True,
-                    title=ft.Text(f"Modify User: {modify_user.username}"),
-                    content=ft.Column(controls=[
-                        user_modify_name,
-                        user_modify_email,
-                        user_modify_username,
-                        user_modify_password,
-                        user_modify_admin
-                    ], tight=True),
-                    actions=[
-                        ft.TextButton(content=ft.Text("Delete User", color=ft.colors.RED_400), on_click=lambda x: (
-                            close_modify_dlg(),
-                            self.page.update(),
-                            modify_user.delete_user(user_id)
-                        )),
-                        ft.TextButton("Confirm Changes", on_click=lambda x: (
-                            modify_user.set_username(user_modify_username.value),
-                            modify_user.set_password(user_modify_password.value),
-                            modify_user.set_email(user_modify_email.value),
-                            modify_user.set_name(user_modify_name.value),
-                            modify_user.set_admin(user_modify_admin.value),
-                            modify_user.change_user_attributes(),
-                            close_modify_dlg()
-                        )),
-
-                        ft.TextButton("Cancel", on_click=close_modify_dlg_auto)
-                    ],
-                    actions_alignment=ft.MainAxisAlignment.SPACE_EVENLY
-                )
-                self.page.dialog = modify_user_dlg
-                modify_user_dlg.open = True
-                self.page.update()
-
-        def change_user_attributes(self):
-            if self.fullname is not None:
-                api_functions.functions.call_set_fullname(app_api.url, app_api.headers, self.user_id, self.fullname)
-
-            if self.password is not None:
-                if len(self.password) < 8 or not any(c.isupper() for c in self.password) or not any(
-                        c.isdigit() for c in self.password):
-                    page.snack_bar = ft.SnackBar(
-                        content=ft.Text(f"Passwords must contain a number, a capital letter and a special character"))
-                    page.snack_bar.open = True
-                    page.update()
-                else:
-                    salt, hash_pw = Auth.Passfunctions.hash_password(self.password)
-                    api_functions.functions.call_set_password(app_api.url, app_api.headers, self.user_id, salt, hash_pw)
-
-            if self.email is not None:
-                if not re.match(self.email_regex, self.email):
-                    page.snack_bar = ft.SnackBar(
-                        content=ft.Text(f"This does not appear to be a properly formatted email"))
-                    page.snack_bar.open = True
-                    page.update()
-                else:
-                    api_functions.functions.call_set_email(app_api.url, app_api.headers, self.user_id, self.email)
-
-            if self.username is not None:
-                if len(self.username) < 6:
-                    page.snack_bar = ft.SnackBar(content=ft.Text(f"Username must be at least 6 characters"))
-                    page.snack_bar.open = True
-                    page.update()
-                else:
-                    api_functions.functions.call_set_username(app_api.url, app_api.headers, self.user_id, self.username)
-
-            api_functions.functions.call_set_isadmin(app_api.url, app_api.headers, self.user_id, self.isadmin)
-            user_changed = True
-
-            if user_changed == True:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Changed!"))
-                page.snack_bar.open = True
-                page.update()
-
-        def delete_user(self, user_id):
-            admin_check = api_functions.functions.call_final_admin(app_api.url, app_api.headers, user_id)
-
-            def show_snack_bar(message):
-                if page.snack_bar:
-                    page.remove(page.snack_bar)
-
-                page.snack_bar = ft.SnackBar(content=ft.Text(message))
-                page.snack_bar.open = True
-
-            if user_id == active_user.user_id:
-                show_snack_bar("Cannot delete your own user")
-            elif admin_check:
-                show_snack_bar("Cannot delete the final admin user")
-            else:
-                # Confirmation dialog
-                dlg_modal = ft.AlertDialog(
-                    modal=True,
-                    title=ft.Text("Please confirm"),
-                    content=ft.Text("Do you really want to delete User?"),
-                    actions=[
-                        ft.TextButton("Yes", on_click=lambda e: perform_delete(user_id)),
-                        ft.TextButton("No", on_click=lambda e: close_dialog()),
-                    ],
-                    actions_alignment=ft.MainAxisAlignment.END,
-                    on_dismiss=lambda e: print("Modal dialog dismissed!"),
-                )
-
-                # Show the confirmation dialog
-                page.dialog = dlg_modal
-                dlg_modal.open = True
-                page.update()
-
-            def close_dialog():
-                # Close the confirmation dialog
-                page.dialog.open = False
-                page.update()
-
-            def perform_delete(user_id):
-
-                api_functions.functions.call_delete_user(app_api.url, app_api.headers, user_id)
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"User Deleted!"))
-                page.snack_bar.open = True
-                page.update()
-
-                close_dialog()
-
-        # Active User Stuff --------------------------
-
-        def setup_timezone(self, tz, hour_pref):
-            if hour_pref == '12-hour':
-                self.hour_pref = 12
-            else:
-                self.hour_pref = 24
-            self.timezone = tz
-            api_functions.functions.call_setup_time_info(app_api.url, app_api.headers, self.user_id, self.timezone,
-                                                         self.hour_pref)
-            if self.user_id == 1:
-                global new_nav
-                new_nav = NavBar(page)
-                new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-                new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
-                page.overlay.append(new_nav.navbar_stack)
-                page.update()
-                page.go("/")
-            else:
-                go_homelogin(page)
-
-        def get_timezone(self):
-            self.timezone, self.hour_pref = api_functions.functions.call_get_time_info(app_api.url, app_api.headers,
-                                                                                       self.user_id)
-
-        def first_login_done(self):
-            self.first_login_finished = api_functions.functions.call_first_login_done(app_api.url, app_api.headers,
-                                                                                      self.user_id)
-
-        def get_initials(self):
-            # split the full name into separate words
-            words = self.fullname.split()
-
-            # extract the first letter of each word and combine them
-            initials_lower = "".join(word[0] for word in words)
-
-            # return the initials as uppercase
-            self.initials = initials_lower.upper()
-
-        def login(self, username_field, password_field, retain_session):
-            username = username_field.value
-            password = password_field.value
-            username_field.value = ''
-            password_field.value = ''
-            username_field.update()
-            password_field.update()
-            if not username or not password:
-                on_click_novalues(page)
-                return
-            pass_correct = api_functions.functions.call_verify_password(app_api.url, app_api.headers, username,
-                                                                        password)
-            if pass_correct == True:
-                login_details = api_functions.functions.call_get_user_details(app_api.url, app_api.headers, username)
-                self.user_id = login_details['UserID']
-                self.fullname = login_details['Fullname']
-                self.username = login_details['Username']
-                self.email = login_details['Email']
-
-                check_mfa_status = api_functions.functions.call_check_mfa_enabled(app_api.url, app_api.headers,
-                                                                                  self.user_id)
-                if check_mfa_status:
-                    self.retain_session = retain_session
-                    open_mfa_login(page)
-
-                else:
-                    if retain_session:
-                        session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers,
-                                                                                    self.user_id)
-                        if session_token:
-                            save_session_id_to_file(session_token)
-                    self.first_login_done()
-                    if self.first_login_finished == 1:
-                        self.get_timezone()
-                        go_homelogin(page)
-                    else:
-                        first_time_config(page)
-            else:
-                on_click_wronguser(page)
-
-        def mfa_login(self, mfa_prompt):
-            mfa_secret = mfa_prompt.value
-
-            mfa_verify = api_functions.functions.call_verify_mfa(app_api.url, app_api.headers, self.user_id, mfa_secret)
-
-            if mfa_verify:
-                if self.retain_session:
-                    session_token = api_functions.functions.call_create_session(app_api.url, app_api.headers,
-                                                                                self.user_id)
-                    if session_token:
-                        save_session_id_to_file(session_token)
-                self.first_login_done()
-                if self.first_login_finished == 1:
-                    self.get_timezone()
-                    go_homelogin(page)
-                else:
-                    first_time_config(page)
-            else:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"MFA Code incorrect"))
-                page.snack_bar.open = True
-                self.page.update()
-
-        def saved_login(self, user_id):
-            login_details = api_functions.functions.call_get_user_details_id(app_api.url, app_api.headers, user_id)
-            self.user_id = login_details['UserID']
-            self.fullname = login_details['Fullname']
-            self.username = login_details['Username']
-            self.email = login_details['Email']
-            self.first_login_done()
-            if self.first_login_finished == 1:
-                self.get_timezone()
-                go_homelogin(page)
-            else:
-                first_time_config(page)
-
-        def logout_pinepods(self, e):
-            active_user = User(page)
-            pr_instance.rm_stack()
-            login_username.visible = True
-            login_password.visible = True
-            if login_screen == True:
-
-                start_login(page)
-                new_nav.navbar.border = ft.border.only(right=ft.border.BorderSide(2, active_user.tertiary_color))
-                new_nav.navbar_stack = ft.Stack([new_nav.navbar], expand=True)
-                page.overlay.append(new_nav.navbar_stack)
-                new_nav.navbar.visible = False
-                self.page.update()
-            else:
-                active_user.user_id = 1
-                active_user.fullname = 'Guest User'
-                go_homelogin(page)
-
-        def logout_pinepods_clear_local(self, e):
-            active_user = User(page)
-            pr_instance.rm_stack()
-            login_username.visible = True
-            login_password.visible = True
-            if login_screen == True:
-                app_name = 'pinepods'
-                data_dir = appdirs.user_data_dir(app_name)
-                for filename in os.listdir(data_dir):
-                    file_path = os.path.join(data_dir, filename)
-                    try:
-                        if os.path.isfile(file_path) or os.path.islink(file_path):
-                            os.unlink(file_path)
-                        elif os.path.isdir(file_path):
-                            shutil.rmtree(file_path)
-                    except Exception as e:
-                        print(f'Failed to delete {file_path}. Reason: {e}')
-
-                start_config(page)
-            else:
-                active_user.user_id = 1
-                active_user.fullname = 'Guest User'
-                go_homelogin(page)
-
-        def clear_guest(self, e):
-            if self.user_id == 1:
-                api_functions.functions.call_clear_guest_data(app_api.url, app_api.headers)
-
-        # Setup Theming-------------------------------------------------------
-        def theme_select(self):
-            active_theme = api_functions.functions.call_get_theme(app_api.url, app_api.headers, self.user_id)
-            if active_theme == 'light':
-                page.theme_mode = "light"
-                self.main_color = '#E1E1E1'
-                self.accent_color = colors.BLACK
-                self.tertiary_color = '#C7C7C7'
-                self.font_color = colors.BLACK
-                self.bonus_color = colors.BLACK
-                self.nav_color1 = colors.BLACK
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#ECECEC'
-                page.bgcolor = '#3C4252'
-                page.window_bgcolor = '#ECECEC'
-            elif active_theme == 'dark':
-                page.theme_mode = "dark"
-                self.main_color = '#010409'
-                self.accent_color = '#8B949E'
-                self.tertiary_color = '#8B949E'
-                self.font_color = '#F5F5F5'
-                self.bonus_color = colors.BLACK
-                self.nav_color1 = colors.BLACK
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#0D1117'
-                page.bgcolor = '#3C4252'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'nordic':
-                page.theme_mode = "dark"
-                self.main_color = '#323542'
-                self.accent_color = colors.WHITE
-                self.tertiary_color = colors.WHITE
-                self.font_color = colors.WHITE
-                self.bonus_color = colors.BLACK
-                self.nav_color1 = colors.BLACK
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#3C4252'
-                page.bgcolor = '#3C4252'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'abyss':
-                page.theme_mode = "dark"
-                self.main_color = '#051336'
-                self.accent_color = '#FFFFFF'
-                self.tertiary_color = '#13326A'
-                self.font_color = '#42A5F5'
-                self.bonus_color = colors.BLACK
-                self.nav_color1 = colors.BLACK
-                self.nav_color2 = colors.WHITE
-                self.bgcolor = '#000C18'
-                page.bgcolor = '#3C4252'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'dracula':
-                page.theme_mode = "dark"
-                self.main_color = '#262626'
-                self.accent_color = '#5196B2'
-                self.tertiary_color = '#5196B2'
-                self.font_color = colors.WHITE
-                self.bonus_color = '#D5BC5C'
-                self.nav_color1 = '#D5BC5C'
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#282A36'
-                page.bgcolor = '#282A36'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'kimbie':
-                page.theme_mode = "dark"
-                self.main_color = '#362712'
-                self.accent_color = '#B23958'
-                self.tertiary_color = '#AC8E2F'
-                self.font_color = '#B1AD86'
-                self.bonus_color = '#221A1F'
-                self.nav_color1 = '#221A1F'
-                self.nav_color2 = '#B1AD86'
-                self.bgcolor = '#221A0F'
-                page.bgcolor = '#282A36'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'hotdogstand - MY EYES':
-                page.theme_mode = "dark"
-                self.main_color = '#EEB911'
-                self.accent_color = '#C3590D'
-                self.tertiary_color = '#730B1B'
-                self.font_color = colors.WHITE
-                self.bonus_color = '#D5BC5C'
-                self.nav_color1 = '#D5BC5C'
-                self.nav_color2 = colors.BLACK
-                self.bgcolor = '#E31836'
-                page.bgcolor = '#282A36'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'neon':
-                page.theme_mode = "dark"
-                self.main_color = '#161C26'
-                self.accent_color = '#7000FF'
-                self.tertiary_color = '#5196B2'
-                self.font_color = '#9F9DA1'
-                self.bonus_color = '##01FFF4'
-                self.nav_color1 = '#FF1178'
-                self.nav_color2 = '#3544BD'
-                self.bgcolor = '#120E16'
-                page.bgcolor = '#282A36'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'wildberries':
-                page.theme_mode = "dark"
-                self.main_color = '#19002E'
-                self.accent_color = '#F55385'
-                self.tertiary_color = '#5196B2'
-                self.font_color = '#CF8B3E'
-                self.bonus_color = '#C79BFF'
-                self.nav_color1 = '#00FFB7'
-                self.nav_color2 = '#44433A'
-                self.bgcolor = '#282A36'
-                page.bgcolor = '#240041'
-                page.window_bgcolor = '#3C4252'
-            elif active_theme == 'greenie meanie':
-                page.theme_mode = "dark"
-                self.main_color = '#292A2E'
-                self.accent_color = '#737373'
-                self.tertiary_color = '#489D50'
-                self.font_color = '#489D50'
-                self.bonus_color = '#849CA0'
-                self.nav_color1 = '#446448'
-                self.nav_color2 = '#43603D'
-                self.bgcolor = '#1E1F21'
-                page.bgcolor = '#3C4252'
-                page.window_bgcolor = '#3C4252'
-
-        def set_theme(self, theme):
-            api_functions.functions.call_set_theme(app_api.url, app_api.headers, self.user_id, theme)
-            self.theme_select
-            go_theme_rebuild(self.page)
-            self.page.update()
-
     # Initial user value set
-    modify_user = User(page)
+    modify_user = helpers.user.User(page, app_api)
 
     # Searhcing Class
 
@@ -6936,309 +4734,17 @@ def main(page: ft.Page, session_value=None):
 
         return ColorGradient
 
-    def speed_login(e):
-        active_user.login(login_username, login_password, active_user.retain_session.value)
-
-    login_username = ft.TextField(
-        label="Username",
-        border="underline",
-        width=320,
-        text_size=14,
-        on_submit=speed_login
-    )
-
-    login_password = ft.TextField(
-        label="Password",
-        border="underline",
-        width=320,
-        text_size=14,
-        password=True,
-        can_reveal_password=True,
-        on_submit=speed_login
-    )
-
-    server_name = ft.TextField(
-        label="Server Name",
-        border="underline",
-        hint_text="ex. https://api.pinepods.online",
-        width=320,
-        text_size=14,
-    )
-
-    app_api_key = ft.TextField(
-        label="API Key",
-        border="underline",
-        width=320,
-        text_size=14,
-        hint_text='Generate this from settings in PinePods',
-        password=True,
-        can_reveal_password=True,
-    )
-
-    mfa_prompt = ft.TextField(
-        label="MFA code",
-        border="underline",
-        hint_text="ex. 123456",
-        width=320,
-        text_size=14,
-    )
-
-    active_user = User(page)
-
-    # Create Sidebar------------------------------------------------------
-
-    class NavBar:
-        def __init__(self, page):
-            self.page = page
-            self.navbar = self.create_navbar()
-            self.navbar_stack = ft.Stack([self.navbar], expand=True)
-
-        def HighlightContainer(self, e):
-            if e.data == "true":
-                e.control.bgcolor = "white10"
-                e.control.update()
-
-                e.control.content.controls[0].icon_color = "white"
-                e.control.content.controls[1].color = "white"
-                e.control.content.update()
-            else:
-                e.control.bgcolor = None
-                e.control.update()
-
-                e.control.content.controls[0].icon_color = active_user.accent_color
-                e.control.content.controls[1].color = active_user.accent_color
-                e.control.content.update()
-
-        def ContainedIcon(self, tooltip, icon_name, text, destination):
-            return ft.Container(
-                width=180,
-                height=45,
-                border_radius=10,
-                on_hover=lambda e: self.HighlightContainer(e),
-                ink=True,
-                content=Row(
-                    controls=[
-                        ft.IconButton(
-                            icon=icon_name,
-                            icon_size=18,
-                            icon_color=active_user.accent_color,
-                            tooltip=tooltip,
-                            selected=False,
-                            on_click=destination,
-                            style=ButtonStyle(
-                                shape={
-                                    "": ft.RoundedRectangleBorder(radius=7),
-                                },
-                                overlay_color={"": "transparent"},
-                            ),
-                        ),
-                        ft.Text(
-                            value=text,
-                            color="white54",
-                            size=11,
-                            opacity=0,
-                            animate_opacity=200,
-                        ),
-                    ],
-                ),
-            )
-
-        def create_navbar(self):
-            def get_gravatar_url(email, size=42, default='mp'):
-                email_hash = hashlib.md5(email.lower().encode('utf-8')).hexdigest()
-                gravatar_url = f'https://www.gravatar.com/avatar/{email_hash}?s={size}&d={default}'
-                profile_url = f'https://www.gravatar.com/{email_hash}.json'
-
-                try:
-                    response = requests.get(profile_url)
-                    response.raise_for_status()
-                except requests.exceptions.RequestException:
-                    return None
-
-                return gravatar_url
-
-            gravatar_url = None
-            if active_user.user_id != 1:
-                gravatar_url = get_gravatar_url(active_user.email)
-            active_user.get_initials()
-
-            user_content = ft.Image(src=gravatar_url, width=42, height=45, border_radius=8) if gravatar_url else Text(
-                value=active_user.initials,
-                color=active_user.nav_color2,
-                size=20,
-                weight="bold"
-            )
-
-            return ft.Container(
-                width=62,
-                # height=580,
-                expand=True,
-                animate=animation.Animation(500, "decelerate"),
-                bgcolor=active_user.main_color,
-                padding=10,
-                content=ft.Column(
-                    alignment=MainAxisAlignment.START,
-                    horizontal_alignment="center",
-                    controls=[
-                        Text(
-                            value=(f'PinePods'),
-                            size=8,
-                            weight="bold",
-                            color=active_user.accent_color
-                        ),
-                        ft.Divider(color="white24", height=5),
-                        ft.Container(
-                            width=42,
-                            height=40,
-                            border_radius=8,
-                            bgcolor=active_user.tertiary_color,
-                            alignment=alignment.center,
-                            content=user_content,
-                            on_click=open_user_stats
-                        ),
-                        ft.Divider(height=5, color="transparent"),
-                        self.ContainedIcon('Home', icons.HOME, "Home", go_home),
-                        self.ContainedIcon('Queue', icons.QUEUE, "Queue", open_queue),
-                        self.ContainedIcon('Saved Episodes', icons.SAVE, "Saved Epsiodes", open_saved_pods),
-                        self.ContainedIcon('Downloaded', icons.DOWNLOAD, "Downloaded", open_downloads),
-                        self.ContainedIcon('Podcast History', icons.HISTORY, "Podcast History", open_history),
-                        self.ContainedIcon('Added Podcasts', icons.PODCASTS, "Added Podcasts", open_pod_list),
-                        self.ContainedIcon('Search', icons.SEARCH, 'Search', open_search),
-                        ft.Divider(color="white24", height=5),
-                        self.ContainedIcon('Settings', icons.SETTINGS, "Settings", open_settings),
-                        self.ContainedIcon('Logout', icons.LOGOUT_ROUNDED, "Logout", active_user.logout_pinepods),
-                    ],
-                ),
-            )
+    active_user = helpers.user.User(page, app_api)
 
     # Create Page--------------------------------------------------------
-    # get the absolute path of the current script
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    parsed_audio_url = os.path.join(current_dir, "Audio", "750-milliseconds-of-silence.mp3")
-    parsed_title = 'nothing playing'
-    current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
-
-    class PodcastControls:
-
-        def __init__(self, page, go_home, parsed_audio_url, parsed_title):
-            self.page = page
-            self.go_home = go_home
-            self.parsed_audio_url = parsed_audio_url
-            self.parsed_title = parsed_title
-            # self.current_episode = Toggle_Pod(page, go_home, parsed_audio_url, parsed_title)
-            self.init_controls()
-
-        def init_controls(self):
-            self.create_audio_controls()
-            self.setup_audio_scrubber()
-            self.setup_audio_container()
-            self.setup_volume_control()
-
-        def create_audio_controls(self):
-            self.play_button = ft.IconButton(
-                icon=ft.icons.PLAY_ARROW,
-                tooltip="Play Podcast",
-                icon_color="white",
-                on_click=lambda e: current_episode.resume_podcast()
-            )
-            self.pause_button = ft.IconButton(
-                icon=ft.icons.PAUSE,
-                tooltip="Pause Playback",
-                icon_color="white",
-                on_click=lambda e: current_episode.pause_episode()
-            )
-            self.pause_button.visible = False
-            self.seek_button = ft.IconButton(
-                icon=ft.icons.FAST_FORWARD,
-                tooltip="Seek 10 seconds",
-                icon_color="white",
-                on_click=lambda e: current_episode.seek_episode()
-            )
-            self.ep_audio_controls = ft.Row(controls=[self.play_button, self.pause_button, self.seek_button])
-
-        def setup_audio_scrubber(self):
-            def format_time(time):
-                hours, remainder = divmod(int(time), 3600)
-                minutes, seconds = divmod(remainder, 60)
-                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-            def slider_changed(e):
-                formatted_scrub = format_time(self.audio_scrubber.value)
-                self.current_time.content = ft.Text(formatted_scrub)
-                # self.current_time.update()
-                current_episode.time_scrub(self.audio_scrubber.value)
-
-            self.podcast_length = ft.Container(content=ft.Text('doesntmatter'))
-            self.current_time_text = ft.Text('placeholder')
-            self.current_time = ft.Container(content=self.current_time_text)
-            self.audio_scrubber = ft.Slider(min=0, expand=True, max=current_episode.seconds, label="{value}",
-                                            on_change=slider_changed)
-            self.audio_scrubber.width = '100%'
-            self.audio_scrubber_column = ft.Column(controls=[self.audio_scrubber])
-            self.audio_scrubber_column.horizontal_alignment.STRETCH
-            self.audio_scrubber_column.width = '100%'
-
-        def setup_audio_container(self):
-            self.currently_playing = ft.Container(content=ft.Text('test'), on_click=open_currently_playing)
-            self.audio_container_image_landing = ft.Image(
-                src=f"None",
-                width=40, height=40)
-            self.audio_container_image = ft.Container(content=self.audio_container_image_landing,
-                                                      on_click=open_currently_playing)
-            self.audio_container_image.border_radius = ft.border_radius.all(25)
-            self.currently_playing_container = ft.Row(
-                controls=[self.audio_container_image, self.currently_playing])
-            self.scrub_bar_row = ft.Row(controls=[self.current_time, self.audio_scrubber_column, self.podcast_length])
-            self.volume_button = ft.IconButton(icon=ft.icons.VOLUME_UP_ROUNDED, tooltip="Adjust Volume",
-                                               on_click=lambda x: current_episode.volume_view())
-            self.audio_controls_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER,
-                                             controls=[self.scrub_bar_row, self.ep_audio_controls, self.volume_button])
-            self.audio_container_row_landing = ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.END,
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                controls=[self.currently_playing_container, self.audio_controls_row])
-            self.audio_container_row = ft.Container(content=self.audio_container_row_landing)
-            self.audio_container_row.padding = ft.padding.only(left=10)
-            self.audio_container_pod_details = ft.Row(
-                controls=[self.audio_container_image, self.currently_playing],
-                alignment=ft.MainAxisAlignment.CENTER)
-            ep_height = 50
-            ep_width = 4000
-            self.audio_container = ft.Container(
-                height=ep_height,
-                width=ep_width,
-                bgcolor=active_user.main_color,
-                border_radius=45,
-                padding=6,
-                content=self.audio_container_row
-            )
-
-        def setup_volume_control(self):
-            self.volume_slider = ft.Slider(value=1, on_change=lambda x: current_episode.volume_adjust())
-            self.volume_down_icon = ft.Icon(name=ft.icons.VOLUME_MUTE)
-            self.volume_up_icon = ft.Icon(name=ft.icons.VOLUME_UP_ROUNDED)
-            self.volume_adjust_column = ft.Row(
-                controls=[self.volume_down_icon, self.volume_slider, self.volume_up_icon], expand=True)
-            self.volume_container = ft.Container(
-                height=35,
-                width=275,
-                bgcolor=ft.colors.WHITE,
-                border_radius=45,
-                padding=6,
-                content=self.volume_adjust_column)
-            self.volume_container.adding = ft.padding.all(50)
-            self.volume_container.alignment = ft.alignment.top_right
-            self.volume_container.visible = False
-
-            self.page.overlay.append(ft.Stack([self.volume_container], bottom=75, right=25, expand=True))
-            self.page.overlay.append(ft.Stack([self.audio_container], bottom=20, right=20, left=70, expand=True))
-            self.audio_container.visible = False
-
     # Usage:
     page.title = "PinePods - A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    pod_controls = PodcastControls(page, go_home, parsed_audio_url, parsed_title)
+    pod_controls.page = page
+    pod_controls.go_home = go_home
+    pod_controls.parsed_audio_url = parsed_audio_url
+    pod_controls.parsed_title = parsed_title
+    pod_controls.current_episode = current_episode
+    pod_controls.active_user = active_user
 
     def play_selected_episode(url, title, artwork):
         current_episode.url = url

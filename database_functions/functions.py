@@ -2511,8 +2511,22 @@ def get_nextcloud_users(database_type, cnx):
     return users
 
 
-def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token):
-    # Fetch Nextcloud subscriptions
+def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token):
+    from cryptography.fernet import Fernet
+    # Fetch encryption key
+    encryption_key = get_encryption_key(cnx)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Now, use the decrypted token in your API request
     response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions",
                             headers={"Authorization": f"Bearer {gpodder_token}"})
     print(f"Response status: {response.status_code}, Content: {response.text}")
