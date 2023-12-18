@@ -1,5 +1,23 @@
 /* static/styles.css */
+:root {
+    --button-color: #ffffff; /* Default button color */
+    --background-color: #3C4252; /* Default background color */
+}
+
 body {
     background-color: #323542; /* Default background color */
     /* Other global styles */
+}
+
+.drawer-button {
+    background-color: var(--button-color);
+    color: white; /* Assuming you want white text */
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    /* Other button styles */
+}
+
+.drawer-background {
+    background-color: var(--background-color);
+    /* Other background styles */
 }

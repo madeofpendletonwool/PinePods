@@ -34,27 +34,35 @@ pub fn app_drawer() -> Html {
     // };
 
     html! {
-        <div class="flex justify-center items-center h-screen">
-            <div class="flex">
-                <input
-                    type="checkbox"
-                    id="drawer-toggle"
-                    class="relative sr-only peer"
-                    checked={*is_drawer_open}
-                    onclick={toggle_drawer}
-                />
-                <label for="drawer-toggle" class="absolute top-0 left-0 inline-block p-4 transition-all duration-500 bg-indigo-500 rounded-lg peer-checked:rotate-180 peer-checked:left-64">
-                    <div class="w-6 h-1 mb-3 -rotate-45 bg-white rounded-lg"></div>
-                    <div class="w-6 h-1 rotate-45 bg-white rounded-lg"></div>
-                </label>
-                <div class="fixed top-0 left-0 z-20 w-64 h-full transition-all duration-500 transform -translate-x-full bg-white shadow-lg peer-checked:translate-x-0">
-                    <div class="px-6 py-4">
-                        <h2 class="text-lg font-semibold">{"Drawer"}</h2>
-                        <p class="text-gray-500">{"This is a drawer."}</p>
-                    </div>
-                </div>
+    <div class="relative min-h-screen">
+        // Drawer
+        <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-500", "transform", "shadow-lg", "md:w-64", "w-full", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
+            <div class="px-6 py-4 mt-16">
+                <h2 class="text-lg font-semibold">{"Drawer"}</h2>
+                <p class="text-gray-500">{"This is a drawer."}</p>
             </div>
         </div>
+
+
+        // Toggle button - Fixed Position
+        <div class="fixed top-0 left-0 z-30 p-4">
+            <label for="drawer-toggle" class="bg-indigo-500 rounded-lg cursor-pointer">
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
+                    <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
+                    <div class="w-6 h-1 bg-white rounded-lg"></div>
+                </div>
+            </label>
+        </div>
+
+        <input
+            type="checkbox"
+            id="drawer-toggle"
+            class="sr-only"
+            checked={*is_drawer_open}
+            onclick={toggle_drawer.clone()}
+        />
+    </div>
     }
 
 }
