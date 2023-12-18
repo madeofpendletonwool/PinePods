@@ -9,55 +9,54 @@ use yew::prelude::*;
 
 #[derive(Clone, Routable, PartialEq)]
 enum Route {
-    #[at("/login")]
+    #[at("/")]
     Login,
-    #[at("/app")]
-    App,
+    #[at("/home")]
+    Home,
     #[not_found]
     #[at("/404")]
     NotFound,
 }
 
-#[function_component(Login_Page)]
-fn login() -> Html {
+#[function_component(Home)]
+fn home() -> Html {
     html! {
         <div>
-            <Login />
+            <h1>{ "Home" }</h1>
             <App_drawer />
-            // ... other components or HTML
         </div>
     }
 }
 
-#[function_component(Main_App)]
-fn main_app() -> Html {
-    // Main app component content
-    html! {
-        <div>
-            {"App Page"}
-            // Include your app drawer component here
-        </div>
-    }
-}
-// Define your switch function
-fn switch(route: Route) -> Html {
-    match route {
-        Route::Login => html! { <LoginPage /> },
-        Route::App => html! { <MainApp /> },
-        Route::NotFound => html! { <div>{"404 Not Found"}</div> },
-    }
-}
-
-// Define your root component
 #[function_component(App)]
 fn app() -> Html {
+    html! { <h1>{ "App" }</h1> }
+    // This is where you can include your app drawer
+}
+
+#[function_component(NotFound)]
+fn not_found() -> Html {
+    html! { <h1>{ "404 Not Found" }</h1> }
+}
+
+fn switch(route: Route) -> Html {
+    match route {
+        Route::Login => html! { <Login /> },
+        Route::Home => html! { <Home /> },
+        Route::NotFound => html! { <NotFound /> },
+    }
+}
+
+
+#[function_component(Main)]
+fn main_component() -> Html {
     html! {
         <BrowserRouter>
-            <Switch<Route> render={Switch::render(switch)} />
+            <Switch<Route> render={switch} />
         </BrowserRouter>
     }
 }
 
 fn main() {
-    yew::Renderer::<Login_Page>::new().render();
+    yew::Renderer::<Main>::new().render();
 }
