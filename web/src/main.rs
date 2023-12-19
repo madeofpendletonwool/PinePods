@@ -2,6 +2,7 @@
 mod components;
 mod requests;
 use components::login::Login;
+use components::login::ChangeServer;
 use components::app_drawer::App_drawer;
 use requests::login_requests;
 
@@ -9,6 +10,8 @@ use requests::login_requests;
 // Yew Imports
 use yew_router::prelude::*;
 use yew::prelude::*;
+use yew_router::history::{BrowserHistory, History};
+
 
 #[derive(Clone, Routable, PartialEq)]
 enum Route {
@@ -19,6 +22,8 @@ enum Route {
     #[not_found]
     #[at("/404")]
     NotFound,
+    #[at("/change_server")]
+    ChangeServer,
 }
 
 #[function_component(Home)]
@@ -31,12 +36,6 @@ fn home() -> Html {
     }
 }
 
-#[function_component(App)]
-fn app() -> Html {
-    html! { <h1>{ "App" }</h1> }
-    // This is where you can include your app drawer
-}
-
 #[function_component(NotFound)]
 fn not_found() -> Html {
     html! { <h1>{ "404 Not Found" }</h1> }
@@ -47,6 +46,7 @@ fn switch(route: Route) -> Html {
         Route::Login => html! { <Login /> },
         Route::Home => html! { <Home /> },
         Route::NotFound => html! { <NotFound /> },
+        Route::ChangeServer => html! { <ChangeServer /> },
     }
 }
 
