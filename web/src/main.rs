@@ -1,7 +1,10 @@
 // Custom Mods
 mod components;
+mod requests;
 use components::login::Login;
 use components::app_drawer::App_drawer;
+use requests::login_requests;
+
 
 // Yew Imports
 use yew_router::prelude::*;
