@@ -1,9 +1,18 @@
 // Custom Mods
 mod components;
 mod requests;
+use components::routes::Route;
 use components::login::Login;
 use components::login::ChangeServer;
+use components::login::LogOut;
 use components::app_drawer::App_drawer;
+use components::downloads::Downloads;
+use components::history::PodHistory;
+use components::queue::Queue;
+use components::saved::Saved;
+use components::search::Search;
+use components::settings::Settings;
+use components::user_stats::UserStats;
 use requests::login_requests;
 
 
@@ -11,20 +20,6 @@ use requests::login_requests;
 use yew_router::prelude::*;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-
-
-#[derive(Clone, Routable, PartialEq)]
-enum Route {
-    #[at("/")]
-    Login,
-    #[at("/home")]
-    Home,
-    #[not_found]
-    #[at("/404")]
-    NotFound,
-    #[at("/change_server")]
-    ChangeServer,
-}
 
 #[function_component(Home)]
 fn home() -> Html {
@@ -47,6 +42,14 @@ fn switch(route: Route) -> Html {
         Route::Home => html! { <Home /> },
         Route::NotFound => html! { <NotFound /> },
         Route::ChangeServer => html! { <ChangeServer /> },
+        Route::Queue => html! { <Queue /> },
+        Route::Saved => html! { <Saved /> },
+        Route::Settings => html! { <Settings /> },
+        Route::PodHistory => html! { <PodHistory /> },
+        Route::Downloads => html! { <Downloads /> },
+        Route::Search => html! { <Search /> },
+        Route::UserStats => html! { <UserStats /> },
+        Route::LogOut => html! { <LogOut /> },
     }
 }
 
