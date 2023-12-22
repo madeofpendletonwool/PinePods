@@ -1,8 +1,11 @@
 use yew::prelude::*;
 // use yew::{function_component, html, use_state, Callback, Html, InputEvent};
-use web_sys::HtmlInputElement;
+use web_sys::{HtmlInputElement, window};
 use log::{info, warn};
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 use web_sys::console;
+use web_sys::console::error;
 // use yew_router::router::_RouterProps::history;
 use yew_router::prelude::*;
 use yew_router::history::{BrowserHistory, History};
@@ -130,6 +133,31 @@ pub fn login() -> Html {
     let server_name = use_state(|| "".to_string());
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
+    let error_message = use_state(|| None::<String>);
+    {
+        let error_message = error_message.clone();
+        use_effect(move || {
+            let window = window().unwrap();
+            let document = window.document().unwrap();
+
+            let error_message_clone = error_message.clone();
+            let closure = Closure::wrap(Box::new(move |_event: Event| {
+                error_message_clone.set(None);
+            }) as Box<dyn Fn(_)>);
+
+            if error_message.is_some() {
+                document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+            }
+
+            // Return cleanup function
+            move || {
+                if error_message.is_some() {
+                    document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                }
+                closure.forget(); // Prevents the closure from being dropped
+            }
+        });
+    }
 
     let on_server_name_change = {
         let server_name = server_name.clone();
@@ -152,29 +180,46 @@ pub fn login() -> Html {
         })
     };
     let history_clone = history.clone();
+    let error_message_clone = error_message.clone();
     let on_submit = {
         Callback::from(move |_| {
             let history = history_clone.clone();
             let username = username.clone();
             let password = password.clone();
             let server_name = server_name.clone();
+            let error_message = error_message_clone.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
                     Ok(_) => {
                         history.push("/home"); // Use the route path
                     },
-                    Err(_) => {
-                        // Handle error
+                    Err(e) => {
+                        error_message.set(Some(e.to_string())); // Set the error message
                     }
                 }
             });
         })
     };
+    let on_submit_click = {
+        let on_submit = on_submit.clone(); // Clone the existing on_submit logic
+        Callback::from(move |_: MouseEvent| {
+            on_submit.emit(()); // Invoke the existing on_submit logic
+        })
+    };
+
     let history_clone = history.clone();
     let on_different_server = {
         Callback::from(move |_| {
             let history = history_clone.clone();
             history.push("/"); // Use the route path
+        })
+    };
+    let handle_key_press = {
+        let on_submit = on_submit.clone(); // Clone the on_submit callback
+        Callback::from(move |e: KeyboardEvent| {
+            if e.key() == "Enter" {
+                on_submit.emit(());
+            }
         })
     };
 
@@ -191,32 +236,34 @@ pub fn login() -> Html {
                     placeholder="Server Name"
                     class="p-2 border border-gray-300 rounded"
                     oninput={on_server_name_change}
+                    onkeypress={handle_key_press.clone()}
                 />
                 <input
                     type="text"
                     placeholder="Username"
                     class="p-2 border border-gray-300 rounded"
                     oninput={on_username_change}
+                    onkeypress={handle_key_press.clone()}
                 />
                 <input
                     type="password"
                     placeholder="Password"
                     class="p-2 border border-gray-300 rounded"
                     oninput={on_password_change}
+                    onkeypress={handle_key_press.clone()}
                 />
-                <button
-                    onclick={on_submit}
-                    class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
+                <button onclick={on_submit_click} class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600">
                     {"Submit"}
                 </button>
             </div>
+            // Conditional rendering for the error banner
+            if let Some(error) = (*error_message).as_ref() {
+                <div class="error-snackbar">{ error }</div>
+            }
+
             // Connect to Different Server button at bottom right
             <div class="fixed bottom-4 right-4">
-                <button
-                    onclick={on_different_server}
-                    class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-                >
+                <button onclick={on_different_server} class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600">
                     {"Connect to Local Server"}
                 </button>
             </div>

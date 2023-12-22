@@ -21,3 +21,18 @@ body {
     background-color: var(--background-color);
     /* Other background styles */
 }
+
+.error-snackbar {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background-color: red;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    z-index: 1000; /* Ensure it's above other elements */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}

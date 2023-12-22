@@ -19,3 +19,4 @@ serde = { version = "1.0.193", features = ["derive"] }
 gloo-net = "0.5.0"
 anyhow = { version = "1.0.75", features = [] }
 wasm-bindgen-futures = "0.4.39"
+gloo-timers = "0.3.0"

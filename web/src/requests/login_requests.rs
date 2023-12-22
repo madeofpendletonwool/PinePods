@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct LoginRequest {
     username: String,
     password: String,
+    // api_key: String
 }
 
 #[derive(Serialize)]
@@ -12,6 +13,7 @@ pub struct LoginServerRequest {
     server_name: String,
     username: String,
     password: String,
+    api_key: Option<String>
 }
 
 #[derive(Deserialize)]
@@ -37,8 +39,9 @@ pub async fn login(username: String, password: String) -> Result<LoginResponse, 
 }
 
 pub async fn login_new_server(server_name: String, username: String, password: String) -> Result<LoginResponse, anyhow::Error> {
-    let login_request = LoginServerRequest { server_name, username, password };
-    let response = Request::post("/api/login")
+    let login_request = LoginServerRequest { server_name: server_name.clone(), username, password, api_key: None };
+    let url = format!("{}/api/data/get_key", server_name);
+    let response = Request::post(&url)
         .json(&login_request)?
         .send()
         .await?;
@@ -47,7 +50,22 @@ pub async fn login_new_server(server_name: String, username: String, password: S
         let login_response = response.json::<LoginResponse>().await?;
         Ok(login_response)
     } else {
-        // Handle HTTP error
-        Err(anyhow::Error::msg("Login failed"))
+        // Attempt to read the error message from the response
+        match response.json::<ServerErrorResponse>().await {
+            Ok(error_response) => {
+                // Use the server's error message
+                Err(anyhow::Error::msg(error_response.error_message))
+            }
+            Err(_) => {
+                // If parsing the error message failed, fall back to a generic error
+                Err(anyhow::Error::msg("Login failed due to server error"))
+            }
+        }
     }
+}
+
+#[derive(Deserialize)]
+struct ServerErrorResponse {
+    error_message: String,
+    // Include other fields if your server's error response contains more data
 }
