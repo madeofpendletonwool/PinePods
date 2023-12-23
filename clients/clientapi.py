@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path,
     BackgroundTasks, security
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -49,8 +50,25 @@ print('Client API Server is Starting!')
 
 app = FastAPI()
 security = HTTPBasic()
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1",
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(SessionMiddleware, secret_key=secret_key_middle)
+
 
 API_KEY_NAME = "pinepods_api"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)

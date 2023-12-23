@@ -1,5 +1,6 @@
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
+use base64::encode;
 
 #[derive(Serialize)]
 pub struct LoginRequest {
@@ -39,12 +40,17 @@ pub async fn login(username: String, password: String) -> Result<LoginResponse, 
 }
 
 pub async fn login_new_server(server_name: String, username: String, password: String) -> Result<LoginResponse, anyhow::Error> {
-    let login_request = LoginServerRequest { server_name: server_name.clone(), username, password, api_key: None };
+    let credentials = encode(format!("{}:{}", username, password));
+    let auth_header = format!("Basic {}", credentials);
+
     let url = format!("{}/api/data/get_key", server_name);
-    let response = Request::post(&url)
-        .json(&login_request)?
+
+    // Make the GET request with Authorization header
+    let response = Request::get(&url)
+        .header("Authorization", &auth_header)
         .send()
         .await?;
+
 
     if response.ok() {
         let login_response = response.json::<LoginResponse>().await?;
