@@ -5,7 +5,6 @@ use components::routes::Route;
 use components::login::Login;
 use components::login::ChangeServer;
 use components::login::LogOut;
-use components::app_drawer::App_drawer;
 use components::downloads::Downloads;
 use components::history::PodHistory;
 use components::queue::Queue;
@@ -13,23 +12,16 @@ use components::saved::Saved;
 use components::search::Search;
 use components::settings::Settings;
 use components::user_stats::UserStats;
-use requests::login_requests;
+use components::home::Home;
+use components::context;
+use crate::requests::login_requests::{LoginServerRequest, GetUserDetails};
+use web_sys::console;
 
 
 // Yew Imports
 use yew_router::prelude::*;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-
-#[function_component(Home)]
-fn home() -> Html {
-    html! {
-        <div>
-            <h1>{ "Home" }</h1>
-            <App_drawer />
-        </div>
-    }
-}
 
 #[function_component(NotFound)]
 fn not_found() -> Html {
@@ -56,6 +48,9 @@ fn switch(route: Route) -> Html {
 
 #[function_component(Main)]
 fn main_component() -> Html {
+    // console::log_1(&format!("Initial User Context: {:?}", (*user_context).clone()).into());
+    // console::log_1(&format!("Initial Auth Context: {:?}", (*user_auth_context).clone()).into());
+
     html! {
         <BrowserRouter>
             <Switch<Route> render={switch} />

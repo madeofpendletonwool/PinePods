@@ -1,9 +1,7 @@
 use yew::prelude::*;
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::{History};
 use yew_router::prelude::Link;
 use super::routes::Route;
-use web_sys::HtmlInputElement;
-use web_sys::console;
 
 
 #[function_component(App_drawer)]

@@ -1,22 +1,30 @@
 use yew::prelude::*;
-// use yew::{function_component, html, use_state, Callback, Html, InputEvent};
 use web_sys::{HtmlInputElement, window};
-use log::{info, warn};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::console;
-use web_sys::console::error;
-// use yew_router::router::_RouterProps::history;
-use yew_router::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests;
+use crate::components::context::{AppState};
+use crate::components::context;
+use yewdux::prelude::*;
+use web_sys::console;
 
+use crate::requests::login_requests::GetUserDetails;
+use crate::requests::login_requests::LoginServerRequest;
+use yewdux::prelude::*;
+
+// #[derive(Default, PartialEq, Store)]
+// pub struct AppState {
+//     pub user_details: Option<GetUserDetails>,
+//     pub auth_details: Option<LoginServerRequest>,
+// }
 
 #[function_component(Login)]
 pub fn login() -> Html {
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
+
 
     let on_username_change = {
         let username = username.clone();
@@ -129,11 +137,15 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
+    let (app_state, dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
     let server_name = use_state(|| "".to_string());
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let error_message = use_state(|| None::<String>);
+    let (app_state, dispatch) = use_store::<AppState>();
+
+
     {
         let error_message = error_message.clone();
         use_effect(move || {
@@ -181,6 +193,8 @@ pub fn login() -> Html {
     };
     let history_clone = history.clone();
     let error_message_clone = error_message.clone();
+    // let app_state_clone = app_state.clone();
+    let dispatch_clone = dispatch.clone();
     let on_submit = {
         Callback::from(move |_| {
             let history = history_clone.clone();
@@ -188,9 +202,19 @@ pub fn login() -> Html {
             let password = password.clone();
             let server_name = server_name.clone();
             let error_message = error_message_clone.clone();
+            let dispatch = dispatch.clone(); // No need to clone app_state here
+
             wasm_bindgen_futures::spawn_local(async move {
                 match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
-                    Ok(_) => {
+                    Ok((user_details, login_request)) => {
+                        // Use reduce_mut to modify the state directly
+                        dispatch.reduce_mut(move |state| {
+                            state.user_details = Some(user_details);
+                            state.auth_details = Some(login_request);
+                        });
+
+                        // console::log_1(&format!("Set User Context: {:?}", user_details).into());
+                        // console::log_1(&format!("Set Auth Context: {:?}", login_request).into());
                         history.push("/home"); // Use the route path
                     },
                     Err(e) => {

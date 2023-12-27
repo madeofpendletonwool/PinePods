@@ -10,3 +10,6 @@ pub(crate) mod user_stats;
 pub(crate) mod queue;
 pub(crate) mod search;
 pub(crate) mod routes;
+pub(crate) mod home;
+
+pub(crate) mod context;
