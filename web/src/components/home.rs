@@ -44,37 +44,67 @@ pub fn home() -> Html {
             console::log_1(&format!("Server Name: {}", server_name).into());
         }
 
-        use_effect(move || {
-            if let (Some(api_key), Some(user_id)) = (api_key.clone(), user_id) {
-                if let Some(server_name) = &server_name {
-                    console::log_1(&format!("Server Name: {}", server_name).into());
-                }
+        // Dependencies for use_effect_with
+        let dependencies = (
+            state.auth_details.as_ref().map(|ud| ud.api_key.clone()),
+            state.user_details.as_ref().map(|ud| ud.UserID.clone()),
+            state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
+        );
+
+        use_effect_with(dependencies, move |(api_key, user_id, server_name)| {
+            let episodes = episodes.clone();
+            let error = error.clone();
+
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                console::log_1(&format!("Server Name: {}", server_name).into());
+
                 wasm_bindgen_futures::spawn_local(async move {
-                    match pod_req::call_get_recent_eps(server_name, api_key, user_id).await {
+                    match pod_req::call_get_recent_eps(&server_name, &api_key, user_id).await {
                         Ok(response) => episodes.set(response.episodes),
                         Err(e) => error.set(Some(e.to_string())),
                     }
                 });
             }
+            // Return cleanup function
             || ()
-        })
+        });
     }
 
     html! {
     <>
         <div class="episodes-container">
             {
-                for (*episodes).iter().map(|episode| html! {
-                    <div>
-                        <div class="episode">
-                            // Add image, title, date, duration, and buttons here
-                            <p>{ &episode.PodcastName }</p>
-                            <p>{ &episode.EpisodeTitle }</p>
-                            // ... other fields
-                        </div>
-                    </div>
-                })
-            }
+                if episodes.is_empty() {
+                        html! {
+                        <>
+                            <div class="search-bar-container">
+                                <input type="text" placeholder="Search podcasts" class="search-input"/>
+                                <select class="search-source">
+                                    <option value="itunes">{"iTunes"}</option>
+                                    <option value="podcast_index">{"Podcast Index"}</option>
+                                </select>
+                                <button class="search-btn">{"Search"}</button>
+                            </div>
+                            <div class="empty-episodes-container">
+                                <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                                <h1>{ "No Recent Episodes Found" }</h1>
+                                <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                            </div>
+                        </>
+                        }
+                    } else {
+                        episodes.iter().map(|episode| html! {
+                            <div>
+                                <div class="episode">
+                                    // Add image, title, date, duration, and buttons here
+                                    <p>{ &episode.PodcastName }</p>
+                                    <p>{ &episode.EpisodeTitle }</p>
+                                    // ... other fields
+                                </div>
+                            </div>
+                        }).collect::<Html>()
+                    }
+                }
             {
                 if let Some(error_message) = &*error {
                     html! { <div class="error-snackbar">{ error_message }</div> }

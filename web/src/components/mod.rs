@@ -13,3 +13,4 @@ pub(crate) mod routes;
 pub(crate) mod home;
 
 pub(crate) mod context;
+mod gen_components;

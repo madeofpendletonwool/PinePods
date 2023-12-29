@@ -14,6 +14,14 @@ pub fn app_drawer() -> Html {
         let is_drawer_open = is_drawer_open.clone();
         move |_event: MouseEvent| {
             is_drawer_open.set(!*is_drawer_open);
+            if let Some(window) = web_sys::window() {
+                let body = window.document().unwrap().body().unwrap();
+                if !*is_drawer_open {
+                    body.class_list().add_1("no-scroll").unwrap();
+                } else {
+                    body.class_list().remove_1("no-scroll").unwrap();
+                }
+            }
         }
     };
 
@@ -130,23 +138,25 @@ pub fn app_drawer() -> Html {
             </div>
 
             // Toggle button - Fixed Position
-            <div class="fixed top-0 left-0 z-30 p-4">
-                <label for="drawer-toggle" class="bg-indigo-500 rounded-lg cursor-pointer">
-                    <div class="flex flex-col items-center">
-                        <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
-                        <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
-                        <div class="w-6 h-1 bg-white rounded-lg"></div>
-                    </div>
-                </label>
+            <div class="fixed top-0 left-0 z-30 p-4" onclick={toggle_drawer.clone()}>
+                // <div class="drawer-button">
+                    <label for="drawer-toggle" class="bg-indigo-500 rounded-lg cursor-pointer">
+                        <div class="flex flex-col items-center">
+                            <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
+                            <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
+                            <div class="w-6 h-1 bg-white rounded-lg"></div>
+                        </div>
+                    </label>
+                // </div>
             </div>
 
-            <input
-                type="checkbox"
-                id="drawer-toggle"
-                class="sr-only"
-                checked={*is_drawer_open}
-                onclick={toggle_drawer.clone()}
-            />
+            // <input
+            //     type="checkbox"
+            //     id="drawer-toggle"
+            //     class="sr-only"
+            //     checked={*is_drawer_open}
+            //     onclick={toggle_drawer.clone()}
+            // />
         </div>
     }
 
