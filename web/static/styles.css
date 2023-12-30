@@ -18,6 +18,15 @@ body {
     /* Other button styles */
 }
 
+.drawer-icon {
+    z-index: 1100; /* Higher than the search bar's z-index */
+    position: fixed;
+    top: 13px;
+    left: 10px;
+    padding: 4px;
+    /* Other styles as needed */
+}
+
 .drawer-background {
     background-color: var(--background-color);
     position: fixed;
@@ -52,6 +61,17 @@ body.no-scroll {
     text-align: center;
 }
 
+.episodes-container {
+    padding-top: 60px; /* Adjust the value to the height of your search bar */
+}
+
+
+.center-text {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
 .logo {
     max-width: 100px; /* Adjust size as needed */
     margin-bottom: 20px;
@@ -63,6 +83,11 @@ body.no-scroll {
     justify-content: end;
     padding: 10px 20px;
     background-color: var(--background-color); /* Adjust the color as needed */
+    position: fixed; /* Fix the position relative to the viewport */
+    top: 0; /* Align to the top of the viewport */
+    left: 0; /* Align to the left of the viewport */
+    right: 0; /* Ensure it extends to the right of the viewport */
+    z-index: 1000; /* Make sure it stays on top of other content */
 }
 
 .search-input {

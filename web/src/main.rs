@@ -1,6 +1,8 @@
 // Custom Mods
 mod components;
 mod requests;
+
+use std::rc::Rc;
 use components::routes::Route;
 use components::login::Login;
 use components::login::ChangeServer;
@@ -13,19 +15,31 @@ use components::search::Search;
 use components::settings::Settings;
 use components::user_stats::UserStats;
 use components::home::Home;
-use components::context;
-use crate::requests::login_requests::{LoginServerRequest, GetUserDetails};
-use web_sys::console;
-
+use components::search_new::SearchNew;
+use components::podcast_layout::PodLayout;
+use components::episodes_layout::EpisodeLayout;
+use components::podcasts::Podcasts;
 
 // Yew Imports
 use yew_router::prelude::*;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
+use yewdux::Dispatch;
+use crate::components::context::AppState;
+
 
 #[function_component(NotFound)]
-fn not_found() -> Html {
-    html! { <h1>{ "404 Not Found" }</h1> }
+pub fn not_found() -> Html {
+        html! {
+            <>
+                <div class="empty-episodes-container">
+                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                    <h1>{ "Page not found" }</h1>
+                    <p>{"Sorry for the inconvenience. You could eat a taco to cheer you up :)"}</p>
+                </div>
+            </>
+        }
+
 }
 
 fn switch(route: Route) -> Html {
@@ -42,6 +56,10 @@ fn switch(route: Route) -> Html {
         Route::Search => html! { <Search /> },
         Route::UserStats => html! { <UserStats /> },
         Route::LogOut => html! { <LogOut /> },
+        Route::SearchNew => html! { <SearchNew /> },
+        Route::PodLayout => html! { <PodLayout /> },
+        Route::EpisodeLayout => html! { <EpisodeLayout /> },
+        Route::Podcasts => html! { <Podcasts /> },
     }
 }
 
@@ -57,6 +75,8 @@ fn main_component() -> Html {
         </BrowserRouter>
     }
 }
+
+
 
 fn main() {
     yew::Renderer::<Main>::new().render();

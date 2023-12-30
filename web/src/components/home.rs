@@ -1,21 +1,12 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
-use super::app_drawer::App_drawer;
+use super::app_drawer::{App_drawer};
+use super::gen_components::Search_nav;
 use crate::requests::pod_req;
 use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState};
 use std::rc::Rc;
-
-// #[function_component(Home)]
-// pub fn home() -> Html {
-//     html! {
-//         <div>
-//             <h1>{ "Home" }</h1>
-//             <App_drawer />
-//         </div>
-//     }
-// }
 
 
 #[function_component(Home)]
@@ -60,56 +51,57 @@ pub fn home() -> Html {
 
                 wasm_bindgen_futures::spawn_local(async move {
                     match pod_req::call_get_recent_eps(&server_name, &api_key, user_id).await {
-                        Ok(response) => episodes.set(response.episodes),
+                        Ok(fetched_episodes) => {
+                            if fetched_episodes.is_empty() {
+                                // If no episodes are returned, set episodes state to an empty vector
+                                episodes.set(Vec::new());
+                            } else {
+                                // Set episodes state to the fetched episodes
+                                episodes.set(fetched_episodes);
+                            }
+                        },
                         Err(e) => error.set(Some(e.to_string())),
                     }
                 });
             }
-            // Return cleanup function
             || ()
         });
+
     }
 
     html! {
     <>
         <div class="episodes-container">
+            <Search_nav />
             {
                 if episodes.is_empty() {
-                        html! {
+                    html! {
                         <>
-                            <div class="search-bar-container">
-                                <input type="text" placeholder="Search podcasts" class="search-input"/>
-                                <select class="search-source">
-                                    <option value="itunes">{"iTunes"}</option>
-                                    <option value="podcast_index">{"Podcast Index"}</option>
-                                </select>
-                                <button class="search-btn">{"Search"}</button>
-                            </div>
                             <div class="empty-episodes-container">
                                 <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
                                 <h1>{ "No Recent Episodes Found" }</h1>
                                 <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
                             </div>
                         </>
-                        }
-                    } else {
-                        episodes.iter().map(|episode| html! {
-                            <div>
-                                <div class="episode">
-                                    // Add image, title, date, duration, and buttons here
-                                    <p>{ &episode.PodcastName }</p>
-                                    <p>{ &episode.EpisodeTitle }</p>
-                                    // ... other fields
-                                </div>
-                            </div>
-                        }).collect::<Html>()
                     }
+                } else {
+                    episodes.iter().map(|episode| html! {
+                        <div>
+                            <div class="episode">
+                                // Add image, title, date, duration, and buttons here
+                                <p>{ &episode.PodcastName }</p>
+                                <p>{ &episode.EpisodeTitle }</p>
+                                // ... other fields
+                            </div>
+                        </div>
+                    }).collect::<Html>()
                 }
+            }
             {
                 if let Some(error_message) = &*error {
                     html! { <div class="error-snackbar">{ error_message }</div> }
                 } else {
-                    html! { <></> } // Empty fragment for the else case
+                    html! { <></> }
                 }
             }
         </div>

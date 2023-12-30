@@ -206,11 +206,12 @@ pub fn login() -> Html {
 
             wasm_bindgen_futures::spawn_local(async move {
                 match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
-                    Ok((user_details, login_request)) => {
+                    Ok((user_details, login_request, server_details)) => {
                         // Use reduce_mut to modify the state directly
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
+                            state.server_details = Some(server_details)
                         });
 
                         // console::log_1(&format!("Set User Context: {:?}", user_details).into());

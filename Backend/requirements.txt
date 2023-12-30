@@ -3,3 +3,4 @@ requests
 requests-html
 lxml
 gunicorn
+flask_cors

@@ -10,7 +10,7 @@ edition = "2021"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.66", features = ["CssStyleDeclaration", "DomTokenList"] }
+web-sys = { version = "0.3.66", features = ["CssStyleDeclaration", "DomTokenList", "HtmlSelectElement"] }
 log = "0.4.20"
 wasm-bindgen = "0.2.89"
 #yew-router = "0.18.0"

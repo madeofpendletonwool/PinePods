@@ -1,6 +1,10 @@
+use std::rc::Rc;
 use yew::prelude::*;
-use yew_router::history::{History};
+use yew_router::history::{BrowserHistory, History};
 use yew_router::prelude::Link;
+use yewdux::Dispatch;
+use crate::components::context::AppState;
+use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use super::routes::Route;
 
 
@@ -138,7 +142,7 @@ pub fn app_drawer() -> Html {
             </div>
 
             // Toggle button - Fixed Position
-            <div class="fixed top-0 left-0 z-30 p-4" onclick={toggle_drawer.clone()}>
+            <div class="drawer-icon" onclick={toggle_drawer.clone()}>
                 // <div class="drawer-button">
                     <label for="drawer-toggle" class="bg-indigo-500 rounded-lg cursor-pointer">
                         <div class="flex flex-col items-center">

@@ -12,10 +12,10 @@ pub struct Episode {
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
-    pub episodes: Vec<Episode>,
+    pub episodes: Option<Vec<Episode>>,
 }
 
-pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>, user_id: i32) -> Result<RecentEps, anyhow::Error> {
+pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>, user_id: i32) -> Result<Vec<Episode>, anyhow::Error> {
     let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
 
     console::log_1(&format!("URL: {}", url).into());
@@ -27,11 +27,10 @@ pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>,
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
-
-    if response.ok() {
-        let recent_eps: RecentEps = response.json().await?;
-        Ok(recent_eps)
-    } else {
-        Err(anyhow::Error::msg("Failed to get recent episodes"))
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to fetch episodes: {}", response.status_text())));
     }
+
+    let response_body = response.json::<RecentEps>().await?;
+    Ok(response_body.episodes.unwrap_or_else(Vec::new))
 }

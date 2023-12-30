@@ -27,4 +27,12 @@ pub enum Route {
     UserStats,
     #[at("/sign_out")]
     LogOut,
+    #[at("/pod_layout")]
+    PodLayout,
+    #[at("/search_new")]
+    SearchNew,
+    #[at("/podcasts")]
+    Podcasts,
+    #[at("/episode_layout")]
+    EpisodeLayout,
 }

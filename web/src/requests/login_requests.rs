@@ -144,6 +144,33 @@ pub async fn call_get_user_details(server_name: &str, api_key: &str, user_id: &i
     }
 }
 
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct GetApiDetails {
+    // Add fields according to your API's JSON response
+    pub api_url: Option<String>,
+    pub proxy_url: Option<String>,
+    pub proxy_host: Option<String>,
+    pub proxy_port: Option<String>,
+    pub proxy_protocol: Option<String>,
+    pub reverse_proxy: Option<String>
+}
+
+pub async fn call_get_api_config(server_name: &str, api_key: &str) -> Result<crate::requests::login_requests::GetApiDetails, anyhow::Error> {
+    let url = format!("{}/api/data/config/", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let server_data: GetApiDetails = response.json().await?;
+        Ok(server_data)
+    } else {
+        Err(anyhow::Error::msg("Failed to get user information"))
+    }
+}
+
 pub async fn login(username: String, password: String) -> Result<LoginResponse, anyhow::Error> {
     let login_request = LoginRequest { username, password };
     let response = Request::post("/api/login")
@@ -160,7 +187,7 @@ pub async fn login(username: String, password: String) -> Result<LoginResponse, 
     }
 }
 
-pub async fn login_new_server(server_name: String, username: String, password: String) -> Result<(GetUserDetails, LoginServerRequest), anyhow::Error> {
+pub async fn login_new_server(server_name: String, username: String, password: String) -> Result<(GetUserDetails, LoginServerRequest, GetApiDetails), anyhow::Error> {
     let credentials = encode(format!("{}:{}", username, password));
     let auth_header = format!("Basic {}", credentials);
     let url = format!("{}/api/data/get_key", server_name);
@@ -209,8 +236,13 @@ pub async fn login_new_server(server_name: String, username: String, password: S
                 return Err(anyhow::Error::msg("Failed to get user details"));
             }
 
+            // Step 5: Get server details
+            let server_details = call_get_api_config(&server_name, &api_key).await?;
+            if server_details.api_url.is_none() {
+                return Err(anyhow::Error::msg("Failed to get server details"));
+            }
 
-            Ok((user_details, login_request))
+            Ok((user_details, login_request, server_details))
         },
         Err(e) => {
             // Directly propagate the error from verify_pinepods_instance
