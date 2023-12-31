@@ -116,3 +116,32 @@ body.no-scroll {
 .search-btn:hover {
     background-color: #0056b3;
 }
+
+.audio-player {
+    position: fixed; /* Fixed position */
+    bottom: 0; /* Align to the bottom of the page */
+    left: 0; /* Align to the left of the page */
+    width: 100%; /* Full width */
+    background-color: #333; /* Background color */
+    color: white; /* Text color */
+    padding: 10px 20px; /* Padding inside the bar */
+    display: flex; /* Flexbox layout */
+    align-items: center; /* Align items vertically */
+    justify-content: space-between; /* Space between elements */
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3); /* Shadow for a "lifted" effect */
+}
+
+.audio-player button {
+    background-color: #4CAF50; /* Button background color */
+    color: white; /* Button text color */
+    border: none; /* Remove border */
+    padding: 10px 15px; /* Padding inside the button */
+    margin-right: 20px; /* Margin to the right */
+    cursor: pointer; /* Cursor as pointer */
+    border-radius: 5px; /* Rounded corners */
+}
+
+.audio-player span {
+    flex-grow: 1; /* Take up remaining space */
+    text-align: left; /* Align text to the left */
+}
