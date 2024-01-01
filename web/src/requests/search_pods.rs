@@ -4,7 +4,7 @@ use serde::Deserialize;
 use web_sys::console;
 use anyhow::Error;
 use std::io::Cursor;
-use feed_rs::parser;
+use rss::Channel;
 use chrono::DateTime;
 
 // #[derive(Deserialize, Debug)]
@@ -54,7 +54,7 @@ pub struct Episode {
     pub links: Vec<String>,
     // Enclosure for audio file URL
     pub enclosure_url: Option<String>,
-    pub enclosure_length: Option<u64>,
+    pub enclosure_length: Option<String>,
     pub artwork: Option<String>,
     // ... other item fields ...
     pub content: Option<String>,
@@ -103,52 +103,33 @@ pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Erro
 }
 
 pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResult, Error> {
-    web_sys::console::log_1(&format!("Error: {:?}", &podcast_url).into());
     let response_text = Request::get(podcast_url).send().await?.text().await?;
+    let channel = Channel::read_from(response_text.as_bytes())?;
 
-    web_sys::console::log_1(&format!("Error: {:?}", &response_text).into());
+    let podcast_artwork_url = channel.image().map(|img| img.url().to_string());
 
-    let cursor = Cursor::new(response_text);
-    let feed = parser::parse(cursor)?;
-    web_sys::console::log_1(&format!("Error: {:?}", &feed).into());
+    let episodes = channel.items().iter().map(|item| {
+        let episode_artwork_url = item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()).or_else(|| podcast_artwork_url.clone());
+        let audio_url = item.enclosure().map(|enclosure| enclosure.url().to_string());
 
-    // Assuming 'feed' is your parsed feed object and it has an 'image' field
-    let podcast_artwork_url = feed.logo.map(|img| img.uri);
-
-
-    let episodes = feed.entries.into_iter().map(|entry| {
-        let episode_artwork_url = entry.links.iter()
-            .find(|link| link.rel.as_deref() == Some("episode")) // Adjust the condition based on actual feed structure
-            .map(|link| link.href.clone())
-            .or_else(|| podcast_artwork_url.clone()); // Fallback to podcast artwork if episode-specific artwork is not found
-        let links: Vec<String> = entry.links.iter()
-            .map(|link| link.href.clone())
-            .collect();
-        let authors: Vec<String> = entry.authors.iter()
-            .map(|person| person.name.clone())
-            .collect();
-
-            Episode {
-            title: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            description: Option::from(entry.summary.map(|d| d.content).unwrap_or_default()),
-            content: entry.content.as_ref().and_then(|c| c.body.clone()),
-            enclosure_url: entry.content.as_ref().and_then(|c| c.src.as_ref().map(|src| src.href.clone())),
-            // enclosure_url: Option::from(entry.content.map(|t| t.content).unwrap_or_default()),
-            enclosure_length: entry.content.as_ref().and_then(|c| c.length),
-            pub_date: entry.published.map(|p| p.to_rfc3339()),
-            authors,
-            links,
-            artwork: episode_artwork_url
-            // itunes_title: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            // itunes_author: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            // itunes_duration: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            // itunes_episode: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            // itunes_explicit: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            // itunes_summary: Option::from(entry.title.map(|t| t.content).unwrap_or_default()),
-            // Map other fields of entry to Episode fields
+        Episode {
+            title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
+            description: Option::from(item.description().map(|d| d.to_string()).unwrap_or_default()),
+            content: item.content().map(|c| c.to_string()),
+            enclosure_url: audio_url,
+            enclosure_length: item.enclosure().map(|e| e.length().to_string()),
+            pub_date: item.pub_date().map(|p| p.to_string()),
+            authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
+            links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
+            artwork: episode_artwork_url,
+            // Map other necessary fields
         }
     }).collect();
-    web_sys::console::log_1(&format!("Error: {:?}", &episodes).into());
 
-    Ok(PodcastFeedResult { episodes })
+    let feed_result = PodcastFeedResult {
+        episodes,
+        // Add other fields from Channel if necessary
+    };
+
+    Ok(feed_result)
 }

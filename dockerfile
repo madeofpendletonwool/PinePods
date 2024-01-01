@@ -12,6 +12,9 @@ RUN apt update && \
     apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev mariadb-client libpq-dev openssl && \
     rm -rf /var/lib/apt/lists/*
 
+# Install rust
+curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain -y
+
 # Install needed python packages via pip
 ADD ./requirements.txt /
 RUN pip install -r ./requirements.txt

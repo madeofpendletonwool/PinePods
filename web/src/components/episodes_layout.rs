@@ -11,9 +11,10 @@ use super::app_drawer::App_drawer;
 
 #[function_component(EpisodeLayout)]
 pub fn episode_layout() -> Html {
-    let dispatch = Dispatch::<AppState>::global();
-    // let (state, _dispatch) = use_store::<AppState>();
-    let state: Rc<AppState> = dispatch.get();
+    // let dispatch = Dispatch::<AppState>::global();
+    // // let (state, _dispatch) = use_store::<AppState>();
+    // let state: Rc<AppState> = dispatch.get();
+    let (state, _dispatch) = use_store::<AppState>();
     let podcast_feed_results = state.podcast_feed_results.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
@@ -28,7 +29,7 @@ pub fn episode_layout() -> Html {
                     html! {
                         <div>
                             { for results.episodes.iter().map(|episode| {
-                                let dispatch = dispatch.clone();
+                                let dispatch = _dispatch.clone();
                                 let history = history_clone.clone();
 
                                 // Clone the variables outside the closure
@@ -36,7 +37,8 @@ pub fn episode_layout() -> Html {
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
 
                                 let on_play_click = {
-                                    let episode_url_for_closure = Rc::new(episode_url_clone.clone());
+                                    web_sys::console::log_1(&format!("Play Clicked with URL: {}", &episode_url_clone).into());
+                                    let episode_url_for_closure = episode_url_clone.clone();
                                     let episode_title_for_closure = episode_title_clone.clone();
                                     let dispatch = dispatch.clone();
 
@@ -52,7 +54,10 @@ pub fn episode_layout() -> Html {
                                                 src: episode_url_for_closure.clone(),
                                                 title: episode_title_for_closure.clone(),
                                             });
+                                            state.set_audio_source(episode_url_for_closure.to_string()); // Set the audio source here
+                                            state.toggle_playback();
                                             web_sys::console::log_1(&format!("After state update: {:?}", state.audio_playing).into());
+                                            web_sys::console::log_1(&format!("After state update: {:?}", state.currently_playing).into());
                                         });
                                     })
                                 };
@@ -85,8 +90,10 @@ pub fn episode_layout() -> Html {
         <App_drawer />
         {
             if let Some(audio_props) = &state.currently_playing {
+                web_sys::console::log_1(&"Running audio props".into());
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} /> }
             } else {
+                web_sys::console::log_1(&"Player not loading".into());
                 html! {}
             }
         }
