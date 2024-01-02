@@ -3,6 +3,7 @@ use gloo_net::http::Request;
 use serde::Deserialize;
 use anyhow::Error;
 use rss::Channel;
+use rss::extension::itunes::ITunesItemExtension;
 
 // #[derive(Deserialize, Debug)]
 // pub struct Episode {
@@ -56,6 +57,7 @@ pub struct Episode {
     // ... other item fields ...
     pub content: Option<String>,
     pub authors: Vec<String>,
+    pub duration: Option<String>
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -108,6 +110,8 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
     let episodes = channel.items().iter().map(|item| {
         let episode_artwork_url = item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()).or_else(|| podcast_artwork_url.clone());
         let audio_url = item.enclosure().map(|enclosure| enclosure.url().to_string());
+        let itunes_extension = item.itunes_ext();
+        let duration = itunes_extension.and_then(|ext| ext.duration()).map(|d| d.to_string());
 
         Episode {
             title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
@@ -119,6 +123,8 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
             authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
             links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
             artwork: episode_artwork_url,
+            duration
+
             // Map other necessary fields
         }
     }).collect();

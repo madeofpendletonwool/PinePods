@@ -1,3 +1,4 @@
+use std::io::BufRead;
 use yew::{Callback, function_component, Html, html};
 use web_sys::MouseEvent;
 use yew_router::history::BrowserHistory;
@@ -33,7 +34,7 @@ pub fn episode_layout() -> Html {
                                 // Clone the variables outside the closure
                                 let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
-                                let episode_duration_clone = episode.enclosure_length.clone().unwrap_or_default();
+                                let episode_duration_clone = episode.duration.clone().unwrap_or_default();
 
                                 let on_play_click = {
                                     let episode_url_for_closure = episode_url_clone.clone();
@@ -41,14 +42,20 @@ pub fn episode_layout() -> Html {
                                     let episode_duration_for_closure = episode_duration_clone.clone();
                                     let dispatch = dispatch.clone();
 
-                                    fn format_duration(duration_ms: f64) -> String {
-                                        let duration_seconds = duration_ms / 1000.0;
-                                        let hours = (duration_seconds / 3600.0).floor() as i32;
-                                        let minutes = ((duration_seconds % 3600.0) / 60.0).floor() as i32;
-                                        let seconds = (duration_seconds % 60.0).floor() as i32;
+                                    fn parse_duration_to_seconds(duration_convert: &str) -> f64 {
+                                        let parts: Vec<&str> = duration_convert.split(':').collect();
+                                        let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
 
-                                        format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+                                        let seconds = match parts.len() {
+                                            3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
+                                            2 => parts[0] * 60.0 + parts[1],
+                                            1 => parts[0],
+                                            _ => 0.0,
+                                        };
+
+                                        seconds
                                     }
+
 
 
                                     Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
@@ -58,17 +65,17 @@ pub fn episode_layout() -> Html {
                                         let episode_duration_for_closure = episode_duration_clone.clone();
                                         web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
                                         let dispatch = dispatch.clone();
-                                        let duration_ms = episode_duration_for_closure.parse::<f64>().unwrap_or(0.0) / 1000.0;
-                                        let formatted_duration = format_duration(duration_ms);
-                                        web_sys::console::log_1(&format!("duration ms: {}", &duration_ms).into());
-                                        web_sys::console::log_1(&format!("duration format: {}", &formatted_duration).into());
+                                        // let duration = episode_duration_for_closure;
+                                        let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
+                                        web_sys::console::log_1(&format!("duration format: {}", &episode_duration_for_closure).into());
+                                        web_sys::console::log_1(&format!("duration sec: {}", &formatted_duration).into());
                                         dispatch.reduce_mut(move |state| {
                                             state.audio_playing = Some(true);
                                             state.currently_playing = Some(AudioPlayerProps {
                                                 src: episode_url_for_closure.clone(),
                                                 title: episode_title_for_closure.clone(),
-                                                duration: duration_ms / 1000.0,
-                                                duration_formatted: formatted_duration,
+                                                duration: episode_duration_for_closure.clone(),
+                                                duration_sec: formatted_duration,
                                             });
                                             state.set_audio_source(episode_url_for_closure.to_string()); // Set the audio source here
                                             // if !state.audio_playing.unwrap_or(false) {
@@ -111,10 +118,8 @@ pub fn episode_layout() -> Html {
         <App_drawer />
         {
             if let Some(audio_props) = &state.currently_playing {
-                web_sys::console::log_1(&"Running audio props".into());
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} duration={audio_props.duration.clone()} duration_formatted={audio_props.duration_formatted.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
             } else {
-                web_sys::console::log_1(&"Player not loading".into());
                 html! {}
             }
         }

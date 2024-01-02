@@ -17,8 +17,8 @@ use std::string::String;
 pub struct AudioPlayerProps {
     pub src: String,
     pub title: String,
-    pub duration: f64,
-    pub duration_formatted: String
+    pub duration: String,
+    pub duration_sec: f64
 }
 
 #[function_component(AudioPlayer)]
@@ -92,11 +92,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     };
 
     // Update current time and duration
-// Keep the existing use_state for the formatted time
-    let current_time_formatted = use_state(|| "00:00:00".to_string());
-
-// Add a new state for the current time in seconds
-    let current_time_seconds = use_state(|| 0.0);
+// // Keep the existing use_state for the formatted time
+//     let current_time_formatted = use_state(|| "00:00:00".to_string());
+//
+// // Add a new state for the current time in seconds
+//     let current_time_seconds = use_state(|| 0.0);
 
     let update_time = {
         let dispatch = _dispatch.clone();
@@ -140,7 +140,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
 
     // Check if there is an audio player prop set in AppState
-    web_sys::console::log_1(&format!("duration format: {}", &state.duration_formatted).into());
+
     // web_sys::console::log_1(&format!("duration format: {}", &state.sr).into());
     if let Some(audio_props) = state.currently_playing.as_ref() {
         html! {
@@ -154,10 +154,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     <span>{state.current_time_formatted.clone()}</span>
                     <input type="range"
                         min="0.0"
-                        max={state.duration.to_string()}
+                        max={audio_props.duration_sec.to_string().clone()}
                         value={state.current_time_seconds.to_string()}
                         oninput={update_time.clone()} />
-                    <span>{&audio_props.duration_formatted}</span>
+                    <span>{&audio_props.duration}</span>
                 </div>
             </div>
         }
