@@ -1,23 +1,35 @@
+use gloo_timers::callback::Interval;
+// use serde::__private::de::Content::String;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 use yew::prelude::*;
-use std::rc::Rc;
+use yew::events::*;
 use yew::{Callback, function_component, Html, html, props};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-use yewdux::Dispatch;
 use yewdux::prelude::*;
 use crate::components::context::{AppState};
-use web_sys::{HtmlAudioElement};
+use web_sys::{HtmlAudioElement, HtmlInputElement};
+use std::string::String;
+
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
     pub src: String,
     pub title: String,
+    pub duration: f64,
+    pub duration_formatted: String
 }
 
 #[function_component(AudioPlayer)]
 pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
+
+    // Initialize state for current time and duration
+// Initialize state for current time and duration
+    let current_time = use_state(|| "00:00:00".to_string());
+    let duration = use_state(|| 0.0);
 
     // Clone the state reference for use inside the closure
     let audio_ref_clone = audio_ref.clone();
@@ -28,15 +40,41 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     use_effect_with(src_clone.clone(), {
         let src = src_clone.clone();
         let audio_ref = audio_ref.clone();
-        web_sys::console::log_1(&"Inside use effect".into());
         move |_| {
             if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
-                web_sys::console::log_1(&"Audio element found".into());
                 audio_element.set_src(&src);
             } else {
-                web_sys::console::log_1(&"Audio element not found".into());
             }
             || ()
+        }
+    });
+
+// Effect for setting up an interval to update the current playback time
+    // Effect for setting up an interval to update the current playback time
+    // Clone `audio_ref` for `use_effect_with`
+    let audio_ref_clone = audio_ref.clone();
+    let current_time_clone = current_time.clone();
+    let state_clone = state.clone();
+    use_effect_with((), {
+        let dispatch = _dispatch.clone();
+        move |_| {
+            let interval_handle = Interval::new(1000, move || {
+                if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                    let time_in_seconds = audio_element.current_time();
+                    let hours = (time_in_seconds / 3600.0).floor() as i32;
+                    let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
+                    let seconds = (time_in_seconds % 60.0).floor() as i32;
+                    let formatted_time = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+
+                    dispatch.reduce_mut(move |state_clone| {
+                        // Update the current time in your state here
+                        state_clone.current_time_seconds = time_in_seconds;
+                        state_clone.current_time_formatted = formatted_time;
+                    });
+                }
+            });
+
+            move || drop(interval_handle)
         }
     });
 
@@ -49,8 +87,51 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let toggle_playback = {
         let dispatch = _dispatch.clone();
         Callback::from(move |_| {
-            web_sys::console::log_1(&"Toggling playback".into());
             dispatch.reduce_mut(AppState::toggle_playback);
+        })
+    };
+
+    // Update current time and duration
+// Keep the existing use_state for the formatted time
+    let current_time_formatted = use_state(|| "00:00:00".to_string());
+
+// Add a new state for the current time in seconds
+    let current_time_seconds = use_state(|| 0.0);
+
+    let update_time = {
+        let dispatch = _dispatch.clone();
+        Callback::from(move |e: InputEvent| {
+            // Get the value from the target of the InputEvent
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                if let Ok(value) = input.value().parse::<f64>() {
+                    // Update the state using dispatch
+                    dispatch.reduce_mut(move |state| {
+                        if let Some(audio_element) = state.audio_element.as_ref() {
+                            audio_element.set_current_time(value);
+                            state.current_time_seconds = value;
+
+                            // Update formatted time
+                            let hours = (value / 3600.0).floor() as i32;
+                            let minutes = ((value % 3600.0) / 60.0).floor() as i32;
+                            let seconds = (value % 60.0).floor() as i32;
+                            state.current_time_formatted = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+                        }
+                    });
+                }
+            }
+        })
+    };
+
+
+// Skip forward
+    let skip_forward = {
+        let dispatch = _dispatch.clone();
+        Callback::from(move |_| {
+            if let Some(audio_element) = state.audio_element.as_ref() {
+                let new_time = audio_element.current_time() + 15.0;
+                audio_element.set_current_time(new_time);
+                dispatch.reduce_mut(|state| state.update_current_time(new_time));
+            }
         })
     };
 
@@ -59,20 +140,28 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
 
     // Check if there is an audio player prop set in AppState
+    web_sys::console::log_1(&format!("duration format: {}", &state.duration_formatted).into());
+    // web_sys::console::log_1(&format!("duration format: {}", &state.sr).into());
     if let Some(audio_props) = state.currently_playing.as_ref() {
-        web_sys::console::log_1(&format!("Rendering AudioPlayer: {}", &audio_props.title).into());
-        web_sys::console::log_1(&format!("Rendering AudioPlayer: {}", &audio_props.src).into());
         html! {
             <div class="audio-player">
-                <button onclick={toggle_playback}>
-                    { if state.audio_playing.unwrap_or(false) { "Pause" } else { "Play" } }
-                </button>
                 <span>{ &audio_props.title }</span>
-                // Add more controls like skip button, slider, etc.
+                <div>
+                    <button onclick={toggle_playback}>
+                        { if state.audio_playing.unwrap_or(false) { "Pause" } else { "Play" } }
+                    </button>
+                    <button onclick={skip_forward}>{"Skip 15s"}</button>
+                    <span>{state.current_time_formatted.clone()}</span>
+                    <input type="range"
+                        min="0.0"
+                        max={state.duration.to_string()}
+                        value={state.current_time_seconds.to_string()}
+                        oninput={update_time.clone()} />
+                    <span>{&audio_props.duration_formatted}</span>
+                </div>
             </div>
         }
     } else {
-        web_sys::console::log_1(&"Rendering AudioPlayer: No current audio".into());
         html! {}
     }
 }

@@ -3,15 +3,11 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-use yew_router::prelude::Link;
-use super::routes::Route;
-use super::app_drawer::App_drawer;
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use web_sys::{console, HtmlInputElement, window};
 use web_sys::HtmlSelectElement;
 use yewdux::prelude::*;
 use crate::components::context::{AppState};
-use crate::components::gen_components::_ErrorMessageProps::error_message;
 
 #[derive(Properties, PartialEq)]
 pub struct ErrorMessageProps {

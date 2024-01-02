@@ -15,7 +15,6 @@ pub fn pod_layout() -> Html {
     let search_results = state.search_results.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
-    web_sys::console::log_1(&format!("Search Results: {:?}", search_results).into());
 
     html! {
     <div>

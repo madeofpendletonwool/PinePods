@@ -24,8 +24,6 @@ use components::podcasts::Podcasts;
 use yew_router::prelude::*;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-use yewdux::Dispatch;
-use crate::components::context::AppState;
 
 
 #[function_component(NotFound)]

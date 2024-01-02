@@ -5,19 +5,9 @@ use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests;
 use crate::components::context::{AppState};
-use crate::components::context;
-use yewdux::prelude::*;
-use web_sys::console;
-
-use crate::requests::login_requests::GetUserDetails;
-use crate::requests::login_requests::LoginServerRequest;
 use yewdux::prelude::*;
 
-// #[derive(Default, PartialEq, Store)]
-// pub struct AppState {
-//     pub user_details: Option<GetUserDetails>,
-//     pub auth_details: Option<LoginServerRequest>,
-// }
+use yewdux::prelude::*;
 
 #[function_component(Login)]
 pub fn login() -> Html {

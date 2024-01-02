@@ -1,11 +1,8 @@
 use std::collections::HashMap;
 use gloo_net::http::Request;
 use serde::Deserialize;
-use web_sys::console;
 use anyhow::Error;
-use std::io::Cursor;
 use rss::Channel;
-use chrono::DateTime;
 
 // #[derive(Deserialize, Debug)]
 // pub struct Episode {
