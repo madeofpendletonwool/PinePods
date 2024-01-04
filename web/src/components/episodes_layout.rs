@@ -3,7 +3,7 @@ use yew::{Callback, function_component, Html, html};
 use web_sys::MouseEvent;
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
-use crate::components::context::{AppState};
+use crate::components::context::{AppState, UIState};
 use crate::components::audio::{AudioPlayerProps, AudioPlayer};
 use crate::components::audio::_AudioPlayerProps::duration;
 use super::gen_components::Search_nav;
@@ -14,8 +14,9 @@ pub fn episode_layout() -> Html {
     // let dispatch = Dispatch::<AppState>::global();
     // // let (state, _dispatch) = use_store::<AppState>();
     // let state: Rc<AppState> = dispatch.get();
-    let (state, _dispatch) = use_store::<AppState>();
-    let podcast_feed_results = state.podcast_feed_results.clone();
+    let (state, _dispatch) = use_store::<UIState>();
+    let (search_state, _search_dispatch) = use_store::<AppState>();
+    let podcast_feed_results = search_state.podcast_feed_results.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
 

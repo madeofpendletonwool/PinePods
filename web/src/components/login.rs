@@ -14,6 +14,56 @@ pub fn login() -> Html {
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
+    let (app_state, dispatch) = use_store::<AppState>();
+
+    use_effect_with((), {
+        let history = history.clone();
+        move |_| {
+            if let Some(window) = web_sys::window() {
+                if let Ok(local_storage) = window.local_storage() {
+                    if let Some(storage) = local_storage {
+                        if let Ok(Some(user_state)) = storage.get_item("userState") {
+                            let app_state_result = AppState::deserialize(&user_state);
+
+                            if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
+                                match AppState::deserialize(&auth_state) {
+                                    Ok(auth_details) => { // Successful deserialization of auth state
+                                        if let Ok(Some(server_state)) = storage.get_item("serverState") {
+                                            let server_details_result = AppState::deserialize(&server_state);
+
+                                            if let Ok(app_state) = app_state_result { // Successful deserialization of user state
+                                                if let Ok(server_details) = server_details_result { // Successful deserialization of server state
+                                                    // Check if the deserialized state contains valid data
+                                                    if app_state.user_details.is_some() && auth_details.auth_details.is_some() && server_details.server_details.is_some() {
+                                                        // Auto login logic here
+                                                        dispatch.reduce_mut(move |state| {
+                                                            state.user_details = app_state.user_details;
+                                                            state.auth_details = auth_details.auth_details;
+                                                            state.server_details = server_details.server_details;
+                                                            // ... set other state details if necessary ...
+                                                        });
+
+                                                        history.push("/home"); // Redirect to the home page
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        web_sys::console::log_1(&format!("Error deserializing auth state: {:?}", e).into());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            || () // Return an empty closure to satisfy use_effect_with
+        }
+    });
+
+
 
 
     let on_username_change = {
@@ -181,6 +231,7 @@ pub fn login() -> Html {
             password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
     };
+
     let history_clone = history.clone();
     let error_message_clone = error_message.clone();
     // let app_state_clone = app_state.clone();
@@ -201,11 +252,15 @@ pub fn login() -> Html {
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
-                            state.server_details = Some(server_details)
+                            state.server_details = Some(server_details);
+
+                            state.store_app_state();
+
                         });
 
                         // console::log_1(&format!("Set User Context: {:?}", user_details).into());
                         // console::log_1(&format!("Set Auth Context: {:?}", login_request).into());
+                        // state.store_app_state
                         history.push("/home"); // Use the route path
                     },
                     Err(e) => {

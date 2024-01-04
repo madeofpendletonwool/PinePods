@@ -14,7 +14,7 @@ pub struct LoginRequest {
     // api_key: String
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LoginServerRequest {
     pub(crate) server_name: String,
     pub(crate) username: String,
@@ -117,7 +117,7 @@ pub async fn call_get_user_id(server_name: &str, api_key: &str) -> Result<GetUse
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GetUserDetails {
     // Add fields according to your API's JSON response
     pub UserID: i32,
@@ -144,7 +144,7 @@ pub async fn call_get_user_details(server_name: &str, api_key: &str, user_id: &i
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GetApiDetails {
     // Add fields according to your API's JSON response
     pub api_url: Option<String>,
