@@ -38,7 +38,7 @@ pub struct Podcast {
     pub(crate) artwork: String,
     pub(crate) lastUpdateTime: i64,
     // ... other fields as needed ...
-    pub(crate) categories: HashMap<String, String>,
+    pub(crate) categories: Option<HashMap<String, String>>,
     pub(crate) explicit: bool,
     pub(crate) episodeCount: i32,
     // ... other fields as needed ...
@@ -57,6 +57,7 @@ pub struct Episode {
     // ... other item fields ...
     pub content: Option<String>,
     pub authors: Vec<String>,
+    pub guid: String,
     pub duration: Option<String>
 }
 
@@ -72,14 +73,14 @@ pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Opti
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
-    web_sys::console::log_1(&format!("Error: {}", &url).into());
 
     let response = Request::get(&url).send().await.map_err(|err| anyhow::Error::new(err))?;
-    web_sys::console::log_1(&format!("Error: {:?}", &response).into());
 
     if response.ok() {
-        let search_results: PodcastSearchResult = response.json().await.map_err(|err| anyhow::Error::new(err))?;
-        web_sys::console::log_1(&format!("Search Results: {:?}", &search_results).into());
+        let response_text = response.text().await.map_err(|err| anyhow::Error::new(err))?;
+        web_sys::console::log_1(&format!("Raw Response: {}", response_text).into());
+
+        let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
         Ok(search_results)
     } else {
         Err(anyhow::Error::msg(format!("Failed to fetch podcast info: {}", response.status_text())))
@@ -112,10 +113,14 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
         let audio_url = item.enclosure().map(|enclosure| enclosure.url().to_string());
         let itunes_extension = item.itunes_ext();
         let duration = itunes_extension.and_then(|ext| ext.duration()).map(|d| d.to_string());
-
+        let description = if let Some(encoded_content) = item.content() {
+            Option::from(encoded_content.to_string())
+        } else {
+            Option::from(item.description().unwrap_or_default().to_string())
+        };
         Episode {
             title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
-            description: Option::from(item.description().map(|d| d.to_string()).unwrap_or_default()),
+            description,
             content: item.content().map(|c| c.to_string()),
             enclosure_url: audio_url,
             enclosure_length: item.enclosure().map(|e| e.length().to_string()),
@@ -123,6 +128,7 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
             authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
             links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
             artwork: episode_artwork_url,
+            guid: item.title().map(|t| t.to_string()).unwrap_or_default(),
             duration
 
             // Map other necessary fields

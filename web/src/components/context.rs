@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use serde::Deserialize;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -10,6 +11,7 @@ use yewdux::prelude::*;
 use web_sys::HtmlAudioElement;
 use serde_json::{json, from_str};
 use web_sys::window;
+use crate::components::podcast_layout::ClickedFeedURL;
 
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store)]
@@ -20,6 +22,10 @@ pub struct AppState {
     pub error_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
+    pub clicked_podcast_info: Option<ClickedFeedURL>,
+    // pub expanded_episodes: HashSet<i64>,
+    #[serde(default)]
+    pub expanded_descriptions: HashSet<String>,
 }
 #[derive(Default, Clone, PartialEq, Store)]
 pub struct UIState {

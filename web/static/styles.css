@@ -145,3 +145,57 @@ body.no-scroll {
     flex-grow: 1; /* Take up remaining space */
     text-align: left; /* Align text to the left */
 }
+
+.podcast-header {
+    display: flex;
+    align-items: center;
+    background-color: #f9f9f9; /* Light background for the header */
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Soft shadow for depth */
+}
+
+.podcast-cover {
+    width: 25%; /* Adjust size as needed */
+    object-fit: cover;
+    border-radius: 5px;
+    margin-right: 20px;
+}
+
+.podcast-info {
+    flex-grow: 1;
+}
+
+.podcast-title {
+    font-size: 1.5em; /* Larger title size */
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333; /* Darker color for emphasis */
+}
+
+.podcast-description {
+    color: #555; /* Slightly muted text color */
+    line-height: 1.4;
+}
+
+.header-text {
+    font-weight: bold;
+    margin-bottom: 5px;
+    padding-left: 10px;
+}
+
+.category-box {
+    display: inline-block;
+    background-color: #e0e0e0; /* Light gray background */
+    color: #333;
+    padding: 5px 10px;
+    margin: 5px;
+    border-radius: 4px; /* Slightly rounded corners */
+    font-size: 0.8em;
+}
+
+.episode-description-container a {
+    color: blue; /* or any color you prefer */
+    text-decoration: underline;
+}

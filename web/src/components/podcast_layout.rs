@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::rc::Rc;
+use serde::{Deserialize, Serialize};
 use web_sys::MouseEvent;
 use yew::{Callback, function_component, Html, html};
 use yew_router::history::{BrowserHistory, History};
@@ -7,6 +9,20 @@ use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
 use crate::components::context::{AppState};
 use crate::requests::search_pods::{call_get_podcast_info, call_parse_podcast_url, test_connection};
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct ClickedFeedURL {
+    // Add fields according to your API's JSON response
+    pub podcast_title: String,
+    pub podcast_url: String,
+    pub podcast_description: String,
+    pub podcast_author: String,
+    pub podcast_artwork: String,
+    pub podcast_last_update: i64,
+    pub podcast_explicit: bool,
+    pub podcast_episode_count: i32,
+    pub podcast_categories: Option<HashMap<String, String>>
+}
 
 #[function_component(PodLayout)]
 pub fn pod_layout() -> Html {
@@ -25,15 +41,45 @@ pub fn pod_layout() -> Html {
                 html! {
                     <div>
                         { for results.feeds.iter().map(|podcast| {
-                            let podcast_url = podcast.url.clone();
+                            //Get podcast info for state
+                            let podcast_title_clone = podcast.title.clone();
+                            let podcast_url_clone = podcast.url.clone();
+                            let podcast_description_clone = podcast.description.clone();
+                            let podcast_author_clone = podcast.author.clone();
+                            let podcast_artwork_clone = podcast.artwork.clone();
+                            let podcast_last_update_clone = podcast.lastUpdateTime.clone();
+                            let podcast_explicit_clone = podcast.explicit.clone();
+                            let podcast_episode_count_clone = podcast.episodeCount.clone();
+                            let podcast_categories_clone = podcast.categories.clone();
+
                             let dispatch_clone = dispatch.clone(); // Clone the dispatch here
                             let history = history_clone.clone();
                             let on_title_click = {
                                 let dispatch = dispatch.clone();
                                 let history = history.clone(); // Clone history for use inside the closure
+
                                 Callback::from(move |e: MouseEvent| {
+                                    let podcast_title = podcast_title_clone.clone();
+                                    let podcast_url = podcast_url_clone.clone();
+                                    let podcast_description = podcast_description_clone.clone();
+                                    let podcast_author = podcast_author_clone.clone();
+                                    let podcast_artwork = podcast_artwork_clone.clone();
+                                    let podcast_last_update = podcast_last_update_clone.clone();
+                                    let podcast_explicit = podcast_explicit_clone.clone();
+                                    let podcast_episode_count = podcast_episode_count_clone.clone();
+                                    let podcast_categories = podcast_categories_clone.clone();
                                     e.prevent_default(); // Prevent the default anchor behavior
-                                    let podcast_url = podcast_url.clone();
+                                    let podcast_values = ClickedFeedURL {
+                                        podcast_title,
+                                        podcast_url: podcast_url.clone(),
+                                        podcast_description,
+                                        podcast_author,
+                                        podcast_artwork,
+                                        podcast_last_update,
+                                        podcast_explicit,
+                                        podcast_episode_count,
+                                        podcast_categories
+                                    };
                                     let dispatch = dispatch.clone();
                                     let history = history.clone(); // Clone again for use inside async block
                                     wasm_bindgen_futures::spawn_local(async move {
@@ -41,6 +87,7 @@ pub fn pod_layout() -> Html {
                                             Ok(podcast_feed_results) => {
                                                 dispatch.reduce_mut(move |state| {
                                                     state.podcast_feed_results = Some(podcast_feed_results);
+                                                    state.clicked_podcast_info = Some(podcast_values);
                                                 });
                                                 history.push("/episode_layout"); // Navigate to episode_layout
                                             },

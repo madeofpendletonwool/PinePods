@@ -16,6 +16,7 @@ pub fn login() -> Html {
     let password = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
 
+    // User Auto Login with saved state
     use_effect_with((), {
         let history = history.clone();
         move |_| {
@@ -40,7 +41,7 @@ pub fn login() -> Html {
                                                             state.user_details = app_state.user_details;
                                                             state.auth_details = auth_details.auth_details;
                                                             state.server_details = server_details.server_details;
-                                                            // ... set other state details if necessary ...
+
                                                         });
 
                                                         history.push("/home"); // Redirect to the home page
