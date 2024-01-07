@@ -7,6 +7,7 @@ use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState};
 use std::rc::Rc;
+use serde::de::Unexpected::Option;
 
 
 #[function_component(Home)]
@@ -42,30 +43,62 @@ pub fn home() -> Html {
             state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
         );
 
-        use_effect_with(dependencies, move |(api_key, user_id, server_name)| {
-            let episodes = episodes.clone();
-            let error = error.clone();
+        console::log_1(&format!("apikey: {:?}", &api_key).into());
+        console::log_1(&format!("userid: {:?}", &user_id).into());
+        console::log_1(&format!("servername: {:?}", &server_name).into());
 
-            if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
-                console::log_1(&format!("Server Name: {}", server_name).into());
+        // if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+        //     console::log_1(&format!("Server Name: {}", server_name).into());
+        //
+        //     wasm_bindgen_futures::spawn_local(async move {
+        //         match pod_req::call_get_recent_eps(&server_name, &api_key, user_id).await {
+        //             Ok(fetched_episodes) => {
+        //                 if fetched_episodes.is_empty() {
+        //                     // If no episodes are returned, set episodes state to an empty vector
+        //                     console::log_1(&format!("Server Name: {:?}", &episodes).into());
+        //                     episodes.set(Vec::new());
+        //                 } else {
+        //                     // Set episodes state to the fetched episodes
+        //                     console::log_1(&format!("Server Name: {:?}", &episodes).into());
+        //                     episodes.set(fetched_episodes);
+        //                 }
+        //             },
+        //             Err(e) => error.set(Some(e.to_string())),
+        //         }
+        //     });
+        // }
+        let server_name_effect = server_name.clone();
+        let user_id_effect = user_id.clone();
+        let api_key_effect = api_key.clone();
 
-                wasm_bindgen_futures::spawn_local(async move {
-                    match pod_req::call_get_recent_eps(&server_name, &api_key, user_id).await {
-                        Ok(fetched_episodes) => {
-                            if fetched_episodes.is_empty() {
-                                // If no episodes are returned, set episodes state to an empty vector
-                                episodes.set(Vec::new());
-                            } else {
-                                // Set episodes state to the fetched episodes
-                                episodes.set(fetched_episodes);
-                            }
-                        },
-                        Err(e) => error.set(Some(e.to_string())),
-                    }
-                });
-            }
-            || ()
-        });
+        use_effect_with(
+            (api_key_effect, user_id_effect, server_name_effect),
+            move |_| {
+                console::log_1(&format!("User effect running: {:?}", &server_name).into());
+                let episodes_clone = episodes.clone();
+                let error_clone = error.clone();
+
+                if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id, server_name.clone()) {
+                    console::log_1(&format!("in some: {:?}", &server_name).into());
+
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match pod_req::call_get_recent_eps(&server_name, &api_key, &user_id).await {
+                            Ok(fetched_episodes) => {
+                                if fetched_episodes.is_empty() {
+                                    console::log_1(&format!("episodes empty: {:?}", &server_name).into());
+                                    episodes_clone.set(Vec::new());
+                                } else {
+                                    console::log_1(&format!("Getting episodes: {:?}", &server_name).into());
+                                    episodes_clone.set(fetched_episodes);
+                                }
+                            },
+                            Err(e) => error_clone.set(Some(e.to_string())),
+                        }
+                    });
+                }
+                || ()
+            },
+        );
 
     }
 

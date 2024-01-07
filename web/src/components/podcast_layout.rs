@@ -21,8 +21,37 @@ pub struct ClickedFeedURL {
     pub podcast_last_update: i64,
     pub podcast_explicit: bool,
     pub podcast_episode_count: i32,
-    pub podcast_categories: Option<HashMap<String, String>>
+    pub podcast_categories: Option<HashMap<String, String>>,
+    pub podcast_link: String
 }
+
+// let on_add_click = {
+//     let pod_values = clicked_podcast_info.clone();
+//
+//     let pod_title = pod_values.unwrap().podcast_title.clone();
+//     let pod_artwork = pod_values.unwrap().podcast_title.clone();
+//     let pod_author = pod_values.unwrap().podcast_author.clone();
+//     let categories = pod_values.unwrap().podcast_categories.clone();
+//     let pod_description = pod_values.unwrap().podcast_description.clone();
+//     let pod_episode_count = pod_values.unwrap().podcast_episode_count.clone();
+//     let pod_feed_url = pod_values.unwrap().podcast_url.clone();
+//     let pod_website = pod_values.unwrap().podcast_link.clone();
+//     let user_id = user_id.unwrap().clone();
+//
+//
+//     fn parse_duration_to_seconds(duration_convert: &str) -> f64 {
+//         let parts: Vec<&str> = duration_convert.split(':').collect();
+//         let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
+//
+//         let seconds = match parts.len() {
+//             3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
+//             2 => parts[0] * 60.0 + parts[1],
+//             1 => parts[0],
+//             _ => 0.0,
+//         };
+//
+//         seconds
+//     }
 
 #[function_component(PodLayout)]
 pub fn pod_layout() -> Html {
@@ -51,6 +80,7 @@ pub fn pod_layout() -> Html {
                             let podcast_explicit_clone = podcast.explicit.clone();
                             let podcast_episode_count_clone = podcast.episodeCount.clone();
                             let podcast_categories_clone = podcast.categories.clone();
+                            let podcast_link_clone = podcast.link.clone();
 
                             let dispatch_clone = dispatch.clone(); // Clone the dispatch here
                             let history = history_clone.clone();
@@ -68,6 +98,7 @@ pub fn pod_layout() -> Html {
                                     let podcast_explicit = podcast_explicit_clone.clone();
                                     let podcast_episode_count = podcast_episode_count_clone.clone();
                                     let podcast_categories = podcast_categories_clone.clone();
+                                    let podcast_link = podcast_link_clone.clone();
                                     e.prevent_default(); // Prevent the default anchor behavior
                                     let podcast_values = ClickedFeedURL {
                                         podcast_title,
@@ -78,7 +109,8 @@ pub fn pod_layout() -> Html {
                                         podcast_last_update,
                                         podcast_explicit,
                                         podcast_episode_count,
-                                        podcast_categories
+                                        podcast_categories,
+                                        podcast_link,
                                     };
                                     let dispatch = dispatch.clone();
                                     let history = history.clone(); // Clone again for use inside async block
@@ -105,7 +137,7 @@ pub fn pod_layout() -> Html {
                                         <a onclick={on_title_click} class="text-xl font-semibold hover:underline">{ &podcast.title }</a>
                                         <p class="text-gray-600">{ &podcast.description }</p>
                                     </div>
-                                    <button class="w-1/4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                                    <button class="selector-button w-1/4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
                                         {"Add"}
                                     </button>
                                 </div>

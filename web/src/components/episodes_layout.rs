@@ -1,7 +1,7 @@
 use std::io::BufRead;
 use std::rc::Rc;
 use yew::{Callback, function_component, Html, html, NodeRef, TargetCast, use_effect_with, use_force_update, use_node_ref};
-use web_sys::MouseEvent;
+use web_sys::{console, MouseEvent};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -9,10 +9,12 @@ use crate::components::audio::{AudioPlayerProps, AudioPlayer};
 use crate::components::audio::_AudioPlayerProps::duration;
 use super::gen_components::Search_nav;
 use super::app_drawer::App_drawer;
+use crate::requests::pod_req::{call_add_podcast, PodcastValues};
 use html2md::parse_html;
 use markdown::to_html;
 use wasm_bindgen::JsCast;
 use yew::{Properties};
+use crate::requests::pod_req;
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -67,7 +69,9 @@ pub fn episode_layout() -> Html {
     let trigger = use_force_update();
     let history_clone = history.clone();
     // let node_ref = use_node_ref();
-
+    let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let api_key = search_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let server_name = search_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     // Function to handle link clicks
     let handle_click = Callback::from(move |event: MouseEvent| {
         web_sys::console::log_1(&"click handle".to_string().into());
@@ -134,22 +138,91 @@ pub fn episode_layout() -> Html {
         (html, is_truncated)
     }
 
+    let on_add_click = {
+        let pod_values = clicked_podcast_info.clone();
+
+        let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
+        let pod_artwork_og = pod_values.clone().unwrap().podcast_title.clone();
+        let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
+        let categories_og = pod_values.clone().unwrap().podcast_categories.unwrap().clone();
+        let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
+        let pod_episode_count_og = pod_values.clone().unwrap().podcast_episode_count.clone();
+        let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
+        let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
+        let user_id_og = user_id.unwrap().clone();
+
+        let api_key_clone = api_key.clone();
+        let server_name_clone = server_name.clone();
+        let user_id_clone = user_id.clone();
+
+
+        Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
+            let pod_title = pod_title_og.clone();
+            let pod_artwork = pod_artwork_og.clone();
+            let pod_author = pod_author_og.clone();
+            let categories = categories_og.clone();
+            let pod_description = pod_description_og.clone();
+            let pod_episode_count = pod_episode_count_og.clone();
+            let pod_feed_url = pod_feed_url_og.clone();
+            let pod_website = pod_website_og.clone();
+            let user_id = user_id_og.clone();
+            web_sys::console::log_1(&"Add Clicked".to_string().into());
+            let podcast_values = PodcastValues {
+                pod_title,
+                pod_artwork,
+                pod_author,
+                categories,
+                pod_description,
+                pod_episode_count,
+                pod_feed_url,
+                pod_website,
+                user_id
+            };
+            let api_key_call = api_key_clone.clone();
+            let server_name_call = server_name_clone.clone();
+            let user_id_call = user_id_clone.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let api_key_wasm = api_key_call.clone().unwrap();
+                let user_id_wasm = user_id_call.clone().unwrap();
+                let server_name_wasm = server_name_call.clone();
+                let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
+
+                match call_add_podcast(&server_name_wasm.unwrap(), &api_key_wasm, &user_id_wasm, &pod_values_clone).await {
+                    Ok(success) => {
+                        if success {
+                            console::log_1(&"Podcast successfully added".into());
+                            // episodes_clone.set(Vec::new()); // Clear episodes or set them accordingly
+                        } else {
+                            console::log_1(&"Failed to add podcast".into());
+                            // error_clone.set(Some("Failed to add podcast".to_string()));
+                        }
+                    },
+                    Err(e) => {
+                        console::log_1(&format!("Error adding podcast: {:?}", e).into());
+                        // error_clone.set(Some(e.to_string()));
+                    }
+                }
+            });
+        })
+    };
+
 
 
     html! {
-        <div>
+        <div class="main-container">
             <Search_nav />
-            <h1 class="text-2xl font-bold my-4 center-text">{ "Podcast Episode Results" }</h1>
+            <h1 class="page_header text-2xl font-bold my-4 text-center">{ "Podcast Episode Results" }</h1>
         {
             if let Some(podcast_info) = clicked_podcast_info {
                 html! {
-                    <div class="podcast-header">
-                        <img src={podcast_info.podcast_artwork.clone()} alt={format!("Cover for {}", &podcast_info.podcast_title)} class="podcast-cover"/>
-                        <div class="podcast-info">
-                            <h2 class="podcast-title">{ &podcast_info.podcast_title }</h2>
+                    <div class="item-header">
+                        <img src={podcast_info.podcast_artwork.clone()} alt={format!("Cover for {}", &podcast_info.podcast_title)} class="item-header-cover"/>
+                        <div class="item-header-info">
+                            <h2 class="item-header-title">{ &podcast_info.podcast_title }</h2>
 
-                            <p class="podcast-description">{ &podcast_info.podcast_description }</p>
-                            <div class="podcast-info">
+                            <p class="item-header-description">{ &podcast_info.podcast_description }</p>
+                            <div class="item-header-info">
                                 <p class="header-text">{ format!("Episode Count: {}", &podcast_info.podcast_episode_count) }</p>
                                 <p class="header-text">{ format!("Authors: {}", &podcast_info.podcast_author) }</p>
                                 <p class="header-text">{ format!("Explicit: {}", &podcast_info.podcast_explicit) }</p>
@@ -173,6 +246,9 @@ pub fn episode_layout() -> Html {
 
                             </div>
                         </div>
+                            <button class="item-header-button selector-button font-bold py-2 px-4 rounded" title="Add Podcast" onclick={on_add_click}>
+                                <span class="material-icons">{"add"}</span>
+                            </button>
                     </div>
                 }
             } else {
@@ -274,26 +350,29 @@ pub fn episode_layout() -> Html {
                                 };
 
                                 html! {
-                                    <div class="flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
-                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-1/4 object-cover"/>
-                                        <div class="flex flex-col p-4 space-y-2 w-7/12">
-                                            <p class="text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
+                                    <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
+                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 object-cover"/>
+                                        <div class="flex flex-col p-4 space-y-2 w-9/12">
+                                            <p class="item_container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
                                             // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                             {
                                             html! {
-                                                <div class="episode-description-container">
+                                                <div class="item_container-text episode-description-container">
                                                     <div>
                                                         <SafeHtml html={description} />
                                                     </div>
-                                                    <button class="toggle-description-button" onclick={toggle_expanded}>
+                                                    <button class="item-container-button selector-button w-1/4 hover:bg-blue-700 font-bold py-1 px-2 rounded" onclick={toggle_expanded}>
                                                         { if is_expanded { "See Less" } else { "See More" } }
                                                     </button>
                                                 </div>
                                             }
                                                 }
-                                            <p class="text-gray-500">{ &episode.pub_date.clone().unwrap_or_default() }</p>
+                                            <p class="item-container-text">{ &episode.pub_date.clone().unwrap_or_default() }</p>
                                         </div>
-                                        <button class="play-button" onclick={on_play_click}>{"Play"}</button>
+                                        <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded" onclick={on_play_click}>
+                                            <span class="material-icons">{"play_arrow"}</span>
+                                        </button>
+
 
                                     </div>
                                 }
@@ -304,8 +383,8 @@ pub fn episode_layout() -> Html {
                     html! {
                         <div class="empty-episodes-container" id="episode-container">
                             <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                            <h1>{ "No Episodes Found" }</h1>
-                            <p>{"This podcast strangely doesn't have any episodes. Try a more mainstream one maybe?"}</p>
+                            <h1 class="page-subtitles">{ "No Episodes Found" }</h1>
+                            <p class="page-paragraphs">{"This podcast strangely doesn't have any episodes. Try a more mainstream one maybe?"}</p>
                         </div>
                     }
                 }
