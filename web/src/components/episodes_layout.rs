@@ -1,7 +1,7 @@
 use std::io::BufRead;
 use std::rc::Rc;
-use yew::{Callback, function_component, Html, html, NodeRef, TargetCast, use_effect_with, use_force_update, use_node_ref};
-use web_sys::{console, MouseEvent};
+use yew::{Callback, function_component, Html, html, NodeRef, TargetCast, use_effect, use_effect_with, use_force_update, use_node_ref, use_state};
+use web_sys::{console, Event, MouseEvent, window};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -12,6 +12,7 @@ use super::app_drawer::App_drawer;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
 use html2md::parse_html;
 use markdown::to_html;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::{Properties};
 use crate::requests::pod_req;
@@ -52,6 +53,27 @@ impl Reducer<AppState> for AppStateMsg {
     }
 }
 
+enum UIStateMsg {
+    ClearErrorMessage,
+    ClearInfoMessage,
+}
+
+impl Reducer<UIState> for UIStateMsg {
+    fn apply(self, mut state: Rc<UIState>) -> Rc<UIState> {
+        let mut state = Rc::make_mut(&mut state);
+
+        match self {
+            UIStateMsg::ClearErrorMessage => {
+                state.error_message = None;
+            },
+            UIStateMsg::ClearInfoMessage => {
+                state.info_message = None;
+            },
+        }
+
+        (*state).clone().into()
+    }
+}
 
 
 
@@ -65,6 +87,8 @@ pub fn episode_layout() -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
+    let error_message = state.error_message.clone();
+    let info_message = state.info_message.clone();
     let history = BrowserHistory::new();
     let trigger = use_force_update();
     let history_clone = history.clone();
@@ -114,9 +138,26 @@ pub fn episode_layout() -> Html {
         || ()
     });
 
+    {
+        let dispatch = _dispatch.clone();
+        use_effect(move || {
+            let window = window().unwrap();
+            let document = window.document().unwrap();
 
+            let closure = Closure::wrap(Box::new(move |_event: Event| {
+                dispatch.apply(UIStateMsg::ClearErrorMessage);
+                dispatch.apply(UIStateMsg::ClearInfoMessage);
+            }) as Box<dyn Fn(_)>);
 
+            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
 
+            // Return cleanup function
+            move || {
+                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                closure.forget(); // Prevents the closure from being dropped
+            }
+        });
+    }
 
     fn truncate_description(description: &str, max_length: usize) -> (String, bool) {
         // Convert HTML to Markdown
@@ -139,6 +180,7 @@ pub fn episode_layout() -> Html {
     }
 
     let on_add_click = {
+        let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
 
         let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
@@ -157,6 +199,7 @@ pub fn episode_layout() -> Html {
 
 
         Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
+            let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
             let pod_artwork = pod_artwork_og.clone();
             let pod_author = pod_author_og.clone();
@@ -183,23 +226,27 @@ pub fn episode_layout() -> Html {
             let user_id_call = user_id_clone.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
+                let dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
                 let user_id_wasm = user_id_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
                 let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
 
-                match call_add_podcast(&server_name_wasm.unwrap(), &api_key_wasm, &user_id_wasm, &pod_values_clone).await {
+                match call_add_podcast(&server_name_wasm.unwrap(), &api_key_wasm, user_id_wasm, &pod_values_clone).await {
                     Ok(success) => {
                         if success {
                             console::log_1(&"Podcast successfully added".into());
+                            dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
                             // episodes_clone.set(Vec::new()); // Clear episodes or set them accordingly
                         } else {
                             console::log_1(&"Failed to add podcast".into());
+                            dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
                             // error_clone.set(Some("Failed to add podcast".to_string()));
                         }
                     },
                     Err(e) => {
                         console::log_1(&format!("Error adding podcast: {:?}", e).into());
+                        dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
                         // error_clone.set(Some(e.to_string()));
                     }
                 }
@@ -390,6 +437,35 @@ pub fn episode_layout() -> Html {
                 }
             }
         <App_drawer />
+        // Conditional rendering for the error banner
+        {
+            if state.error_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
+                html! { <div class="error-snackbar">{ &state.error_message }</div> }
+            } else {
+                html! {}
+            }
+        }
+        //     if !state.error_message.is_empty() {
+        //         html! { <div class="error-snackbar">{ &state.error_message }</div> }
+        //     } else {
+        //         html! {}
+        //     }
+        // }
+        //     // Conditional rendering for the info banner
+        {
+        if state.info_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
+                html! { <div class="info-snackbar">{ &state.info_message }</div> }
+            } else {
+                html! {}
+            }
+        }
+        // {
+        //     if !state.info_message.is_empty() {
+        //         html! { <div class="info-snackbar">{ &state.info_message }</div> }
+        //     } else {
+        //         html! {}
+        //     }
+        // }
         {
             if let Some(audio_props) = &state.currently_playing {
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }

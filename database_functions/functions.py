@@ -32,12 +32,13 @@ def get_web_key(cnx):
 
 def add_podcast(cnx, podcast_values, user_id):
     cursor = cnx.cursor()
+    print(f"Podcast values '{podcast_values}'")
 
     # check if the podcast already exists for the user
     query = ("SELECT PodcastID FROM Podcasts "
              "WHERE FeedURL = %s AND UserID = %s")
 
-    cursor.execute(query, (podcast_values[6], user_id))
+    cursor.execute(query, (podcast_values['pod_feed_url'], user_id))
     result = cursor.fetchone()
 
     if result is not None:
@@ -50,7 +51,17 @@ def add_podcast(cnx, podcast_values, user_id):
     add_podcast = ("INSERT INTO Podcasts "
                    "(PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, UserID) "
                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
-    cursor.execute(add_podcast, podcast_values)
+    cursor.execute(add_podcast, (
+        podcast_values['pod_title'], 
+        podcast_values['pod_artwork'], 
+        podcast_values['pod_author'], 
+        str(podcast_values['categories']), 
+        podcast_values['pod_description'], 
+        podcast_values['pod_episode_count'], 
+        podcast_values['pod_feed_url'], 
+        podcast_values['pod_website'], 
+        user_id
+    ))
 
     # get the ID of the newly-inserted podcast
     podcast_id = cursor.lastrowid
@@ -63,7 +74,7 @@ def add_podcast(cnx, podcast_values, user_id):
     cnx.commit()
 
     # add episodes to database
-    add_episodes(cnx, podcast_id, podcast_values[6], podcast_values[1])
+    add_episodes(cnx, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'])
 
     cursor.close()
     # cnx.close()

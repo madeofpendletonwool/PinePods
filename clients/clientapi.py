@@ -622,10 +622,26 @@ async def api_get_theme(user_id: int, cnx=Depends(get_database_connection),
                             detail="You can only make sessions for yourself!")
 
 
+class PodcastValuesModel(BaseModel):
+    pod_title: str
+    pod_artwork: str
+    pod_author: str
+    categories: dict
+    pod_description: str
+    pod_episode_count: int
+    pod_feed_url: str
+    pod_website: str
+    user_id: int
+
+# app = FastAPI()
+
+
 @app.post("/api/data/add_podcast")
-async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(...),
+async def api_add_podcast(podcast_values: PodcastValuesModel,
                           cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+                          
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    logging.error(f"{podcast_values}")
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -636,9 +652,8 @@ async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(.
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == user_id or is_web_key:
-        podcast_values = json.loads(podcast_values)
-        result = database_functions.functions.add_podcast(cnx, podcast_values, user_id)
+    if key_id == podcast_values.user_id or is_web_key:
+        result = database_functions.functions.add_podcast(cnx, podcast_values.dict(), podcast_values.user_id)
         if result:
             return {"success": True}
         else:
@@ -646,8 +661,7 @@ async def api_add_podcast(podcast_values: str = Form(...), user_id: int = Form(.
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make sessions for yourself!")
-
-
+    
 @app.post("/api/data/enable_disable_guest")
 async def api_enable_disable_guest(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
     database_functions.functions.enable_disable_guest(cnx)

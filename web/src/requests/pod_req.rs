@@ -11,6 +11,10 @@ pub struct Episode {
     pub EpisodeTitle: String,
     pub EpisodePubDate: String,
     pub EpisodeDescription: String,
+    pub EpisodeArtwork: String,
+    pub EpisodeID: String,
+    pub EpisodeURL: String,
+    pub EpisodeDuration: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -19,7 +23,7 @@ pub struct RecentEps {
 }
 
 pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Episode>, anyhow::Error> {
-    let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
+    let url = format!("{}/api/data/return_episodes/{}", server_name, user_id);
 
     console::log_1(&format!("URL: {}", url).into());
 
@@ -57,19 +61,17 @@ struct AddPodcastResponse {
     // Include other fields if your response contains more data
 }
 
-pub async fn call_add_podcast(server_name: &String, api_key: &Option<String>, user_id: &i32, added_podcast: &PodcastValues) -> Result<bool, Error> {
+pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, user_id: i32, added_podcast: &PodcastValues) -> Result<bool, Error> {
     let url = format!("{}/api/data/add_podcast/", server_name);
     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
-    let data = json!({
-        "podcast_values": added_podcast,
-        "user_id": user_id
-    });
+    // Serialize `added_podcast` into JSON
+    let json_body = serde_json::to_string(added_podcast)?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .json(&data)?
+        .body(json_body)?
         .send()
         .await?;
 
@@ -81,3 +83,7 @@ pub async fn call_add_podcast(server_name: &String, api_key: &Option<String>, us
         Err(Error::msg(format!("Error adding podcast: {}", response.status_text())))
     }
 }
+
+
+
+

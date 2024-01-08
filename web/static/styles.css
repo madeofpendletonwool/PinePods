@@ -65,6 +65,21 @@ body.no-scroll {
     align-items: center;
 }
 
+.info-snackbar {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background-color: var(--standout-color);
+    color: var(--text-color);
+    padding: 12px 24px;
+    border-radius: 4px;
+    z-index: 1000; /* Ensure it's above other elements */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
 .empty-episodes-container {
     display: flex;
     flex-direction: column;

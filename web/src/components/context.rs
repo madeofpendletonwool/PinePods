@@ -36,9 +36,13 @@ pub struct UIState {
     pub current_time_formatted: String,
     pub duration: f64,
     pub duration_formatted: String,
+    pub error_message: Option<String>,
+    pub info_message: Option<String>,
 }
 
 impl UIState {
+
+
     pub fn set_duration(&mut self, new_duration: f64) {
         self.duration = new_duration;
     }

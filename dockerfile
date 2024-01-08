@@ -13,7 +13,7 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install rust
-curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain -y
+# RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain -y
 
 # Install needed python packages via pip
 ADD ./requirements.txt /
