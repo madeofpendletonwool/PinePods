@@ -5,19 +5,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use web_sys::console;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Episode {
     pub PodcastName: String,
     pub EpisodeTitle: String,
     pub EpisodePubDate: String,
     pub EpisodeDescription: String,
     pub EpisodeArtwork: String,
-    pub EpisodeID: String,
     pub EpisodeURL: String,
-    pub EpisodeDuration: String,
+    pub EpisodeDuration: i32,
+    pub ListenDuration: Option<String>,
+    pub EpisodeID: i32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
 }
@@ -38,9 +39,26 @@ pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>,
         return Err(anyhow::Error::msg(format!("Failed to fetch episodes: {}", response.status_text())));
     }
 
-    let response_body = response.json::<RecentEps>().await?;
-    Ok(response_body.episodes.unwrap_or_else(Vec::new))
+    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
+    
+    // First, capture the response text for diagnostic purposes
+    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
+
+    // Try to deserialize the response text
+    match serde_json::from_str::<RecentEps>(&response_text) {
+        Ok(response_body) => {
+            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
+            Ok(response_body.episodes.unwrap_or_else(Vec::new))
+        }
+        Err(e) => {
+            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+            Err(anyhow::Error::msg("Failed to deserialize response"))
+        }
+    }
 }
+
+
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PodcastValues {

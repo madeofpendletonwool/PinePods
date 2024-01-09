@@ -250,9 +250,3 @@ pub async fn login_new_server(server_name: String, username: String, password: S
         }
     }
 }
-
-#[derive(Deserialize)]
-struct ServerErrorResponse {
-    error_message: String,
-    // Include other fields if your server's error response contains more data
-}

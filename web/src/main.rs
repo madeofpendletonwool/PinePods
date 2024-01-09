@@ -2,7 +2,6 @@
 mod components;
 mod requests;
 
-use std::rc::Rc;
 use components::routes::Route;
 use components::login::Login;
 use components::login::ChangeServer;
@@ -23,7 +22,6 @@ use components::podcasts::Podcasts;
 // Yew Imports
 use yew_router::prelude::*;
 use yew::prelude::*;
-use yew_router::history::{BrowserHistory, History};
 
 
 #[function_component(NotFound)]

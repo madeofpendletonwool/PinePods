@@ -62,7 +62,7 @@ pub fn pod_layout() -> Html {
     let history_clone = history.clone();
 
     html! {
-    <div>
+    <div class="main-container">
         <Search_nav />
         <h1 class="text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
         {
@@ -131,13 +131,13 @@ pub fn pod_layout() -> Html {
                                 })
                             };
                             html! {
-                                <div key={podcast.id.to_string()} class="flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
+                                <div key={podcast.id.to_string()} class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
                                     <img src={podcast.image.clone()} alt={format!("Cover for {}", &podcast.title)} class="w-1/4 object-cover"/>
                                     <div class="flex flex-col p-4 space-y-2 w-7/12">
-                                        <a onclick={on_title_click} class="text-xl font-semibold hover:underline">{ &podcast.title }</a>
-                                        <p class="text-gray-600">{ &podcast.description }</p>
+                                        <a onclick={on_title_click} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.title }</a>
+                                        <p class="item-container-text">{ &podcast.description }</p>
                                     </div>
-                                    <button class="selector-button w-1/4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                                    <button class="item-container-button selector-button w-1/4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
                                         {"Add"}
                                     </button>
                                 </div>

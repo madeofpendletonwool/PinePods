@@ -184,7 +184,7 @@ pub fn episode_layout() -> Html {
         let pod_values = clicked_podcast_info.clone();
 
         let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-        let pod_artwork_og = pod_values.clone().unwrap().podcast_title.clone();
+        let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
         let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
         let categories_og = pod_values.clone().unwrap().podcast_categories.unwrap().clone();
         let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
@@ -237,17 +237,14 @@ pub fn episode_layout() -> Html {
                         if success {
                             console::log_1(&"Podcast successfully added".into());
                             dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
-                            // episodes_clone.set(Vec::new()); // Clear episodes or set them accordingly
                         } else {
                             console::log_1(&"Failed to add podcast".into());
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
-                            // error_clone.set(Some("Failed to add podcast".to_string()));
                         }
                     },
                     Err(e) => {
                         console::log_1(&format!("Error adding podcast: {:?}", e).into());
                         dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
-                        // error_clone.set(Some(e.to_string()));
                     }
                 }
             });
@@ -400,7 +397,7 @@ pub fn episode_layout() -> Html {
                                     <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
                                         <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 object-cover"/>
                                         <div class="flex flex-col p-4 space-y-2 w-9/12">
-                                            <p class="item_container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
+                                            <p class="item-container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
                                             // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                             {
                                             html! {

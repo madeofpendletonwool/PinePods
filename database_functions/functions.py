@@ -298,7 +298,7 @@ def return_episodes(database_type, cnx, user_id):
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
              f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-             f"UserEpisodeHistory.ListenDuration "
+             f"UserEpisodeHistory.ListenDuration, Episodes.EpisodeID "
              f"FROM Episodes "
              f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
              f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "

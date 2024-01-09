@@ -265,6 +265,11 @@ body.no-scroll {
     /*background-color: var(--accent-color);*/
 }
 
+.item-container-text-link {
+    color: var(--standout-color);
+    /*background-color: var(--accent-color);*/
+}
+
 .item-container-button {
     color: var(--text-color);
     background-color: var(--button-color);

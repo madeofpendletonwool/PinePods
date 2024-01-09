@@ -7,6 +7,7 @@ use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::GetApiDetails;
 use crate::components::audio::AudioPlayerProps;
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult};
+use crate::requests::pod_req::{Episode, RecentEps};
 use yewdux::prelude::*;
 use web_sys::HtmlAudioElement;
 use serde_json::{json, from_str};
@@ -22,6 +23,8 @@ pub struct AppState {
     pub error_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
+    pub server_feed_results: Option<RecentEps>,
+    pub episodes: Option<Episode>,
     pub clicked_podcast_info: Option<ClickedFeedURL>,
     // pub expanded_episodes: HashSet<i64>,
     #[serde(default)]
@@ -41,11 +44,6 @@ pub struct UIState {
 }
 
 impl UIState {
-
-
-    pub fn set_duration(&mut self, new_duration: f64) {
-        self.duration = new_duration;
-    }
 
     pub fn update_current_time(&mut self, new_time_seconds: f64) {
         self.current_time_seconds = new_time_seconds;

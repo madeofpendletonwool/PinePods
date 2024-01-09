@@ -5,14 +5,6 @@ use anyhow::Error;
 use rss::Channel;
 use rss::extension::itunes::ITunesItemExtension;
 
-// #[derive(Deserialize, Debug)]
-// pub struct Episode {
-//     pub PodcastName: String,
-//     pub EpisodeTitle: String,
-//     pub EpisodePubDate: String,
-//     pub EpisodeDescription: String,
-// }
-
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
     pub episodes: Vec<Episode>,
@@ -37,11 +29,9 @@ pub struct Podcast {
     pub(crate) image: String,
     pub(crate) artwork: String,
     pub(crate) lastUpdateTime: i64,
-    // ... other fields as needed ...
     pub(crate) categories: Option<HashMap<String, String>>,
     pub(crate) explicit: bool,
     pub(crate) episodeCount: i32,
-    // ... other fields as needed ...
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -50,11 +40,9 @@ pub struct Episode {
     pub description: Option<String>,
     pub pub_date: Option<String>,
     pub links: Vec<String>,
-    // Enclosure for audio file URL
     pub enclosure_url: Option<String>,
     pub enclosure_length: Option<String>,
     pub artwork: Option<String>,
-    // ... other item fields ...
     pub content: Option<String>,
     pub authors: Vec<String>,
     pub guid: String,
@@ -130,14 +118,11 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
             artwork: episode_artwork_url,
             guid: item.title().map(|t| t.to_string()).unwrap_or_default(),
             duration
-
-            // Map other necessary fields
         }
     }).collect();
 
     let feed_result = PodcastFeedResult {
         episodes,
-        // Add other fields from Channel if necessary
     };
 
     Ok(feed_result)
