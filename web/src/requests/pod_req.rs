@@ -103,5 +103,91 @@ pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, user_
 }
 
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct PodcastResponse {
+    pub pods: Option<Vec<Podcast>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct Podcast {
+    pub PodcastID: i32,
+    pub PodcastName: String,
+    pub ArtworkURL: String,
+    pub Description: String,
+    pub EpisodeCount: i32,
+    pub WebsiteURL: String,
+    pub FeedURL: String,
+    pub Author: String,
+    pub Categories: String, // Assuming categories are key-value pairs
+}
+
+pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {
+    let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
+
+    console::log_1(&format!("URL: {}", url).into());
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to fetch podcasts: {}", response.status_text())));
+    }
+
+    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
+    
+    // First, capture the response text for diagnostic purposes
+    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
+
+    // Try to deserialize the response text
+    match serde_json::from_str::<PodcastResponse>(&response_text) {
+        Ok(response_body) => {
+            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
+            Ok(response_body.pods.unwrap_or_else(Vec::new))
+        }
+        Err(e) => {
+            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+            Err(anyhow::Error::msg("Failed to deserialize response"))
+        }
+    }
+}
 
 
+pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {
+    let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
+
+    console::log_1(&format!("URL: {}", url).into());
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to fetch podcasts: {}", response.status_text())));
+    }
+
+    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
+    
+    // First, capture the response text for diagnostic purposes
+    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
+
+    // Try to deserialize the response text
+    match serde_json::from_str::<PodcastResponse>(&response_text) {
+        Ok(response_body) => {
+            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
+            Ok(response_body.pods.unwrap_or_else(Vec::new))
+        }
+        Err(e) => {
+            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+            Err(anyhow::Error::msg("Failed to deserialize response"))
+        }
+    }
+}

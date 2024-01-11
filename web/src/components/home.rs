@@ -130,7 +130,7 @@ pub fn home() -> Html {
 
     html! {
         <>
-        <div class="episodes-container">
+        <div class="main-container">
             <Search_nav />
             {
                 if let Some(recent_eps) = state.server_feed_results.clone() {

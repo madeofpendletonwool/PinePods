@@ -119,10 +119,18 @@ pub fn app_drawer() -> Html {
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
+                            <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
+                                <Link<Route> to={Route::Downloads}>
+                                    <span class="material-icons">{"download"}</span>
+                                    <span class="text-lg">{"Downloads"}</span>
+                                </Link<Route>>
+                            </div>
+                        </div>
+                            <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Settings}>
-                                        <span class="material-icons">{"settings"}</span>
-                                        <span class="text-lg">{"Settings"}</span>
+                                    <Link<Route> to={Route::Podcasts}>
+                                        <span class="material-icons">{"podcasts"}</span>
+                                        <span class="text-lg">{"Podcasts"}</span>
                                     </Link<Route>>
                                 </div>
                             </div>
