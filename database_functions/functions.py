@@ -285,6 +285,53 @@ def remove_podcast(cnx, podcast_name, user_id):
         cursor.close()
         # cnx.close()
 
+def remove_podcast_id(cnx, podcast_id, user_id):
+    cursor = cnx.cursor()
+
+    try:
+        podcast_id = podcast_id
+
+        # If there's no podcast ID found, raise an error or exit the function early
+        if podcast_id is None:
+            raise ValueError("No podcast found with name {}".format(podcast_id))
+
+        # Delete user episode history entries associated with the podcast
+        delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_history, (podcast_id,))
+
+        # Delete downloaded episodes associated with the podcast
+        delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_downloaded, (podcast_id,))
+
+        # Delete saved episodes associated with the podcast
+        delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_saved, (podcast_id,))
+
+        # Delete episode queue items associated with the podcast
+        delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+        cursor.execute(delete_queue, (podcast_id,))
+
+        # Delete episodes associated with the podcast
+        delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
+        cursor.execute(delete_episodes, (podcast_id,))
+
+        # Delete the podcast
+        delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s"
+        cursor.execute(delete_podcast, (podcast_id,))
+
+        # Update UserStats table to decrement PodcastsAdded count
+        query = ("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 "
+                 "WHERE UserID = %s")
+        cursor.execute(query, (user_id,))
+
+        cnx.commit()
+    except mysql.connector.Error as err:
+        print("Error: {}".format(err))
+        cnx.rollback()
+    finally:
+        cursor.close()
+        # cnx.close()
+
 
 def remove_user(cnx, user_name):
     pass

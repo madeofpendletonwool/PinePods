@@ -5,7 +5,7 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 use super::app_drawer::App_drawer;
 use crate::components::gen_components::Search_nav;
-use crate::requests::pod_req::PodcastResponse;
+use crate::requests::pod_req::{PodcastResponse, RemovePodcastValues, call_remove_podcasts};
 use crate::requests::pod_req;
 use web_sys::console;
 use crate::components::context::{AppState, UIState};
@@ -16,13 +16,18 @@ pub fn podcasts() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     console::log_1(&format!("User Context in podcasts: {:?}", &state.user_details).into());
+    let podcast_feed_return = state.podcast_feed_return.clone();
 
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     // Fetch episodes on component mount
     {
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
         // let episodes = episodes.clone();
-        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
         console::log_1(&"Test log on podcasts".to_string().into());
         if let Some(api_key) = &api_key {
             console::log_1(&format!("API Key: {:?}", api_key).into());
@@ -76,6 +81,9 @@ pub fn podcasts() -> Html {
         );
     }
 
+
+
+
     html! {
         <>
         <div class="main-container">
@@ -87,11 +95,12 @@ pub fn podcasts() -> Html {
                         pods.into_iter().map(|podcast| {
                             let state_ep = state.clone();
                             let audio_state_ep = audio_state.clone();
+                            let api_key_iter = api_key.clone();
 
                             let id_string = &podcast.PodcastID.to_string();
     
                             let dispatch = dispatch.clone();
-    
+                            let podcast_id_loop = podcast.PodcastID.clone();
                             let podcast_url_clone = podcast.FeedURL.clone();
                             let podcast_title_clone = podcast.PodcastName.clone();
                             let podcast_ep_count = podcast.EpisodeCount.clone();
@@ -100,10 +109,65 @@ pub fn podcasts() -> Html {
                             let podcast_website_clone = podcast.WebsiteURL.clone();
                             let podcast_author_clone = podcast.Author.clone();
                             let podcast_categories_clone = podcast.Categories.clone();
-                            let categories: HashMap<String, String> = match serde_json::from_str(&podcast_categories_clone) {
-                                Ok(categories) => categories,
-                                Err(_) => HashMap::new(), // If parsing fails, use an empty HashMap
+                            let categories: HashMap<String, String> = serde_json::from_str(&podcast_categories_clone).unwrap_or_else(|_| HashMap::new());
+                            let on_remove_click = {
+                                let dispatch_remove = dispatch.clone();
+                                let podcast_feed_return = podcast_feed_return.clone();
+                                let user_id = user_id.unwrap();
+
+                                let api_key_rm = api_key_iter.clone();
+                                let server_name = server_name.clone();
+
+                                Callback::from(move |_: MouseEvent| {
+                                    let dispatch_call = dispatch_remove.clone();
+                                    let api_key_call = api_key_rm.clone();
+                                    let server_name_call = server_name.clone();
+                                    let user_id = user_id;
+
+                                    if let Some(podcasts) = &podcast_feed_return {
+                                        for podcast in &podcasts.pods {
+                                            let dispatch_for = dispatch_call.clone();
+                                            let api_key_for = api_key_call.clone();
+                                            let server_name_for = server_name_call.clone();
+                                            let podcast_id = podcast_id_loop.clone(); // Use the correct podcast ID
+
+                                            let remove_values = RemovePodcastValues {
+                                                podcast_id,
+                                                user_id,
+                                            };
+
+                                            wasm_bindgen_futures::spawn_local(async move {
+                                                let dispatch_clone = dispatch_for.clone();
+                                                let api_key_wasm = api_key_for.clone();
+                                                let server_name_wasm = server_name_for.clone();
+                                                match call_remove_podcasts(&server_name_wasm.unwrap(), &api_key_wasm.unwrap(), &remove_values).await {
+                                                    Ok(success) => {
+                                                        if success {
+                                                            console::log_1(&"Podcast successfully removed".into());
+                                                            dispatch_clone.reduce_mut(|state| {
+                                                                state.info_message = Some("Podcast successfully removed".to_string())
+                                                            });
+                                                        } else {
+                                                            console::log_1(&"Failed to remove podcast".into());
+                                                            dispatch_clone.reduce_mut(|state| {
+                                                                state.error_message = Some("Failed to remove podcast".to_string())
+                                                            });
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        console::log_1(&format!("Error removing podcast: {:?}", e).into());
+                                                        dispatch_clone.reduce_mut(|state| {
+                                                            state.error_message = Some(format!("Error removing podcast: {:?}", e))
+                                                        });
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                })
                             };
+
+
     
                             html! {
                                 <div>
@@ -123,7 +187,7 @@ pub fn podcasts() -> Html {
                                             <p class="item-container-text">{ &podcast.EpisodeCount }</p>
                                         </div>
                                         <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded">
-                                            <span class="material-icons">{"delete"}</span>
+                                            <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
                                         </button>
                                     </div>
                                 </div>

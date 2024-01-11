@@ -1036,6 +1036,32 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
     database_functions.functions.remove_podcast(cnx, data.podcast_name, data.user_id)
     return {"status": "Podcast removed"}
 
+class RemovePodcastIDData(BaseModel):
+    user_id: int
+    podcast_id: int
+
+
+@app.post("/api/data/remove_podcast_id")
+async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    elevated_access = await has_elevated_access(api_key, cnx)
+
+    if not elevated_access:
+        # Get user ID from API key
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+
+        if data.user_id != user_id_from_api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="You are not authorized to remove podcasts for other users")
+    database_functions.functions.remove_podcast_id(cnx, data.podcast_id, data.user_id)
+    return {"status": "Podcast removed"}
+
 
 @app.get("/api/data/return_pods/{user_id}")
 async def api_return_pods(user_id: int, cnx=Depends(get_database_connection),

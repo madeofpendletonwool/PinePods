@@ -21,6 +21,7 @@ pub struct AppState {
     pub auth_details: Option<LoginServerRequest>,
     pub server_details: Option<GetApiDetails>,
     pub error_message: Option<String>,
+    pub info_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
     pub server_feed_results: Option<RecentEps>,
