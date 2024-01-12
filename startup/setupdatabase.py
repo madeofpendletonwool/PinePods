@@ -208,6 +208,7 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                     EpisodeCount INT,
                     FeedURL TEXT,
                     WebsiteURL TEXT,
+                    Explicit TINYINT(1),
                     UserID INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )""")

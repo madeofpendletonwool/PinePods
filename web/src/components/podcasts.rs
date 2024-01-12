@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use yew::{function_component, Html, html};
 use yew::prelude::*;
@@ -10,12 +11,48 @@ use crate::requests::pod_req;
 use web_sys::console;
 use crate::components::context::{AppState, UIState};
 use web_sys::console::error;
+use yew_router::history::BrowserHistory;
+use crate::components::click_events::create_on_title_click;
+
+enum AppStateMsg {
+    // ... other messages ...
+    RemovePodcast(i32), // Add this line
+}
+
+impl Reducer<AppState> for AppStateMsg {
+    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
+        let state_mut = Rc::make_mut(&mut state);
+
+        match self {
+            // ... other cases ...
+            AppStateMsg::RemovePodcast(podcast_id) => {
+                if let Some(podcasts) = &mut state_mut.podcast_feed_return {
+                    web_sys::console::log_1(&format!("podcast pod pre-change: {:?}", &podcasts.pods).into());
+                    podcasts.pods = Some(
+                        podcasts.pods
+                            .as_ref()
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .filter(|p| p.PodcastID != podcast_id)
+                            .cloned()
+                            .collect()
+                    );
+                    web_sys::console::log_1(&format!("podcast pod state: {:?}", &podcasts.pods).into());
+                }
+            }
+        }
+
+        state
+    }
+}
 
 #[function_component(Podcasts)]
 pub fn podcasts() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     console::log_1(&format!("User Context in podcasts: {:?}", &state.user_details).into());
+    let history = BrowserHistory::new();
+    let history_clone = history.clone();
     let podcast_feed_return = state.podcast_feed_return.clone();
 
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -81,9 +118,6 @@ pub fn podcasts() -> Html {
         );
     }
 
-
-
-
     html! {
         <>
         <div class="main-container">
@@ -96,6 +130,7 @@ pub fn podcasts() -> Html {
                             let state_ep = state.clone();
                             let audio_state_ep = audio_state.clone();
                             let api_key_iter = api_key.clone();
+                            let history = history_clone.clone();
 
                             let id_string = &podcast.PodcastID.to_string();
     
@@ -143,6 +178,7 @@ pub fn podcasts() -> Html {
                                                 match call_remove_podcasts(&server_name_wasm.unwrap(), &api_key_wasm.unwrap(), &remove_values).await {
                                                     Ok(success) => {
                                                         if success {
+                                                            dispatch_clone.apply(AppStateMsg::RemovePodcast(podcast_id));
                                                             console::log_1(&"Podcast successfully removed".into());
                                                             dispatch_clone.reduce_mut(|state| {
                                                                 state.info_message = Some("Podcast successfully removed".to_string())
@@ -166,15 +202,28 @@ pub fn podcasts() -> Html {
                                     }
                                 })
                             };
-
-
+                            let categories: HashMap<String, String> = serde_json::from_str(&podcast.Categories)
+                                .unwrap_or_else(|_| HashMap::new());
+                            let on_title_click = create_on_title_click(
+                                dispatch.clone(),
+                                &history,
+                                podcast.PodcastName.clone(),
+                                podcast.FeedURL.clone(),
+                                podcast.Description.clone(),
+                                podcast.Author.clone(),
+                                podcast.ArtworkURL.clone(),
+                                podcast.PodcastExplicit.clone(),
+                                podcast.EpisodeCount.clone(),
+                                Some(categories),
+                                podcast.WebsiteURL.clone(),
+                            );
     
                             html! {
                                 <div>
                                     <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
                                         <img src={podcast.ArtworkURL.clone()} alt={format!("Cover for {}", &podcast.PodcastName)} class="w-2/12 object-cover"/>
                                         <div class="flex flex-col p-4 space-y-2 w-9/12">
-                                            <p class="item_container-text text-xl font-semibold">{ &podcast.PodcastName }</p>
+                                            <a onclick={on_title_click} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.PodcastName }</a>
                                             {
                                                 html! {
                                                     <div class="item_container-text episode-description-container">

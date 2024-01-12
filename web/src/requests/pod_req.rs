@@ -70,6 +70,7 @@ pub struct PodcastValues {
     pub pod_episode_count: i32,
     pub pod_feed_url: String,
     pub pod_website: String,
+    pub pod_explicit: bool,
     pub user_id: i32
 }
 
@@ -126,12 +127,21 @@ pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>
         .send()
         .await?;
 
+    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    console::log_1(&format!("Response Text: {}", response_text).into());
+
+
     if response.ok() {
-        let response_body = response.json::<PodcastStatusResponse>().await?;
-        Ok(response_body.success)
+        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+            Ok(parsed_response) => Ok(parsed_response.success),
+            Err(parse_error) => {
+                console::log_1(&format!("Error parsing response: {:?}", parse_error).into());
+                Err(anyhow::Error::msg("Failed to parse response"))
+            }
+        }
     } else {
         console::log_1(&format!("Error removing podcast: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error adding podcast: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!("Error removing podcast: {}", response.status_text())))
     }
 }
 
@@ -152,6 +162,7 @@ pub struct Podcast {
     pub FeedURL: String,
     pub Author: String,
     pub Categories: String, // Assuming categories are key-value pairs
+    pub PodcastExplicit: bool,
 }
 
 pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {

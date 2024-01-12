@@ -18,40 +18,11 @@ pub struct ClickedFeedURL {
     pub podcast_description: String,
     pub podcast_author: String,
     pub podcast_artwork: String,
-    pub podcast_last_update: i64,
     pub podcast_explicit: bool,
     pub podcast_episode_count: i32,
     pub podcast_categories: Option<HashMap<String, String>>,
     pub podcast_link: String
 }
-
-// let on_add_click = {
-//     let pod_values = clicked_podcast_info.clone();
-//
-//     let pod_title = pod_values.unwrap().podcast_title.clone();
-//     let pod_artwork = pod_values.unwrap().podcast_title.clone();
-//     let pod_author = pod_values.unwrap().podcast_author.clone();
-//     let categories = pod_values.unwrap().podcast_categories.clone();
-//     let pod_description = pod_values.unwrap().podcast_description.clone();
-//     let pod_episode_count = pod_values.unwrap().podcast_episode_count.clone();
-//     let pod_feed_url = pod_values.unwrap().podcast_url.clone();
-//     let pod_website = pod_values.unwrap().podcast_link.clone();
-//     let user_id = user_id.unwrap().clone();
-//
-//
-//     fn parse_duration_to_seconds(duration_convert: &str) -> f64 {
-//         let parts: Vec<&str> = duration_convert.split(':').collect();
-//         let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
-//
-//         let seconds = match parts.len() {
-//             3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
-//             2 => parts[0] * 60.0 + parts[1],
-//             1 => parts[0],
-//             _ => 0.0,
-//         };
-//
-//         seconds
-//     }
 
 #[function_component(PodLayout)]
 pub fn pod_layout() -> Html {
@@ -106,7 +77,6 @@ pub fn pod_layout() -> Html {
                                         podcast_description,
                                         podcast_author,
                                         podcast_artwork,
-                                        podcast_last_update,
                                         podcast_explicit,
                                         podcast_episode_count,
                                         podcast_categories,

@@ -631,6 +631,7 @@ class PodcastValuesModel(BaseModel):
     pod_episode_count: int
     pod_feed_url: str
     pod_website: str
+    pod_explicit: bool
     user_id: int
 
 # app = FastAPI()
@@ -1034,7 +1035,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
     database_functions.functions.remove_podcast(cnx, data.podcast_name, data.user_id)
-    return {"status": "Podcast removed"}
+    return {"success": True}
 
 class RemovePodcastIDData(BaseModel):
     user_id: int
@@ -1060,7 +1061,7 @@ async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=De
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
     database_functions.functions.remove_podcast_id(cnx, data.podcast_id, data.user_id)
-    return {"status": "Podcast removed"}
+    return {"success": True}
 
 
 @app.get("/api/data/return_pods/{user_id}")

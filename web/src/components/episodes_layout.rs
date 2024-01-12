@@ -191,6 +191,7 @@ pub fn episode_layout() -> Html {
         let pod_episode_count_og = pod_values.clone().unwrap().podcast_episode_count.clone();
         let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
         let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
+        let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
         let user_id_og = user_id.unwrap().clone();
 
         let api_key_clone = api_key.clone();
@@ -208,6 +209,7 @@ pub fn episode_layout() -> Html {
             let pod_episode_count = pod_episode_count_og.clone();
             let pod_feed_url = pod_feed_url_og.clone();
             let pod_website = pod_website_og.clone();
+            let pod_explicit = pod_explicit_og.clone();
             let user_id = user_id_og.clone();
             web_sys::console::log_1(&"Add Clicked".to_string().into());
             let podcast_values = PodcastValues {
@@ -219,6 +221,7 @@ pub fn episode_layout() -> Html {
                 pod_episode_count,
                 pod_feed_url,
                 pod_website,
+                pod_explicit,
                 user_id
             };
             let api_key_call = api_key_clone.clone();
