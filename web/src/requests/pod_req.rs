@@ -6,6 +6,30 @@ use serde_json::json;
 use web_sys::console;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct VerifyResponse {
+    status: String,
+    retrieved_id: i32,
+}
+pub async fn call_verify_pinepods(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
+    let url = format!("{}/api/data/get_user/", server_name);
+    let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<VerifyResponse>().await?;
+        Ok(response_body.status)
+    } else {
+        console::log_1(&format!("Error adding podcast: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error logging in. Is the server reachable? Server Response: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Episode {
     pub PodcastName: String,
     pub EpisodeTitle: String,

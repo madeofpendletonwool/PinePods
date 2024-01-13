@@ -16,7 +16,7 @@ use web_sys::window;
 use crate::components::podcast_layout::ClickedFeedURL;
 
 
-#[derive(Default, Deserialize, Clone, PartialEq, Store)]
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct AppState {
     pub user_details: Option<GetUserDetails>,
     pub auth_details: Option<LoginServerRequest>,

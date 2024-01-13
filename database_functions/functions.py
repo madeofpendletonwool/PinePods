@@ -50,7 +50,7 @@ def add_podcast(cnx, podcast_values, user_id):
     # insert the podcast into the database
     add_podcast = ("INSERT INTO Podcasts "
                    "(PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID) "
-                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
+                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
     cursor.execute(add_podcast, (
         podcast_values['pod_title'], 
         podcast_values['pod_artwork'], 

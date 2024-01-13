@@ -1,5 +1,5 @@
 use yew::prelude::*;
-use web_sys::{HtmlInputElement, window};
+use web_sys::{console, HtmlInputElement, window};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
@@ -8,6 +8,7 @@ use crate::components::context::{AppState};
 use yewdux::prelude::*;
 
 use yewdux::prelude::*;
+use crate::requests::pod_req::call_verify_pinepods;
 
 #[function_component(Login)]
 pub fn login() -> Html {
@@ -15,9 +16,37 @@ pub fn login() -> Html {
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
+    let mut error_message = use_state(|| None::<String>);
+    let error_message_clone = error_message.clone();
+
+    {
+        let error_message = error_message.clone();
+        use_effect(move || {
+            let window = window().unwrap();
+            let document = window.document().unwrap();
+
+            let error_message_clone = error_message.clone();
+            let closure = Closure::wrap(Box::new(move |_event: Event| {
+                error_message_clone.set(None);
+            }) as Box<dyn Fn(_)>);
+
+            if error_message.is_some() {
+                document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+            }
+
+            // Return cleanup function
+            move || {
+                if error_message.is_some() {
+                    document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                }
+                closure.forget(); // Prevents the closure from being dropped
+            }
+        });
+    }
 
     // User Auto Login with saved state
     use_effect_with((), {
+        let error_clone_use = error_message_clone.clone();
         let history = history.clone();
         move |_| {
             if let Some(window) = web_sys::window() {
@@ -36,6 +65,9 @@ pub fn login() -> Html {
                                                 if let Ok(server_details) = server_details_result { // Successful deserialization of server state
                                                     // Check if the deserialized state contains valid data
                                                     if app_state.user_details.is_some() && auth_details.auth_details.is_some() && server_details.server_details.is_some() {
+
+                                                        let app_state_clone = app_state.clone();
+                                                        let auth_state_clone = auth_details.clone();
                                                         // Auto login logic here
                                                         dispatch.reduce_mut(move |state| {
                                                             state.user_details = app_state.user_details;
@@ -43,8 +75,27 @@ pub fn login() -> Html {
                                                             state.server_details = server_details.server_details;
 
                                                         });
+                                                        console::log_1(&format!("user_id: {:?}", &app_state_clone).into());
+                                                        console::log_1(&format!("auth_details: {:?}", &auth_state_clone).into());
+                                                        // let mut error_message = app_state.error_message;
 
-                                                        history.push("/home"); // Redirect to the home page
+                                                        let server_name_local = auth_state_clone.auth_details.as_ref().map(|ad| ad.server_name.clone());
+                                                        let api_key_local = auth_state_clone.auth_details.as_ref().and_then(|ad| ad.api_key.clone());
+
+                                                        // let server_name_local = auth_details.auth_details.as_ref().and_then(|ad| ad.server_name.clone());
+                                                        console::log_1(&format!("server_name_pre_wasm: {:?}", &server_name_local).into());
+
+// Use the local variables instead of `app_state`
+                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                            match call_verify_pinepods(server_name_local.unwrap(), api_key_local).await {
+                                                                Ok(_) => {
+                                                                    history.push("/home"); // Redirect to the home page
+                                                                }
+                                                                Err(e) => {
+                                                                    error_clone_use.set(Some(e.to_string())); // Set the error message
+                                                                }
+                                                            }
+                                                        });
                                                     }
                                                 }
                                             }
@@ -162,6 +213,10 @@ pub fn login() -> Html {
                     {"Submit"}
                 </button>
             </div>
+            // Conditional rendering for the error banner
+            if let Some(error) = (*error_message).as_ref() {
+                <div class="error-snackbar">{ error }</div>
+            }
             // Connect to Different Server button at bottom right
             <div class="fixed bottom-4 right-4">
                 <button

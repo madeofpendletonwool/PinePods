@@ -135,7 +135,17 @@ pub fn home() -> Html {
             {
                 if let Some(recent_eps) = state.server_feed_results.clone() {
                     let int_recent_eps = recent_eps.clone();
-                    if let Some(episodes) = int_recent_eps.episodes.clone() {
+                    if let Some(episodes) = int_recent_eps.episodes {
+                        if episodes.is_empty() {
+                            // Render "No Recent Episodes Found" if episodes list is empty
+                            html! {
+                                <div class="empty-episodes-container">
+                                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                                    <h1>{ "No Recent Episodes Found" }</h1>
+                                    <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                </div>
+                            }
+                        } else {
                         episodes.into_iter().map(|episode| {
                             let state_ep = state.clone();
                             let audio_state_ep = audio_state.clone();
@@ -253,6 +263,7 @@ pub fn home() -> Html {
                                 </div>
                             }
                         }).collect::<Html>()
+                        }
                     } else {
                         html! {
                             <div class="empty-episodes-container">

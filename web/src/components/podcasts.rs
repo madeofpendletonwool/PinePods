@@ -126,6 +126,16 @@ pub fn podcasts() -> Html {
                 if let Some(podcasts) = state.podcast_feed_return.clone() {
                     let int_podcasts = podcasts.clone();
                     if let Some(pods) = int_podcasts.pods.clone() {
+                        if pods.is_empty() {
+                                                    // Render "No Recent Episodes Found" if episodes list is empty
+                            html! {
+                        <div class="empty-episodes-container">
+                            <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                            <h1>{ "No Podcasts Found" }</h1>
+                            <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                        </div>
+                            }
+                        } else {
                         pods.into_iter().map(|podcast| {
                             let state_ep = state.clone();
                             let audio_state_ep = audio_state.clone();
@@ -242,11 +252,12 @@ pub fn podcasts() -> Html {
                                 </div>
                             }
                         }).collect::<Html>()
+                        }
                     } else {
                         html! {
                             <div class="empty-episodes-container">
                                 <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                <h1>{ "No Recent Episodes Found" }</h1>
+                                <h1>{ "No Podcasts Found" }</h1>
                                 <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
                             </div>
                         }
@@ -255,7 +266,7 @@ pub fn podcasts() -> Html {
                     html! {
                         <div class="empty-episodes-container">
                             <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                            <h1>{ "No Recent Episodes Found" }</h1>
+                            <h1>{ "No Podcasts Found" }</h1>
                             <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
                         </div>
                     }
