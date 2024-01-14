@@ -222,7 +222,7 @@ pub fn podcasts() -> Html {
                                 podcast.Description.clone(),
                                 podcast.Author.clone(),
                                 podcast.ArtworkURL.clone(),
-                                podcast.PodcastExplicit.clone(),
+                                podcast.Explicit.clone(),
                                 podcast.EpisodeCount.clone(),
                                 Some(categories),
                                 podcast.WebsiteURL.clone(),

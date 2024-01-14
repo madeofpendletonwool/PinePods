@@ -1,9 +1,18 @@
 use std::collections::HashMap;
 use anyhow::Error;
 use gloo_net::http::Request;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::json;
 use web_sys::console;
+
+
+fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    let value: i32 = Deserialize::deserialize(deserializer)?;
+    Ok(value != 0)
+}
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct VerifyResponse {
@@ -186,7 +195,8 @@ pub struct Podcast {
     pub FeedURL: String,
     pub Author: String,
     pub Categories: String, // Assuming categories are key-value pairs
-    pub PodcastExplicit: bool,
+    #[serde(deserialize_with = "bool_from_int")]
+    pub Explicit: bool,
 }
 
 pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {

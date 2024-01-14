@@ -490,7 +490,7 @@ def return_pods(database_type, cnx, user_id):
         cursor = cnx.cursor(dictionary=True)
 
     query = (
-        "SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories "
+        "SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit "
         "FROM Podcasts "
         "WHERE UserID = %s")
 

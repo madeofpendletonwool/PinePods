@@ -280,8 +280,10 @@ body.no-scroll {
 }
 
 .text-button {
-    color: var(--standout-color);
+    border-color: var(--standout-color);
 }
 
-
+.spinner-border.custom-spinner-color {
+    /*background-color: var(--standout-color); !* Specify only for the spinner *!*/
+}
 

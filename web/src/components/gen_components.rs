@@ -7,17 +7,19 @@ use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use web_sys::{console, HtmlInputElement, window};
 use web_sys::HtmlSelectElement;
 use yewdux::prelude::*;
-use crate::components::context::{AppState};
+use crate::components::context::{AppState, AppStateMsg};
 
 #[derive(Properties, PartialEq)]
 pub struct ErrorMessageProps {
     pub error_message: UseStateHandle<Option<String>>,
 }
 
+
 #[function_component(ErrorMessage)]
 pub fn error_message(props: &ErrorMessageProps) -> Html {
     // Your existing logic here...
     let error_message = use_state(|| None::<String>);
+    let (state, dispatch) = use_store::<AppState>();
 
     {
         let error_message = error_message.clone();
@@ -96,6 +98,7 @@ pub fn search_bar() -> Html {
             let dispatch = dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
+                dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let cloned_api_url = &api_url.clone();
                 match test_connection(&cloned_api_url.clone().unwrap()).await {
                     Ok(_) => {
@@ -105,14 +108,17 @@ pub fn search_bar() -> Html {
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
                                 });
+                                dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/pod_layout"); // Use the route path
                             },
                             Err(e) => {
+                                dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 web_sys::console::log_1(&format!("Error: {}", e).into());
                             }
                         }
                     },
                     Err(err_msg) => {
+                        dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         web_sys::console::log_1(&format!("Error: {}", err_msg).into());
                     }
                 }
@@ -164,8 +170,3 @@ pub fn search_bar() -> Html {
         </div>
     }
 }
-
-// #[function_component(ErrorMessage)]
-// pub fn error_message() -> Html {
-//
-// }

@@ -12,6 +12,7 @@ use markdown::to_html;
 use serde::de::Unexpected::Option;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::audio::AudioPlayerProps;
+use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{RecentEps, Episode};
 
 enum AppStateMsg {
@@ -40,8 +41,28 @@ impl Reducer<AppState> for AppStateMsg {
 
 #[function_component(Home)]
 pub fn home() -> Html {
-    let error = use_state(|| None);
     let (state, dispatch) = use_store::<AppState>();
+
+    let effect_dispatch = dispatch.clone();
+
+    use_effect_with(
+        (),
+        move |_| {
+            let effect_dispatch_clone = effect_dispatch.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let window = web_sys::window().expect("no global `window` exists");
+                let location = window.location();
+                let current_route = location.href().expect("should be able to get href");
+                use_check_authentication(effect_dispatch_clone, &current_route);
+            });
+
+            || ()
+        }
+    );
+
+    let error = use_state(|| None);
+    let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     console::log_1(&format!("User Context in Home: {:?}", &state.user_details).into());
 
@@ -68,9 +89,9 @@ pub fn home() -> Html {
     {
         // let episodes = episodes.clone();
         let error = error.clone();
-        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
         console::log_1(&"Test log on home".to_string().into());
         if let Some(api_key) = &api_key {
             console::log_1(&format!("API Key: {:?}", api_key).into());
@@ -84,9 +105,9 @@ pub fn home() -> Html {
 
         // Dependencies for use_effect_with
         let dependencies = (
-            state.auth_details.as_ref().map(|ud| ud.api_key.clone()),
-            state.user_details.as_ref().map(|ud| ud.UserID.clone()),
-            state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
+            post_state.auth_details.as_ref().map(|ud| ud.api_key.clone()),
+            post_state.user_details.as_ref().map(|ud| ud.UserID.clone()),
+            post_state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
         );
 
         console::log_1(&format!("apikey: {:?}", &api_key).into());
@@ -103,12 +124,9 @@ pub fn home() -> Html {
         console::log_1(&format!("api_key: {:?}", &api_key_effect).into());
 
         use_effect_with(
-            (api_key_effect, user_id_effect, server_name_effect),
+            (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
-                console::log_1(&format!("User effect running: {:?}", &server_name).into());
-                // let episodes_clone = episodes.clone();
                 let error_clone = error.clone();
-
                 if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
                     let dispatch = effect_dispatch.clone();
 

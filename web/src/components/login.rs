@@ -78,24 +78,30 @@ pub fn login() -> Html {
                                                         console::log_1(&format!("user_id: {:?}", &app_state_clone).into());
                                                         console::log_1(&format!("auth_details: {:?}", &auth_state_clone).into());
                                                         // let mut error_message = app_state.error_message;
+                                                        // Retrieve the originally requested route, if any
+                                                        let session_storage = window.session_storage().unwrap().unwrap();
+                                                        session_storage.set_item("isAuthenticated", "true").unwrap();
+                                                        let requested_route = storage.get_item("requested_route").unwrap_or(None);
 
-                                                        let server_name_local = auth_state_clone.auth_details.as_ref().map(|ad| ad.server_name.clone());
-                                                        let api_key_local = auth_state_clone.auth_details.as_ref().and_then(|ad| ad.api_key.clone());
-
-                                                        // let server_name_local = auth_details.auth_details.as_ref().and_then(|ad| ad.server_name.clone());
-                                                        console::log_1(&format!("server_name_pre_wasm: {:?}", &server_name_local).into());
-
-// Use the local variables instead of `app_state`
-                                                        wasm_bindgen_futures::spawn_local(async move {
-                                                            match call_verify_pinepods(server_name_local.unwrap(), api_key_local).await {
-                                                                Ok(_) => {
-                                                                    history.push("/home"); // Redirect to the home page
-                                                                }
-                                                                Err(e) => {
-                                                                    error_clone_use.set(Some(e.to_string())); // Set the error message
-                                                                }
-                                                            }
-                                                        });
+                                                        let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                        history.push(&redirect_route); // Redirect to the requested or home page
+//                                                         let server_name_local = auth_state_clone.auth_details.as_ref().map(|ad| ad.server_name.clone());
+//                                                         let api_key_local = auth_state_clone.auth_details.as_ref().and_then(|ad| ad.api_key.clone());
+//
+//                                                         // let server_name_local = auth_details.auth_details.as_ref().and_then(|ad| ad.server_name.clone());
+//                                                         console::log_1(&format!("server_name_pre_wasm: {:?}", &server_name_local).into());
+//
+// // Use the local variables instead of `app_state`
+//                                                         wasm_bindgen_futures::spawn_local(async move {
+//                                                             match call_verify_pinepods(server_name_local.unwrap(), api_key_local).await {
+//                                                                 Ok(_) => {
+//                                                                     history.push("/home"); // Redirect to the home page
+//                                                                 }
+//                                                                 Err(e) => {
+//                                                                     error_clone_use.set(Some(e.to_string())); // Set the error message
+//                                                                 }
+//                                                             }
+//                                                         });
                                                     }
                                                 }
                                             }

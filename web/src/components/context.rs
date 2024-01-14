@@ -15,6 +15,35 @@ use serde_json::{json, from_str};
 use web_sys::window;
 use crate::components::podcast_layout::ClickedFeedURL;
 
+pub enum AppStateMsg {
+    ExpandEpisode(String),
+    CollapseEpisode(String),
+    SetLoading(bool),
+}
+
+impl Reducer<AppState> for AppStateMsg {
+    fn apply(self, state: Rc<AppState>) -> Rc<AppState> {
+        let mut load_state = state.clone();
+        let mut state_mut = Rc::make_mut(&mut load_state);
+
+
+        match self {
+            AppStateMsg::ExpandEpisode(guid) => {
+                state_mut.expanded_descriptions.insert(guid);
+            },
+            AppStateMsg::CollapseEpisode(guid) => {
+                state_mut.expanded_descriptions.remove(&guid);
+            },
+            AppStateMsg::SetLoading(is_loading) => {
+                state_mut.is_loading = Option::from(is_loading);
+            },
+        }
+
+        state
+    }
+}
+
+
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct AppState {
@@ -30,7 +59,7 @@ pub struct AppState {
     pub clicked_podcast_info: Option<ClickedFeedURL>,
     pub pods: Option<Podcast>,
     pub podcast_feed_return: Option<PodcastResponse>,
-    // pub expanded_episodes: HashSet<i64>,
+    pub is_loading: Option<bool>,
     #[serde(default)]
     pub expanded_descriptions: HashSet<String>,
 }
@@ -94,15 +123,6 @@ impl UIState {
 
 
 impl AppState {
-    // pub fn serialize(data_to_serialize: ) -> String {
-    //     // Serialize only the necessary fields
-    //     json!({
-    //         "user_details": self.user_details,
-    //         "auth_details": self.auth_details,
-    //         "server_details": self.server_details,
-    //         // ... other fields you want to serialize
-    //     }).to_string()
-    // }
 
     pub fn deserialize(serialized_state: &str) -> Result<Self, serde_json::Error> {
         from_str(serialized_state)

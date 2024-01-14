@@ -1,9 +1,13 @@
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use base64::encode;
+use gloo_utils::history;
+use yew_router::history::{BrowserHistory, History};
+use serde_json::from_str;
 use crate::components::context;
 use yew::prelude::*;
 use web_sys::console;
+use yewdux::{Dispatch, use_dispatch};
 // Add imports for your context modules
 use crate::components::context::{AppState};
 
@@ -250,3 +254,27 @@ pub async fn login_new_server(server_name: String, username: String, password: S
         }
     }
 }
+
+pub(crate) fn use_check_authentication(dispatch: Dispatch<AppState>, current_route: &str) {
+    let window = web_sys::window().expect("no global `window` exists");
+    let local_storage = window.local_storage().unwrap().unwrap();
+    let session_storage = window.session_storage().unwrap().unwrap();
+
+    // Check if the user has been authenticated in this session
+    let is_authenticated = session_storage.get_item("isAuthenticated").unwrap_or(None);
+
+    // Check if state details are missing or user hasn't been authenticated in this session
+    web_sys::console::log_1(&"Checking auth".to_string().into());
+    if is_authenticated.is_none() {
+        // Save the current route for redirecting back after login
+        local_storage.set_item("redirectAfterLogin", current_route).unwrap();
+
+        // Redirect to login page
+        let history = BrowserHistory::new();
+        web_sys::console::log_1(&"Redirecting to login".to_string().into());
+        history.push("/");
+    }
+    // Otherwise, assume the user is authenticated and proceed
+    // Note: No need to set states here as they are assumed to be already set
+}
+
