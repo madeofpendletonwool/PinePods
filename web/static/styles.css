@@ -287,3 +287,26 @@ body.no-scroll {
     /*background-color: var(--standout-color); !* Specify only for the spinner *!*/
 }
 
+.material-icons {
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    /* Adjust the size if necessary */
+    width: 24px;
+    height: 24px;
+}
+
+.icon-space {
+    transform: translateY(4px);
+    margin-right: 10px;
+}
+
+.icon-size {
+    transform: translateY(3px);
+    margin-right: 10px;
+}
+
+.align-avatar {
+    display: flex;
+    align-items: center;
+}

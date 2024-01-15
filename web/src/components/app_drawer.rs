@@ -11,10 +11,11 @@ use super::routes::Route;
 #[function_component(App_drawer)]
 pub fn app_drawer() -> Html {
     let selection = use_state(|| "".to_string());
+    // let (state, _dispatch) = use_store::<AppState>();
 
     let is_drawer_open = use_state(|| false);
     let (state, dispatch) = use_store::<AppState>();
-
+    let username = state.user_details.as_ref().map(|ud| ud.Username.clone()).unwrap_or_default();
     let toggle_drawer = {
         let is_drawer_open = is_drawer_open.clone();
         move |_event: MouseEvent| {
@@ -61,20 +62,30 @@ pub fn app_drawer() -> Html {
                 <div class="flex flex-col justify-between h-full">
                     <div class="px-6 py-4 mt-16">
                         <h2 class="text-lg font-semibold">{"Pinepods"}</h2>
+                        <hr class="my-4 border-gray-200" />
                         <div class="space-y-4">
                             // User Account with Gravatar
-                            <div class="flex items-center space-x-3">
-                                <Link<Route> to={Route::UserStats}>
-                                    // Initially, use the placeholder image
-                                    <img src={"/static/assets/favicon.png"} style="width: 25px; height: 25px;" class="icon-size" alt="User Avatar" />
-                                    <span class="text-lg">{"User's Account"}</span>
-                                </Link<Route>>
-                            </div>
+                        <div class="flex items-center space-x-3">
+                            <Link<Route> to={Route::UserStats}>
+                                <div class="align-avatar space-x-3">
+                                    <img
+                                        src={state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                                        style="width: 25px; height: 25px;"
+                                        class="icon-size rounded-full" // Added rounded-full for circular image
+                                        alt="User Avatar"
+                                    />
+                                    <span class="text-lg text-adjust" style="margin-top: 7px; margin-left: -2px;">
+                                        {username} // Displaying the username
+                                    </span>
+                                </div>
+                            </Link<Route>>
+                        </div>
+
                             // Other Links
-                            <div class="flex items-center space-x-3">
+                            <div class="m-0 p-0 flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Home}>
-                                        <span class="material-icons">{"home"}</span>
+                                        <span class="material-icons icon-space">{"home"}</span>
                                         <span class="text-lg">{"Home"}</span>
                                     </Link<Route>>
                                 </div>
@@ -82,7 +93,7 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Search}>
-                                        <span class="material-icons">{"search"}</span>
+                                        <span class="material-icons icon-space">{"search"}</span>
                                         <span class="text-lg">{"Search Podcasts"}</span>
                                     </Link<Route>>
                                 </div>
@@ -90,7 +101,7 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Queue}>
-                                    <span class="material-icons">{"queue"}</span>
+                                    <span class="material-icons icon-space">{"queue"}</span>
                                     <span class="text-lg">{"Queue"}</span>
                                     </Link<Route>>
                                 </div>
@@ -98,7 +109,7 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Saved}>
-                                        <span class="material-icons">{"star"}</span>
+                                        <span class="material-icons icon-space">{"star"}</span>
                                         <span class="text-lg">{"Saved"}</span>
                                     </Link<Route>>
                                 </div>
@@ -106,7 +117,7 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::PodHistory}>
-                                        <span class="material-icons">{"history"}</span>
+                                        <span class="material-icons icon-space">{"history"}</span>
                                         <span class="text-lg">{"History"}</span>
                                     </Link<Route>>
                                 </div>
@@ -114,7 +125,7 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Downloads}>
-                                        <span class="material-icons">{"download"}</span>
+                                        <span class="material-icons icon-space">{"download"}</span>
                                         <span class="text-lg">{"Downloads"}</span>
                                     </Link<Route>>
                                 </div>
@@ -122,7 +133,7 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                             <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                 <Link<Route> to={Route::Downloads}>
-                                    <span class="material-icons">{"download"}</span>
+                                    <span class="material-icons icon-space">{"download"}</span>
                                     <span class="text-lg">{"Downloads"}</span>
                                 </Link<Route>>
                             </div>
@@ -130,21 +141,23 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Podcasts}>
-                                        <span class="material-icons">{"podcasts"}</span>
+                                        <span class="material-icons icon-space">{"podcasts"}</span>
                                         <span class="text-lg">{"Podcasts"}</span>
                                     </Link<Route>>
                                 </div>
                             </div>
-                            <div class="px-6 py-4">
-                                <div class="flex items-center space-x-3">
-                                    <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
-                                        <Link<Route> to={Route::LogOut}>
-                                            <span class="material-icons">{"logout"}</span>
-                                            <span class="text-lg">{"Sign Out"}</span>
-                                        </Link<Route>>
+                            <div class="flex-grow"></div>
                                     </div>
-                                </div>
-                            </div>
+                            <div class="px-1 py-4">
+                <div class="flex items-center space-x-3">
+                    <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
+                        <Link<Route> to={Route::LogOut}>
+                            <span class="material-icons icon-space">{"logout"}</span>
+                            <span class="text-lg">{"Sign Out"}</span>
+                        </Link<Route>>
+                    </div>
+                </div>
+
                         </div>
                     </div>
                 </div>

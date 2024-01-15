@@ -6,9 +6,19 @@ use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests;
 use crate::components::context::{AppState};
 use yewdux::prelude::*;
-
+use md5;
 use yewdux::prelude::*;
 use crate::requests::pod_req::call_verify_pinepods;
+
+// Gravatar URL generation functions (outside of use_effect_with)
+fn calculate_gravatar_hash(email: &String) -> String {
+    format!("{:x}", md5::compute(email.to_lowercase()))
+}
+
+fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
+    let hash = calculate_gravatar_hash(&email.clone().unwrap());
+    format!("https://gravatar.com/avatar/{}?s={}", hash, size)
+}
 
 #[function_component(Login)]
 pub fn login() -> Html {
@@ -68,11 +78,16 @@ pub fn login() -> Html {
 
                                                         let app_state_clone = app_state.clone();
                                                         let auth_state_clone = auth_details.clone();
+                                                        let email = &app_state.user_details.as_ref().unwrap().Email;
+                                                        console::log_1(&format!("user email: {:?}", &email).into());
+                                                        let gravatar_url = generate_gravatar_url(&Some(email.clone().unwrap()), 80);
+                                                        console::log_1(&format!("gravatar_url: {:?}", &gravatar_url).into());
                                                         // Auto login logic here
                                                         dispatch.reduce_mut(move |state| {
                                                             state.user_details = app_state.user_details;
                                                             state.auth_details = auth_details.auth_details;
                                                             state.server_details = server_details.server_details;
+                                                            state.gravatar_url = Some(gravatar_url);
 
                                                         });
                                                         console::log_1(&format!("user_id: {:?}", &app_state_clone).into());
@@ -311,18 +326,28 @@ pub fn login() -> Html {
                 match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
                     Ok((user_details, login_request, server_details)) => {
                         // Use reduce_mut to modify the state directly
+                        // fn calculate_gravatar_hash(email: &String) -> String {
+                        //     format!("{:x}", md5::compute(email.to_lowercase()))
+                        // }
+                        //
+                        // // Function to generate the Gravatar URL
+                        // fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
+                        //     let hash = calculate_gravatar_hash(&email.clone().unwrap());
+                        //     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
+                        // }
+
+                        // After user login, update the image URL with user's email from user_details
+                        let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
+
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
+                            state.gravatar_url = Some(gravatar_url); // Store the Gravatar URL
 
                             state.store_app_state();
-
                         });
 
-                        // console::log_1(&format!("Set User Context: {:?}", user_details).into());
-                        // console::log_1(&format!("Set Auth Context: {:?}", login_request).into());
-                        // state.store_app_state
                         history.push("/home"); // Use the route path
                     },
                     Err(e) => {
