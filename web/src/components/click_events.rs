@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use yew::Callback;
 use web_sys::MouseEvent;
 use yewdux::prelude::*; // or wherever your Dispatch type is defined
-use yew_router::prelude::*; // or wherever your History type is defined
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState};
 use yew_router::history::{BrowserHistory, History};
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::search_pods::call_parse_podcast_url;

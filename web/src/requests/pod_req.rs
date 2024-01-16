@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::json;
 use web_sys::console;
 
 
@@ -39,6 +38,7 @@ pub async fn call_verify_pinepods(server_name: String, api_key: Option<String>) 
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
 pub struct Episode {
     pub PodcastName: String,
     pub EpisodeTitle: String,
@@ -113,7 +113,7 @@ struct PodcastStatusResponse {
     // Include other fields if your response contains more data
 }
 
-pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, user_id: i32, added_podcast: &PodcastValues) -> Result<bool, Error> {
+pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, _user_id: i32, added_podcast: &PodcastValues) -> Result<bool, Error> {
     let url = format!("{}/api/data/add_podcast/", server_name);
     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
@@ -185,6 +185,7 @@ pub struct PodcastResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
 pub struct Podcast {
     pub PodcastID: i32,
     pub PodcastName: String,

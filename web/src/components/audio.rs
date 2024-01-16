@@ -1,12 +1,7 @@
 use gloo_timers::callback::Interval;
-// use serde::__private::de::Content::String;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use yew::{Callback, function_component, Html, html};
 use yew::prelude::*;
-use yew::events::*;
-use yew::{Callback, function_component, Html, html, props};
-use yew::prelude::*;
-use yew_router::history::{BrowserHistory, History};
+// use yew_router::history::{History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use web_sys::{HtmlAudioElement, HtmlInputElement};
@@ -31,10 +26,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 // Initialize state for current time and duration
     let current_time = use_state(|| "00:00:00".to_string());
     let duration = use_state(|| 0.0);
-
-    // Clone the state reference for use inside the closure
-    let audio_ref_clone = audio_ref.clone();
-    let state_clone_for_closure = state.clone();
     let src_clone = props.src.clone();
 
     // Update the audio source when `src` changes
@@ -53,8 +44,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 // Effect for setting up an interval to update the current playback time
     // Effect for setting up an interval to update the current playback time
     // Clone `audio_ref` for `use_effect_with`
-    let audio_ref_clone = audio_ref.clone();
-    let current_time_clone = current_time.clone();
     let state_clone = audio_state.clone();
     use_effect_with((), {
         let dispatch = _dispatch.clone();
@@ -79,10 +68,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             move || drop(interval_handle)
         }
     });
-
-    // Clone for use inside the toggle_playback closure
-    let audio_ref_clone = audio_ref.clone();
-    let state_clone_for_toggle = state.clone();
 
 
     // Toggle playback
@@ -129,7 +114,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
 // Skip forward
     let skip_forward = {
-        let dispatch = _dispatch.clone();
+        // let dispatch = _dispatch.clone();
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |_| {
             if let Some(audio_element) = audio_state.audio_element.as_ref() {

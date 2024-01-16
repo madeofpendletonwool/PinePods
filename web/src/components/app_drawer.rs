@@ -1,13 +1,10 @@
-use std::rc::Rc;
 use yew::prelude::*;
-use yew_router::history::{BrowserHistory, History};
 use yew_router::prelude::Link;
-use yewdux::{Dispatch, use_store};
+use yewdux::{use_store};
 use crate::components::context::AppState;
-use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use super::routes::Route;
 
-
+#[allow(non_camel_case_types)]
 #[function_component(App_drawer)]
 pub fn app_drawer() -> Html {
     let selection = use_state(|| "".to_string());
@@ -15,7 +12,7 @@ pub fn app_drawer() -> Html {
 
     let is_drawer_open = use_state(|| false);
     let (state, dispatch) = use_store::<AppState>();
-    let username = state.user_details.as_ref().map(|ud| ud.Username.clone()).unwrap_or_default();
+    let username = state.user_details.as_ref().map_or("Guest".to_string(), |ud| ud.Username.clone().unwrap());
     let toggle_drawer = {
         let is_drawer_open = is_drawer_open.clone();
         move |_event: MouseEvent| {
@@ -30,30 +27,6 @@ pub fn app_drawer() -> Html {
             }
         }
     };
-
-    // let close_drawer = {
-    //     let toggle_drawer = toggle_drawer.clone();
-    //     Callback::from(move |_| {
-    //         toggle_drawer(());
-    //     })
-    // };
-
-    let on_selection_change = {
-        let selection = selection.clone();
-        Callback::from(move |e: InputEvent| {
-            selection.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
-        })
-    };
-
-    // let on_select = {
-    //     let selection = selection.clone();
-    //     Callback::from(move |_| {
-    //         // Handle the login logic here
-    //         // For example, send the username and password to a server
-    //         let message = format!("Selected: {}", *selection);
-    //         console::log_1(&message.into());
-    //     })
-    // };
 
     html! {
         <div class="relative min-h-screen">
@@ -119,14 +92,6 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::PodHistory}>
                                         <span class="material-icons icon-space">{"history"}</span>
                                         <span class="text-lg">{"History"}</span>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Downloads}>
-                                        <span class="material-icons icon-space">{"download"}</span>
-                                        <span class="text-lg">{"Downloads"}</span>
                                     </Link<Route>>
                                 </div>
                             </div>

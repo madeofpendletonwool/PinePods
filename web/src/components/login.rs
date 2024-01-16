@@ -1,14 +1,13 @@
 use yew::prelude::*;
-use web_sys::{console, HtmlInputElement, window};
+use web_sys::{console, window};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests;
 use crate::components::context::{AppState};
-use yewdux::prelude::*;
+// use yewdux::prelude::*;
 use md5;
 use yewdux::prelude::*;
-use crate::requests::pod_req::call_verify_pinepods;
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -26,7 +25,7 @@ pub fn login() -> Html {
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
-    let mut error_message = use_state(|| None::<String>);
+    let error_message = use_state(|| None::<String>);
     let error_message_clone = error_message.clone();
 
     {
@@ -56,7 +55,7 @@ pub fn login() -> Html {
 
     // User Auto Login with saved state
     use_effect_with((), {
-        let error_clone_use = error_message_clone.clone();
+        // let error_clone_use = error_message_clone.clone();
         let history = history.clone();
         move |_| {
             if let Some(window) = web_sys::window() {

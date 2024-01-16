@@ -10,7 +10,6 @@ use crate::requests::pod_req::{PodcastResponse, RemovePodcastValues, call_remove
 use crate::requests::pod_req;
 use web_sys::console;
 use crate::components::context::{AppState, UIState};
-use web_sys::console::error;
 use yew_router::history::BrowserHistory;
 use crate::components::click_events::create_on_title_click;
 
@@ -76,13 +75,6 @@ pub fn podcasts() -> Html {
             console::log_1(&format!("Server Name: {}", server_name).into());
         }
 
-        // Dependencies for use_effect_with
-        let dependencies = (
-            state.auth_details.as_ref().map(|ud| ud.api_key.clone()),
-            state.user_details.as_ref().map(|ud| ud.UserID.clone()),
-            state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
-        );
-
         let server_name_effect = server_name.clone();
         let user_id_effect = user_id.clone();
         let api_key_effect = api_key.clone();
@@ -97,7 +89,7 @@ pub fn podcasts() -> Html {
             move |_| {
                 console::log_1(&format!("User effect running: {:?}", &server_name).into());
                 // let episodes_clone = episodes.clone();
-                let error_clone = error.clone();
+                // let error_clone = error.clone();
 
                 if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
                     let dispatch = effect_dispatch.clone();
@@ -137,24 +129,24 @@ pub fn podcasts() -> Html {
                             }
                         } else {
                         pods.into_iter().map(|podcast| {
-                            let state_ep = state.clone();
-                            let audio_state_ep = audio_state.clone();
+                            // let state_ep = state.clone();
+                            // let audio_state_ep = audio_state.clone();
                             let api_key_iter = api_key.clone();
                             let history = history_clone.clone();
 
-                            let id_string = &podcast.PodcastID.to_string();
+                            // let id_string = &podcast.PodcastID.to_string();
     
                             let dispatch = dispatch.clone();
                             let podcast_id_loop = podcast.PodcastID.clone();
-                            let podcast_url_clone = podcast.FeedURL.clone();
-                            let podcast_title_clone = podcast.PodcastName.clone();
-                            let podcast_ep_count = podcast.EpisodeCount.clone();
+                            // let podcast_url_clone = podcast.FeedURL.clone();
+                            // let podcast_title_clone = podcast.PodcastName.clone();
+                            // let podcast_ep_count = podcast.EpisodeCount.clone();
                             // let podcast_artwork_clone = podcast.ArtworkURL.clone();
                             let podcast_description_clone = podcast.Description.clone();
-                            let podcast_website_clone = podcast.WebsiteURL.clone();
-                            let podcast_author_clone = podcast.Author.clone();
+                            // let podcast_website_clone = podcast.WebsiteURL.clone();
+                            // let podcast_author_clone = podcast.Author.clone();
                             let podcast_categories_clone = podcast.Categories.clone();
-                            let categories: HashMap<String, String> = serde_json::from_str(&podcast_categories_clone).unwrap_or_else(|_| HashMap::new());
+                            // let categories: HashMap<String, String> = serde_json::from_str(&podcast_categories_clone).unwrap_or_else(|_| HashMap::new());
                             let on_remove_click = {
                                 let dispatch_remove = dispatch.clone();
                                 let podcast_feed_return = podcast_feed_return.clone();
@@ -170,7 +162,7 @@ pub fn podcasts() -> Html {
                                     let user_id = user_id;
 
                                     if let Some(podcasts) = &podcast_feed_return {
-                                        for podcast in &podcasts.pods {
+                                        for _podcast in &podcasts.pods {
                                             let dispatch_for = dispatch_call.clone();
                                             let api_key_for = api_key_call.clone();
                                             let server_name_for = server_name_call.clone();

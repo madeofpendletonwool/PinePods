@@ -4,10 +4,10 @@ use wasm_bindgen::JsCast;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
-use web_sys::{console, HtmlInputElement, window};
+use web_sys::{HtmlInputElement, window};
 use web_sys::HtmlSelectElement;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, AppStateMsg};
+use crate::components::context::{AppState};
 
 #[derive(Properties, PartialEq)]
 pub struct ErrorMessageProps {
@@ -75,7 +75,7 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
     }
 }
 
-
+#[allow(non_camel_case_types)]
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
     let history = BrowserHistory::new();

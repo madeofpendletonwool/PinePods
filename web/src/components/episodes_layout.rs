@@ -1,12 +1,10 @@
-use std::io::BufRead;
 use std::rc::Rc;
-use yew::{Callback, function_component, Html, html, NodeRef, TargetCast, use_effect, use_effect_with, use_force_update, use_node_ref, use_state};
+use yew::{Callback, function_component, Html, html, TargetCast, use_effect, use_effect_with, use_force_update, use_node_ref};
 use web_sys::{console, Event, MouseEvent, window};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::{AudioPlayerProps, AudioPlayer};
-use crate::components::audio::_AudioPlayerProps::duration;
 use super::gen_components::Search_nav;
 use super::app_drawer::App_drawer;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
@@ -15,7 +13,6 @@ use markdown::to_html;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::{Properties};
-use crate::requests::pod_req;
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -60,7 +57,7 @@ enum UIStateMsg {
 
 impl Reducer<UIState> for UIStateMsg {
     fn apply(self, mut state: Rc<UIState>) -> Rc<UIState> {
-        let mut state = Rc::make_mut(&mut state);
+        let state = Rc::make_mut(&mut state);
 
         match self {
             UIStateMsg::ClearErrorMessage => {
@@ -344,8 +341,6 @@ pub fn episode_layout() -> Html {
 
                                 let on_play_click = {
                                     let episode_url_for_closure = episode_url_clone.clone();
-                                    let episode_title_for_closure = episode_title_clone.clone();
-                                    let episode_duration_for_closure = episode_duration_clone.clone();
                                     let dispatch = dispatch.clone();
 
                                     fn parse_duration_to_seconds(duration_convert: &str) -> f64 {

@@ -3,7 +3,6 @@ use gloo_net::http::Request;
 use serde::Deserialize;
 use anyhow::Error;
 use rss::Channel;
-use rss::extension::itunes::ITunesItemExtension;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -17,20 +16,25 @@ pub struct PodcastSearchResult {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
 pub struct Podcast {
     pub(crate) id: i64,
     pub(crate) title: String,
     pub(crate) url: String,
+    #[allow(non_snake_case)]
     pub(crate) originalUrl: String,
     pub(crate) link: String,
     pub(crate) description: String,
     pub(crate) author: String,
+    #[allow(non_snake_case)]
     pub(crate) ownerName: String,
     pub(crate) image: String,
     pub(crate) artwork: String,
+    #[allow(non_snake_case)]
     pub(crate) lastUpdateTime: i64,
     pub(crate) categories: Option<HashMap<String, String>>,
     pub(crate) explicit: bool,
+    #[allow(non_snake_case)]
     pub(crate) episodeCount: i32,
 }
 

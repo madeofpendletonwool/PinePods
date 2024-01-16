@@ -1,13 +1,8 @@
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use base64::encode;
-use gloo_utils::history;
 use yew_router::history::{BrowserHistory, History};
-use serde_json::from_str;
-use crate::components::context;
-use yew::prelude::*;
-use web_sys::console;
-use yewdux::{Dispatch, use_dispatch};
+use yewdux::{Dispatch};
 // Add imports for your context modules
 use crate::components::context::{AppState};
 
@@ -33,7 +28,7 @@ pub struct LoginResponse {
 }
 
 #[derive(Deserialize)]
-struct PinepodsCheckResponse {
+pub struct PinepodsCheckResponse {
     pinepods_instance: Option<bool>,
 }
 
@@ -44,7 +39,7 @@ pub async fn verify_pinepods_instance(server_name: &str) -> Result<PinepodsCheck
     if response.ok() {
         let check_data: PinepodsCheckResponse = response.json().await?;
         if check_data.pinepods_instance.unwrap_or(false) {
-            Ok((check_data))
+            Ok(check_data)
         } else {
             Err(anyhow::Error::msg("Pinepods instance not found"))
         }
@@ -122,6 +117,7 @@ pub async fn call_get_user_id(server_name: &str, api_key: &str) -> Result<GetUse
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[allow(non_snake_case)]
 pub struct GetUserDetails {
     // Add fields according to your API's JSON response
     pub UserID: i32,

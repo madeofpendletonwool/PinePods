@@ -6,14 +6,13 @@ use crate::requests::pod_req;
 use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
+use crate::components::audio::{AudioPlayerProps, AudioPlayer};
 use std::rc::Rc;
 use html2md::parse_html;
 use markdown::to_html;
-use serde::de::Unexpected::Option;
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::audio::AudioPlayerProps;
 use crate::requests::login_requests::use_check_authentication;
-use crate::requests::pod_req::{RecentEps, Episode};
+use crate::requests::pod_req::{RecentEps};
 
 enum AppStateMsg {
     ExpandEpisode(String),
@@ -103,13 +102,6 @@ pub fn home() -> Html {
             console::log_1(&format!("Server Name: {}", server_name).into());
         }
 
-        // Dependencies for use_effect_with
-        let dependencies = (
-            post_state.auth_details.as_ref().map(|ud| ud.api_key.clone()),
-            post_state.user_details.as_ref().map(|ud| ud.UserID.clone()),
-            post_state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
-        );
-
         console::log_1(&format!("apikey: {:?}", &api_key).into());
         console::log_1(&format!("userid: {:?}", &user_id).into());
         console::log_1(&format!("servername: {:?}", &server_name).into());
@@ -166,8 +158,6 @@ pub fn home() -> Html {
                         } else {
                         episodes.into_iter().map(|episode| {
                             let state_ep = state.clone();
-                            let audio_state_ep = audio_state.clone();
-
                             let id_string = &episode.EpisodeID.to_string();
     
                             let is_expanded = state.expanded_descriptions.contains(id_string);
@@ -178,7 +168,7 @@ pub fn home() -> Html {
                             let episode_title_clone = episode.EpisodeTitle.clone();
                             let episode_duration_clone = episode.EpisodeDuration.clone();
     
-                            let (description, is_truncated) = if is_expanded {
+                            let (description, _is_truncated) = if is_expanded {
                                 (episode.EpisodeDescription.clone(), false)
                             } else {
                                 truncate_description(&episode.EpisodeDescription, 300)
@@ -203,12 +193,11 @@ pub fn home() -> Html {
     
                             let on_play_click = {
                                 let episode_url_for_closure = episode_url_clone.clone();
-                                let episode_title_for_closure = episode_title_clone.clone();
-                                let episode_duration_for_closure = episode_duration_clone.clone();
-                                let dispatch = dispatch.clone();
+                                // let episode_title_for_closure = episode_title_clone.clone();
+                                // let episode_duration_for_closure = episode_duration_clone.clone();
                                 let audio_dispatch = audio_dispatch.clone();
                                 let play_state = state_ep.clone();
-                                let audio_play_state = audio_state_ep.clone();
+                                // let audio_play_state = audio_state_ep.clone();
     
                                 fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
                                     let dur_string = duration_convert.to_string();
@@ -231,9 +220,7 @@ pub fn home() -> Html {
                                     let episode_title_for_closure = episode_title_clone.clone();
                                     let episode_duration_for_closure = episode_duration_clone.clone();
                                     web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
-                                    let dispatch = dispatch.clone();
                                     let audio_dispatch = audio_dispatch.clone();
-                                    let call_play_state = play_state.clone();
                                 
                                     let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
                                     web_sys::console::log_1(&format!("duration sec: {}", &formatted_duration).into());
@@ -301,6 +288,13 @@ pub fn home() -> Html {
                     }
                 }
             }
+        {
+            if let Some(audio_props) = &audio_state.currently_playing {
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+            } else {
+                html! {}
+            }
+        }
         </div>
         <App_drawer />
         </>

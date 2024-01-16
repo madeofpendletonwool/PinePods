@@ -8,7 +8,7 @@ use yewdux::Dispatch;
 use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
 use crate::components::context::{AppState};
-use crate::requests::search_pods::{call_get_podcast_info, call_parse_podcast_url, test_connection};
+use crate::requests::search_pods::{call_parse_podcast_url};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ClickedFeedURL {

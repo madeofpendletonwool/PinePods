@@ -24,7 +24,7 @@ pub enum AppStateMsg {
 impl Reducer<AppState> for AppStateMsg {
     fn apply(self, state: Rc<AppState>) -> Rc<AppState> {
         let mut load_state = state.clone();
-        let mut state_mut = Rc::make_mut(&mut load_state);
+        let state_mut = Rc::make_mut(&mut load_state);
 
 
         match self {
