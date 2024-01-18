@@ -20,3 +20,4 @@ pub(crate) mod episodes_layout;
 pub(crate) mod podcasts;
 mod audio;
 mod click_events;
+pub mod gen_funcs;

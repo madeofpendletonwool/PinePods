@@ -46,9 +46,9 @@ body {
     /* Other background styles */
 }
 
-body.no-scroll {
-    overflow: hidden; /* Prevents scrolling when drawer is open */
-}
+/*body.no-scroll {*/
+/*    overflow: hidden; !* Prevents scrolling when drawer is open *!*/
+/*}*/
 
 .error-snackbar {
     position: fixed;
@@ -309,4 +309,69 @@ body.no-scroll {
 .align-avatar {
     display: flex;
     align-items: center;
+}
+
+.stats-card {
+    background-color: #f7fafc;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.stats-label {
+    font-size: 1rem;
+    color: #718096;
+    margin-bottom: 0.5rem;
+}
+
+.stats-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.large-card {
+    background-color: #f7fafc;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.large-card-image {
+    max-width: 50%;
+    height: auto;
+    border-radius: 0.5rem;
+}
+
+.large-card-content {
+    margin-top: 1rem;
+    text-align: center; /* Center the content */
+}
+
+.large-card-link {
+    display: block;
+    color: #3182ce;
+    text-decoration: none;
+    margin: 0.5rem 0;
+}
+
+.large-card-paragraph {
+    margin-top: 1rem;
+    text-align: center; /* Center the paragraph text */
+}
+
+.episode-time-badge {
+    background-color: #f7fafc; /* Light gray background */
+    color: #4a5568; /* Dark gray text */
+    font-size: 0.875rem; /* Larger text */
+    border: 1px solid #e2e8f0; /* Light gray border */
+}
+
+.time-icon {
+    /* Customize your SVG icon here if needed */
 }

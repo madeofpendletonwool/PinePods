@@ -8,11 +8,10 @@ use crate::components::audio::{AudioPlayerProps, AudioPlayer};
 use super::gen_components::Search_nav;
 use super::app_drawer::App_drawer;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
-use html2md::parse_html;
-use markdown::to_html;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::{Properties};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -156,25 +155,6 @@ pub fn episode_layout() -> Html {
         });
     }
 
-    fn truncate_description(description: &str, max_length: usize) -> (String, bool) {
-        // Convert HTML to Markdown
-        let markdown = parse_html(description);
-
-        // Check if the Markdown string is longer than the maximum length
-        let is_truncated = markdown.len() > max_length;
-
-        // Truncate the Markdown string if it's too long
-        let truncated_markdown = if is_truncated {
-            markdown.chars().take(max_length).collect::<String>() + "..."
-        } else {
-            markdown
-        };
-
-        // Convert truncated Markdown back to HTML
-        let html = to_html(&truncated_markdown);
-
-        (html, is_truncated)
-    }
 
     let on_add_click = {
         let add_dispatch = _dispatch.clone();
@@ -316,10 +296,12 @@ pub fn episode_layout() -> Html {
 
                                 let is_expanded = search_state.expanded_descriptions.contains(&episode.guid);
 
+                                let sanitized_description = sanitize_html_with_blank_target(&episode.description.clone().unwrap_or_default());
+
                                 let (description, is_truncated) = if is_expanded {
-                                    (episode.description.clone().unwrap_or_default(), false)
+                                    (sanitized_description, false)
                                 } else {
-                                    truncate_description(&episode.description.clone().unwrap_or_default(), 300)
+                                    truncate_description(sanitized_description, 300)
                                 };
 
                                 let toggle_expanded = {
@@ -390,7 +372,7 @@ pub fn episode_layout() -> Html {
                                         });
                                     })
                                 };
-
+                                let format_release = format!("Released on: {}", &episode.pub_date.clone().unwrap_or_default());
                                 html! {
                                     <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
                                         <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 object-cover"/>
@@ -409,7 +391,7 @@ pub fn episode_layout() -> Html {
                                                 </div>
                                             }
                                                 }
-                                            <p class="item-container-text">{ &episode.pub_date.clone().unwrap_or_default() }</p>
+                                            <p class="item-container-text">{ format_release.clone() }</p>
                                         </div>
                                         <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded" onclick={on_play_click}>
                                             <span class="material-icons">{"play_arrow"}</span>

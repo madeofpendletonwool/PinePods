@@ -14,6 +14,7 @@ use web_sys::HtmlAudioElement;
 use serde_json::{json, from_str};
 use web_sys::window;
 use crate::components::podcast_layout::ClickedFeedURL;
+use crate::requests::stat_reqs::UserStats;
 
 pub enum AppStateMsg {
     ExpandEpisode(String),
@@ -63,6 +64,11 @@ pub struct AppState {
     pub gravatar_url: Option<String>,
     #[serde(default)]
     pub expanded_descriptions: HashSet<String>,
+}
+
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct UserStatsStore {
+    pub stats: Option<UserStats>,
 }
 
 #[derive(Default, Clone, PartialEq, Store)]

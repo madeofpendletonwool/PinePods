@@ -8,9 +8,8 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::{AudioPlayerProps, AudioPlayer};
 use std::rc::Rc;
-use html2md::parse_html;
-use markdown::to_html;
 use crate::components::episodes_layout::SafeHtml;
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{RecentEps};
 
@@ -65,25 +64,6 @@ pub fn home() -> Html {
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     console::log_1(&format!("User Context in Home: {:?}", &state.user_details).into());
 
-    fn truncate_description(description: &str, max_length: usize) -> (String, bool) {
-        // Convert HTML to Markdown
-        let markdown = parse_html(description);
-
-        // Check if the Markdown string is longer than the maximum length
-        let is_truncated = markdown.len() > max_length;
-
-        // Truncate the Markdown string if it's too long
-        let truncated_markdown = if is_truncated {
-            markdown.chars().take(max_length).collect::<String>() + "..."
-        } else {
-            markdown
-        };
-
-        // Convert truncated Markdown back to HTML
-        let html = to_html(&truncated_markdown);
-
-        (html, is_truncated)
-    }
     // Fetch episodes on component mount
     {
         // let episodes = episodes.clone();
@@ -167,12 +147,19 @@ pub fn home() -> Html {
                             let episode_url_clone = episode.EpisodeURL.clone();
                             let episode_title_clone = episode.EpisodeTitle.clone();
                             let episode_duration_clone = episode.EpisodeDuration.clone();
-    
-                            let (description, _is_truncated) = if is_expanded {
-                                (episode.EpisodeDescription.clone(), false)
+
+                            let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
+
+                            let (description, is_truncated) = if is_expanded {
+                                (sanitized_description, false)
                             } else {
-                                truncate_description(&episode.EpisodeDescription, 300)
+                                truncate_description(sanitized_description, 300)
                             };
+                            // let (description, _is_truncated) = if is_expanded {
+                            //     (episode.EpisodeDescription.clone(), false)
+                            // } else {
+                            //     truncate_description(&episode.EpisodeDescription, 300)
+                            // };
     
                             let toggle_expanded = {
                                 let search_dispatch_clone = dispatch.clone();
@@ -213,6 +200,7 @@ pub fn home() -> Html {
     
                                     seconds
                                 }
+
     
                                 Callback::from(move |_: MouseEvent| {
                                     web_sys::console::log_1(&"Play Clicked".to_string().into());
@@ -240,8 +228,9 @@ pub fn home() -> Html {
                                     });
                                 })
                             };
-    
+                            let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                             html! {
+
                                 <div>
                                     <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
                                         <img src={episode.EpisodeArtwork.clone()} alt={format!("Cover for {}", &episode.EpisodeTitle)} class="w-2/12 object-cover"/>
@@ -259,7 +248,13 @@ pub fn home() -> Html {
                                                     </div>
                                                 }
                                             }
-                                            <p class="item-container-text">{ &episode.EpisodePubDate }</p>
+                                        <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2 border" style="flex-grow: 0; flex-shrink: 0; width: auto;">
+                                            <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                                            </svg>
+                                            { &format_release }
+                                        </span>
+
                                         </div>
                                         <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded" onclick={on_play_click}>
                                             <span class="material-icons">{"play_arrow"}</span>
