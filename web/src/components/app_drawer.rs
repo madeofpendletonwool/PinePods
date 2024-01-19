@@ -111,6 +111,14 @@ pub fn app_drawer() -> Html {
                                     </Link<Route>>
                                 </div>
                             </div>
+                            <div class="flex items-center space-x-3">
+                                <div onclick={toggle_drawer.clone()} class="flex items-center space-x-3 cursor-pointer">
+                                    <Link<Route> to={Route::Settings}>
+                                        <span class="material-icons icon-space">{"settings"}</span>
+                                        <span class="text-lg">{"Settings"}</span>
+                                    </Link<Route>>
+                                </div>
+                            </div>
                             <div class="flex-grow"></div>
                                     </div>
                             <div class="px-1 py-4">

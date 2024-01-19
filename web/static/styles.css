@@ -375,3 +375,39 @@ body {
 .time-icon {
     /* Customize your SVG icon here if needed */
 }
+
+.tab.active {
+    background-color: #f3f4f6; /* Light gray background */
+    color: #1f2937; /* Darker text color */
+    border-bottom-color: transparent; /* Hide bottom border */
+}
+
+/* Example background colors */
+.bg-custom-light {
+    background-color: #f3f4f6; /* Adjust the color as needed */
+}
+
+.bg-custom-dark {
+    background-color: #1f2937; /* Adjust the color as needed */
+}
+
+/* Specific targeting for first and last accordion item */
+#accordion-collapse > :first-child > button {
+    border-top-left-radius: 0.75rem; /* 12px */
+    border-top-right-radius: 0.75rem; /* 12px */
+}
+
+#accordion-collapse > :last-child > button {
+    border-bottom-left-radius: 0.75rem; /* 12px */
+    border-bottom-right-radius: 0.75rem; /* 12px */
+}
+
+/* Background color for accordion content */
+.accordion-content {
+    background-color: #ffffff; /* Example color, adjust as needed */
+}
+
+/* Hover background color for accordion header */
+.accordion-header:hover {
+    background-color: #f3f4f6; /* Example color, adjust as needed */
+}

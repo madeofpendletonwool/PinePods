@@ -71,6 +71,11 @@ pub struct UserStatsStore {
     pub stats: Option<UserStats>,
 }
 
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct SettingsState {
+    pub active_tab: Option<String>,
+}
+
 #[derive(Default, Clone, PartialEq, Store)]
 pub struct UIState {
     pub audio_playing: Option<bool>,
