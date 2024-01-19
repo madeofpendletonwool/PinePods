@@ -152,21 +152,104 @@ pub fn search_bar() -> Html {
         })
     };
 
+    let prevent_default_submit = {
+        let on_submit = on_submit.clone();
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default(); // Prevent the default form submission
+            on_submit.emit(());  // Emit the on_submit event
+        })
+    };
+
+
+    let dropdown_open = use_state(|| false);
+
+    let toggle_dropdown = {
+        let dropdown_open = dropdown_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
+            dropdown_open.set(!*dropdown_open);
+        })
+    };
+
+    let on_dropdown_select = {
+        let dropdown_open = dropdown_open.clone();
+        let search_index = search_index.clone();
+        move |category: &str| {
+            search_index.set(category.to_string());
+            dropdown_open.set(false);
+        }
+    };
+
+    let on_dropdown_select_itunes = {
+        let on_dropdown_select = on_dropdown_select.clone();
+        Callback::from(move |_| on_dropdown_select("itunes"))
+    };
+
+    let on_dropdown_select_podcast_index = {
+        let on_dropdown_select = on_dropdown_select.clone();
+        Callback::from(move |_| on_dropdown_select("podcast_index"))
+    };
+
+
     html! {
-        <div class="episodes-container">
-            <div class="search-bar-container">
+    <div class="episodes-container w-full bg-gray-100"> // Ensure full width and set background color
+        <form class="search-bar-container flex justify-end w-full mx-auto" onsubmit={prevent_default_submit}>
+            <div class="relative inline-flex"> // Set a max-width for the search bar content
+                // Dropdown Button
+                <button
+                    id="dropdown-button"
+                    onclick={toggle_dropdown}
+                    class="flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center text-gray-900 bg-gray-100 border border-r-0 border-gray-300 dark:border-gray-700 dark:text-white rounded-l-lg hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800 hidden md:inline-flex"
+                    type="button"
+                >
+                    {format!("{} ", (*search_index).as_str())}
+                // SVG icon
+                <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
+                </svg>
+            </button>
+            // Dropdown Content
+            {
+                if *dropdown_open {
+                    html! {
+                        <div class="dropdown-content-class absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow">
+                            <ul class="py-2 text-sm text-gray-700">
+                                <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
+                                <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
+                                // Add more categories as needed
+                            </ul>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Search Input Field
+            // <div class="relative w-full">
                 <input
-                    type="text"
-                    placeholder="Search podcasts"
-                    class="search-input"
+                    type="search"
+                    id="search-dropdown"
+                    class="block p-2.5 w-full z-20 text-sm text-gray-900 bg-gray-50 rounded-r-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:border-blue-500 hidden md:inline-flex"
+                    placeholder="Search"
+                    required=true
                     oninput={on_input_change}
                 />
-                <select class="search-source" onchange={on_select_change}>
-                    <option value="itunes">{"iTunes"}</option>
-                    <option value="podcast_index">{"Podcast Index"}</option>
-                </select>
-                <button onclick={on_submit_click} class="search-btn">{"Search"}</button>
             </div>
-        </div>
-    }
+            // Search Button
+            <button
+                type="submit"
+                class="p-2.5 text-sm font-medium text-white bg-blue-700 rounded-lg border border-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+                onclick={on_submit_click}
+
+                >
+                    // SVG icon for search button
+                    <svg class="w-4 h-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+                    </svg>
+            </button>
+        </form>
+    </div>
+}
+
 }
