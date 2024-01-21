@@ -5,6 +5,7 @@ use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, SettingsState, UIState};
 use crate::components::audio::{AudioPlayerProps, AudioPlayer};
+use crate::components::setting_components;
 
 pub enum Msg {
     ToggleUserSettings,
@@ -132,22 +133,22 @@ pub fn settings() -> Html {
                 if *active_tab == "user" {
                     html! {
                     <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
-                        <AccordionItem title="Change Theme" content={html!{<p>{"Flowbite is an open-source library..."}</p>}} position={AccordionItemPosition::First}/>
-                        <AccordionItem title="MFA Settings" content={html!{<p>{"Flowbite is first conceptualized..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="Export Podcasts" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="Import Podcasts" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="Connect Nextcloud" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="Api Keys" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Change Theme" content={html!{ <setting_components::theme_options::ThemeOptions /> }} position={AccordionItemPosition::First}/>
+                        <AccordionItem title="MFA Settings" content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Connect Nextcloud Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Api Keys" content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
                     </div>
                     }
                 } else if *active_tab == "admin" {
                     html! {
                     <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
-                        <AccordionItem title="Pinepods Users" content={html!{<p>{"Flowbite is an open-source library..."}</p>}} position={AccordionItemPosition::First}/>
-                        <AccordionItem title="Guest Settings" content={html!{<p>{"Flowbite is first conceptualized..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="Download Settings" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="User Self Service Settings" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
-                        <AccordionItem title="Email Settings" content={html!{<p>{"The main difference is that..."}</p>}} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Pinepods Users" content={html!{ <setting_components::user_settings::UserSettings /> }} position={AccordionItemPosition::First}/>
+                        <AccordionItem title="Guest Settings" content={html!{ <setting_components::guest_settings::GuestSettings /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Download Settings" content={html!{ <setting_components::download_settings::DownloadSettings /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="User Self Service Settings" content={html!{ <setting_components::user_self_service::SelfServiceSettings /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Email Settings" content={html!{ <setting_components::email_settings::EmailSettings /> }} position={AccordionItemPosition::Middle}/>
                     </div>
                     }
                 } else {
