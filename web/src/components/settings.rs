@@ -144,7 +144,7 @@ pub fn settings() -> Html {
                 } else if *active_tab == "admin" {
                     html! {
                     <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
-                        <AccordionItem title="Pinepods Users" content={html!{ <setting_components::user_settings::UserSettings /> }} position={AccordionItemPosition::First}/>
+                        <AccordionItem title="User Management" content={html!{ <setting_components::user_settings::UserSettings /> }} position={AccordionItemPosition::First}/>
                         <AccordionItem title="Guest Settings" content={html!{ <setting_components::guest_settings::GuestSettings /> }} position={AccordionItemPosition::Middle}/>
                         <AccordionItem title="Download Settings" content={html!{ <setting_components::download_settings::DownloadSettings /> }} position={AccordionItemPosition::Middle}/>
                         <AccordionItem title="User Self Service Settings" content={html!{ <setting_components::user_self_service::SelfServiceSettings /> }} position={AccordionItemPosition::Middle}/>

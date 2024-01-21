@@ -64,6 +64,7 @@ pub struct AppState {
     pub gravatar_url: Option<String>,
     #[serde(default)]
     pub expanded_descriptions: HashSet<String>,
+    pub selected_theme: Option<String>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

@@ -4,4 +4,4 @@ pub(crate) mod pod_req;
 pub(crate) mod search_pods;
 
 pub(crate) mod stat_reqs;
-mod setting_reqs;
+pub(crate) mod setting_reqs;
