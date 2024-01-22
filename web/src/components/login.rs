@@ -8,6 +8,8 @@ use crate::components::context::{AppState};
 // use yewdux::prelude::*;
 use md5;
 use yewdux::prelude::*;
+use crate::requests::login_requests::use_check_authentication;
+use crate::requests::setting_reqs::call_get_theme;
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -77,28 +79,55 @@ pub fn login() -> Html {
 
                                                         let app_state_clone = app_state.clone();
                                                         let auth_state_clone = auth_details.clone();
+                                                        console::log_1(&format!("auth deets: {:?}", &auth_state_clone).into());
                                                         let email = &app_state.user_details.as_ref().unwrap().Email;
-                                                        console::log_1(&format!("user email: {:?}", &email).into());
-                                                        let gravatar_url = generate_gravatar_url(&Some(email.clone().unwrap()), 80);
-                                                        console::log_1(&format!("gravatar_url: {:?}", &gravatar_url).into());
-                                                        // Auto login logic here
-                                                        dispatch.reduce_mut(move |state| {
-                                                            state.user_details = app_state.user_details;
-                                                            state.auth_details = auth_details.auth_details;
-                                                            state.server_details = server_details.server_details;
-                                                            state.gravatar_url = Some(gravatar_url);
+                                                        let user_id = app_state.user_details.as_ref().unwrap().UserID.clone();
+                                                        // Safely access server_name and api_key
+                                                        let auth_details_clone = auth_state_clone.auth_details.clone();
+                                                        if let Some(auth_details) = auth_details_clone.as_ref() {
+                                                            let server_name = auth_details.server_name.clone();
+                                                            let api_key = auth_details.api_key.clone().unwrap_or_default();
+                                                            
+                                                            console::log_1(&format!("user email: {:?}", &email).into());
+                                                            let gravatar_url = generate_gravatar_url(&Some(email.clone().unwrap()), 80);
+                                                            console::log_1(&format!("gravatar_url: {:?}", &gravatar_url).into());
+                                                            // Auto login logic here
+                                                            dispatch.reduce_mut(move |state| {
+                                                                state.user_details = app_state.user_details;
+                                                                state.auth_details = Some(auth_details.clone());
+                                                                state.server_details = server_details.server_details;
+                                                                state.gravatar_url = Some(gravatar_url);
+    
+                                                            });
+                                                            // let mut error_message = app_state.error_message;
+                                                            // Retrieve the originally requested route, if any
+                                                            let session_storage = window.session_storage().unwrap().unwrap();
+                                                            session_storage.set_item("isAuthenticated", "true").unwrap();
+                                                            let requested_route = storage.get_item("requested_route").unwrap_or(None);
+    
+                                                            // Get Theme
+                                                            wasm_bindgen_futures::spawn_local(async move {
+                                                                console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
+                                                                console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
+                                                                match call_get_theme(server_name, api_key, &user_id).await{
+                                                                    Ok(theme) => {
+                                                                        console::log_1(&format!("theme test: {:?}", &theme).into());
+                                                                        crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                                    }
+                                                                    Err(e) => {
+                                                                        console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                                    }
+                                                                }
+                                                            });
+                                                            let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                            history.push(&redirect_route); // Redirect to the requested or home page
+                                                            // console::log_1(&format!("Server: {:?}", server_name).into());
+                                                            // console::log_1(&format!("API Key: {:?}", api_key).into());
+                                                        } else {
+                                                            console::log_1(&"Auth details are None".into());
+                                                        }
 
-                                                        });
-                                                        console::log_1(&format!("user_id: {:?}", &app_state_clone).into());
-                                                        console::log_1(&format!("auth_details: {:?}", &auth_state_clone).into());
-                                                        // let mut error_message = app_state.error_message;
-                                                        // Retrieve the originally requested route, if any
-                                                        let session_storage = window.session_storage().unwrap().unwrap();
-                                                        session_storage.set_item("isAuthenticated", "true").unwrap();
-                                                        let requested_route = storage.get_item("requested_route").unwrap_or(None);
 
-                                                        let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
-                                                        history.push(&redirect_route); // Redirect to the requested or home page
 //                                                         let server_name_local = auth_state_clone.auth_details.as_ref().map(|ad| ad.server_name.clone());
 //                                                         let api_key_local = auth_state_clone.auth_details.as_ref().and_then(|ad| ad.api_key.clone());
 //

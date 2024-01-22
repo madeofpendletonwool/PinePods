@@ -62,7 +62,38 @@ pub fn home() -> Html {
     let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    console::log_1(&format!("User Context in Home: {:?}", &state.user_details).into());
+
+    let dropdown_open = use_state(|| false);
+
+    let toggle_dropdown = {
+        let dropdown_open = dropdown_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
+            dropdown_open.set(!*dropdown_open);
+        })
+    };
+
+    let search_index = use_state(|| "podcast_index".to_string());
+
+    let on_dropdown_select = {
+        let dropdown_open = dropdown_open.clone();
+        let search_index = search_index.clone();
+        move |category: &str| {
+            search_index.set(category.to_string());
+            dropdown_open.set(false);
+        }
+    };
+
+    let on_dropdown_select_itunes = {
+        let on_dropdown_select = on_dropdown_select.clone();
+        Callback::from(move |_| on_dropdown_select("itunes"))
+    };
+
+    let on_dropdown_select_podcast_index = {
+        let on_dropdown_select = on_dropdown_select.clone();
+        Callback::from(move |_| on_dropdown_select("podcast_index"))
+    };
+
 
     // Fetch episodes on component mount
     {
@@ -71,29 +102,11 @@ pub fn home() -> Html {
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-        console::log_1(&"Test log on home".to_string().into());
-        if let Some(api_key) = &api_key {
-            console::log_1(&format!("API Key: {:?}", api_key).into());
-        }
-        if let Some(user_id) = user_id {
-            console::log_1(&format!("User ID: {}", user_id).into());
-        }
-        if let Some(server_name) = &server_name {
-            console::log_1(&format!("Server Name: {}", server_name).into());
-        }
-
-        console::log_1(&format!("apikey: {:?}", &api_key).into());
-        console::log_1(&format!("userid: {:?}", &user_id).into());
-        console::log_1(&format!("servername: {:?}", &server_name).into());
 
         let server_name_effect = server_name.clone();
         let user_id_effect = user_id.clone();
         let api_key_effect = api_key.clone();
         let effect_dispatch = dispatch.clone();
-
-        console::log_1(&format!("server_name: {:?}", &server_name_effect).into());
-        console::log_1(&format!("user_id: {:?}", &user_id_effect).into());
-        console::log_1(&format!("api_key: {:?}", &api_key_effect).into());
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
@@ -203,7 +216,6 @@ pub fn home() -> Html {
 
     
                                 Callback::from(move |_: MouseEvent| {
-                                    web_sys::console::log_1(&"Play Clicked".to_string().into());
                                     let episode_url_for_closure = episode_url_for_closure.clone();
                                     let episode_title_for_closure = episode_title_clone.clone();
                                     let episode_duration_for_closure = episode_duration_clone.clone();
@@ -211,7 +223,6 @@ pub fn home() -> Html {
                                     let audio_dispatch = audio_dispatch.clone();
                                 
                                     let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
-                                    web_sys::console::log_1(&format!("duration sec: {}", &formatted_duration).into());
                                     audio_dispatch.reduce_mut(move |audio_state| {
                                         audio_state.audio_playing = Some(true);
                                         audio_state.currently_playing = Some(AudioPlayerProps {
@@ -232,19 +243,20 @@ pub fn home() -> Html {
                             html! {
 
                                 <div>
-                                    <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
+                                    <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
                                         <img src={episode.EpisodeArtwork.clone()} alt={format!("Cover for {}", &episode.EpisodeTitle)} class="w-2/12 object-cover"/>
                                         <div class="flex flex-col p-4 space-y-2 w-9/12">
                                             <p class="item_container-text text-xl font-semibold">{ &episode.EpisodeTitle }</p>
+                                            <hr class="my-2 border-t"/>
                                             {
                                                 html! {
-                                                    <div class="item_container-text episode-description-container">
-                                                        <div>
+                                                    <div class="item_container-text">
+                                                        <div class="item_container-text episode-description-container">
                                                             <SafeHtml html={description} />
                                                         </div>
-                                                        <button class="item-container-button selector-button w-1/4 hover:bg-blue-700 font-bold py-1 px-2 rounded" onclick={toggle_expanded}>
+                                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
                                                             { if is_expanded { "See Less" } else { "See More" } }
-                                                        </button>
+                                                        </a>
                                                     </div>
                                                 }
                                             }
@@ -256,9 +268,33 @@ pub fn home() -> Html {
                                         </span>
 
                                         </div>
-                                        <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded" onclick={on_play_click}>
+                                        <button class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center" onclick={on_play_click}>
                                             <span class="material-icons">{"play_arrow"}</span>
                                         </button>
+                                        <button
+                                            id="dropdown-button"
+                                            onclick={toggle_dropdown.clone()}
+                                            class="flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center text-gray-900 bg-gray-100 border border-r-0 border-gray-300 dark:border-gray-700 dark:text-white rounded-l-lg hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800 hidden md:inline-flex"
+                                            type="button"
+                                        >
+                                            <span class="material-icons">{"more_vert"}</span>
+                                        </button>
+                                        // Dropdown Content
+                                        {
+                                            if *dropdown_open {
+                                                html! {
+                                                    <div class="dropdown-content-class absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow">
+                                                        <ul class="py-2 text-sm text-gray-700">
+                                                            <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
+                                                            <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
+                                                            // Add more categories as needed
+                                                        </ul>
+                                                    </div>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
                                     </div>
                                 </div>
                             }

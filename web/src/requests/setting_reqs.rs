@@ -6,12 +6,11 @@ use crate::requests::pod_req::PodcastValues;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetThemeResponse {
-    status: String,
-    retrieved_id: i32,
+    theme: String,
 }
-pub async fn call_get_theme(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_theme/", server_name);
-    let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
+pub async fn call_get_theme(server_name: String, api_key: String, user_id: &i32) -> Result<String, anyhow::Error> {
+    let url = format!("{}/api/data/get_theme/{}", server_name, user_id);
+    let api_key_ref = api_key.as_str();
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -21,10 +20,10 @@ pub async fn call_get_theme(server_name: String, api_key: Option<String>) -> Res
 
     if response.ok() {
         let response_body = response.json::<GetThemeResponse>().await?;
-        Ok(response_body.status)
+        Ok(response_body.theme)
     } else {
-        console::log_1(&format!("Error adding podcast: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error logging in. Is the server reachable? Server Response: {}", response.status_text())))
+        console::log_1(&format!("Error getting theme: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error getting theme. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
 

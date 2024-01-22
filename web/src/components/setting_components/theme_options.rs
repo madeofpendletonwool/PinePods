@@ -12,6 +12,7 @@ pub fn theme() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     // Use state to manage the selected theme
     let selected_theme = use_state(|| "Light".to_string());
+    // let selected_theme = state.selected_theme.as_ref();
 
 
     let on_change = {
@@ -91,27 +92,34 @@ pub fn theme() -> Html {
         const root = document.documentElement;
         switch (theme) {
             case 'Light':
-                root.style.setProperty('--background-color', '#ECECEC');
+                root.style.setProperty('--background-color', '#32333b');
                 root.style.setProperty('--button-color', '#2c3032');
-                root.style.setProperty('--text-color', '#242424');
+                root.style.setProperty('--text-color', '#000000');
+                root.style.setProperty('--text-secondary-color', '#000000');
+                root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#000000'); // Assuming black as accent color
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
-                root.style.setProperty('--secondary-background', '#C7C7C7');
+                root.style.setProperty('--secondary-background', '#32333b');
                 root.style.setProperty('--standout-color', '#304BFF');
                 root.style.setProperty('--hover-color', '#304BFF');
+                root.style.setProperty('--link-color', '#6590fd');
                 break;
 
             case 'Dark':
-                root.style.setProperty('--background-color', '#0D1117');
-                root.style.setProperty('--button-color', '#8B949E');
-                root.style.setProperty('--text-color', '#F5F5F5');
+                root.style.setProperty('--background-color', '#2a2b33');
+                root.style.setProperty('--button-color', '#303648');
+                root.style.setProperty('--text-color', '#f6f5f4');
+                root.style.setProperty('--text-secondary-color', '#f6f5f4');
+                root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#8B949E');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
-                root.style.setProperty('--secondary-background', '#8B949E');
-                root.style.setProperty('--standout-color', '#304BFF');
-                root.style.setProperty('--hover-color', '#304BFF');
+                root.style.setProperty('--secondary-background', '#32333b');
+                root.style.setProperty('--container-background', '#1b1d1e');
+                root.style.setProperty('--standout-color', '#797b85');
+                root.style.setProperty('--hover-color', '#6590fd');
+                root.style.setProperty('--link-color', '#6590fd');
                 break;
 
             case 'Nordic':
@@ -217,7 +225,7 @@ pub fn theme() -> Html {
     }
 ")]
 extern "C" {
-    fn changeTheme(theme: &str);
+    pub fn changeTheme(theme: &str);
 }
 
 pub fn log_css_variables() {

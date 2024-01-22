@@ -192,8 +192,8 @@ pub fn search_bar() -> Html {
 
 
     html! {
-    <div class="episodes-container w-full bg-gray-100"> // Ensure full width and set background color
-        <form class="search-bar-container flex justify-end w-full mx-auto" onsubmit={prevent_default_submit}>
+    <div class="episodes-container w-full search-background"> // Ensure full width and set background color
+        <form class="search-bar-container flex justify-end w-full mx-auto border-solid border-b-2 border-color" onsubmit={prevent_default_submit}>
             <div class="relative inline-flex"> // Set a max-width for the search bar content
                 // Dropdown Button
                 <button
@@ -203,27 +203,27 @@ pub fn search_bar() -> Html {
                     type="button"
                 >
                     {format!("{} ", (*search_index).as_str())}
-                // SVG icon
-                <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
-                </svg>
-            </button>
-            // Dropdown Content
-            {
-                if *dropdown_open {
-                    html! {
-                        <div class="dropdown-content-class absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow">
-                            <ul class="py-2 text-sm text-gray-700">
-                                <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
-                                <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
-                                // Add more categories as needed
-                            </ul>
-                        </div>
+                    // SVG icon
+                    <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
+                    </svg>
+                </button>
+                // Dropdown Content
+                {
+                    if *dropdown_open {
+                        html! {
+                            <div class="dropdown-content-class absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow">
+                                <ul class="py-2 text-sm text-gray-700">
+                                    <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
+                                    <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
+                                    // Add more categories as needed
+                                </ul>
+                            </div>
+                        }
+                    } else {
+                        html! {}
                     }
-                } else {
-                    html! {}
                 }
-            }
 
             // Search Input Field
             // <div class="relative w-full">

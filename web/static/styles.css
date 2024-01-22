@@ -1,14 +1,18 @@
 /* static/styles.css */
 :root {
-    --button-color: #2c3032; /* Default button color */
+    --button-color: #8B949E; /* Default button color */
     --background-color: #242424; /* Default background color */
     --text-color: #F5F5F5;
-    --accent-color: #8B949E;
+    --text-secondary-color: #F5F5F5;
+    --accent-color: #4a535e;
     --error-color: red;
     --bonus-color: black;
-    --secondary-background: #8B949E;
+    --border-color: black;
+    --secondary-background: #2c3032;
     --standout-color: #304BFF;
     --hover-color: #304BFF;
+    --link-color: #6590fd;
+    --container-background: #2c3032;
 }
 
 body {
@@ -41,10 +45,11 @@ body {
 }
 
 .drawer-background {
-    background-color: var(--accent-color);
+    background-color: var(--secondary-background);
     position: fixed;
     /* Other background styles */
 }
+
 
 /*body.no-scroll {*/
 /*    overflow: hidden; !* Prevents scrolling when drawer is open *!*/
@@ -110,7 +115,7 @@ body {
     align-items: center;
     justify-content: end;
     padding: 10px 20px;
-    background-color: var(--accent-color); /* Adjust the color as needed */
+    background-color: var(--secondary-background); /* Adjust the color as needed */
     position: fixed; /* Fix the position relative to the viewport */
     top: 0; /* Align to the top of the viewport */
     left: 0; /* Align to the left of the viewport */
@@ -247,22 +252,25 @@ body {
     font-size: 0.8em;
 }
 
+.link {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
 .item-container {
-    background-color: var(--bonus-color);
-
-
+    background-color: var(--container-background);
+    border-color: var(--border-color);
 }
 
 .item-container img {
     max-width: 200px; /* Adjust this value as needed */
     max-height: 200px; /* Adjust this value as needed */
     object-fit: cover; /* This will ensure the image covers the area without stretching */
+    
 }
 
-
-.item-container-text {
+.item_container-text {
     color: var(--text-color);
-    /*background-color: var(--accent-color);*/
 }
 
 .item-container-text-link {
@@ -271,8 +279,9 @@ body {
 }
 
 .item-container-button {
-    color: var(--text-color);
+    color: var(--text-secondary-color);
     background-color: var(--button-color);
+    border-color: var(--border-color);
 }
 
 .item-container-button.selector-button:hover {
@@ -281,6 +290,10 @@ body {
 
 .text-button {
     border-color: var(--standout-color);
+}
+
+.border-color {
+    border-color: var(--border-color);
 }
 
 .spinner-border.custom-spinner-color {
@@ -366,10 +379,10 @@ body {
 }
 
 .episode-time-badge {
-    background-color: #f7fafc; /* Light gray background */
-    color: #4a5568; /* Dark gray text */
+    background-color: var(--background-color); /* Light gray background */
+    color: var(--text-color); /* Dark gray text */
     font-size: 0.875rem; /* Larger text */
-    border: 1px solid #e2e8f0; /* Light gray border */
+    border: 1px solid var(--border-color); /* Light gray border */
 }
 
 .time-icon {
