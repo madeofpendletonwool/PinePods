@@ -1,7 +1,7 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::{App_drawer};
-use super::gen_components::Search_nav;
+use super::gen_components::{Search_nav, ContextButton};
 use crate::requests::pod_req;
 use web_sys::console;
 use yewdux::prelude::*;
@@ -12,6 +12,7 @@ use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{RecentEps};
+
 
 enum AppStateMsg {
     ExpandEpisode(String),
@@ -71,27 +72,6 @@ pub fn home() -> Html {
             web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
             dropdown_open.set(!*dropdown_open);
         })
-    };
-
-    let search_index = use_state(|| "podcast_index".to_string());
-
-    let on_dropdown_select = {
-        let dropdown_open = dropdown_open.clone();
-        let search_index = search_index.clone();
-        move |category: &str| {
-            search_index.set(category.to_string());
-            dropdown_open.set(false);
-        }
-    };
-
-    let on_dropdown_select_itunes = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("itunes"))
-    };
-
-    let on_dropdown_select_podcast_index = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("podcast_index"))
     };
 
 
@@ -240,64 +220,49 @@ pub fn home() -> Html {
                                 })
                             };
                             let format_release = format!("Released on: {}", &episode.EpisodePubDate);
-                            html! {
-
-                                <div>
-                                    <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
-                                        <img src={episode.EpisodeArtwork.clone()} alt={format!("Cover for {}", &episode.EpisodeTitle)} class="w-2/12 object-cover"/>
-                                        <div class="flex flex-col p-4 space-y-2 w-9/12">
-                                            <p class="item_container-text text-xl font-semibold">{ &episode.EpisodeTitle }</p>
-                                            <hr class="my-2 border-t"/>
-                                            {
-                                                html! {
-                                                    <div class="item_container-text">
-                                                        <div class="item_container-text episode-description-container">
-                                                            <SafeHtml html={description} />
-                                                        </div>
-                                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                                            { if is_expanded { "See Less" } else { "See More" } }
-                                                        </a>
-                                                    </div>
-                                                }
-                                            }
-                                        <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2 border" style="flex-grow: 0; flex-shrink: 0; width: auto;">
-                                            <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                                <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
-                                            </svg>
-                                            { &format_release }
-                                        </span>
-
-                                        </div>
-                                        <button class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center" onclick={on_play_click}>
-                                            <span class="material-icons">{"play_arrow"}</span>
-                                        </button>
-                                        <button
-                                            id="dropdown-button"
-                                            onclick={toggle_dropdown.clone()}
-                                            class="flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center text-gray-900 bg-gray-100 border border-r-0 border-gray-300 dark:border-gray-700 dark:text-white rounded-l-lg hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800 hidden md:inline-flex"
-                                            type="button"
-                                        >
-                                            <span class="material-icons">{"more_vert"}</span>
-                                        </button>
-                                        // Dropdown Content
-                                        {
-                                            if *dropdown_open {
-                                                html! {
-                                                    <div class="dropdown-content-class absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow">
-                                                        <ul class="py-2 text-sm text-gray-700">
-                                                            <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
-                                                            <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
-                                                            // Add more categories as needed
-                                                        </ul>
-                                                    </div>
-                                                }
-                                            } else {
-                                                html! {}
-                                            }
-                                        }
-                                    </div>
-                                </div>
-                            }
+html! {
+    <div>
+        <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
+            <img 
+                src={episode.EpisodeArtwork.clone()} 
+                alt={format!("Cover for {}", &episode.EpisodeTitle)} 
+                class="w-2/12 md:w-4/12 object-cover pl-4"
+            />
+    
+            <div class="flex flex-col p-4 space-y-2 flex-grow md:w-5/12">
+                <p class="item_container-text text-xl font-semibold">{ &episode.EpisodeTitle }</p>
+                <hr class="my-2 border-t hidden md:block"/>
+                {
+                    html! {
+                        <div class="item_container-text hidden md:block">
+                            <div class="item_container-text episode-description-container">
+                                <SafeHtml html={description} />
+                            </div>
+                            <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
+                                { if is_expanded { "See Less" } else { "See More" } }
+                            </a>
+                        </div>
+                    }
+                }
+                <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2 border" style="flex-grow: 0; flex-shrink: 0; width: auto;">
+                    <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                    </svg>
+                    { &format_release }
+                </span>
+            </div>
+            <div class="flex flex-col md:flex-row space-y-6 md:space-y-0 md:space-x-6 items-center h-full w-2/12 md:w-2/12 px-2 md:px-4">
+                <button
+                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+                    onclick={on_play_click}
+                >
+                    <span class="material-icons">{"play_arrow"}</span>
+                </button>
+                <ContextButton />
+            </div>
+        </div>
+    </div>
+}
                         }).collect::<Html>()
                         }
                     } else {

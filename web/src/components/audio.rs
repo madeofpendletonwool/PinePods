@@ -133,21 +133,35 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     // web_sys::console::log_1(&format!("duration format: {}", &state.sr).into());
     if let Some(audio_props) = audio_state.currently_playing.as_ref() {
+        let duration_hours = (audio_props.duration_sec / 3600.0).floor() as i32;
+        let duration_minutes = ((audio_props.duration_sec % 3600.0) / 60.0).floor() as i32;
+        let duration_seconds = (audio_props.duration_sec % 60.0).floor() as i32;
+        let formatted_duration = format!("{:02}:{:02}:{:02}", duration_hours, duration_minutes, duration_seconds);
+    
         html! {
-            <div class="audio-player">
+            <div class="audio-player border border-solid border-color fixed bottom-0 z-50 w-full">
                 <span>{ &audio_props.title }</span>
-                <div>
-                    <button onclick={toggle_playback}>
-                        { if audio_state.audio_playing.unwrap_or(false) { "Pause" } else { "Play" } }
+                <div class="ml-auto flex items-center flex-nowrap">
+                    <button onclick={toggle_playback} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <span class="material-icons">
+                            { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
+                        </span>
                     </button>
-                    <button onclick={skip_forward}>{"Skip 15s"}</button>
-                    <span>{audio_state.current_time_formatted.clone()}</span>
-                    <input type="range"
-                        min="0.0"
-                        max={audio_props.duration_sec.to_string().clone()}
-                        value={audio_state.current_time_seconds.to_string()}
-                        oninput={update_time.clone()} />
-                    <span>{&audio_props.duration}</span>
+                    <button onclick={skip_forward} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <span class="material-icons">{"fast_forward"}</span>
+                    </button>
+                    <div class="flex-grow flex items-center sm:block hidden">
+                        <div class="flex items-center flex-nowrap">
+                            <span class="px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <input type="range"
+                                class="flex-grow h-1 cursor-pointer"
+                                min="0.0"
+                                max={audio_props.duration_sec.to_string().clone()}
+                                value={audio_state.current_time_seconds.to_string()}
+                                oninput={update_time.clone()} />
+                            <span class="px-2">{formatted_duration}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         }

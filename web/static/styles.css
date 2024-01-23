@@ -41,6 +41,7 @@ body {
     top: 13px;
     left: 10px;
     padding: 4px;
+    color: var(--text-color);
     /* Other styles as needed */
 }
 
@@ -48,6 +49,13 @@ body {
     background-color: var(--secondary-background);
     position: fixed;
     /* Other background styles */
+}
+
+.drawer-text a {
+    color: var(--text-color);
+}
+.drawer-text {
+    color: var(--text-color);
 }
 
 
@@ -155,7 +163,8 @@ body {
     bottom: 0; /* Align to the bottom of the page */
     left: 0; /* Align to the left of the page */
     width: 100%; /* Full width */
-    background-color: var(--accent-color); /* Background color */
+    background-color: var(--secondary-background); /* Background color */
+
     color: white; /* Text color */
     padding: 10px 20px; /* Padding inside the bar */
     display: flex; /* Flexbox layout */
@@ -167,7 +176,6 @@ body {
 .audio-player button {
     background-color: var(--button-color); /* Button background color */
     color: white; /* Button text color */
-    border: none; /* Remove border */
     padding: 10px 15px; /* Padding inside the button */
     margin-right: 20px; /* Margin to the right */
     cursor: pointer; /* Cursor as pointer */
@@ -175,9 +183,10 @@ body {
 }
 
 .audio-player span {
-    flex-grow: 1; /* Take up remaining space */
     text-align: left; /* Align text to the left */
+    color: var(--text-color);
 }
+
 
 .episode-description-container a {
     color: blue; /* or any color you prefer */
@@ -307,6 +316,7 @@ body {
     /* Adjust the size if necessary */
     width: 24px;
     height: 24px;
+    color: var(--text-color);
 }
 
 .icon-space {
@@ -426,6 +436,12 @@ body {
 }
 
 .dropdown-content-class {
+    top: 100%; /* Position just below the button */
+    right: 0;   /* Align with the left edge of the button */
+    /* ... other styles ... */
+}
+
+.search-dropdown-content-class {
     top: 100%; /* Position just below the button */
     left: 0;   /* Align with the left edge of the button */
     /* ... other styles ... */
