@@ -1,5 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use ammonia::{Builder, clean};
+use ammonia::Builder;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::window;
+use crate::requests::login_requests::use_check_authentication;
+use yew::prelude::*;
+use yewdux::prelude::Dispatch;
+use crate::components::context::AppState;
+
 
 pub fn format_date(date_str: &str) -> String {
     let date = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
@@ -41,3 +48,21 @@ pub fn sanitize_html_with_blank_target(description: &str) -> String {
 // pub fn sanitize_html(description: &str) -> String {
 //     let sanitized_html = clean(description);
 // }
+
+pub fn check_auth(effect_dispatch: Dispatch<AppState>) {
+    use_effect_with(
+        (),
+        move |_| {
+            let effect_dispatch_clone = effect_dispatch.clone();
+
+            spawn_local(async move {
+                let window = window().expect("no global `window` exists");
+                let location = window.location();
+                let current_route = location.href().expect("should be able to get href");
+                use_check_authentication(effect_dispatch_clone, &current_route);
+            });
+
+            || ()
+        }
+    );
+}

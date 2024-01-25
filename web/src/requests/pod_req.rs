@@ -234,3 +234,86 @@ pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, u
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct QueuePodcastRequest {
+    pub episode_title: String,
+    pub ep_url: String,
+    pub user_id: i32,
+}
+
+pub async fn call_queue_episode(
+    server_name: &String, 
+    api_key: &Option<String>, 
+    request_data: &QueuePodcastRequest
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/queue_pod", server_name);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to queue episode: {}", response.status_text())));
+    }
+
+    Ok(())
+}
+
+// #[derive(Serialize, Deserialize, Debug)]
+// pub struct QueuePodcastResponse {
+//     pub data: Vec<String>,
+// }
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct QueuedEpisodes {
+    pub episodes: Option<Vec<Episode>>,
+}
+
+
+pub async fn call_get_queued_episodes(
+    server_name: &str, 
+    api_key: &Option<String>, 
+    user_id: &i32
+) -> Result<Vec<Episode>, anyhow::Error> {
+    // Append the user_id as a query parameter
+    let url = format!("{}/api/data/get_queued_episodes?user_id={}", server_name, user_id);
+
+    console::log_1(&format!("URL: {}", url).into());
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to fetch queued episodes: {}", response.status_text())));
+    }
+
+    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
+    
+    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
+
+    match serde_json::from_str::<QueuedEpisodes>(&response_text) {
+        Ok(response_body) => {
+            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
+            Ok(response_body.episodes.unwrap_or_else(Vec::new))
+        }
+        Err(e) => {
+            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+            Err(anyhow::Error::msg("Failed to deserialize response"))
+        }
+    }
+}

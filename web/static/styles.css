@@ -13,6 +13,7 @@
     --hover-color: #304BFF;
     --link-color: #6590fd;
     --container-background: #2c3032;
+    --transparent-background: rgba(63, 57, 90, 0.089);
 }
 
 body {
@@ -131,11 +132,30 @@ body {
     z-index: 1000; /* Make sure it stays on top of other content */
 }
 
+/* styles.css */
+
+.search-input, .search-btn {
+    box-sizing: border-box;
+    line-height: normal;
+}
+
 .search-input {
     padding: 5px 10px;
     margin-right: 10px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    border-color: var(--border-color);
     border-radius: 4px;
+    color: var(--text-color);
+}
+
+.search-input:focus {
+    border-color: var(--hover-color);
+    ring-color: var(--link-color);
+}
+
+.search-input::placeholder {
+    color: var(--link-color);
 }
 
 .search-source {
@@ -146,16 +166,64 @@ body {
 }
 
 .search-btn {
-    padding: 5px 15px;
-    background-color: var(--button-color);
-    color: white;
-    border: none;
+    background-color: transparent;
+    color: var(--text-color);
     border-radius: 4px;
+    border-color: var(--border-color);
     cursor: pointer;
 }
 
 .search-btn:hover {
-    background-color: var(--button-color);
+    background-color: var(--hover-color);
+}
+
+.search-button:focus {
+    outline-color: var(--hover-color);
+    ring-color: var(--link-color);
+}
+
+.search-drop {
+    background-color: var(--accent-color);
+    padding-bottom: 20px;
+    background-color: var(--transparent-background);
+    backdrop-filter: blur(10px);
+}
+
+.search-drop-button {
+    color: var(--text-color);
+}
+
+.search-drop-button:hover {
+    color: var(--text-color);
+    background-color: transparent;
+    border-color: var(--border-color);
+}
+
+.search-drop-button.active {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+}
+
+/* Add this to your CSS */
+.relative.inline-flex {
+    display: flex;
+    align-items: center;
+}
+
+/* styles.css */
+
+.shorter-input {
+    max-width: 88%; /* Adjust this value to your liking */
+    margin-bottom: 1px; /* Adjust this value to create space between the input and the button */
+}
+
+.no-margin {
+    margin-top: 0 !important;
+}
+
+.no-padding {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 .audio-player {
@@ -182,11 +250,37 @@ body {
     border-radius: 5px; /* Rounded corners */
 }
 
+.audio-player .title {
+    text-align: left; /* Align text to the left */
+    color: var(--text-color);
+    display: -webkit-box; /* Necessary for line clamping */
+    -webkit-line-clamp: 2; /* Limit to 2 lines */
+    -webkit-box-orient: vertical; /* Necessary for line clamping */
+    overflow: hidden; /* Hide text exceeding the line limit */
+    flex: 1; /* Take up remaining space */
+}
+
 .audio-player span {
     text-align: left; /* Align text to the left */
     color: var(--text-color);
 }
 
+.audio-player .artwork {
+    width: 40px; /* Adjust as needed */
+    height: 40px; /* Adjust as needed */
+    border-radius: 50%; /* Make the image a circle */
+    object-fit: cover; /* Resize the image to cover the element */
+    margin-right: 10px; /* Add some space to the right of the image */
+}
+
+.artwork.playing {
+    animation: spin 3s linear infinite;
+  }
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 
 .episode-description-container a {
     color: blue; /* or any color you prefer */
@@ -438,13 +532,22 @@ body {
 .dropdown-content-class {
     top: 100%; /* Position just below the button */
     right: 0;   /* Align with the left edge of the button */
+    background-color: var(--background-color);
+    border-color: var(--border-color);
     /* ... other styles ... */
 }
 
 .search-dropdown-content-class {
     top: 100%; /* Position just below the button */
     left: 0;   /* Align with the left edge of the button */
+    background-color: var(--background-color);
+    border-color: var(--border-color);
     /* ... other styles ... */
+}
+
+.dropdown-container {
+    background-color: var(--background-color);
+    /* Remove the background-color property */
 }
 
 .dropdown-option {
@@ -452,6 +555,12 @@ body {
     padding: 0.5rem 1rem;
     border-bottom: 1px solid #eee; /* Border for each option */
     transition: background-color 0.3s;
+    /* Remove the background-color property */
+    color: var(--text-color);
+}
+
+.dropdown-option:hover {
+    background-color: var(--hover-color); /* Add your hover color here */
 }
 
 .dropdown-option:last-child {

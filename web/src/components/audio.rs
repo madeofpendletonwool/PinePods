@@ -4,14 +4,17 @@ use yew::prelude::*;
 // use yew_router::history::{History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use web_sys::{HtmlAudioElement, HtmlInputElement};
+use web_sys::{HtmlAudioElement, HtmlInputElement, window};
 use std::string::String;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
     pub src: String,
     pub title: String,
+    pub artwork_url: String,
     pub duration: String,
     pub duration_sec: f64
 }
@@ -21,6 +24,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+
+    let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
+        classes!("artwork", "playing")
+    } else {
+        classes!("artwork")
+    };
 
     // Initialize state for current time and duration
 // Initialize state for current time and duration
@@ -40,6 +49,29 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             || ()
         }
     });
+    // Update playing state when Spacebar is pressed
+    let audio_dispatch_effect = _audio_dispatch.clone();
+    use_effect_with(
+        (),
+        move |_| {
+            let keydown_handler = {
+                let audio_info = audio_dispatch_effect.clone();
+                Closure::wrap(Box::new(move |event: KeyboardEvent| {
+                    if event.key() == " " {
+                        // Prevent the default behavior of the spacebar key
+                        event.prevent_default();
+                        // Toggle `audio_playing` here
+                        audio_info.reduce_mut(|state| {
+                            state.toggle_playback()
+                        });
+                    }
+                }) as Box<dyn FnMut(_)>)
+            };
+            window().unwrap().add_event_listener_with_callback("keydown", keydown_handler.as_ref().unchecked_ref()).unwrap();
+            keydown_handler.forget(); // Note: this will make the listener permanent
+            || ()
+        }
+    );
 
 // Effect for setting up an interval to update the current playback time
     // Effect for setting up an interval to update the current playback time
@@ -74,6 +106,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let toggle_playback = {
         let dispatch = _dispatch.clone();
         let dispatch = _audio_dispatch.clone();
+        web_sys::console::log_1(&format!("Current playing state: {:?}", &audio_state.audio_playing).into());
         Callback::from(move |_| {
             dispatch.reduce_mut(UIState::toggle_playback);
         })
@@ -140,7 +173,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     
         html! {
             <div class="audio-player border border-solid border-color fixed bottom-0 z-50 w-full">
-                <span>{ &audio_props.title }</span>
+                <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                <div class="title">
+                    <span>{ &audio_props.title }</span>
+                </div>
                 <div class="ml-auto flex items-center flex-nowrap">
                     <button onclick={toggle_playback} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                         <span class="material-icons">
@@ -171,5 +207,52 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 }
 
 
+pub fn on_play_click(
+    episode_url_for_closure: String,
+    episode_title_for_closure: String,
+    episode_artwork_for_closure: String,
+    episode_duration_for_closure: i32,
+    audio_dispatch: Dispatch<UIState>,
+) -> Callback<MouseEvent> {
+    fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
+        let dur_string = duration_convert.to_string();
+        let parts: Vec<&str> = dur_string.split(':').collect();
+        let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
+
+        let seconds = match parts.len() {
+            3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
+            2 => parts[0] * 60.0 + parts[1],
+            1 => parts[0],
+            _ => 0.0,
+        };
+
+        seconds
+    }
 
 
+    Callback::from(move |_: MouseEvent| {
+        let episode_url_for_closure = episode_url_for_closure.clone();
+        let episode_title_for_closure = episode_title_for_closure.clone();
+        let episode_artwork_for_closure = episode_artwork_for_closure.clone();
+        let episode_duration_for_closure = episode_duration_for_closure.clone();
+        web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
+        let audio_dispatch = audio_dispatch.clone();
+    
+        let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
+        audio_dispatch.reduce_mut(move |audio_state| {
+            audio_state.audio_playing = Some(true);
+            audio_state.currently_playing = Some(AudioPlayerProps {
+                src: episode_url_for_closure.clone(),
+                title: episode_title_for_closure.clone(),
+                artwork_url: episode_artwork_for_closure.clone(),
+                duration: episode_duration_for_closure.clone().to_string(),
+                duration_sec: formatted_duration,
+            });
+            audio_state.set_audio_source(episode_url_for_closure.to_string());
+            if let Some(audio) = &audio_state.audio_element {
+                let _ = audio.play();
+            }
+            audio_state.audio_playing = Some(true);
+        });
+    })
+}

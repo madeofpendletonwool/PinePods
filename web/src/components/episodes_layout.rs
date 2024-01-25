@@ -26,7 +26,7 @@ pub fn safe_html(props: &Props) -> Html {
     Html::VRef(div.into())
 }
 
-enum AppStateMsg {
+pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
 }
@@ -292,6 +292,7 @@ pub fn episode_layout() -> Html {
                                 // Clone the variables outside the closure
                                 let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
+                                let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
                                 let episode_duration_clone = episode.duration.clone().unwrap_or_default();
 
                                 let is_expanded = search_state.expanded_descriptions.contains(&episode.guid);
@@ -345,6 +346,7 @@ pub fn episode_layout() -> Html {
                                         web_sys::console::log_1(&"Play Clicked".to_string().into());
                                         let episode_url_for_closure = episode_url_for_closure.clone();
                                         let episode_title_for_closure = episode_title_clone.clone();
+                                        let episode_artwork_for_closure = episode_artwork_clone.clone();
                                         let episode_duration_for_closure = episode_duration_clone.clone();
                                         web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
                                         let dispatch = dispatch.clone();
@@ -357,6 +359,7 @@ pub fn episode_layout() -> Html {
                                             state.currently_playing = Some(AudioPlayerProps {
                                                 src: episode_url_for_closure.clone(),
                                                 title: episode_title_for_closure.clone(),
+                                                artwork_url: episode_artwork_for_closure.clone(),
                                                 duration: episode_duration_for_closure.clone(),
                                                 duration_sec: formatted_duration,
                                             });
@@ -445,7 +448,7 @@ pub fn episode_layout() -> Html {
         // }
         {
             if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
             } else {
                 html! {}
             }

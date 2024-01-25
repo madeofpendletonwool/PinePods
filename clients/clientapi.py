@@ -1964,12 +1964,12 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
                             detail="You can only remove episodes for your own queue!")
 
 
-class QueuedEpisodesData(BaseModel):
-    user_id: int
+# class QueuedEpisodesData(BaseModel):
+#     user_id: int
 
 
 @app.get("/api/data/get_queued_episodes")
-async def get_queued_episodes(data: QueuedEpisodesData, cnx=Depends(get_database_connection),
+async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
@@ -1982,8 +1982,8 @@ async def get_queued_episodes(data: QueuedEpisodesData, cnx=Depends(get_database
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.get_queued_episodes(database_type, cnx, data.user_id)
+    if key_id == user_id or is_web_key:
+        result = database_functions.functions.get_queued_episodes(database_type, cnx, user_id)
         return {"data": result}
     else:
         raise HTTPException(status_code=403,

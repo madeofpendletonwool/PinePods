@@ -104,6 +104,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#304BFF');
                 root.style.setProperty('--hover-color', '#304BFF');
                 root.style.setProperty('--link-color', '#6590fd');
+                root.style.setProperty('--transparent-background', 'rgba(63, 57, 90, 0.089');
                 break;
 
             case 'Dark':
@@ -112,7 +113,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-color', '#f6f5f4');
                 root.style.setProperty('--text-secondary-color', '#f6f5f4');
                 root.style.setProperty('--border-color', '#000000');
-                root.style.setProperty('--accent-color', '#8B949E');
+                root.style.setProperty('--accent-color', '#4a535e');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#32333b');
