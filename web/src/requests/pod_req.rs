@@ -273,17 +273,42 @@ pub async fn call_queue_episode(
 //     pub data: Vec<String>,
 // }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-pub struct QueuedEpisodes {
-    pub episodes: Option<Vec<Episode>>,
+// #[derive(Debug, Deserialize, PartialEq, Clone)]
+// pub struct DataResponse {
+//     pub data: Option<QueuedEpisodesResponse>,
+// }
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct QueuedEpisodesResponse {
+    pub episodes: Vec<QueuedEpisode>,
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[allow(non_snake_case)]
+pub struct QueuedEpisode {
+    pub EpisodeTitle: String,
+    pub PodcastName: String,
+    pub EpisodePubDate: String,
+    pub EpisodeDescription: String,
+    pub EpisodeArtwork: String,
+    pub EpisodeURL: String,
+    pub QueuePosition: i32,
+    pub EpisodeDuration: i32,
+    pub QueueDate: String,
+    pub ListenDuration: Option<i32>,
+    pub EpisodeID: i32,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct DataResponse {
+    pub data: Vec<QueuedEpisode>,
+}
 
 pub async fn call_get_queued_episodes(
     server_name: &str, 
     api_key: &Option<String>, 
     user_id: &i32
-) -> Result<Vec<Episode>, anyhow::Error> {
+) -> Result<Vec<QueuedEpisode>, anyhow::Error> {
     // Append the user_id as a query parameter
     let url = format!("{}/api/data/get_queued_episodes?user_id={}", server_name, user_id);
 
@@ -302,18 +327,10 @@ pub async fn call_get_queued_episodes(
     }
 
     console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
-    
-    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
+    let response_text = response.text().await?;
 
-    match serde_json::from_str::<QueuedEpisodes>(&response_text) {
-        Ok(response_body) => {
-            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
-            Ok(response_body.episodes.unwrap_or_else(Vec::new))
-        }
-        Err(e) => {
-            console::log_1(&format!("Deserialization Error: {:?}", e).into());
-            Err(anyhow::Error::msg("Failed to deserialize response"))
-        }
-    }
+    console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
+    
+    let response_data: DataResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.data)
 }

@@ -7,7 +7,7 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
-use crate::requests::pod_req::RecentEps;
+use crate::requests::pod_req::QueuedEpisodesResponse;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::check_auth;
@@ -54,15 +54,20 @@ pub fn queue() -> Html {
                 let error_clone = error.clone();
                 if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
                     let dispatch = effect_dispatch.clone();
-
+    
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_queued_episodes(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
+                                web_sys::console::log_1(&format!("Fetched episodes: {:?}", fetched_episodes).into()); // Log fetched episodes
                                 dispatch.reduce_mut(move |state| {
-                                    state.server_feed_results = Some(RecentEps { episodes: Some(fetched_episodes) });
+                                    state.queued_episodes = Some(QueuedEpisodesResponse { episodes: fetched_episodes });
                                 });
+                                // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
-                            Err(e) => error_clone.set(Some(e.to_string())),
+                            Err(e) => {
+                                web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
+                                error_clone.set(Some(e.to_string()));
+                            },
                         }
                     });
                 }
@@ -76,17 +81,16 @@ pub fn queue() -> Html {
         <div class="main-container">
             <Search_nav />
             {
-                if let Some(recent_eps) = state.server_feed_results.clone() {
-                    let int_recent_eps = recent_eps.clone();
-                    if let Some(episodes) = int_recent_eps.episodes {
-                        if episodes.is_empty() {
-                            // Render "No Recent Episodes Found" if episodes list is empty
-                            empty_message(
-                                "No Queued Episodes Found",
-                                "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
-                            )
-                        } else {
-                        episodes.into_iter().map(|episode| {
+                if let Some(queued_eps) = state.queued_episodes.clone() {
+                    web_sys::console::log_1(&format!("Queued episodes in state: {:?}", queued_eps).into()); // Log queued episodes in state
+                    if queued_eps.episodes.is_empty() {
+                        // Render "No Queued Episodes Found" if episodes list is empty
+                        empty_message(
+                            "No Queued Episodes Found",
+                            "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
+                        )
+                    } else {
+                        queued_eps.episodes.into_iter().map(|episode| {
                             let state_ep = state.clone();
                             let id_string = &episode.EpisodeID.to_string();
     
@@ -141,7 +145,7 @@ pub fn queue() -> Html {
  
                             let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                             let item = episode_item(
-                                &episode,
+                                Box::new(episode),
                                 description.clone(),
                                 is_expanded,
                                 &format_release,
@@ -152,15 +156,10 @@ pub fn queue() -> Html {
                             item
                         }).collect::<Html>()
                         }
-                    } else {
-                        empty_message(
-                            "No Queued Episodes Found",
-                            "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
-                        )
-                    }
+
                 } else {
                     empty_message(
-                        "No Queued Episodes Found",
+                        "No Queued Episodes Found - State is None",
                         "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
                     )
                 }

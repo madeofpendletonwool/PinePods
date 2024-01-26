@@ -10,8 +10,8 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState};
 use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
-use crate::requests::pod_req::{call_queue_episode, Episode, QueuePodcastRequest};
-
+use crate::requests::pod_req::{call_queue_episode, Episode, QueuedEpisode, QueuePodcastRequest};
+use std::any::Any;
 
 #[derive(Properties, PartialEq)]
 pub struct ErrorMessageProps {
@@ -322,9 +322,9 @@ pub fn search_bar() -> Html {
 
 }
 
-#[derive(Properties, Clone, PartialEq)]
+#[derive(Properties, Clone)]
 pub struct ContextButtonProps {
-    pub episode: Episode,
+    pub episode: Box<dyn EpisodeTrait>,
 }
 
 #[function_component(ContextButton)]
@@ -375,13 +375,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name_copy = server_name.clone();
             let api_key_copy = api_key.clone();
             let request = QueuePodcastRequest {
-                episode_title: episode.EpisodeTitle.clone(),
-                ep_url: episode.EpisodeURL.clone(),
+                episode_title: episode.get_episode_title(),
+                ep_url: episode.get_episode_artwork(),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
-            let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request);
+            let future = async move {
+                let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
         })
     };
 
@@ -429,9 +433,95 @@ pub fn empty_message(header: &str, paragraph: &str) -> Html {
     }
 }
 
+pub trait EpisodeTrait {
+    fn get_episode_artwork(&self) -> String;
+    fn get_episode_title(&self) -> String;
+    fn clone_box(&self) -> Box<dyn EpisodeTrait>;
+    // fn eq(&self, other: &dyn EpisodeTrait) -> bool;
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl PartialEq for ContextButtonProps {
+    fn eq(&self, other: &Self) -> bool {
+        if let Some(other) = self.episode.as_any().downcast_ref::<Episode>() {
+            if let Some(self_episode) = self.episode.as_any().downcast_ref::<Episode>() {
+                return self_episode == other;
+            }
+        }
+
+        if let Some(other) = self.episode.as_any().downcast_ref::<QueuedEpisode>() {
+            if let Some(self_episode) = self.episode.as_any().downcast_ref::<QueuedEpisode>() {
+                return self_episode == other;
+            }
+        }
+
+        false
+    }
+}
+
+impl Clone for Box<dyn EpisodeTrait> {
+    fn clone(&self) -> Box<dyn EpisodeTrait> {
+        self.clone_box()
+    }
+}
+
+impl EpisodeTrait for Episode {
+    fn get_episode_artwork(&self) -> String {
+        self.EpisodeArtwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.EpisodeTitle.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    // fn eq(&self, other: &dyn EpisodeTrait) -> bool {
+    //     if let Some(other) = other.downcast_ref::<Self>() {
+    //         self == other
+    //     } else {
+    //         false
+    //     }
+    // }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    // Implement other methods
+}
+
+impl EpisodeTrait for QueuedEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.EpisodeArtwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.EpisodeTitle.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    // fn eq(&self, other: &dyn EpisodeTrait) -> bool {
+    //     if let Some(other) = other.downcast_ref::<Self>() {
+    //         self == other
+    //     } else {
+    //         false
+    //     }
+    // }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    // Implement other methods
+}
 
 pub fn episode_item(
-    episode: &Episode,
+    episode: Box<dyn EpisodeTrait>,
     description: String,
     is_expanded: bool,
     format_release: &str,
@@ -442,12 +532,12 @@ pub fn episode_item(
         <div>
             <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
                 <img 
-                    src={episode.EpisodeArtwork.clone()} 
-                    alt={format!("Cover for {}", &episode.EpisodeTitle)} 
+                    src={episode.get_episode_artwork()} 
+                    alt={format!("Cover for {}", episode.get_episode_title())} 
                     class="w-2/12 md:w-4/12 object-cover pl-4"
                 />
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-5/12">
-                    <p class="item_container-text text-xl font-semibold">{ &episode.EpisodeTitle }</p>
+                    <p class="item_container-text text-xl font-semibold">{ episode.get_episode_title() }</p>
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {

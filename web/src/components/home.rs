@@ -145,7 +145,7 @@ pub fn home() -> Html {
  
                             let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                             let item = episode_item(
-                                &episode,
+                                Box::new(episode),
                                 description.clone(),
                                 is_expanded,
                                 &format_release,

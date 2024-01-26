@@ -2465,7 +2465,8 @@ def get_queued_episodes(database_type, cnx, user_id):
         EpisodeQueue.QueuePosition, 
         Episodes.EpisodeDuration, 
         EpisodeQueue.QueueDate,
-        UserEpisodeHistory.ListenDuration
+        UserEpisodeHistory.ListenDuration,
+        Episodes.EpisodeID
     FROM EpisodeQueue 
     INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
     INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID 
