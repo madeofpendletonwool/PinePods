@@ -3,7 +3,7 @@ use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, empty_message, episode_item};
 use crate::requests::pod_req;
-use crate::requests::search_pods::{call_search_database, SearchRequest};
+use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
@@ -16,6 +16,10 @@ use web_sys::HtmlElement;
 use wasm_bindgen_futures::spawn_local;
 use async_std::task::sleep;
 use std::time::Duration;
+use web_sys::window;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::JsFuture;
+use wasm_bindgen::closure::Closure;
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct SearchProps {
@@ -26,6 +30,7 @@ pub struct SearchProps {
 pub fn search(props: &SearchProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let effect_dispatch = dispatch.clone();
+    let search_dispatch = dispatch.clone();
 
     check_auth(effect_dispatch);
 
@@ -33,8 +38,8 @@ pub fn search(props: &SearchProps) -> Html {
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let dropdown_open = use_state(|| false);
-    let search_results = use_state(|| Vec::new());
-    let search_results_clone = search_results.clone();
+    // let search_results = use_state(|| Vec::new());
+    // let search_results_clone = search_results.clone();
 
 
     let input_ref = use_node_ref();
@@ -65,13 +70,10 @@ pub fn search(props: &SearchProps) -> Html {
     let on_submit = Callback::from(move |event: SubmitEvent| {
         event.prevent_default();
         event.prevent_default();
+        let container_ref_submit_clone1 = container_ref_clone1.clone();
 
         if let Some(form) = form_ref_clone1.cast::<HtmlElement>() {
             form.class_list().add_1("move-to-top").unwrap();
-        }
-
-        if let Some(container) = container_ref_clone1.cast::<HtmlElement>() {
-            container.class_list().add_1("shrink-input").unwrap();
         }
 
         if let Some(form) = input_ref_clone1.cast::<HtmlElement>() {
@@ -85,7 +87,7 @@ pub fn search(props: &SearchProps) -> Html {
         let server_name_submit = server_name_submit.clone();
         let api_key_submit = api_key_submit.clone();
         let user_id_submit = user_id_submit.clone();
-        let search_results = search_results_clone.clone();
+        // let search_results = search_results_clone.clone();
         let mut search_request = None;
         web_sys::console::log_1(&"Before some statement".into());
         if let Some(input_element) = input_ref_clone2.cast::<HtmlInputElement>() {
@@ -98,18 +100,24 @@ pub fn search(props: &SearchProps) -> Html {
         } else {
             web_sys::console::log_1(&"input_ref_clone2 is not an HtmlInputElement".into());
         }
-        
+        let future_dispatch = search_dispatch.clone();
         let future = async move {
             sleep(Duration::from_secs(1)).await;
+            if let Some(container) = container_ref_submit_clone1.cast::<HtmlElement>() {
+                container.class_list().add_1("shrink-input").unwrap();
+            }
             if let Some(search_request) = search_request {
                 web_sys::console::log_1(&format!("server_name: {:?}", server_name_submit).into());
                 web_sys::console::log_1(&format!("api_key: {:?}", api_key_submit).into());
                 web_sys::console::log_1(&format!("search_request: {:?}", search_request).into());
-        
+                let dispatch = future_dispatch.clone();
                 match call_search_database(&server_name_submit.unwrap(), &api_key_submit.flatten(), &search_request).await {
                     Ok(results) => {
+                        dispatch.reduce_mut(move |state| {
+                            state.search_episodes = Some(SearchResponse { data: results });
+                        });
                         // Update the search results state
-                        search_results.set(results);
+                        // search_results.set(results);
                     }
                     Err(e) => {
                         // Handle the error
@@ -125,7 +133,7 @@ pub fn search(props: &SearchProps) -> Html {
 
     html! {
         <>
-        <div class="main-container">
+        <div class="search-page-container">
             <Search_nav />
             <div class="search-container" ref={container_ref.clone()}>
                 <form class="search-page-input" onsubmit={on_submit} ref={form_ref.clone()}>
@@ -142,19 +150,15 @@ pub fn search(props: &SearchProps) -> Html {
                 </form>
             </div>
             {
-                if !search_results.is_empty() {
-                    if let Some(recent_eps) = state.server_feed_results.clone() {
-                        let int_recent_eps = recent_eps.clone();
-                        if let Some(episodes) = int_recent_eps.episodes {
-                            if episodes.is_empty() {
+                if let Some(search_eps) = state.search_episodes.clone() {
+                    let int_search_eps = search_eps.clone();
+                    let episodes = int_search_eps.data;
+                    if episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty
-                                html! {
-                                    <div class="empty-episodes-container">
-                                        <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1>{ "No Recent Episodes Found" }</h1>
-                                        <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
-                                    </div>
-                                }
+                                empty_message(
+                                    "No Search Results Found",
+                                    "Perhaps try again, but search for something slightly different :/"
+                                )
                             } else {
                                 episodes.into_iter().map(|episode| {
                                     let state_ep = state.clone();
@@ -222,23 +226,14 @@ pub fn search(props: &SearchProps) -> Html {
                                     item
                                 }).collect::<Html>()
                             }
-                        } else {
-                            empty_message(
-                                "No Recent Episodes Found",
-                                "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
-                            )
-                        }
-                    } else {
-                        empty_message(
-                            "No Recent Episodes Found",
-                            "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
-                        )
-                    }
+                    // } else {
+                    //     empty_message(
+                    //         "No Recent Episodes Found",
+                    //         "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                    //     )
+                    // }
                 } else {
-                    empty_message(
-                        "No Recent Episodes Found",
-                        "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
-                    )
+                    html! {} 
                 }
             }
             <App_drawer />

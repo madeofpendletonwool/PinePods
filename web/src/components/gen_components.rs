@@ -11,6 +11,7 @@ use crate::components::context::{AppState};
 use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
 use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode};
+use crate::requests::search_pods::SearchEpisode;
 use std::any::Any;
 
 #[derive(Properties, PartialEq)]
@@ -594,6 +595,28 @@ impl EpisodeTrait for HistoryEpisode {
 }
 
 impl EpisodeTrait for EpisodeDownload {
+    fn get_episode_artwork(&self) -> String {
+        self.EpisodeArtwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.EpisodeTitle.clone()
+    }
+
+    fn get_episode_id(&self) -> i32 {
+        self.EpisodeID.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for SearchEpisode {
     fn get_episode_artwork(&self) -> String {
         self.EpisodeArtwork.clone()
     }

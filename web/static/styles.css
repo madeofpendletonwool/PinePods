@@ -27,6 +27,12 @@ body {
     padding: 0 20px;
 }
 
+.search-page-container {
+    max-width: 1200px; /* Set the maximum width you desire */
+    margin: 0 auto; /* This centers the div */
+    padding: 0 40px;
+}
+
 .drawer-button {
     background-color: var(--button-color);
     color: var(--accent-color); /* Assuming you want white text */
@@ -104,7 +110,7 @@ body {
 }
 
 .episodes-container {
-    padding-top: 60px; /* Adjust the value to the height of your search bar */
+    padding-top: 80px; /* Adjust the value to the height of your search bar */
 }
 
 
@@ -488,19 +494,21 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
+    padding-top: 120px;
 }
 
 .search-container.shrink-input {
     height: auto;
     display: block;
     align-items: initial;
+    padding-top: 120px;
 }
 
 .search-page-input {
     width: 50%;
     transition: all 1s ease-in-out;
     position: absolute;
-    top: 50%; /* Start from the center of the screen */
+    top: 40%; /* Start from the center of the screen */
     left: 50%; /* Start from the center of the screen */
     transform: translate(-50%, -50%); /* Move up and left by half of its own width and height */
     z-index: 1; /* Ensure it's on top */

@@ -141,9 +141,9 @@ pub struct SearchRequest {
     pub user_id: i32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct SearchResponse {
-    data: Vec<SearchEpisode>,
+    pub data: Vec<SearchEpisode>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -193,17 +193,6 @@ pub async fn call_search_database (
         if !response.ok() {
             return Err(anyhow::Error::msg(format!("Failed to search database: {}", response.status_text())));
         }
-        // console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
-        // let response_text = response.text().await?;
-        
-        // console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
-            
-        // console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
-        // let response_text = response.text().await?;
-    
-        // console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
-        
-    
     // Deserialize the response body into a SearchResponse
         let search_response: SearchResponse = response.json().await?;
 

@@ -82,13 +82,10 @@ pub fn home() -> Html {
                     if let Some(episodes) = int_recent_eps.episodes {
                         if episodes.is_empty() {
                             // Render "No Recent Episodes Found" if episodes list is empty
-                            html! {
-                                <div class="empty-episodes-container">
-                                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                    <h1>{ "No Recent Episodes Found" }</h1>
-                                    <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
-                                </div>
-                            }
+                            empty_message(
+                                "No Recent Episodes Found",
+                                "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                            )
                         } else {
                         episodes.into_iter().map(|episode| {
                             let state_ep = state.clone();
