@@ -482,6 +482,36 @@ body {
     text-align: center; /* Center the paragraph text */
 }
 
+.search-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.search-container.shrink-input {
+    height: auto;
+    display: block;
+    align-items: initial;
+}
+
+.search-page-input {
+    width: 50%;
+    transition: all 1s ease-in-out;
+    position: absolute;
+    top: 50%; /* Start from the center of the screen */
+    left: 50%; /* Start from the center of the screen */
+    transform: translate(-50%, -50%); /* Move up and left by half of its own width and height */
+    z-index: 1; /* Ensure it's on top */
+}
+
+.search-page-input.move-to-top {
+    top: 25px; /* Move to the top of the screen */
+    left: 50%; /* Move to the left of the screen */
+    transform: translate(-50%, 0); /* Keep the element at the top */
+}
+
 .episode-time-badge {
     background-color: var(--background-color); /* Light gray background */
     color: var(--text-color); /* Dark gray text */

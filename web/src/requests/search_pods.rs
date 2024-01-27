@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use gloo_net::http::Request;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use anyhow::Error;
 use rss::Channel;
+use web_sys::console;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -130,4 +131,84 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
     };
 
     Ok(feed_result)
+}
+
+// In Databases
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SearchRequest {
+    pub search_term: String,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SearchResponse {
+    data: Vec<SearchEpisode>,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
+pub struct SearchEpisode {
+    pub PodcastID: i32,
+    pub PodcastName: String,
+    pub ArtworkURL: String,
+    pub Author: String,
+    pub Categories: String, // or change to appropriate type if you plan to parse the categories
+    pub Description: String,
+    pub EpisodeCount: i32,
+    pub FeedURL: String,
+    pub WebsiteURL: String,
+    pub Explicit: i32, // or bool if it always contains 0 or 1
+    pub UserID: i32,
+    pub EpisodeID: i32,
+    pub EpisodeTitle: String,
+    pub EpisodeDescription: String,
+    pub EpisodeURL: String,
+    pub EpisodeArtwork: String,
+    pub EpisodePubDate: String,
+    pub EpisodeDuration: i32,
+    // Existing fields
+    pub ListenDuration: Option<String>,
+}
+
+pub async fn call_search_database (
+    server_name: &String, 
+    api_key: &Option<String>, 
+    request_data: &SearchRequest
+) -> Result<Vec<SearchEpisode>, Error> {
+    let url = format!("{}/api/data/search_data", server_name);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+        if !response.ok() {
+            return Err(anyhow::Error::msg(format!("Failed to search database: {}", response.status_text())));
+        }
+        // console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
+        // let response_text = response.text().await?;
+        
+        // console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
+            
+        // console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
+        // let response_text = response.text().await?;
+    
+        // console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
+        
+    
+    // Deserialize the response body into a SearchResponse
+        let search_response: SearchResponse = response.json().await?;
+
+        // Extract the vector of episodes from the SearchResponse
+        let results = search_response.data;
+
+        Ok(results)
 }

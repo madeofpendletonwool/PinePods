@@ -49,7 +49,7 @@ fn switch(route: Route) -> Html {
         Route::Settings => html! { <Settings /> },
         Route::PodHistory => html! { <PodHistory /> },
         Route::Downloads => html! { <Downloads /> },
-        Route::Search => html! { <Search /> },
+        Route::Search => html! { <Search on_search={Callback::from(move |_| {})} /> },
         Route::UserStats => html! { <UserStats /> },
         Route::LogOut => html! { <LogOut /> },
         Route::SearchNew => html! { <SearchNew /> },
