@@ -10,7 +10,7 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState};
 use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
-use crate::requests::pod_req::{call_queue_episode, Episode, QueuedEpisode, QueuePodcastRequest};
+use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode};
 use std::any::Any;
 
 #[derive(Properties, PartialEq)]
@@ -357,23 +357,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         }
     };
 
-    let on_dropdown_select_itunes = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("itunes"))
-    };
-
-    let on_dropdown_select_podcast_index = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("podcast_index"))
-
-    };
+    let queue_api_key = api_key.clone();
+    let queue_server_name = server_name.clone();
 
     // let server_name = server_name.clone();
     let on_add_to_queue = {
         let episode = props.episode.clone();
         Callback::from(move |_| {
-            let server_name_copy = server_name.clone();
-            let api_key_copy = api_key.clone();
+            let server_name_copy = queue_server_name.clone();
+            let api_key_copy = queue_api_key.clone();
             let request = QueuePodcastRequest {
                 episode_title: episode.get_episode_title(),
                 ep_url: episode.get_episode_artwork(),
@@ -383,6 +375,51 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let api_key = api_key_copy; // replace with the actual API key
             let future = async move {
                 let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
+    let saved_api_key = api_key.clone();
+    let saved_server_name = server_name.clone();
+
+    let on_save_episode = {
+        let episode = props.episode.clone();
+        Callback::from(move |_| {
+            let server_name_copy = saved_server_name.clone();
+            let api_key_copy = saved_api_key.clone();
+            let request = SavePodcastRequest {
+                ep_url: episode.get_episode_artwork(),
+                episode_title: episode.get_episode_title(),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                let _ = call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
+    let download_api_key = api_key.clone();
+    let download_server_name = server_name.clone();
+
+    let on_download_episode = {
+        let episode = props.episode.clone();
+        Callback::from(move |_| {
+            let server_name_copy = download_server_name.clone();
+            let api_key_copy = download_api_key.clone();
+            let request = DownloadEpisodeRequest {
+                episode_id: episode.get_episode_id(),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
             };
             wasm_bindgen_futures::spawn_local(future);
             // dropdown_open.set(false);
@@ -406,8 +443,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     <div class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
                         <ul class="dropdown-container py-2 text-sm text-gray-700">
                             <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
-                            <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "Save Episode" }</li>
-                            <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Download Episode" }</li>
+                            <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
+                            <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
                             // Add more categories as needed
                         </ul>
                     </div>
@@ -436,6 +473,7 @@ pub fn empty_message(header: &str, paragraph: &str) -> Html {
 pub trait EpisodeTrait {
     fn get_episode_artwork(&self) -> String;
     fn get_episode_title(&self) -> String;
+    fn get_episode_id(&self) -> i32;
     fn clone_box(&self) -> Box<dyn EpisodeTrait>;
     // fn eq(&self, other: &dyn EpisodeTrait) -> bool;
     fn as_any(&self) -> &dyn Any;
@@ -478,13 +516,9 @@ impl EpisodeTrait for Episode {
         Box::new(self.clone())
     }
 
-    // fn eq(&self, other: &dyn EpisodeTrait) -> bool {
-    //     if let Some(other) = other.downcast_ref::<Self>() {
-    //         self == other
-    //     } else {
-    //         false
-    //     }
-    // }
+    fn get_episode_id(&self) -> i32 {
+        self.EpisodeID.clone()
+    }
 
     fn as_any(&self) -> &dyn Any {
         self
@@ -505,20 +539,84 @@ impl EpisodeTrait for QueuedEpisode {
         Box::new(self.clone())
     }
 
-    // fn eq(&self, other: &dyn EpisodeTrait) -> bool {
-    //     if let Some(other) = other.downcast_ref::<Self>() {
-    //         self == other
-    //     } else {
-    //         false
-    //     }
-    // }
+    fn get_episode_id(&self) -> i32 {
+        self.EpisodeID.clone()
+    }
 
     fn as_any(&self) -> &dyn Any {
         self
     }
 
-    // Implement other methods
 }
+
+impl EpisodeTrait for SavedEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.EpisodeArtwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.EpisodeTitle.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn get_episode_id(&self) -> i32 {
+        self.EpisodeID.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for HistoryEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.EpisodeArtwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.EpisodeTitle.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn get_episode_id(&self) -> i32 {
+        self.EpisodeID.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for EpisodeDownload {
+    fn get_episode_artwork(&self) -> String {
+        self.EpisodeArtwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.EpisodeTitle.clone()
+    }
+
+    fn get_episode_id(&self) -> i32 {
+        self.EpisodeID.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+    
+
+    // Implement other methods
 
 pub fn episode_item(
     episode: Box<dyn EpisodeTrait>,

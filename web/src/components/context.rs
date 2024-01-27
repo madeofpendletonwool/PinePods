@@ -8,7 +8,7 @@ use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::GetApiDetails;
 use crate::components::audio::AudioPlayerProps;
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult};
-use crate::requests::pod_req::{Episode, RecentEps, Podcast, PodcastResponse, QueuedEpisodesResponse};
+use crate::requests::pod_req::{Episode, RecentEps, Podcast, PodcastResponse, QueuedEpisodesResponse, SavedEpisodesResponse, HistoryEpisodesResponse, EpisodeDownloadResponse};
 use yewdux::prelude::*;
 use web_sys::HtmlAudioElement;
 use serde_json::{json, from_str};
@@ -57,6 +57,9 @@ pub struct AppState {
     pub podcast_feed_results: Option<PodcastFeedResult>,
     pub server_feed_results: Option<RecentEps>,
     pub queued_episodes: Option<QueuedEpisodesResponse>,
+    pub saved_episodes: Option<SavedEpisodesResponse>,
+    pub episode_history: Option<HistoryEpisodesResponse>,
+    pub downloaded_episodes: Option<EpisodeDownloadResponse>,
     pub episodes: Option<Episode>,
     pub clicked_podcast_info: Option<ClickedFeedURL>,
     pub pods: Option<Podcast>,
