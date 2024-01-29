@@ -264,6 +264,8 @@ body {
 .audio-player .top-section {
     opacity: 0;
     visibility: hidden;
+    align-items: center;
+    justify-content: center;
 }
 
 .audio-player.expanded .top-section {
@@ -317,6 +319,26 @@ body {
     width: 100%;
 }
 
+.audio-player .top-section .retract-button {
+    position: absolute;
+    top: 70px; /* Adjust as needed */
+    left: 7px; /* Adjust as needed */
+    border: none; /* Remove the border */
+    background: none; /* Remove the background */
+    padding: 0; /* Remove the padding */
+    cursor: pointer; /* Cursor as pointer */
+    font-size: 24px;
+}
+
+.audio-player .top-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
 .audio-player.expanded .line-content,
 .audio-player.expanded .top-section {
     transition: visibility 0s 0.5s, opacity 0.5s linear;
@@ -332,7 +354,7 @@ body {
     border-radius: 5px; /* Rounded corners */
 }
 
-.audio-player .title {
+.audio-player .line-content .title {
     text-align: left; /* Align text to the left */
     color: var(--text-color);
     display: -webkit-box; /* Necessary for line clamping */
@@ -342,9 +364,28 @@ body {
     flex-basis: 90%; /* Adjust as needed */
 }
 
+.audio-player .top-section .title {
+    font-size: 2em; /* Make the title larger */
+    text-align: center;
+    margin: 20px 0; /* Add some vertical space around the title */
+}
+
+.audio-player .top-section .scrub-bar {
+    font-size: 1em; 
+    text-align: center;
+    margin: 20px 0; /* Add some vertical space around the title */
+}
+
 .audio-player span {
     text-align: left; /* Align text to the left */
     color: var(--text-color);
+}
+
+.audio-player .top-section img {
+    width: 200px; /* Adjust as needed */
+    height: 200px; /* Adjust as needed */
+    border-radius: 0; /* Remove the rounded effect */
+
 }
 
 .audio-player .artwork {

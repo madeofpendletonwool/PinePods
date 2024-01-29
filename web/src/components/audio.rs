@@ -262,22 +262,35 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         html! {
             <div class={audio_bar_class} ref={container_ref.clone()}>
                 <div class="top-section">
-                    <img class={artwork_class.clone()} src={audio_props.artwork_url.clone()} />
+                    <button onclick={title_click.clone()} class="retract-button">
+                        <span class="material-icons">{"expand_more"}</span>
+                    </button>
+                    <img src={audio_props.artwork_url.clone()} />
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
                     <div class="scrub-bar">
+                        <span>{audio_state.current_time_formatted.clone()}</span>
                         <input type="range"
                             class="flex-grow h-1 cursor-pointer"
                             min="0.0"
                             max={audio_props.duration_sec.to_string().clone()}
                             value={audio_state.current_time_seconds.to_string()}
                             oninput={update_time.clone()} />
+                        <span>{formatted_duration.clone()}</span>
                     </div>
-                    <button onclick={toggle_playback.clone()} class="play-button">
-                        <span class="material-icons">
-                            { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
-                        </span>
-                    </button>
+                    <div class="button-container flex items-center justify-center">
+                        <button class="rewind-button item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                            <span class="material-icons">{"fast_rewind"}</span>
+                        </button>
+                        <button onclick={toggle_playback.clone()} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                            <span class="material-icons">
+                                { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
+                            </span>
+                        </button>
+                        <button onclick={skip_forward.clone()} class="skip-button item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                            <span class="material-icons">{"fast_forward"}</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="line-content">
                 <div class="left-group">
