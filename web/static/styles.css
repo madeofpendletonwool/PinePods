@@ -233,19 +233,95 @@ body {
 }
 
 .audio-player {
-    position: fixed; /* Fixed position */
-    bottom: 0; /* Align to the bottom of the page */
-    left: 0; /* Align to the left of the page */
-    width: 100%; /* Full width */
-    background-color: var(--secondary-background); /* Background color */
-
-    color: white; /* Text color */
-    padding: 10px 20px; /* Padding inside the bar */
-    display: flex; /* Flexbox layout */
-    align-items: center; /* Align items vertically */
-    justify-content: space-between; /* Space between elements */
-    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3); /* Shadow for a "lifted" effect */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 60px; /* Initial height */
+    background-color: var(--secondary-background);
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+    z-index: 1000; /* Ensure it's on top */
+    
+    /* Animate the height */
+    transition: height 0.5s ease-in-out;
 }
+
+.audio-player .line-content {
+    display: flex;
+    justify-content: space-between;
+    opacity: 1;
+    visibility: visible;
+}
+
+.audio-player.expanded .line-content {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.audio-player .top-section {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.audio-player.expanded .top-section {
+    opacity: 1;
+    visibility: visible;
+}
+
+.audio-player .line-content .left-group,
+.audio-player .line-content .right-group {
+    display: flex;
+    align-items: center;
+}
+.audio-player .line-content .title {
+    margin-right: 10px;
+}
+
+/* .audio-player .line-content,
+.audio-player .line-content .right-group {
+    width: 100%;
+} */
+
+.audio-player .line-content .ml-auto {
+    display: flex;
+    align-items: center;
+}
+
+.audio-player .line-content .right-group {
+    justify-content: flex-end;
+    padding-right: 25px;
+}
+
+.audio-player.expanded {
+    height: 100vh; /* Full viewport height when expanded */
+    bottom: 0; /* Keep at bottom */
+    align-items: center;
+    justify-content: space-between;
+}
+
+.audio-player-line {
+    /* Add these properties here */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+
+.audio-player .top-section,
+.audio-player .line-content {
+    transition: opacity 0.5s linear;
+    position: absolute;
+    width: 100%;
+}
+
+.audio-player.expanded .line-content,
+.audio-player.expanded .top-section {
+    transition: visibility 0s 0.5s, opacity 0.5s linear;
+}
+
 
 .audio-player button {
     background-color: var(--button-color); /* Button background color */
@@ -263,7 +339,7 @@ body {
     -webkit-line-clamp: 2; /* Limit to 2 lines */
     -webkit-box-orient: vertical; /* Necessary for line clamping */
     overflow: hidden; /* Hide text exceeding the line limit */
-    flex: 1; /* Take up remaining space */
+    flex-basis: 90%; /* Adjust as needed */
 }
 
 .audio-player span {

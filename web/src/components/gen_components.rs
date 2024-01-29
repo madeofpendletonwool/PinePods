@@ -391,8 +391,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name_copy = saved_server_name.clone();
             let api_key_copy = saved_api_key.clone();
             let request = SavePodcastRequest {
-                ep_url: episode.get_episode_artwork(),
-                episode_title: episode.get_episode_title(),
+                episode_id: episode.get_episode_id(), // changed from episode_title
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name

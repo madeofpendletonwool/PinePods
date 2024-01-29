@@ -93,6 +93,7 @@ pub struct UIState {
     pub duration_formatted: String,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
+    pub is_expanded: bool,
 }
 
 impl UIState {
@@ -135,6 +136,10 @@ impl UIState {
         if let Some(audio) = &self.audio_element {
             audio.set_src(&src);
         }
+    }
+
+    pub fn toggle_expanded(&mut self) {
+        self.is_expanded = !self.is_expanded;
     }
 }
 

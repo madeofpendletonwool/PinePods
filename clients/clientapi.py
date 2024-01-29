@@ -826,8 +826,7 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
 
 
 class SaveEpisodeData(BaseModel):
-    episode_url: str
-    title: str
+    episode_id: int
     user_id: int
 
 
@@ -846,7 +845,7 @@ async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_conne
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        success = database_functions.functions.save_episode(cnx, data.episode_url, data.title, data.user_id)
+        success = database_functions.functions.save_episode(cnx, data.episode_id, data.user_id)
         if success:
             return {"detail": "Episode saved."}
         else:

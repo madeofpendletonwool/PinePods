@@ -1591,7 +1591,7 @@ def saved_episode_list(database_type, cnx, user_id):
         cursor = cnx.cursor(dictionary=True)
 
     query = (f"SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-             f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
+             f"Episodes.EpisodeDescription, Episodes.EpisodeID, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
              f"Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
              f"FROM SavedEpisodes "
              f"INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
@@ -1612,20 +1612,7 @@ def saved_episode_list(database_type, cnx, user_id):
     return rows
 
 
-def save_episode(cnx, url, title, user_id):
-    # Get the episode ID from the Episodes table
-    cursor = cnx.cursor()
-    query = ("SELECT EpisodeID FROM Episodes "
-             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
-    cursor.execute(query, (url, title))
-    episode_id = cursor.fetchone()
-
-    if episode_id is None:
-        # Episode not found
-        return False
-
-    episode_id = episode_id[0]
-
+def save_episode(cnx, episode_id, user_id):
     # Insert a new row into the DownloadedEpisodes table
     cursor = cnx.cursor()
     query = ("INSERT INTO SavedEpisodes "

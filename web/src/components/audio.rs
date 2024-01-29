@@ -1,3 +1,5 @@
+use std::cell::Cell;
+use std::rc::Rc;
 use gloo_timers::callback::Interval;
 use yew::{Callback, function_component, Html, html};
 use yew::prelude::*;
@@ -6,9 +8,13 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use web_sys::{HtmlAudioElement, HtmlInputElement, window};
 use std::string::String;
+use gloo_utils::document;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-
+use std::cell::RefCell;
+use web_sys::HtmlElement;
+use std::borrow::Borrow;
+use web_sys::Element;
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
@@ -31,6 +37,86 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         classes!("artwork")
     };
 
+    let container_ref = use_node_ref();
+    let container_ref_clone1 = container_ref.clone();
+    let container_ref_clone2 = container_ref.clone();
+
+    let title_click = {
+        let audio_dispatch = _audio_dispatch.clone();
+        let container_ref = container_ref.clone();
+        Callback::from(move |_: MouseEvent| {
+            audio_dispatch.reduce_mut(UIState::toggle_expanded);
+
+            // Scroll to the top of the container
+            if let Some(container) = container_ref.cast::<HtmlElement>() {
+                container.scroll_into_view();
+            }
+        })
+    };
+    // dragging attempt
+    let audio_state_drag = audio_state.clone();
+    let audio_dispatch_drag = _audio_dispatch.clone();
+    let is_dragging = Rc::new(Cell::new(false));
+    let start_y = Rc::new(Cell::new(0.0));
+    let initial_height = Rc::new(Cell::new(0.0));
+    let audio_player: Option<HtmlElement> = container_ref_clone2.cast::<HtmlElement>();
+
+    let audio_player_clone = audio_player.clone();
+    let is_dragging_clone = is_dragging.clone();
+    let start_y_clone = start_y.clone();
+    let initial_height_clone = initial_height.clone();
+    let audio_state_clone = audio_state.clone();
+    let mousedown_callback = Closure::wrap(Box::new(move |event: MouseEvent| {
+        event.prevent_default(); // prevent text selection
+        if audio_state_clone.is_expanded { // Only enable dragging when the audio player is expanded
+            is_dragging_clone.set(true);
+            start_y_clone.set(event.client_y() as f64);
+        }
+    }) as Box<dyn FnMut(_)>);
+
+    if let Some(audio_player) = &audio_player {
+        audio_player.add_event_listener_with_callback("mousedown", mousedown_callback.as_ref().unchecked_ref()).unwrap();
+    }
+    mousedown_callback.forget();
+
+    // let audio_player_clone = audio_player.clone();
+    // let is_dragging_clone2 = is_dragging.clone();
+    let start_y_clone2 = start_y.clone();
+    let initial_height_clone2 = initial_height.clone();
+    let audio_player_clone = audio_player.clone();
+    let is_dragging_clone2 = is_dragging.clone();
+    let audio_player_element: Option<web_sys::HtmlElement> = audio_player.as_ref().map(|audio_player| audio_player.clone().dyn_into::<web_sys::HtmlElement>().unwrap());
+    let audio_player_element_clone = audio_player_element.clone(); // Clone the audio_player_element
+
+    let max_height = web_sys::window().unwrap().inner_height().unwrap().as_f64().unwrap(); // Get the window's inner height
+
+    let mousemove_callback = Closure::wrap(Box::new(move |event: MouseEvent| {
+        if !is_dragging_clone2.get() || !audio_state_drag.is_expanded {
+            return;
+        }
+        if let Some(audio_player_element) = audio_player_element.as_ref() {
+            let rect = audio_player_element.get_bounding_client_rect();
+            let delta_y = start_y_clone2.get() - event.client_y() as f64;
+            let new_height = (initial_height_clone2.get() + delta_y).max(60.0).min(max_height);
+            if delta_y > 0.0 { // User is dragging upwards
+                audio_player_element.style().set_property("height", &format!("{}px", max_height)).unwrap();
+            } else { // User is dragging downwards
+                audio_player_element.style().set_property("height", "60px").unwrap();
+            }
+        }
+    }) as Box<dyn FnMut(_)>);
+    let document = web_sys::window().unwrap().document().unwrap();
+    document.clone().add_event_listener_with_callback("mousemove", mousemove_callback.as_ref().unchecked_ref()).unwrap();
+    mousemove_callback.forget();
+
+    let is_dragging_clone = is_dragging.clone();
+    let mouseup_callback = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        is_dragging_clone.set(false);
+    }) as Box<dyn FnMut(web_sys::Event)>);
+
+    document.add_event_listener_with_callback("mouseup", mouseup_callback.as_ref().unchecked_ref()).unwrap();
+    mouseup_callback.forget();
+    // end attempt
     // Initialize state for current time and duration
 // Initialize state for current time and duration
     let current_time = use_state(|| "00:00:00".to_string());
@@ -171,13 +257,36 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let duration_seconds = (audio_props.duration_sec % 60.0).floor() as i32;
         let formatted_duration = format!("{:02}:{:02}:{:02}", duration_hours, duration_minutes, duration_seconds);
     
+        let audio_bar_class = classes!("audio-player", "border", "border-solid", "border-color", "fixed", "bottom-0", "z-50", "w-full", if audio_state.is_expanded { "expanded" } else { "" });
+        let expanded = audio_state.is_expanded.clone();
         html! {
-            <div class="audio-player border border-solid border-color fixed bottom-0 z-50 w-full">
-                <img class={artwork_class} src={audio_props.artwork_url.clone()} />
-                <div class="title">
-                    <span>{ &audio_props.title }</span>
+            <div class={audio_bar_class} ref={container_ref.clone()}>
+                <div class="top-section">
+                    <img class={artwork_class.clone()} src={audio_props.artwork_url.clone()} />
+                    <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
+                    </div>
+                    <div class="scrub-bar">
+                        <input type="range"
+                            class="flex-grow h-1 cursor-pointer"
+                            min="0.0"
+                            max={audio_props.duration_sec.to_string().clone()}
+                            value={audio_state.current_time_seconds.to_string()}
+                            oninput={update_time.clone()} />
+                    </div>
+                    <button onclick={toggle_playback.clone()} class="play-button">
+                        <span class="material-icons">
+                            { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
+                        </span>
+                    </button>
                 </div>
-                <div class="ml-auto flex items-center flex-nowrap">
+                <div class="line-content">
+                <div class="left-group">
+                    <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                    <div class="title" onclick={title_click.clone()}>
+                        <span>{ &audio_props.title }</span>
+                    </div>
+                </div>
+                <div class="right-group">
                     <button onclick={toggle_playback} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                         <span class="material-icons">
                             { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
@@ -200,6 +309,67 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
                 </div>
             </div>
+            </div>
+                // {
+                //     if expanded {
+                //         html! {
+                //             // Expanded content
+                //             <>
+                //             <div class="top-section">
+                //                 <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                //                 <div class="title" onclick={title_click.clone()}>{ &audio_props.title }</div>
+                //                 <div class="scrub-bar">
+                //                     <input type="range"
+                //                         class="flex-grow h-1 cursor-pointer"
+                //                         min="0.0"
+                //                         max={audio_props.duration_sec.to_string().clone()}
+                //                         value={audio_state.current_time_seconds.to_string()}
+                //                         oninput={update_time.clone()} />
+                //                 </div>
+                //                 <button onclick={toggle_playback} class="play-button">
+                //                     <span class="material-icons">
+                //                         { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
+                //                     </span>
+                //                 </button>
+                //             </div>
+                //             </>
+                //         }
+                //     } else {
+                //         html! {
+                //             <>
+                //             <div class="audio-player-line">
+                //             <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                //             <div class="title" onclick={title_click.clone()}>
+                //                 <span>{ &audio_props.title }</span>
+                //             </div>
+                //             <div class="ml-auto flex items-center flex-nowrap">
+                //                 <button onclick={toggle_playback} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                //                     <span class="material-icons">
+                //                         { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
+                //                     </span>
+                //                 </button>
+                //                 <button onclick={skip_forward} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                //                     <span class="material-icons">{"fast_forward"}</span>
+                //                 </button>
+                //                 <div class="flex-grow flex items-center sm:block hidden">
+                //                     <div class="flex items-center flex-nowrap">
+                //                         <span class="px-2">{audio_state.current_time_formatted.clone()}</span>
+                //                         <input type="range"
+                //                             class="flex-grow h-1 cursor-pointer"
+                //                             min="0.0"
+                //                             max={audio_props.duration_sec.to_string().clone()}
+                //                             value={audio_state.current_time_seconds.to_string()}
+                //                             oninput={update_time.clone()} />
+                //                         <span class="px-2">{formatted_duration}</span>
+                //                     </div>
+                //                 </div>
+                //             </div>
+                //             </div>
+                //             </>
+                //         }
+                //     }
+                // }
+            // </div>
         }
     } else {
         html! {}

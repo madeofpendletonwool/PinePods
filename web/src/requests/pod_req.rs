@@ -344,16 +344,15 @@ pub struct SavedEpisode {
     pub EpisodeDescription: String,
     pub EpisodeArtwork: String,
     pub EpisodeURL: String,
-    pub QueuePosition: i32,
     pub EpisodeDuration: i32,
-    pub QueueDate: String,
     pub ListenDuration: Option<i32>,
     pub EpisodeID: i32,
+    pub WebsiteURL: String,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct SavedDataResponse {
-    pub data: Vec<SavedEpisode>,
+    pub saved_episodes: Vec<SavedEpisode>,
 }
 
 pub async fn call_get_saved_episodes(
@@ -362,7 +361,7 @@ pub async fn call_get_saved_episodes(
     user_id: &i32
 ) -> Result<Vec<SavedEpisode>, anyhow::Error> {
     // Append the user_id as a query parameter
-    let url = format!("{}/api/data/saved_episode_list{}", server_name, user_id);
+    let url = format!("{}/api/data/saved_episode_list/{}", server_name, user_id);
 
     console::log_1(&format!("URL: {}", url).into());
 
@@ -384,13 +383,12 @@ pub async fn call_get_saved_episodes(
     console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
-    Ok(response_data.data)
+    Ok(response_data.saved_episodes)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SavePodcastRequest {
-    pub ep_url: String,
-    pub episode_title: String,
+    pub episode_id: i32,
     pub user_id: i32,
 }
 
@@ -414,7 +412,9 @@ pub async fn call_save_episode(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to save episode: {}", response.status_text())));
+        // Read the response body as text
+        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
+        return Err(anyhow::Error::msg(format!("Failed to save episode: {} - {}", response.status_text(), error_text)));
     }
 
     Ok(())
