@@ -266,6 +266,12 @@ body {
     visibility: hidden;
     align-items: center;
     justify-content: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
 }
 
 .audio-player.expanded .top-section {
@@ -327,7 +333,11 @@ body {
     background: none; /* Remove the background */
     padding: 0; /* Remove the padding */
     cursor: pointer; /* Cursor as pointer */
-    font-size: 24px;
+    font-size: 48px;
+}
+
+.audio-player .top-section .retract-button span.material-icons {
+    font-size: 48px; /* Adjust as needed */
 }
 
 .audio-player .top-section {
@@ -342,6 +352,10 @@ body {
 .audio-player.expanded .line-content,
 .audio-player.expanded .top-section {
     transition: visibility 0s 0.5s, opacity 0.5s linear;
+}
+
+.audio-full-button {
+    margin-top: 15px;
 }
 
 
@@ -371,10 +385,64 @@ body {
 }
 
 .audio-player .top-section .scrub-bar {
-    font-size: 1em; 
-    text-align: center;
-    margin: 20px 0; /* Add some vertical space around the title */
+    display: flex; /* Align elements in a row */
+    align-items: center; /* Center align vertically */
+    justify-content: space-between; /* Space out the elements */
+    width: 60%;;
+    padding: 10px 20px; /* Padding for breathing space */
+    font-size: 0.9em; /* Adjust font size for time display */
+    color: #fff; /* Text color */
+    margin: 10px 0; /* Vertical margin */
 }
+
+.audio-player .top-section .scrub-bar span {
+    flex-shrink: 0; /* Prevent shrinking */
+    margin-right: 10px; /* Space before scrub bar */
+    margin-left: 10px; /* Space after scrub bar */
+}
+
+.audio-player .top-section .scrub-bar input[type="range"] {
+    -webkit-appearance: none; /* Override default appearance */
+    width: 100%; /* Full width */
+    height: 4px; /* Height of the scrub bar */
+    background: #444; /* Background of the scrub bar */
+    cursor: pointer; /* Pointer cursor on hover */
+    border-radius: 2px; /* Slightly rounded corners */
+}
+
+/* Styles for the thumb (slider) */
+.audio-player .top-section .scrub-bar input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 15px; /* Width of the thumb */
+    height: 15px; /* Height of the thumb */
+    background: #1db954; /* Background color */
+    border-radius: 50%; /* Circular thumb */
+    cursor: pointer;
+}
+
+.audio-player .top-section .scrub-bar input[type="range"]::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    background: #1db954;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* Style for the track (progress) */
+.audio-player .top-section .scrub-bar input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    background: #888; /* Background of the track */
+    border-radius: 2px;
+}
+
+.audio-player .top-section .scrub-bar input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 4px;
+    background: #888;
+    border-radius: 2px;
+}
+
 
 .audio-player span {
     text-align: left; /* Align text to the left */
@@ -382,11 +450,32 @@ body {
 }
 
 .audio-player .top-section img {
-    width: 200px; /* Adjust as needed */
-    height: 200px; /* Adjust as needed */
+    max-width: 100%; /* Ensure the image doesn't exceed its container */
+    height: auto; /* Maintain aspect ratio */
     border-radius: 0; /* Remove the rounded effect */
-
 }
+
+/* Small screens */
+@media (max-width: 600px) {
+    .audio-player .top-section img {
+        width: 50vw; /* 50% of the viewport width */
+    }
+}
+
+/* Medium screens */
+@media (min-width: 601px) and (max-width: 1024px) {
+    .audio-player .top-section img {
+        width: 40vw; /* 40% of the viewport width */
+    }
+}
+
+/* Large screens */
+@media (min-width: 1025px) {
+    .audio-player .top-section img {
+        width: 30vw; /* 30% of the viewport width */
+    }
+}
+
 
 .audio-player .artwork {
     width: 40px; /* Adjust as needed */
