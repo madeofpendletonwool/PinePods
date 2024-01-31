@@ -102,6 +102,7 @@ pub fn saved() -> Html {
                             let episode_title_clone = episode.EpisodeTitle.clone();
                             let episode_artwork_clone = episode.EpisodeArtwork.clone();
                             let episode_duration_clone = episode.EpisodeDuration.clone();
+                            let episode_id_clone = episode.EpisodeID.clone();
 
                             let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
 
@@ -132,6 +133,7 @@ pub fn saved() -> Html {
                             let episode_title_for_closure = episode_title_clone.clone();
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
+                            let episode_id_for_closure = episode_id_clone.clone();
                             let audio_dispatch = audio_dispatch.clone();
                             let play_state = state_ep.clone();
 
@@ -140,6 +142,7 @@ pub fn saved() -> Html {
                                 episode_title_for_closure.clone(),
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
+                                episode_id_for_closure.clone(),
                                 audio_dispatch.clone(),
                             );
  
@@ -166,7 +169,7 @@ pub fn saved() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
             } else {
                 html! {}
             }

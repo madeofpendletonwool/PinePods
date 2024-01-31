@@ -35,4 +35,6 @@ pub enum Route {
     Podcasts,
     #[at("/episode_layout")]
     EpisodeLayout,
+    #[at("/episode")]
+    Episode,
 }

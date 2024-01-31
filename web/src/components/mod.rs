@@ -21,5 +21,6 @@ pub(crate) mod podcasts;
 mod audio;
 mod click_events;
 pub mod gen_funcs;
+pub(crate) mod episode;
 
 pub mod setting_components;

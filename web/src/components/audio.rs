@@ -4,6 +4,7 @@ use gloo_timers::callback::Interval;
 use yew::{Callback, function_component, Html, html};
 use yew::prelude::*;
 // use yew_router::history::{History};
+use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use web_sys::{HtmlAudioElement, HtmlInputElement, window};
@@ -22,6 +23,7 @@ pub struct AudioPlayerProps {
     pub title: String,
     pub artwork_url: String,
     pub duration: String,
+    pub episode_id: i32,
     pub duration_sec: f64
 }
 
@@ -30,7 +32,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-
+    let history = BrowserHistory::new();
+    let history_clone = history.clone();
     let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
         classes!("artwork", "playing")
     } else {
@@ -256,7 +259,24 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let duration_minutes = ((audio_props.duration_sec % 3600.0) / 60.0).floor() as i32;
         let duration_seconds = (audio_props.duration_sec % 60.0).floor() as i32;
         let formatted_duration = format!("{:02}:{:02}:{:02}", duration_hours, duration_minutes, duration_seconds);
-    
+        let on_shownotes_click = {
+            let history = history_clone.clone();
+            let dispatch = _dispatch.clone();
+            let episode_id = audio_state.currently_playing.as_ref().map(|audio_props| audio_props.episode_id);
+        
+            Callback::from(move |_: MouseEvent| {
+                let dispatch_clone = dispatch.clone();
+                let history_clone = history.clone();
+                if let Some(episode_id) = episode_id {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        dispatch_clone.reduce_mut(move |state| {
+                            state.selected_episode_id = Some((episode_id));
+                        });
+                        history_clone.push("/episode"); // Use the route path
+                    });
+                }
+            })
+        };
         let audio_bar_class = classes!("audio-player", "border", "border-solid", "border-color", "fixed", "bottom-0", "z-50", "w-full", if audio_state.is_expanded { "expanded" } else { "" });
         let expanded = audio_state.is_expanded.clone();
         html! {
@@ -293,7 +313,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         </button>
                     </div>
                     <div class="button-container flex items-center justify-center">
-                    <button class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">{ "Shownotes" }</button>
+                    <button onclick={on_shownotes_click} class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">{ "Shownotes" }</button>
                     </div>
                 </div>
                 <div class="line-content">
@@ -339,6 +359,7 @@ pub fn on_play_click(
     episode_title_for_closure: String,
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
+    episode_id_for_closure: i32,
     audio_dispatch: Dispatch<UIState>,
 ) -> Callback<MouseEvent> {
     fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
@@ -362,6 +383,7 @@ pub fn on_play_click(
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
         let episode_duration_for_closure = episode_duration_for_closure.clone();
+        let episode_id_for_closure = episode_id_for_closure.clone();
         web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
         let audio_dispatch = audio_dispatch.clone();
     
@@ -373,6 +395,7 @@ pub fn on_play_click(
                 title: episode_title_for_closure.clone(),
                 artwork_url: episode_artwork_for_closure.clone(),
                 duration: episode_duration_for_closure.clone().to_string(),
+                episode_id: episode_id_for_closure.clone(),
                 duration_sec: formatted_duration,
             });
             audio_state.set_audio_source(episode_url_for_closure.to_string());

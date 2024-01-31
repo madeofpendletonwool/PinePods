@@ -1548,8 +1548,7 @@ async def api_clear_guest_data(cnx=Depends(get_database_connection), api_key: st
 
 
 class EpisodeMetadata(BaseModel):
-    episode_url: str
-    episode_title: str
+    episode_id: int
     user_id: int
 
 
@@ -1568,8 +1567,7 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        episode = database_functions.functions.get_episode_metadata(database_type, cnx, data.episode_url,
-                                                                    data.episode_title, data.user_id)
+        episode = database_functions.functions.get_episode_metadata(database_type, cnx, data.episode_id, data.user_id)
         return {"episode": episode}
     else:
         raise HTTPException(status_code=403,

@@ -294,6 +294,7 @@ pub fn episode_layout() -> Html {
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
                                 let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
                                 let episode_duration_clone = episode.duration.clone().unwrap_or_default();
+                                let episode_id_clone = 40;
 
                                 let is_expanded = search_state.expanded_descriptions.contains(&episode.guid);
 
@@ -348,6 +349,7 @@ pub fn episode_layout() -> Html {
                                         let episode_title_for_closure = episode_title_clone.clone();
                                         let episode_artwork_for_closure = episode_artwork_clone.clone();
                                         let episode_duration_for_closure = episode_duration_clone.clone();
+                                        let episode_id_for_closure = episode_id_clone.clone();
                                         web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
                                         let dispatch = dispatch.clone();
                                         // let duration = episode_duration_for_closure;
@@ -361,6 +363,7 @@ pub fn episode_layout() -> Html {
                                                 title: episode_title_for_closure.clone(),
                                                 artwork_url: episode_artwork_for_closure.clone(),
                                                 duration: episode_duration_for_closure.clone(),
+                                                episode_id: episode_id_for_closure.clone(),
                                                 duration_sec: formatted_duration,
                                             });
                                             state.set_audio_source(episode_url_for_closure.to_string()); // Set the audio source here
@@ -448,7 +451,7 @@ pub fn episode_layout() -> Html {
         // }
         {
             if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
             } else {
                 html! {}
             }

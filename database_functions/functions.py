@@ -2014,29 +2014,19 @@ def clear_guest_data(cnx):
     return "Guest user data cleared successfully"
 
 
-def get_episode_metadata(database_type, cnx, url, title, user_id):
+def get_episode_metadata(database_type, cnx, episode_id, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = ("SELECT EpisodeID FROM Episodes "
-             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
-    cursor.execute(query, (url, title))
-    episode_id = cursor.fetchone()
-
-    if episode_id is None:
-        # Episode not found
-        return False
-
-    episode_id = episode_id['EpisodeID']
-
     query = (
         f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
         f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
-        f"Podcasts.WebsiteURL "
+        f"Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
         f"FROM Episodes "
         f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+        f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND Podcasts.UserID = UserEpisodeHistory.UserID "
         f"WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s")
 
     cursor.execute(query, (episode_id, user_id,))

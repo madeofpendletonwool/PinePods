@@ -18,6 +18,7 @@ use components::search_new::SearchNew;
 use components::podcast_layout::PodLayout;
 use components::episodes_layout::EpisodeLayout;
 use components::podcasts::Podcasts;
+use components::episode::Episode;
 
 // Yew Imports
 use yew_router::prelude::*;
@@ -56,6 +57,8 @@ fn switch(route: Route) -> Html {
         Route::PodLayout => html! { <PodLayout /> },
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Podcasts => html! { <Podcasts /> },
+        Route::Episode => html! { <Episode /> },
+
     }
 }
 
