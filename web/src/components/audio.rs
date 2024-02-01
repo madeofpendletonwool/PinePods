@@ -56,6 +56,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         })
     };
+    let title_click_emit = title_click.clone();
     // dragging attempt
     // let audio_state_drag = audio_state.clone();
     // let audio_dispatch_drag = _audio_dispatch.clone();
@@ -313,7 +314,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         </button>
                     </div>
                     <div class="button-container flex items-center justify-center">
-                    <button onclick={on_shownotes_click} class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">{ "Shownotes" }</button>
+                    <button onclick={Callback::from(move |e: MouseEvent| {
+                        on_shownotes_click.emit(e.clone());
+                        title_click_emit.emit(e);
+                    })} class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">{ "Shownotes" }</button>
                     </div>
                 </div>
                 <div class="line-content">

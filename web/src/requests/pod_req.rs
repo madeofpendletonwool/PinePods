@@ -615,9 +615,7 @@ pub struct EpisodeInfo {
     pub EpisodeDescription: String,
     pub EpisodeArtwork: String,
     pub EpisodeURL: String,
-    pub QueuePosition: i32,
     pub EpisodeDuration: i32,
-    pub QueueDate: String,
     pub ListenDuration: Option<i32>,
     pub EpisodeID: i32,
 }
@@ -628,27 +626,30 @@ pub struct EpisodeRequest {
     pub user_id: i32,
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct EpisodeMetadataResponse {
+    pub episode: EpisodeInfo,
+}
+
 pub async fn call_get_episode_metadata(
     server_name: &str, 
     api_key: Option<String>, 
     episode_request: &EpisodeRequest,
 ) -> Result<EpisodeInfo, anyhow::Error> {
-    // Append the user_id as a query parameter
     let url = format!("{}/api/data/get_episode_metadata", server_name);
 
     console::log_1(&format!("URL: {}", url).into());
 
-    // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
     
     let request_body = serde_json::to_string(episode_request).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
         .await?;
-
 
     if !response.ok() {
         return Err(anyhow::Error::msg(format!("Failed to episode downloads: {}", response.status_text())));
@@ -659,10 +660,8 @@ pub async fn call_get_episode_metadata(
 
     console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
 
-    // Parse the response text into EpisodeInfo objects
-    let response_data: EpisodeInfo = serde_json::from_str(&response_text)
-    .map_err(|e| anyhow::Error::msg(format!("Deserialization Error: {}", e)))?;
+    let response_data: EpisodeMetadataResponse = serde_json::from_str(&response_text)
+        .map_err(|e| anyhow::Error::msg(format!("Deserialization Error: {}", e)))?;
 
-    
-    Ok(response_data)
+    Ok(response_data.episode)
 }

@@ -812,7 +812,7 @@ body {
 }
 
 .dropdown-option:hover {
-    background-color: var(--hover-color; /* Change background color on hover */
+    background-color: var(--hover-color); /* Change background color on hover */
 }
 
 .table-header {
@@ -822,11 +822,75 @@ body {
 }
 
 .table-row {
-    background-color: var(--secondary-background;
-    color: var(--text-color; /* Regular font color */
+    background-color: var(--secondary-background);
+    color: var(--text-color); /* Regular font color */
     cursor: pointer; /* Change cursor to pointer */
 }
 
 .table-row:hover {
     background-color: var(--secondary-background); /* Slightly darker background on hover */
+}
+
+
+
+
+
+
+.episode-layout-container {
+    /* Styles for the main container */
+}
+
+.episode-top-info {
+    display: flex;
+    align-items: start;
+    margin-bottom: 20px;
+}
+
+.episode-artwork {
+    /* Adjust to scale with page size */
+    max-width: 30%;
+    height: auto;
+    object-fit: cover;
+    padding-right: 10px;
+}
+.episode-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.podcast-title {
+    /* Larger font size for podcast title */
+    font-size: 1.5rem; /* Example size */
+}
+
+.episode-title {
+    font-size: 1.5rem; /* Example size */
+}
+
+.episode-duration, .episode-release-date {
+    /* Style for duration and release date */
+    font-size: 1.5rem; /* Example size */
+}
+
+.episode-action-buttons {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+}
+
+.play-button, .save-button, .download-button, .queue-button {
+    /* Style for action buttons */
+}
+
+.episode-divider {
+    /* Style for the divider line */
+}
+
+.episode-description {
+    padding-left: 25px;
+    /* Other styles as needed */
+}
+
+.description-expand-button {
+    /* Style for the 'Read More' button */
 }
