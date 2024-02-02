@@ -1,36 +1,68 @@
-FROM python:3.12.0a7-slim
+# Builder stage for compiling the Yew application
+FROM rust:alpine3.19 as builder
 
+# Install build dependencies
+RUN apk update && apk upgrade && \
+    apk add --no-cache musl-dev libffi-dev zlib-dev jpeg-dev
+
+# Install wasm target and build tools
+RUN rustup target add wasm32-unknown-unknown && \
+    cargo install trunk wasm-bindgen-cli
+
+# Add your application files to the builder stage
+COPY . /app
+WORKDIR /app/web
+
+# Build the Yew application in release mode
+RUN trunk build --release
+
+# Final stage for setting up runtime environment
+FROM alpine:3.19
+
+# Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
-ARG DEBIAN_FRONTEND=noninteractive
+# Install runtime dependencies
+RUN apk add --no-cache nginx python3 openssl py3-pip bash mariadb-client postgresql-dev curl cronie openrc supervisor
 
-# Create location where pinepods code is stored
-# RUN mkdir /pinepods
-# Make sure the package repository is up to date. Also install needed packages via apt
-RUN apt update && \
-    apt -qy upgrade && \
-    apt install -qy git software-properties-common curl cron supervisor gcc libffi-dev zlib1g-dev libjpeg-dev mariadb-client libpq-dev openssl && \
-    rm -rf /var/lib/apt/lists/*
+# Setup Python environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install rust
-# RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain -y
+# Install Python packages
+COPY --from=builder /app/requirements.txt /
+RUN pip install --no-cache-dir -r /requirements.txt
 
-# Install needed python packages via pip
-ADD ./requirements.txt /
-RUN pip install -r ./requirements.txt
-
-COPY wait-for-it/wait-for-it.sh /wait-for-it.sh
+# Copy wait-for-it script and give execute permission
+COPY --from=builder /app/wait-for-it/wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
-# Add a cache-busting build argument
-ARG CACHEBUST=1
+# Copy built files from the builder stage to the Nginx serving directory
+COPY --from=builder /app/web/dist /var/www/html/
 
-# Put pinepods Files in place
-# Create structure for pinepods
-COPY . /pinepods
-RUN chmod -R 755 /pinepods
+# Move to the root directory to execute the startup script
+WORKDIR /
 
-# Begin pinepods Setup
-COPY startup/startup.sh /
-RUN ls -al /
-ENTRYPOINT ["/startup.sh"]
+# Copy startup scripts
+COPY startup/startup.sh /startup.sh
+RUN chmod +x /startup.sh
+
+# Copy Pinepods runtime files
+RUN mkdir -p /pinepods
+RUN mkdir -p /var/log/supervisor/
+COPY startup/ /pinepods/startup/
+RUN chmod +x /pinepods/startup/call_refresh_endpoint.sh
+COPY clients/ /pinepods/clients/
+COPY database_functions/ /pinepods/database_functions/
+RUN chmod +x /pinepods/startup/startup.sh
+
+ENV APP_ROOT /pinepods
+
+# Configure Nginx
+COPY startup/nginx.conf /etc/nginx/nginx.conf
+
+# Start Nginx and keep it running
+# CMD ["nginx", "-g", "daemon off;"]
+
+ENTRYPOINT ["bash", "/startup.sh"]
+

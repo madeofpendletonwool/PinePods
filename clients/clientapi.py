@@ -36,7 +36,7 @@ import traceback
 sys.path.append('/pinepods')
 
 import database_functions.functions
-import Auth.Passfunctions
+import database_functions.auth_functions
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -310,7 +310,7 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
 async def verify_key(cnx=Depends(get_database_connection),
                      credentials: HTTPBasicCredentials = Depends(get_current_user)):
     logging.info(f"creds: {credentials.username}, {credentials.password}")
-    is_password_valid = Auth.Passfunctions.verify_password(cnx, credentials.username, credentials.password)
+    is_password_valid = auth_functions.verify_password(cnx, credentials.username, credentials.password)
     if is_password_valid:
         retrieved_key = database_functions.functions.get_api_key(cnx, credentials.username)
         return {"status": "success", "retrieved_key": retrieved_key}
@@ -456,7 +456,7 @@ async def api_verify_password(data: VerifyPasswordInput, cnx=Depends(get_databas
             print('run in postgres')
             is_password_valid = database_functions.functions.verify_password(cnx, data.username, data.password)
         else:
-            is_password_valid = Auth.Passfunctions.verify_password(cnx, data.username, data.password)
+            is_password_valid = auth_functions.verify_password(cnx, data.username, data.password)
         return {"is_password_valid": is_password_valid}
     else:
         raise HTTPException(status_code=403,

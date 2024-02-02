@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Name=Pinepods
-Comment=This is the Pinepods Desktop File. Do not edit this
-Exec=online.pinepods.Pinepods
-Icon=online.pinepods.Pinepods
-Terminal=false
-Type=Application
-Categories=Utility;Application;
