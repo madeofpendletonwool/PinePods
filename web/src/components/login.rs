@@ -7,7 +7,7 @@ use crate::requests::login_requests;
 use crate::components::context::{AppState};
 // use yewdux::prelude::*;
 use md5;
-use yewdux::prelude::*;
+use yewdux::{dispatch, prelude::*};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::setting_reqs::call_get_theme;
 
@@ -54,7 +54,7 @@ pub fn login() -> Html {
             }
         });
     }
-
+    let effect_displatch = dispatch.clone();
     // User Auto Login with saved state
     use_effect_with((), {
         // let error_clone_use = error_message_clone.clone();
@@ -92,7 +92,7 @@ pub fn login() -> Html {
                                                             let gravatar_url = generate_gravatar_url(&Some(email.clone().unwrap()), 80);
                                                             console::log_1(&format!("gravatar_url: {:?}", &gravatar_url).into());
                                                             // Auto login logic here
-                                                            dispatch.reduce_mut(move |state| {
+                                                            effect_displatch.reduce_mut(move |state| {
                                                                 state.user_details = app_state.user_details;
                                                                 state.auth_details = Some(auth_details.clone());
                                                                 state.server_details = server_details.server_details;
@@ -126,25 +126,6 @@ pub fn login() -> Html {
                                                         } else {
                                                             console::log_1(&"Auth details are None".into());
                                                         }
-
-
-//                                                         let server_name_local = auth_state_clone.auth_details.as_ref().map(|ad| ad.server_name.clone());
-//                                                         let api_key_local = auth_state_clone.auth_details.as_ref().and_then(|ad| ad.api_key.clone());
-//
-//                                                         // let server_name_local = auth_details.auth_details.as_ref().and_then(|ad| ad.server_name.clone());
-//                                                         console::log_1(&format!("server_name_pre_wasm: {:?}", &server_name_local).into());
-//
-// // Use the local variables instead of `app_state`
-//                                                         wasm_bindgen_futures::spawn_local(async move {
-//                                                             match call_verify_pinepods(server_name_local.unwrap(), api_key_local).await {
-//                                                                 Ok(_) => {
-//                                                                     history.push("/home"); // Redirect to the home page
-//                                                                 }
-//                                                                 Err(e) => {
-//                                                                     error_clone_use.set(Some(e.to_string())); // Set the error message
-//                                                                 }
-//                                                             }
-//                                                         });
                                                     }
                                                 }
                                             }
@@ -181,31 +162,29 @@ pub fn login() -> Html {
         })
     };
     let history_clone = history.clone();
+    let dispatch_clone = dispatch.clone();
     let on_submit = {
         Callback::from(move |_| {
             let history = history_clone.clone();
             let username = username.clone();
             let password = password.clone();
+            let dispatch = dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                match login_requests::login(username.to_string(), password.to_string()).await {
-                    Ok(_) => {
+                match login_requests::login_new_server("http://localhost:8040".to_string(), username.to_string(), password.to_string()).await {
+                    Ok((user_details, login_request, server_details)) => {
+                        // After user login, update the image URL with user's email from user_details
+                        let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
+    
+                        dispatch.reduce_mut(move |state| {
+                            state.user_details = Some(user_details);
+                            state.auth_details = Some(login_request);
+                            state.server_details = Some(server_details);
+                            state.gravatar_url = Some(gravatar_url); // Store the Gravatar URL
+    
+                            state.store_app_state();
+                        });
+    
                         history.push("/home"); // Use the route path
-
-//                         // Function to calculate the MD5 hash of the user's email
-//                         fn calculate_gravatar_hash(email: &str) -> String {
-//                             // Implement the MD5 hash calculation here
-//                         }
-//
-//                         // Function to generate the Gravatar URL
-//                         fn generate_gravatar_url(email: &str, size: usize) -> String {
-//                             let hash = calculate_gravatar_hash(email);
-//                             format!("https://gravatar.com/avatar/{}?s={}", hash, size)
-//                         }
-//
-//                         // After user login, update the image URL
-//                         let user_email = "user@example.com"; // Replace with the actual user email
-//                         let gravatar_url = generate_gravatar_url(user_email, 80); // 80 is the image size
-
                     },
                     Err(_) => {
                         // Handle error
@@ -259,7 +238,7 @@ pub fn login() -> Html {
                     onclick={on_submit}
                     class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                 >
-                    {"Submit"}
+                    {"Login"}
                 </button>
             </div>
             // Conditional rendering for the error banner
@@ -353,18 +332,6 @@ pub fn login() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
                     Ok((user_details, login_request, server_details)) => {
-                        // Use reduce_mut to modify the state directly
-                        // fn calculate_gravatar_hash(email: &String) -> String {
-                        //     format!("{:x}", md5::compute(email.to_lowercase()))
-                        // }
-                        //
-                        // // Function to generate the Gravatar URL
-                        // fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
-                        //     let hash = calculate_gravatar_hash(&email.clone().unwrap());
-                        //     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
-                        // }
-
-                        // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
 
                         dispatch.reduce_mut(move |state| {
@@ -438,7 +405,7 @@ pub fn login() -> Html {
                     onkeypress={handle_key_press.clone()}
                 />
                 <button onclick={on_submit_click} class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                    {"Submit"}
+                    {"Login"}
                 </button>
             </div>
             // Conditional rendering for the error banner
@@ -460,114 +427,16 @@ pub fn login() -> Html {
 #[function_component(LogOut)]
 pub fn logout() -> Html {
     let history = BrowserHistory::new();
-    let username = use_state(|| "".to_string());
-    let password = use_state(|| "".to_string());
 
-    let on_username_change = {
-        let username = username.clone();
-        Callback::from(move |e: InputEvent| {
-            username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
-        })
-    };
+    // Clear local and session storage
+    let window = web_sys::window().expect("no global `window` exists");
+    let local_storage = window.local_storage().expect("localStorage not enabled").expect("localStorage is null");
+    let session_storage = window.session_storage().expect("sessionStorage not enabled").expect("sessionStorage is null");
+    local_storage.clear().expect("failed to clear localStorage");
+    session_storage.clear().expect("failed to clear sessionStorage");
 
-    let on_password_change = {
-        let password = password.clone();
-        Callback::from(move |e: InputEvent| {
-            password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
-        })
-    };
-    let history_clone = history.clone();
-    let on_submit = {
-        Callback::from(move |_| {
-            let history = history_clone.clone();
-            let username = username.clone();
-            let password = password.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                match login_requests::login(username.to_string(), password.to_string()).await {
-                    Ok(_) => {
-                        history.push("/home"); // Use the route path
+    // Redirect to root path
+    history.push("/");
 
-//                         // Function to calculate the MD5 hash of the user's email
-//                         fn calculate_gravatar_hash(email: &str) -> String {
-//                             // Implement the MD5 hash calculation here
-//                         }
-//
-//                         // Function to generate the Gravatar URL
-//                         fn generate_gravatar_url(email: &str, size: usize) -> String {
-//                             let hash = calculate_gravatar_hash(email);
-//                             format!("https://gravatar.com/avatar/{}?s={}", hash, size)
-//                         }
-//
-//                         // After user login, update the image URL
-//                         let user_email = "user@example.com"; // Replace with the actual user email
-//                         let gravatar_url = generate_gravatar_url(user_email, 80); // 80 is the image size
-
-                    },
-                    Err(_) => {
-                        // Handle error
-                    }
-                }
-            });
-        })
-    };
-    let history_clone = history.clone();
-    let on_different_server = {
-        Callback::from(move |_| {
-            let history = history_clone.clone();
-            history.push("/change_server"); // Use the route path
-        })
-    };
-
-    html! {
-        <div class="flex justify-center items-center h-screen">
-            <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg">
-                <div class="flex justify-center items-center">
-                    <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
-                </div>
-                <h1 class="text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                <p class="text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
-                <input
-                    type="text"
-                    placeholder="Username"
-                    class="p-2 border border-gray-300 rounded"
-                    oninput={on_username_change}
-                />
-                <input
-                    type="password"
-                    placeholder="Password"
-                    class="p-2 border border-gray-300 rounded"
-                    oninput={on_password_change}
-                />
-                // Forgot Password and Create New User buttons
-                <div class="flex justify-between">
-                    <button
-                        class="text-sm text-blue-500 hover:text-blue-700"
-                    >
-                        {"Forgot Password?"}
-                    </button>
-                    <button
-                        class="text-sm text-blue-500 hover:text-blue-700"
-                    >
-                        {"Create New User"}
-                    </button>
-                </div>
-                <button
-                    onclick={on_submit}
-                    class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                    {"Submit"}
-                </button>
-            </div>
-            // Connect to Different Server button at bottom right
-            <div class="fixed bottom-4 right-4">
-                <button
-                    onclick={on_different_server}
-                    class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-                >
-                    {"Connect to Different Server"}
-                </button>
-            </div>
-        </div>
-    }
-
+    html! {}
 }

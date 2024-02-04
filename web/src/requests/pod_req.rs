@@ -19,7 +19,7 @@ pub struct VerifyResponse {
     retrieved_id: i32,
 }
 pub async fn call_verify_pinepods(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_user/", server_name);
+    let url = format!("{}/api/data/get_user", server_name);
     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
@@ -114,7 +114,7 @@ struct PodcastStatusResponse {
 }
 
 pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, _user_id: i32, added_podcast: &PodcastValues) -> Result<bool, Error> {
-    let url = format!("{}/api/data/add_podcast/", server_name);
+    let url = format!("{}/api/data/add_podcast", server_name);
     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
     // Serialize `added_podcast` into JSON

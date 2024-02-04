@@ -6,6 +6,7 @@ import os
 import requests
 import datetime
 import time
+import appdirs
 import base64
 import subprocess
 import psycopg2
@@ -1754,6 +1755,115 @@ def check_podcast(cnx, user_id, podcast_name):
         if cursor:
             cursor.close()
         cnx.commit()
+    # cnx.close()
+        
+def get_session_file_path():
+    app_name = 'pinepods'
+    data_dir = appdirs.user_data_dir(app_name)
+    os.makedirs(data_dir, exist_ok=True)
+    session_file_path = os.path.join(data_dir, "session.txt")
+    return session_file_path
+
+
+def save_session_to_file(session_id):
+    session_file_path = get_session_file_path()
+    with open(session_file_path, "w") as file:
+        file.write(session_id)
+
+
+def get_saved_session_from_file():
+    app_name = 'pinepods'
+    session_file_path = get_session_file_path()
+    try:
+        with open(session_file_path, "r") as file:
+            session_id = file.read()
+            return session_id
+    except FileNotFoundError:
+        return None
+
+
+def check_saved_session(cnx, session_value):
+    cursor = cnx.cursor()
+
+    # Get the session with the matching value and expiration time
+    cursor.execute("""
+    SELECT UserID, expire FROM Sessions WHERE value = %s;
+    """, (session_value,))
+
+    result = cursor.fetchone()
+
+    if result:
+        user_id, session_expire = result
+        current_time = datetime.datetime.now()
+        if current_time < session_expire:
+            return user_id
+
+    return False
+    cursor.close()
+    # cnx.close()
+
+
+def check_saved_web_session(cnx, session_value):
+    cursor = cnx.cursor()
+
+    # Get the session with the matching value and expiration time
+    cursor.execute("""
+    SELECT UserID, expire FROM Sessions WHERE value = %s;
+    """, (session_value,))
+
+    result = cursor.fetchone()
+
+    if result:
+        user_id, session_expire = result
+        current_time = datetime.datetime.now()
+        if current_time < session_expire:
+            return user_id
+
+    return False
+    cursor.close()
+    # cnx.close()
+
+
+def create_session(cnx, user_id, session_value):
+    # Calculate the expiration date 30 days in the future
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    # Insert the new session into the Sessions table
+    cursor = cnx.cursor()
+    cursor.execute("""
+    INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
+    """, (user_id, session_value, expire_date))
+
+    cnx.commit()
+    cursor.close()
+    # cnx.close()
+
+
+def create_web_session(cnx, user_id, session_value):
+    # Calculate the expiration date 30 days in the future
+    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
+
+    # Insert the new session into the Sessions table
+    cursor = cnx.cursor()
+    cursor.execute("""
+    INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
+    """, (user_id, session_value, expire_date))
+
+    cnx.commit()
+    cursor.close()
+    # cnx.close()
+
+
+def clean_expired_sessions(cnx):
+    current_time = datetime.datetime.now()
+    cursor = cnx.cursor()
+
+    cursor.execute("""
+    DELETE FROM Sessions WHERE expire < %s;
+    """, (current_time,))
+
+    cnx.commit()
+    cursor.close()
     # cnx.close()
 
 

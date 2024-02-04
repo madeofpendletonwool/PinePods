@@ -1,6 +1,6 @@
 # Fast API
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
-    BackgroundTasks, security
+    security
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -310,7 +310,7 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
 async def verify_key(cnx=Depends(get_database_connection),
                      credentials: HTTPBasicCredentials = Depends(get_current_user)):
     logging.info(f"creds: {credentials.username}, {credentials.password}")
-    is_password_valid = auth_functions.verify_password(cnx, credentials.username, credentials.password)
+    is_password_valid = database_functions.auth_functions.verify_password(cnx, credentials.username, credentials.password)
     if is_password_valid:
         retrieved_key = database_functions.functions.get_api_key(cnx, credentials.username)
         return {"status": "success", "retrieved_key": retrieved_key}
@@ -456,7 +456,7 @@ async def api_verify_password(data: VerifyPasswordInput, cnx=Depends(get_databas
             print('run in postgres')
             is_password_valid = database_functions.functions.verify_password(cnx, data.username, data.password)
         else:
-            is_password_valid = auth_functions.verify_password(cnx, data.username, data.password)
+            is_password_valid = database_functions.auth_functions.verify_password(cnx, data.username, data.password)
         return {"is_password_valid": is_password_valid}
     else:
         raise HTTPException(status_code=403,
@@ -909,9 +909,8 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends
 
 
 @app.get("/api/data/refresh_pods")
-async def api_refresh_pods(background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin),
-                           cnx=Depends(get_database_connection)):
-    background_tasks.add_task(database_functions.functions.refresh_pods, cnx)
+async def api_refresh_pods(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
+    database_functions.functions.refresh_pods(cnx)
     return {"detail": "Refresh initiated."}
 
 

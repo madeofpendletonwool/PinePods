@@ -22,3 +22,4 @@ mygpoclient
 bcrypt
 feedparser
 pyotp
+appdirs

@@ -52,7 +52,7 @@ pub struct EpisodeCount {
     status: String,
 }
 pub async fn call_get_user_episode_count(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_user_episode_count/", server_name);
+    let url = format!("{}/api/data/get_user_episode_count", server_name);
     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)

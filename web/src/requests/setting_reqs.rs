@@ -39,7 +39,7 @@ pub struct SetThemeResponse {
 
 pub async fn call_set_theme(server_name: &Option<String>, api_key: &Option<String>, set_theme: &SetThemeRequest) -> Result<bool, Error> {
     let server = server_name.clone().unwrap();
-    let url = format!("{}/api/data/user/set_theme/", server);
+    let url = format!("{}/api/data/user/set_theme", server);
     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
     // Serialize `added_podcast` into JSON

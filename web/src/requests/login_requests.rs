@@ -156,7 +156,7 @@ pub struct GetApiDetails {
 }
 
 pub async fn call_get_api_config(server_name: &str, api_key: &str) -> Result<crate::requests::login_requests::GetApiDetails, anyhow::Error> {
-    let url = format!("{}/api/data/config/", server_name);
+    let url = format!("{}/api/data/config", server_name);
 
     let response = Request::get(&url)
         .header("Api-Key", api_key)
