@@ -3,6 +3,7 @@ use std::rc::Rc;
 use serde::Deserialize;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use crate::requests::login_requests::AddUserRequest;
 use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::GetApiDetails;
@@ -72,6 +73,7 @@ pub struct AppState {
     pub selected_theme: Option<String>,
     pub fetched_episode: Option<EpisodeMetadataResponse>,
     pub selected_episode_id: Option<i32>,
+    pub add_user_request: Option<AddUserRequest>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

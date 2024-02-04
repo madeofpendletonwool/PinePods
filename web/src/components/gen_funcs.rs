@@ -6,6 +6,15 @@ use crate::requests::login_requests::use_check_authentication;
 use yew::prelude::*;
 use yewdux::prelude::Dispatch;
 use crate::components::context::AppState;
+use base64::engine::Config;
+use base64::Engine;
+use argon2::{
+    password_hash::{
+        rand_core::OsRng,
+        PasswordHash, PasswordHasher, SaltString
+    },
+    Argon2
+};
 
 
 pub fn format_date(date_str: &str) -> String {
@@ -65,4 +74,30 @@ pub fn check_auth(effect_dispatch: Dispatch<AppState>) {
             || ()
         }
     );
+}
+
+
+
+pub fn encode_password(password: &str) -> Result<(String, String), argon2::password_hash::Error> {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2.hash_password(password.as_bytes(), &salt)?.to_string();
+    Ok((password_hash, salt.as_str().to_string()))
+}
+
+pub fn validate_user_input(username: &str, password: &str, email: &str) -> Result<(), String> {
+    if username.len() < 4 {
+        return Err("Username must be at least 4 characters long".to_string());
+    }
+
+    if password.len() < 6 {
+        return Err("Password must be at least 6 characters long".to_string());
+    }
+
+    let email_regex = regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap();
+    if !email_regex.is_match(email) {
+        return Err("Email is not in a valid format".to_string());
+    }
+
+    Ok(())
 }

@@ -1208,6 +1208,21 @@ async def api_add_user(cnx=Depends(get_database_connection), api_key: str = Depe
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
+@app.post("/api/data/add_login_user")
+async def api_add_user(cnx=Depends(get_database_connection),
+                       user_values: UserValues = Body(...)):
+    self_service = database_functions.functions.check_self_service(cnx)
+    if self_service:
+        # Convert base64 strings back to bytes
+        hash_pw_bytes = base64.b64decode(user_values.hash_pw)
+        salt_bytes = base64.b64decode(user_values.salt)
+        database_functions.functions.add_user(cnx, (
+            user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
+        return {"detail": "User added."}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
 
 @app.put("/api/data/set_fullname/{user_id}")
 async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends(get_database_connection),

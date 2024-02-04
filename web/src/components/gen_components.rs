@@ -14,7 +14,7 @@ use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_s
 use crate::requests::search_pods::SearchEpisode;
 use std::any::Any;
 
-#[derive(Properties, PartialEq)]
+#[derive(Properties, PartialEq, Clone)]
 pub struct ErrorMessageProps {
     pub error_message: UseStateHandle<Option<String>>,
 }

@@ -49,7 +49,7 @@ impl Reducer<AppState> for AppStateMsg {
     }
 }
 
-enum UIStateMsg {
+pub enum UIStateMsg {
     ClearErrorMessage,
     ClearInfoMessage,
 }

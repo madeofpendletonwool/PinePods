@@ -506,6 +506,19 @@ def return_pods(database_type, cnx, user_id):
 
     return rows
 
+def check_self_service(cnx):
+    cursor = cnx.cursor()
+    query = "SELECT SelfServiceUser FROM AppSettings"
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result and result[0] == 1:
+        return True
+    elif result and result[0] == 0:
+        return False
+    else:
+        return None
 
 def refresh_pods(cnx):
     import concurrent.futures

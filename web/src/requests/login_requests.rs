@@ -5,6 +5,8 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::{Dispatch};
 // Add imports for your context modules
 use crate::components::context::{AppState};
+use anyhow::Error;
+use web_sys::console;
 
 #[derive(Serialize)]
 pub struct LoginRequest {
@@ -274,3 +276,39 @@ pub(crate) fn use_check_authentication(dispatch: Dispatch<AppState>, current_rou
     // Note: No need to set states here as they are assumed to be already set
 }
 
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct AddUserRequest {
+    pub(crate) fullname: String,
+    pub(crate) new_username: String,
+    pub(crate) email: String,
+    pub(crate) hash_pw: String,
+    pub(crate) salt: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct AddUserResponse {
+    detail: String,
+}
+
+pub async fn call_add_login_user(server_name: String, add_user: &Option<AddUserRequest>) -> Result<bool, Error> {
+    let server = server_name.clone();
+    let url = format!("{}/api/data/add_login_user", server);
+    let add_user_req = add_user.as_ref().unwrap();
+
+    // Serialize `add_user` into JSON
+    let json_body = serde_json::to_string(&add_user_req)?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .body(json_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<AddUserResponse>().await?;
+        Ok(response_body.detail == "Success")
+    } else {
+        console::log_1(&format!("Error adding user: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error adding user: {}", response.status_text())))
+    }
+}

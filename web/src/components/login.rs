@@ -1,15 +1,19 @@
+use std::hash;
+
 use yew::prelude::*;
 use web_sys::{console, window};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests;
-use crate::components::context::{AppState};
+use crate::components::context::{AppState, UIState};
 // use yewdux::prelude::*;
 use md5;
 use yewdux::{dispatch, prelude::*};
-use crate::requests::login_requests::use_check_authentication;
+use crate::requests::login_requests::{AddUserRequest, call_add_login_user};
 use crate::requests::setting_reqs::call_get_theme;
+use crate::components::gen_funcs::{encode_password, validate_user_input};
+use crate::components::episodes_layout::UIStateMsg;
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -26,30 +30,30 @@ pub fn login() -> Html {
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
+    let new_username = use_state(|| "".to_string());
+    let new_password = use_state(|| "".to_string());
+    let email = use_state(|| "".to_string());
+    let fullname = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
-    let error_message = use_state(|| None::<String>);
-    let error_message_clone = error_message.clone();
+    let (state, _dispatch) = use_store::<UIState>();
+    let error_message = app_state.error_message.clone();
 
     {
-        let error_message = error_message.clone();
+        let ui_dispatch = _dispatch.clone();
         use_effect(move || {
             let window = window().unwrap();
             let document = window.document().unwrap();
 
-            let error_message_clone = error_message.clone();
             let closure = Closure::wrap(Box::new(move |_event: Event| {
-                error_message_clone.set(None);
+                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
+                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
             }) as Box<dyn Fn(_)>);
 
-            if error_message.is_some() {
-                document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
-            }
+            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
 
             // Return cleanup function
             move || {
-                if error_message.is_some() {
-                    document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
-                }
+                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
                 closure.forget(); // Prevents the closure from being dropped
             }
         });
@@ -164,11 +168,12 @@ pub fn login() -> Html {
     let history_clone = history.clone();
     let dispatch_clone = dispatch.clone();
     let on_submit = {
+        let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
             let history = history_clone.clone();
             let username = username.clone();
             let password = password.clone();
-            let dispatch = dispatch.clone();
+            let dispatch = submit_dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match login_requests::login_new_server("http://localhost:8040".to_string(), username.to_string(), password.to_string()).await {
                     Ok((user_details, login_request, server_details)) => {
@@ -193,6 +198,215 @@ pub fn login() -> Html {
             });
         })
     };
+    // Define the state of the application
+    #[derive(Clone, PartialEq)]
+    enum PageState {
+        Default,
+        CreateUser,
+        ForgotPassword,
+    }
+
+    // Define the initial state
+    let page_state = use_state(|| PageState::Default);
+
+    // Define the callback functions
+    let on_create_new_user = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::CreateUser);
+        })
+    };
+    let on_forgot_password = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::ForgotPassword);
+        })
+    };
+
+    // Define the callback function for closing the modal
+    let on_close_modal = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Default);
+        })
+    };
+
+    let on_fullname_change = {
+        let fullname = fullname.clone();
+        Callback::from(move |e: InputEvent| {
+            fullname.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };
+    
+    let on_username_change = {
+        let new_username = new_username.clone();
+        Callback::from(move |e: InputEvent| {
+            new_username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };
+    
+    let on_email_change = {
+        let email = email.clone();
+        Callback::from(move |e: InputEvent| {
+            email.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };
+    
+    let on_password_change = {
+        let new_password = new_password.clone();
+        Callback::from(move |e: InputEvent| {
+            new_password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };    
+
+    let on_create_submit = {
+        let page_state = page_state.clone();
+        let fullname = fullname.clone().to_string();
+        let new_username = new_username.clone().to_string();
+        let email = email.clone().to_string();
+        let new_password = new_password.clone();
+        let add_user_request = app_state.add_user_request.clone();
+        let error_message_create = error_message.clone();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            let dispatch = dispatch_wasm.clone();
+            let new_username = new_username.clone();
+            let new_password = new_password.clone();
+            let fullname = fullname.clone();
+            let hash_pw = String::new();
+            let salt = String::new();
+            let email = email.clone();
+            let page_state = page_state.clone();
+            let error_message_clone = error_message_create.clone();
+            e.prevent_default();
+            page_state.set(PageState::Default);
+            // Hash the password and generate a salt
+            match validate_user_input(&new_username, &new_password, &email) {
+                Ok(_) => {
+                    match encode_password(&new_password) {
+                        Ok((hash_pw, salt)) => {
+                                        // Set the state
+                            dispatch.reduce_mut(move |state| {
+                                state.add_user_request = Some(AddUserRequest {
+                                    fullname,
+                                    new_username,
+                                    email,
+                                    hash_pw,
+                                    salt,
+                                });
+                            });
+
+                            let add_user_request = add_user_request.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                match call_add_login_user("http://localhost:8040".to_string(), &add_user_request).await {
+                                    Ok(success) => {
+                                        if success {
+                                            console::log_1(&"User added successfully".into());
+                                            page_state.set(PageState::Default);
+                                        } else {
+                                            console::log_1(&"Error adding user".into());
+                                            page_state.set(PageState::Default);
+                                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
+
+                                        }
+                                    }
+                                    Err(e) => {
+                                        console::log_1(&format!("Error: {}", e).into());
+                                        page_state.set(PageState::Default);
+                                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
+                                    }
+                                }
+                            });
+                        },
+                        Err(e) => {
+                            // Handle the error here
+                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Password Encoding Failed {:?}", e)));
+                        }
+                    }
+                },
+                Err(e) => {
+                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Invalid User Input {:?}", e)));
+                    return;
+                }
+            }
+
+
+        })
+    };
+    // Define the modal components
+    let create_user_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"Create New User"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <div>
+                                <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
+                                <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div>
+                                <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
+                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div>
+                                <label for="fullname" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Full Name"}</label>
+                                <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div>
+                                <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
+                                <input oninput={on_email_change} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <button type="submit" onclick={on_create_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    let forgot_password_modal = html! {
+        <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"Forgot Password"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <div>
+                                <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
+                                <input type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div>
+                                <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
+                                <input type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <button type="submit" class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
     let history_clone = history.clone();
     let on_different_server = {
         Callback::from(move |_| {
@@ -201,60 +415,77 @@ pub fn login() -> Html {
         })
     };
 
+
     html! {
-        <div class="flex justify-center items-center h-screen">
-            <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg">
-                <div class="flex justify-center items-center">
-                    <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
-                </div>
-                <h1 class="text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                <p class="text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
-                <input
-                    type="text"
-                    placeholder="Username"
-                    class="p-2 border border-gray-300 rounded"
-                    oninput={on_username_change}
-                />
-                <input
-                    type="password"
-                    placeholder="Password"
-                    class="p-2 border border-gray-300 rounded"
-                    oninput={on_password_change}
-                />
-                // Forgot Password and Create New User buttons
-                <div class="flex justify-between">
-                    <button
-                        class="text-sm text-blue-500 hover:text-blue-700"
-                    >
-                        {"Forgot Password?"}
-                    </button>
-                    <button
-                        class="text-sm text-blue-500 hover:text-blue-700"
-                    >
-                        {"Create New User"}
-                    </button>
-                </div>
-                <button
-                    onclick={on_submit}
-                    class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                    {"Login"}
-                </button>
-            </div>
-            // Conditional rendering for the error banner
-            if let Some(error) = (*error_message).as_ref() {
-                <div class="error-snackbar">{ error }</div>
+        <>
+        {
+            match *page_state {
+            PageState::CreateUser => create_user_modal,
+            PageState::ForgotPassword => forgot_password_modal,
+            _ => html! {},
             }
-            // Connect to Different Server button at bottom right
-            <div class="fixed bottom-4 right-4">
-                <button
-                    onclick={on_different_server}
-                    class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-                >
-                    {"Connect to Different Server"}
-                </button>
+        }
+        
+            <div class="flex justify-center items-center h-screen">
+                <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg">
+                    <div class="flex justify-center items-center">
+                        <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
+                    </div>
+                    <h1 class="text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
+                    <p class="text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                    <input
+                        type="text"
+                        placeholder="Username"
+                        class="p-2 border border-gray-300 rounded"
+                        oninput={on_username_change}
+                    />
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        class="p-2 border border-gray-300 rounded"
+                        oninput={on_password_change}
+                    />
+                    // Forgot Password and Create New User buttons
+                    <div class="flex justify-between">
+                        <button
+                            onclick={on_forgot_password}
+                            class="text-sm text-blue-500 hover:text-blue-700"
+                        >
+                            {"Forgot Password?"}
+                        </button>
+                        <button
+                            onclick={on_create_new_user}
+                            class="text-sm text-blue-500 hover:text-blue-700"
+                        >
+                            {"Create New User"}
+                        </button>
+                    </div>
+                    <button
+                        onclick={on_submit}
+                        class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                        {"Login"}
+                    </button>
+                </div>
+                {
+                    if app_state.error_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
+                        html! { <div class="error-snackbar">{ &app_state.error_message }</div> }
+                    } else {
+                        html! {}
+                    }
+                }
+                // Connect to Different Server button at bottom right
+                <div class="fixed bottom-4 right-4">
+                    <button
+                        onclick={on_different_server}
+                        class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                    >
+                        {"Connect to Different Server"}
+                    </button>
+                </div>
             </div>
-        </div>
+        
+        </>
     }
 
 }
