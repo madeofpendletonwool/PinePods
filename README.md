@@ -3,7 +3,7 @@
 </p>
 
 # WARNING - This app is currently undergoing a huge redevelopment phase. 
-#### I mention this because I notice people forking it occationally. If you're going to fork it I would reccomend forking the rebase-to-depends branch. The web version it being redeveloped in rust and yew to make it way more responsive and fast. Development is well underway for the new version and there will be a cursory version of that merged into main soon. The flet version of the app is being removed due to way to many limitations that it presents. 
+#### I mention this because I notice people forking it occationally. If you're going to fork it I would reccomend forking the rebase-to-depends branch. The web version it being redeveloped in rust and yew to make it way more responsive and fast. Development is well underway for the new version and there will be a cursory version of that merged into main soon. The flet version of the app is being removed due to way too many limitations that it presents. 
 
 # PinePods :evergreen_tree:
 
