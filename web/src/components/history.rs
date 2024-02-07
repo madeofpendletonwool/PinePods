@@ -2,12 +2,11 @@ use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, empty_message, episode_item};
-use crate::requests::pod_req;
+use crate::requests::pod_req::{self, HistoryDataResponse};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
-use crate::requests::pod_req::HistoryEpisodesResponse;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::check_auth;
@@ -60,7 +59,7 @@ pub fn history() -> Html {
                             Ok(fetched_episodes) => {
                                 web_sys::console::log_1(&format!("Fetched episodes: {:?}", fetched_episodes).into()); // Log fetched episodes
                                 dispatch.reduce_mut(move |state| {
-                                    state.episode_history = Some(HistoryEpisodesResponse { episodes: fetched_episodes });
+                                    state.episode_history = Some(HistoryDataResponse { data: fetched_episodes });
                                 });
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
@@ -82,15 +81,18 @@ pub fn history() -> Html {
             <Search_nav />
             {
                 if let Some(history_eps) = state.episode_history.clone() {
-                    web_sys::console::log_1(&format!("Episode History in state: {:?}", history_eps).into()); // Log queued episodes in state
-                    if history_eps.episodes.is_empty() {
-                        // Render "No Queued Episodes Found" if episodes list is empty
+                    web_sys::console::log_1(&format!("Episode History in state: {:?}", history_eps).into());
+                    if history_eps.data.is_empty() {
                         empty_message(
                             "No Episode History Found",
                             "This one is pretty straightforward. You should get listening! Podcasts you listen to will show up here!."
                         )
                     } else {
-                        history_eps.episodes.into_iter().map(|episode| {
+                        history_eps.data.into_iter().map(|episode| {
+                            let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+                            let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+                            let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+                    
                             let state_ep = state.clone();
                             let id_string = &episode.EpisodeID.to_string();
     
@@ -134,6 +136,9 @@ pub fn history() -> Html {
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();
+                            let user_id_play = user_id.clone();
+                            let server_name_play = server_name.clone();
+                            let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
                             let play_state = state_ep.clone();
 
@@ -143,6 +148,9 @@ pub fn history() -> Html {
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
+                                api_key_play.unwrap().unwrap(),
+                                user_id_play.unwrap(),
+                                server_name_play.unwrap(),
                                 audio_dispatch.clone(),
                             );
  

@@ -23,6 +23,7 @@ pub struct LoginServerRequest {
     pub(crate) api_key: Option<String>
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct LoginResponse {
     status: String,
@@ -79,21 +80,21 @@ pub struct GetUserResponse {
     // ... other fields ...
 }
 
-pub async fn call_get_user(server_name: &str, api_key: &str) -> Result<GetUserResponse, anyhow::Error> {
-    let url = format!("{}/api/data/get_user", server_name);
+// pub async fn call_get_user(server_name: &str, api_key: &str) -> Result<GetUserResponse, anyhow::Error> {
+//     let url = format!("{}/api/data/get_user", server_name);
 
-    let response = Request::get(&url)
-        .header("Api-Key", api_key)
-        .send()
-        .await?;
+//     let response = Request::get(&url)
+//         .header("Api-Key", api_key)
+//         .send()
+//         .await?;
 
-    if response.ok() {
-        let user_data: GetUserResponse = response.json().await?;
-        Ok(user_data)
-    } else {
-        Err(anyhow::Error::msg("Failed to get user data"))
-    }
-}
+//     if response.ok() {
+//         let user_data: GetUserResponse = response.json().await?;
+//         Ok(user_data)
+//     } else {
+//         Err(anyhow::Error::msg("Failed to get user data"))
+//     }
+// }
 
 #[derive(Deserialize, Debug)]
 pub struct GetUserIdResponse {
@@ -170,22 +171,6 @@ pub async fn call_get_api_config(server_name: &str, api_key: &str) -> Result<cra
         Ok(server_data)
     } else {
         Err(anyhow::Error::msg("Failed to get user information"))
-    }
-}
-
-pub async fn login(username: String, password: String) -> Result<LoginResponse, anyhow::Error> {
-    let login_request = LoginRequest { username, password };
-    let response = Request::post("/api/login")
-        .json(&login_request)?
-        .send()
-        .await?;
-
-    if response.ok() {
-        let login_response = response.json::<LoginResponse>().await?;
-        Ok(login_response)
-    } else {
-        // Handle HTTP error
-        Err(anyhow::Error::msg("Login failed"))
     }
 }
 

@@ -204,15 +204,22 @@ pub fn search(props: &SearchProps) -> Html {
                                     let episode_artwork_for_closure = episode_artwork_clone.clone();
                                     let episode_duration_for_closure = episode_duration_clone.clone();
                                     let episode_id_for_closure = episode_id_clone.clone();
+
+                                    let user_id_play = user_id.clone();
+                                    let server_name_play = server_name.clone();
+                                    let api_key_play = api_key.clone();
                                     let audio_dispatch = audio_dispatch.clone();
                                     let play_state = state_ep.clone();
-
+        
                                     let on_play_click = on_play_click(
                                         episode_url_for_closure.clone(),
                                         episode_title_for_closure.clone(),
                                         episode_artwork_for_closure.clone(),
                                         episode_duration_for_closure.clone(),
                                         episode_id_for_closure.clone(),
+                                        api_key_play.unwrap().unwrap(),
+                                        user_id_play.unwrap(),
+                                        server_name_play.unwrap(),
                                         audio_dispatch.clone(),
                                     );
 

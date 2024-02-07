@@ -13,29 +13,29 @@ fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
     Ok(value != 0)
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-pub struct VerifyResponse {
-    status: String,
-    retrieved_id: i32,
-}
-pub async fn call_verify_pinepods(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_user", server_name);
-    let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
+// #[derive(Deserialize, Debug, PartialEq, Clone)]
+// pub struct VerifyResponse {
+//     status: String,
+//     retrieved_id: i32,
+// }
+// pub async fn call_verify_pinepods(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
+//     let url = format!("{}/api/data/get_user", server_name);
+//     let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
 
-    let response = Request::get(&url)
-        .header("Api-Key", api_key_ref)
-        .header("Content-Type", "application/json")
-        .send()
-        .await?;
+//     let response = Request::get(&url)
+//         .header("Api-Key", api_key_ref)
+//         .header("Content-Type", "application/json")
+//         .send()
+//         .await?;
 
-    if response.ok() {
-        let response_body = response.json::<VerifyResponse>().await?;
-        Ok(response_body.status)
-    } else {
-        console::log_1(&format!("Error adding podcast: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error logging in. Is the server reachable? Server Response: {}", response.status_text())))
-    }
-}
+//     if response.ok() {
+//         let response_body = response.json::<VerifyResponse>().await?;
+//         Ok(response_body.status)
+//     } else {
+//         console::log_1(&format!("Error adding podcast: {}", response.status_text()).into());
+//         Err(Error::msg(format!("Error logging in. Is the server reachable? Server Response: {}", response.status_text())))
+//     }
+// }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
@@ -47,7 +47,7 @@ pub struct Episode {
     pub EpisodeArtwork: String,
     pub EpisodeURL: String,
     pub EpisodeDuration: i32,
-    pub ListenDuration: Option<String>,
+    pub ListenDuration: Option<i32>,
     pub EpisodeID: i32,
 }
 
@@ -436,9 +436,7 @@ pub struct HistoryEpisode {
     pub EpisodeDescription: String,
     pub EpisodeArtwork: String,
     pub EpisodeURL: String,
-    pub QueuePosition: i32,
     pub EpisodeDuration: i32,
-    pub QueueDate: String,
     pub ListenDuration: Option<i32>,
     pub EpisodeID: i32,
 }
@@ -481,20 +479,20 @@ pub async fn call_get_user_history(
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HistoryAddRequest {
-    pub episode_id: String,
+    pub episode_id: i32,
     pub episode_pos: f32,
     pub user_id: i32,
 }
 
 pub async fn call_add_history(
     server_name: &String, 
-    api_key: &Option<String>, 
+    api_key: String, 
     request_data: &HistoryAddRequest
 ) -> Result<(), Error> {
     let url = format!("{}/api/data/record_podcast_history", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key.as_str();
 
     let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 

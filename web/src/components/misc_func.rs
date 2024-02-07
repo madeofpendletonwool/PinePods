@@ -1,6 +1,7 @@
 use web_sys::{window, HtmlElement};
 use wasm_bindgen::JsCast;
 
+#[allow(dead_code)]
 pub fn change_theme(theme: &str) {
     if let Some(window) = window() {
         if let Some(document) = window.document() {

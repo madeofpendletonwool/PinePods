@@ -1,21 +1,16 @@
-use std::cell::Cell;
-use std::rc::Rc;
 use gloo_timers::callback::Interval;
 use yew::{Callback, function_component, Html, html};
 use yew::prelude::*;
-// use yew_router::history::{History};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use web_sys::{HtmlAudioElement, HtmlInputElement, window};
 use std::string::String;
-use gloo_utils::document;
 use wasm_bindgen::closure::Closure;
+use wasm_bindgen_futures::spawn_local;
 use wasm_bindgen::JsCast;
-use std::cell::RefCell;
 use web_sys::HtmlElement;
-use std::borrow::Borrow;
-use web_sys::Element;
+use crate::requests::pod_req::{call_add_history, HistoryAddRequest};
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
@@ -364,8 +359,12 @@ pub fn on_play_click(
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
     episode_id_for_closure: i32,
+    api_key: String,
+    user_id: i32,
+    server_name: String,
     audio_dispatch: Dispatch<UIState>,
 ) -> Callback<MouseEvent> {
+    
     fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
         let dur_string = duration_convert.to_string();
         let parts: Vec<&str> = dur_string.split(':').collect();
@@ -383,15 +382,53 @@ pub fn on_play_click(
 
 
     Callback::from(move |_: MouseEvent| {
+        
+        // let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        // let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        // let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
         let episode_duration_for_closure = episode_duration_for_closure.clone();
         let episode_id_for_closure = episode_id_for_closure.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
         web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
         let audio_dispatch = audio_dispatch.clone();
     
         let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
+        let episode_pos: f32 = 0.0;
+        let episode_id = episode_id_for_closure.clone();
+        web_sys::console::log_1(&"Adding hisotry".to_string().into());
+        let history_add = HistoryAddRequest{
+            episode_id,
+            episode_pos,
+            user_id,
+        };
+        
+        // let add_history_future = call_add_history(
+        //     &server_name,
+        //     api_key, 
+        //     &history_add
+        // );
+    
+        spawn_local(async move {
+            let add_history_future = call_add_history(
+                &server_name,
+                api_key, 
+                &history_add
+            );
+            match add_history_future.await {
+                Ok(_) => {
+                    web_sys::console::log_1(&"Successfully added history".into());
+                },
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
+                }
+            }
+        });
         audio_dispatch.reduce_mut(move |audio_state| {
             audio_state.audio_playing = Some(true);
             audio_state.currently_playing = Some(AudioPlayerProps {

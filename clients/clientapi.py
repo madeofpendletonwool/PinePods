@@ -739,7 +739,7 @@ async def api_increment_played(user_id: int, cnx=Depends(get_database_connection
 
 
 class RecordHistoryData(BaseModel):
-    episode_title: str
+    episode_id: int
     user_id: int
     episode_pos: float
 
@@ -759,7 +759,7 @@ async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_da
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_podcast_history(cnx, data.episode_title, data.user_id, data.episode_pos)
+        database_functions.functions.record_podcast_history(cnx, data.episode_id, data.user_id, data.episode_pos)
         return {"detail": "Podcast history recorded."}
     else:
         raise HTTPException(status_code=403,
@@ -1100,7 +1100,7 @@ async def api_user_history(user_id: int, cnx=Depends(get_database_connection),
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
         history = database_functions.functions.user_history(cnx, user_id)
-        return {"history": history}
+        return {"data": history}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return history for yourself!")
@@ -1194,19 +1194,14 @@ class UserValues(BaseModel):
 
 
 @app.post("/api/data/add_user")
-async def api_add_user(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
+async def api_add_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                        user_values: UserValues = Body(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if is_valid_key:
-        # Convert base64 strings back to bytes
-        hash_pw_bytes = base64.b64decode(user_values.hash_pw)
-        salt_bytes = base64.b64decode(user_values.salt)
-        database_functions.functions.add_user(cnx, (
-            user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
-        return {"detail": "User added."}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+    # Convert base64 strings back to bytes
+    hash_pw_bytes = base64.b64decode(user_values.hash_pw)
+    salt_bytes = base64.b64decode(user_values.salt)
+    database_functions.functions.add_user(cnx, (
+        user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
+    return {"detail": "User added."}
 
 @app.post("/api/data/add_login_user")
 async def api_add_user(cnx=Depends(get_database_connection),

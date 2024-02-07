@@ -91,6 +91,10 @@ pub fn saved() -> Html {
                         )
                     } else {
                         saved_eps.episodes.into_iter().map(|episode| {
+                            let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+                            let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+                            let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+                    
                             let state_ep = state.clone();
                             let id_string = &episode.EpisodeID.to_string();
     
@@ -134,6 +138,9 @@ pub fn saved() -> Html {
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();
+                            let user_id_play = user_id.clone();
+                            let server_name_play = server_name.clone();
+                            let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
                             let play_state = state_ep.clone();
 
@@ -143,6 +150,9 @@ pub fn saved() -> Html {
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
+                                api_key_play.unwrap().unwrap(),
+                                user_id_play.unwrap(),
+                                server_name_play.unwrap(),
                                 audio_dispatch.clone(),
                             );
  

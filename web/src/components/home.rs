@@ -80,6 +80,10 @@ pub fn home() -> Html {
                 if let Some(recent_eps) = state.server_feed_results.clone() {
                     let int_recent_eps = recent_eps.clone();
                     if let Some(episodes) = int_recent_eps.episodes {
+                        let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+                        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+                        let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+                
                         if episodes.is_empty() {
                             // Render "No Recent Episodes Found" if episodes list is empty
                             empty_message(
@@ -131,6 +135,9 @@ pub fn home() -> Html {
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();
+                            let user_id_play = user_id.clone();
+                            let server_name_play = server_name.clone();
+                            let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
                             let play_state = state_ep.clone();
 
@@ -140,6 +147,9 @@ pub fn home() -> Html {
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
+                                api_key_play.unwrap().unwrap(),
+                                user_id_play.unwrap(),
+                                server_name_play.unwrap(),
                                 audio_dispatch.clone(),
                             );
  

@@ -4,13 +4,8 @@ use super::gen_components::Search_nav;
 use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, SettingsState, UIState};
-use crate::components::audio::{AudioPlayerProps, AudioPlayer};
+use crate::components::audio::{AudioPlayer};
 use crate::components::setting_components;
-
-pub enum Msg {
-    ToggleUserSettings,
-    ToggleAdminSettings,
-}
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct TabProps {
@@ -54,7 +49,6 @@ pub struct AccordionItemProps {
 pub enum AccordionItemPosition {
     First,
     Middle,
-    Last,
 }
 
 #[function_component(AccordionItem)]
@@ -68,7 +62,6 @@ pub fn accordion_item(AccordionItemProps { title, content, position }: &Accordio
     let (border_class, button_class) = match position {
         AccordionItemPosition::First => ("rounded-t-xl", "border-b-0"),
         AccordionItemPosition::Middle => ("", "border-b-0"),
-        AccordionItemPosition::Last => ("rounded-b-xl", ""),
     };
 
     let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };

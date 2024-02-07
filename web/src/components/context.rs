@@ -8,8 +8,9 @@ use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::GetApiDetails;
 use crate::components::audio::AudioPlayerProps;
+use crate::requests::setting_reqs::AddSettingsUserRequest;
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
-use crate::requests::pod_req::{Episode, RecentEps, Podcast, PodcastResponse, QueuedEpisodesResponse, SavedEpisodesResponse, HistoryEpisodesResponse, EpisodeDownloadResponse, EpisodeMetadataResponse};
+use crate::requests::pod_req::{Episode, RecentEps, Podcast, PodcastResponse, QueuedEpisodesResponse, SavedEpisodesResponse, HistoryDataResponse, EpisodeDownloadResponse, EpisodeMetadataResponse};
 use yewdux::prelude::*;
 use web_sys::HtmlAudioElement;
 use serde_json::{json, from_str};
@@ -17,6 +18,7 @@ use web_sys::window;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::stat_reqs::UserStats;
 
+#[allow(dead_code)]
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
@@ -59,7 +61,7 @@ pub struct AppState {
     pub server_feed_results: Option<RecentEps>,
     pub queued_episodes: Option<QueuedEpisodesResponse>,
     pub saved_episodes: Option<SavedEpisodesResponse>,
-    pub episode_history: Option<HistoryEpisodesResponse>,
+    pub episode_history: Option<HistoryDataResponse>,
     pub downloaded_episodes: Option<EpisodeDownloadResponse>,
     pub search_episodes: Option<SearchResponse>,
     pub episodes: Option<Episode>,
@@ -74,6 +76,7 @@ pub struct AppState {
     pub fetched_episode: Option<EpisodeMetadataResponse>,
     pub selected_episode_id: Option<i32>,
     pub add_user_request: Option<AddUserRequest>,
+    pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
@@ -172,15 +175,15 @@ impl AppState {
         }
     }
 
-    pub fn load_app_state(key: &str) -> Option<AppState> {
-        if let Some(window) = window() {
-            if let Some(local_storage) = window.local_storage().unwrap() {
-                if let Ok(Some(serialized_state)) = local_storage.get_item(key) {
-                    return AppState::deserialize(&serialized_state).ok();
-                }
-            }
-        }
-        None
-    }
+    // pub fn load_app_state(key: &str) -> Option<AppState> {
+    //     if let Some(window) = window() {
+    //         if let Some(local_storage) = window.local_storage().unwrap() {
+    //             if let Ok(Some(serialized_state)) = local_storage.get_item(key) {
+    //                 return AppState::deserialize(&serialized_state).ok();
+    //             }
+    //         }
+    //     }
+    //     None
+    // }
 
 }

@@ -638,48 +638,37 @@ def refresh_single_pod(cnx, podcast_id):
     # cnx.close()
 
 
-def record_podcast_history(cnx, episode_title, user_id, episode_pos):
+def record_podcast_history(cnx, episode_id, user_id, episode_pos):
     from datetime import datetime
     cursor = cnx.cursor()
 
-    # Check if the episode exists in the database
-    check_episode = ("SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s")
-    cursor.execute(check_episode, (episode_title,))
+    # Check if a record already exists in the UserEpisodeHistory table
+    check_history = ("SELECT * FROM UserEpisodeHistory "
+                        "WHERE EpisodeID = %s AND UserID = %s")
+    cursor.execute(check_history, (episode_id, user_id))
     result = cursor.fetchone()
 
     if result is not None:
-        episode_id = result[0]
+        # Update the existing record
+        update_history = ("UPDATE UserEpisodeHistory "
+                            "SET ListenDuration = %s, ListenDate = %s "
+                            "WHERE UserEpisodeHistoryID = %s")
+        progress_id = result[0]
+        new_listen_duration = round(episode_pos)
+        now = datetime.now()
+        values = (new_listen_duration, now, progress_id)
+        cursor.execute(update_history, values)
+    else:
+        # Add a new record
+        add_history = ("INSERT INTO UserEpisodeHistory "
+                        "(EpisodeID, UserID, ListenDuration, ListenDate) "
+                        "VALUES (%s, %s, %s, %s)")
+        new_listen_duration = round(episode_pos)
+        now = datetime.now()
+        values = (episode_id, user_id, new_listen_duration, now)
+        cursor.execute(add_history, values)
 
-        # Fetch the result of the first query before executing the second query
-        cursor.fetchone()
-
-        # Check if a record already exists in the UserEpisodeHistory table
-        check_history = ("SELECT * FROM UserEpisodeHistory "
-                         "WHERE EpisodeID = %s AND UserID = %s")
-        cursor.execute(check_history, (episode_id, user_id))
-        result = cursor.fetchone()
-
-        if result is not None:
-            # Update the existing record
-            update_history = ("UPDATE UserEpisodeHistory "
-                              "SET ListenDuration = %s, ListenDate = %s "
-                              "WHERE UserEpisodeHistoryID = %s")
-            progress_id = result[0]
-            new_listen_duration = round(episode_pos)
-            now = datetime.now()
-            values = (new_listen_duration, now, progress_id)
-            cursor.execute(update_history, values)
-        else:
-            # Add a new record
-            add_history = ("INSERT INTO UserEpisodeHistory "
-                           "(EpisodeID, UserID, ListenDuration, ListenDate) "
-                           "VALUES (%s, %s, %s, %s)")
-            new_listen_duration = round(episode_pos)
-            now = datetime.now()
-            values = (episode_id, user_id, new_listen_duration, now)
-            cursor.execute(add_history, values)
-
-        cnx.commit()
+    cnx.commit()
 
     cursor.close()
     # cnx.close()
@@ -743,7 +732,7 @@ def get_user_details_id(cnx, user_id):
 
 def user_history(cnx, user_id):
     cursor = cnx.cursor()
-    query = ("SELECT UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
+    query = ("SELECT Episodes.EpisodeID, UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
              "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
              "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
              "FROM UserEpisodeHistory "

@@ -1,5 +1,3 @@
-use std::hash;
-
 use yew::prelude::*;
 use web_sys::{console, window};
 use wasm_bindgen::closure::Closure;
@@ -9,7 +7,7 @@ use crate::requests::login_requests;
 use crate::components::context::{AppState, UIState};
 // use yewdux::prelude::*;
 use md5;
-use yewdux::{dispatch, prelude::*};
+use yewdux::prelude::*;
 use crate::requests::login_requests::{AddUserRequest, call_add_login_user};
 use crate::requests::setting_reqs::call_get_theme;
 use crate::components::gen_funcs::{encode_password, validate_user_input};
@@ -216,12 +214,6 @@ pub fn login() -> Html {
             page_state.set(PageState::CreateUser);
         })
     };
-    let on_forgot_password = {
-        let page_state = page_state.clone();
-        Callback::from(move |_| {
-            page_state.set(PageState::ForgotPassword);
-        })
-    };
 
     // Define the callback function for closing the modal
     let on_close_modal = {
@@ -374,6 +366,14 @@ pub fn login() -> Html {
             </div>
         </div>
     };
+
+    let on_forgot_password = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::ForgotPassword);
+        })
+    };
+
 
     let forgot_password_modal = html! {
         <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
