@@ -8,7 +8,7 @@ use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::GetApiDetails;
 use crate::components::audio::AudioPlayerProps;
-use crate::requests::setting_reqs::AddSettingsUserRequest;
+use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
 use crate::requests::pod_req::{Episode, RecentEps, Podcast, PodcastResponse, QueuedEpisodesResponse, SavedEpisodesResponse, HistoryDataResponse, EpisodeDownloadResponse, EpisodeMetadataResponse};
 use yewdux::prelude::*;
@@ -77,6 +77,7 @@ pub struct AppState {
     pub selected_episode_id: Option<i32>,
     pub add_user_request: Option<AddUserRequest>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
+    pub edit_settings_user_reqeust: Option<EditSettingsUserRequest>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
