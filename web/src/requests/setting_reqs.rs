@@ -331,7 +331,7 @@ pub struct DownloadStatusResponse {
     download_status: bool,
 }
 
-pub async fn call_download_status(server_name: String, api_key: String) -> Result<DownloadStatusResponse, Error> {
+pub async fn call_download_status(server_name: String, api_key: String) -> Result<bool, Error> {
     let url = format!("{}/api/data/download_status", server_name);
 
     let response = Request::get(&url)
@@ -341,7 +341,7 @@ pub async fn call_download_status(server_name: String, api_key: String) -> Resul
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DownloadStatusResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response.json::<bool>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
         Err(Error::msg(format!("Error fetching download status: {}", response.status_text())))
     }
@@ -349,10 +349,10 @@ pub async fn call_download_status(server_name: String, api_key: String) -> Resul
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct SelfServiceStatusResponse {
-    status: String,
+    status: bool,
 }
 
-pub async fn call_self_service_status(server_name: String, api_key: String) -> Result<SelfServiceStatusResponse, Error> {
+pub async fn call_self_service_status(server_name: String, api_key: String) -> Result<bool, Error> {
     let url = format!("{}/api/data/self_service_status", server_name);
 
     let response = Request::get(&url)
@@ -362,8 +362,86 @@ pub async fn call_self_service_status(server_name: String, api_key: String) -> R
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<SelfServiceStatusResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        let status_response: SelfServiceStatusResponse = response.json().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))?;
+        Ok(status_response.status)
     } else {
         Err(Error::msg(format!("Error fetching self service status: {}", response.status_text())))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EmailSettingsRequest {
+    email_settings: EmailSettings,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EmailSettings {
+    pub(crate) server_name: String,
+    pub(crate) server_port: u16,
+    pub(crate) from_email: String,
+    pub(crate) send_mode: String,
+    pub(crate) encryption: String,
+    pub(crate) auth_required: bool,
+    pub(crate) email_username: String,
+    pub(crate) email_password: String,
+}
+
+pub async fn call_save_email_settings(
+    server_name: String,
+    api_key: String,
+    email_settings: EmailSettings,
+) -> Result<DetailResponse, Error> {
+    let url = format!("{}/api/data/save_email_settings", server_name);
+    let body = EmailSettingsRequest {
+        email_settings,
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error saving email settings: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct EmailSettingsResponse {
+    pub(crate) EmailSettingsID: i32,
+    pub(crate) Server_Name: String,
+    pub(crate) Server_Port: i32,
+    pub(crate) From_Email: String,
+    pub(crate) Send_Mode: String,
+    pub(crate) Encryption: String,
+    pub(crate) Auth_Required: i32,
+    pub(crate) Username: String,
+    pub(crate) Password: String,
+}
+
+pub async fn call_get_email_settings(
+    server_name: String,
+    api_key: String,
+) -> Result<EmailSettingsResponse, Error> {
+    let url = format!("{}/api/data/get_email_settings", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(|e| Error::msg(format!("Error getting response text: {}", e)))?;
+        println!("Response text: {}", response_text);
+        serde_json::from_str::<EmailSettingsResponse>(&response_text).map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error retrieving email settings: {}", response.status_text())))
     }
 }
