@@ -248,3 +248,122 @@ pub struct EditSettingsUserRequest {
 pub struct EditUserResponse {
     detail: String,
 }
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct SuccessResponse {
+    success: bool,
+}
+
+pub async fn call_enable_disable_guest(server_name: String, api_key: String) -> Result<SuccessResponse, Error> {
+    let url = format!("{}/api/data/enable_disable_guest", server_name);
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<SuccessResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error enabling/disabling guest access: {}", response.status_text())))
+    }
+}
+
+pub async fn call_enable_disable_downloads(server_name: String, api_key: String) -> Result<SuccessResponse, Error> {
+    let url = format!("{}/api/data/enable_disable_downloads", server_name);
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<SuccessResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error enabling/disabling downloads: {}", response.status_text())))
+    }
+}
+
+pub async fn call_enable_disable_self_service(server_name: String, api_key: String) -> Result<SuccessResponse, Error> {
+    let url = format!("{}/api/data/enable_disable_self_service", server_name);
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<SuccessResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error enabling/disabling self service: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct GuestStatusResponse {
+    pub guest_status: bool,
+}
+
+pub async fn call_guest_status(server_name: String, api_key: String) -> Result<bool, Error> {
+    let url = format!("{}/api/data/guest_status", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<bool>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error fetching guest status: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct DownloadStatusResponse {
+    download_status: bool,
+}
+
+pub async fn call_download_status(server_name: String, api_key: String) -> Result<DownloadStatusResponse, Error> {
+    let url = format!("{}/api/data/download_status", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<DownloadStatusResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error fetching download status: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct SelfServiceStatusResponse {
+    status: String,
+}
+
+pub async fn call_self_service_status(server_name: String, api_key: String) -> Result<SelfServiceStatusResponse, Error> {
+    let url = format!("{}/api/data/self_service_status", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<SelfServiceStatusResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error fetching self service status: {}", response.status_text())))
+    }
+}
