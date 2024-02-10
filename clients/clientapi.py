@@ -1417,6 +1417,74 @@ async def api_create_api_key(user_id: int = Body(..., embed=True), cnx=Depends(g
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
+class SendTestEmailValues(BaseModel):
+    server_name: str
+    server_port: str
+    from_email: str
+    send_mode: str
+    encryption: str
+    auth_required: bool
+    email_username: str
+    email_password: str
+    to_email: str
+    message: str  # Add this line
+
+
+@app.post("/api/data/send_test_email")
+async def api_send_email(payload: SendTestEmailValues, cnx=Depends(get_database_connection),
+                         api_key: str = Depends(get_api_key_from_header)):
+    import smtplib, ssl
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Prepare the email message
+    msg = MIMEMultipart()
+    msg['From'] = payload.from_email
+    msg['To'] = payload.to_email  # Assuming you're sending the test email to yourself
+    msg['Subject'] = "Test Email"
+    msg.attach(MIMEText(payload.message, 'plain'))
+
+    try:
+        if payload.encryption == "SSL/TLS":
+            server = smtplib.SMTP_SSL(payload.server_name, payload.server_port)
+        else:
+            server = smtplib.SMTP(payload.server_name, payload.server_port)
+            if payload.encryption == "StartTLS":
+                server.starttls()
+
+        # Login if auth required
+        if payload.auth_required:
+            server.login(payload.email_username, payload.email_password)
+
+        # Send the email
+        server.send_message(msg)
+        server.quit()
+        return {"email_status": "sent"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+class SendEmailValues(BaseModel):
+    to_email: str
+    message_subject: str
+    message: str  # Add this line
+
+@app.post("/api/data/send_email")
+async def api_send_email(payload: SendEmailValues, cnx=Depends(get_database_connection),
+                         api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if is_valid_key:
+        try:
+            yag = yagmail.SMTP(user=payload.email_username, password=payload.email_password, host=payload.server_name, port=payload.server_port)
+            yag.send(to=payload.to_email, subject="Test Email", contents="This is a test email.")
+            return {"email_status": "sent"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
 
 @app.post("/api/data/save_email_settings")
 async def api_save_email_settings(email_settings: dict = Body(..., embed=True),

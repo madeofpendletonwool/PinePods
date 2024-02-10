@@ -24,6 +24,7 @@ pub fn user_settings() -> Html {
     let fullname = use_state(|| "".to_string());
     let admin_status = use_state(|| false);
     let error_message = state.error_message.clone();
+    web_sys::console::log_1(&"testlog".into());
     // Define the type of user in the Vec
     let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 

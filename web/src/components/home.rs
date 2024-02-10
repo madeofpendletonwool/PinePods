@@ -24,6 +24,7 @@ pub fn home() -> Html {
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let dropdown_open = use_state(|| false);
+    web_sys::console::log_1(&"testlog".into());
 
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();

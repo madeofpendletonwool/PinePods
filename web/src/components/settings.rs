@@ -6,6 +6,10 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, SettingsState, UIState};
 use crate::components::audio::{AudioPlayer};
 use crate::components::setting_components;
+use crate::components::episodes_layout::UIStateMsg;
+use wasm_bindgen::closure::Closure;
+use web_sys::window;
+use wasm_bindgen::JsCast;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct TabProps {
@@ -92,14 +96,34 @@ pub fn accordion_item(AccordionItemProps { title, content, position }: &Accordio
 }
 
 
-
-
 #[function_component(Settings)]
 pub fn settings() -> Html {
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let (settings_state, settings_dispatch) = use_store::<SettingsState>();
     let active_tab = use_state(|| "user");
+    let error_message = audio_state.error_message.clone();
+
+    {
+        let ui_dispatch = audio_dispatch.clone();
+        use_effect(move || {
+            let window = window().unwrap();
+            let document = window.document().unwrap();
+
+            let closure = Closure::wrap(Box::new(move |_event: Event| {
+                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
+                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
+            }) as Box<dyn Fn(_)>);
+
+            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+
+            // Return cleanup function
+            move || {
+                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                closure.forget(); // Prevents the closure from being dropped
+            }
+        });
+    }
 
     let on_user_tab_click = {
         let active_tab = active_tab.clone();
@@ -150,6 +174,12 @@ pub fn settings() -> Html {
             }
             </div>
         </div>
+        // {
+            // Conditional rendering for the error banner
+            if let Some(error) = (error_message) {
+                <div class="error-snackbar">{ error }</div>
+            }
+        // }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }

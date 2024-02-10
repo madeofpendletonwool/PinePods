@@ -91,6 +91,7 @@ pub async fn call_get_user_info(server_name: String, api_key: String) -> Result<
     if response.ok() {
         let response_text = response.text().await?;
         console::log_1(&format!("Response body: {}", response_text).into());
+        console::log_1(&"Button clicked1".into());
         let users: Vec<SettingsUser> = serde_json::from_str(&response_text)?;
         Ok(users)
     } else {
@@ -377,7 +378,7 @@ pub struct EmailSettingsRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EmailSettings {
     pub(crate) server_name: String,
-    pub(crate) server_port: u16,
+    pub(crate) server_port: String,
     pub(crate) from_email: String,
     pub(crate) send_mode: String,
     pub(crate) encryption: String,
@@ -408,6 +409,91 @@ pub async fn call_save_email_settings(
         response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
         Err(Error::msg(format!("Error saving email settings: {}", response.status_text())))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TestEmailSettings {
+    pub(crate) server_name: String,
+    pub(crate) server_port: String,
+    pub(crate) from_email: String,
+    pub(crate) send_mode: String,
+    pub(crate) encryption: String,
+    pub(crate) auth_required: bool,
+    pub(crate) email_username: String,
+    pub(crate) email_password: String,
+    pub(crate) to_email: String,
+    pub(crate) message: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct EmailSendResponse {
+    email_status: String,
+}
+
+
+use serde_json::to_string;
+
+pub async fn call_send_test_email(
+    server_name: String,
+    api_key: String,
+    email_settings: TestEmailSettings,
+) -> Result<EmailSendResponse, Error> {
+    let url = format!("{}/api/data/send_test_email", server_name);
+    let body = serde_json::to_string(&email_settings)?;
+
+    // Serialize and log the email settings
+    match to_string(&body) {
+        Ok(serialized_body) => {
+            console::log_1(&format!("Sending test email with settings: {}", serialized_body).into());
+        },
+        Err(e) => {
+            console::log_1(&format!("Error serializing email settings: {}", e).into());
+        }
+    }
+
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(&body)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<EmailSendResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error sending email: {}", response.status_text())))
+    }
+}
+
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SendEmailSettings {
+    pub(crate) message: String,
+}
+
+pub async fn call_send_email(
+    server_name: String,
+    api_key: String,
+    email_settings: SendEmailSettings,
+) -> Result<DetailResponse, Error> {
+    let url = format!("{}/api/data/send_email", server_name);
+    let body = email_settings;
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error sending email: {}", response.status_text())))
     }
 }
 
