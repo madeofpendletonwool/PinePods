@@ -18,6 +18,7 @@ pub fn user_settings() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let new_username = use_state(|| "".to_string());
     let new_password = use_state(|| "".to_string());
     let email = use_state(|| "".to_string());
@@ -113,9 +114,11 @@ pub fn user_settings() -> Html {
             admin_status.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().checked());
         })
     };
-
+    let user_submit_state = state.clone();
     let on_create_submit = {
         let page_state = page_state.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
         let fullname = fullname.clone().to_string();
         let new_username = new_username.clone().to_string();
         let email = email.clone().to_string();
@@ -124,6 +127,8 @@ pub fn user_settings() -> Html {
         let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
+            let call_server = server_name.clone();
+            let call_api = api_key.clone();
             let dispatch = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
@@ -139,39 +144,35 @@ pub fn user_settings() -> Html {
             match validate_user_input(&new_username, &new_password, &email) {
                 Ok(_) => {
                     match encode_password(&new_password) {
-                        Ok((hash_pw, salt)) => {
-                                        // Set the state
-                            dispatch.reduce_mut(move |state| {
-                                state.add_settings_user_reqeust = Some(AddSettingsUserRequest {
-                                    fullname,
-                                    new_username,
-                                    email,
-                                    hash_pw,
-                                    salt,
-                                });
-                            });
+                        Ok((hash_pw)) => {
+                            let user_settings = AddSettingsUserRequest {
+                                fullname: fullname.clone(),
+                                username: new_username.clone(),
+                                email: email.clone(),
+                                hash_pw: hash_pw.clone(),
+                            };
+                            // You no longer need to clone here, just directly use the constructed request
+                            let add_user_request = Some(user_settings);
 
-                            let add_user_request = add_user_request.clone();
+                            // Directly pass `add_user_request` which is an Option and owned by the block
                             wasm_bindgen_futures::spawn_local(async move {
-                                match call_add_user("http://localhost:8040".to_string(), &add_user_request).await {
-                                    Ok(success) => {
-                                        if success {
+                                // Directly use the contained value if `add_user_request` is `Some`
+                                if let Some(add_user_request_value) = add_user_request {
+                                    match call_add_user(call_server.unwrap(), call_api.unwrap().unwrap(), &add_user_request_value).await {
+                                        Ok(success) => {
+                                            // Handle success here, perhaps log or set some state
                                             console::log_1(&"User added successfully".into());
-                                            page_state.set(PageState::Hidden);
-                                        } else {
-                                            console::log_1(&"Error adding user".into());
-                                            page_state.set(PageState::Hidden);
-                                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
-
-                                        }
+                                        },
+                                        Err(e) => {
+                                            // Handle error here, perhaps log or set some error state
+                                            console::log_1(&format!("Error adding user: {:?}", e).into());
+                                        },
                                     }
-                                    Err(e) => {
-                                        console::log_1(&format!("Error: {}", e).into());
-                                        page_state.set(PageState::Hidden);
-                                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
-                                    }
+                                } else {
+                                    console::log_1(&"add_user_request is None, cannot proceed with adding user.".into());
                                 }
                             });
+                            
                         },
                         Err(e) => {
                             // Handle the error here
@@ -212,16 +213,16 @@ pub fn user_settings() -> Html {
                                 <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <div>
-                                <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
-                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
-                            </div>
-                            <div>
                                 <label for="fullname" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Full Name"}</label>
                                 <input oninput={on_fullname_change.clone()} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <div>
                                 <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
                                 <input oninput={on_email_change.clone()} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div>
+                                <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
+                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <button type="submit" onclick={on_create_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>
@@ -243,6 +244,8 @@ pub fn user_settings() -> Html {
         let page_state = page_state.clone();
         let fullname = fullname.clone().to_string();
         let new_username = new_username.clone().to_string();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
         let admin_status = *admin_status.clone();
@@ -250,6 +253,8 @@ pub fn user_settings() -> Html {
         let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
+            let call_server = server_name.clone();
+            let call_api = api_key.clone();
             let dispatch = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
@@ -266,7 +271,7 @@ pub fn user_settings() -> Html {
             match validate_user_input(&new_username, &new_password, &email) {
                 Ok(_) => {
                     match encode_password(&new_password) {
-                        Ok((hash_pw, salt)) => {
+                        Ok((hash_pw)) => {
                                         // Set the state
                             dispatch.reduce_mut(move |state| {
                                 state.edit_settings_user_reqeust = Some(EditSettingsUserRequest {
@@ -274,14 +279,13 @@ pub fn user_settings() -> Html {
                                     new_username,
                                     email,
                                     hash_pw,
-                                    salt,
                                     admin_status
                                 });
                             });
 
                             let add_user_request = add_user_request.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                match call_add_user("http://localhost:8040".to_string(), &add_user_request).await {
+                                match call_add_user(call_server.clone().unwrap(), call_api.clone().unwrap().unwrap(), &add_user_request.unwrap()).await {
                                     Ok(success) => {
                                         if success {
                                             console::log_1(&"User added successfully".into());
@@ -343,16 +347,16 @@ pub fn user_settings() -> Html {
                                 <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <div>
-                                <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
-                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
-                            </div>
-                            <div>
                                 <label for="fullname" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Full Name"}</label>
                                 <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <div>
                                 <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
                                 <input oninput={on_email_change} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div>
+                                <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
+                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <button type="submit" onclick={on_edit_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>

@@ -103,10 +103,9 @@ pub async fn call_get_user_info(server_name: String, api_key: String) -> Result<
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 pub struct AddSettingsUserRequest {
     pub(crate) fullname: String,
-    pub(crate) new_username: String,
+    pub(crate) username: String,
     pub(crate) email: String,
     pub(crate) hash_pw: String,
-    pub(crate) salt: String,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -115,15 +114,21 @@ pub struct AddUserResponse {
 }
 
 
-pub async fn call_add_user(server_name: String, add_user: &Option<AddSettingsUserRequest>) -> Result<bool, Error> {
+pub async fn call_add_user(server_name: String, api_key: String, add_user: &AddSettingsUserRequest) -> Result<bool, Error> {
     let server = server_name.clone();
     let url = format!("{}/api/data/add_user", server);
-    let add_user_req = add_user.as_ref().unwrap();
+    console::log_1(&format!("Request URL: {}", url.clone()).into());
+    console::log_1(&format!("API Key: {}", api_key.clone()).into());
+
+
+    // let add_user_req = add_user.as_ref().unwrap();
 
     // Serialize `add_user` into JSON
-    let json_body = serde_json::to_string(&add_user_req)?;
+    let json_body = serde_json::to_string(&add_user)?;
+    console::log_1(&format!("Request Body: {}", json_body.clone()).into());
 
     let response = Request::post(&url)
+        .header("Api-Key", &api_key)
         .header("Content-Type", "application/json")
         .body(json_body)?
         .send()
@@ -241,7 +246,6 @@ pub struct EditSettingsUserRequest {
     pub(crate) new_username: String,
     pub(crate) email: String,
     pub(crate) hash_pw: String,
-    pub(crate) salt: String,
     pub(crate) admin_status: bool,
 }
 
@@ -471,6 +475,8 @@ pub async fn call_send_test_email(
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SendEmailSettings {
+    pub(crate) to_email: String,
+    pub(crate) subject : String,
     pub(crate) message: String,
 }
 
@@ -478,7 +484,7 @@ pub async fn call_send_email(
     server_name: String,
     api_key: String,
     email_settings: SendEmailSettings,
-) -> Result<DetailResponse, Error> {
+) -> Result<EmailSendResponse, Error> {
     let url = format!("{}/api/data/send_email", server_name);
     let body = email_settings;
 
@@ -491,7 +497,7 @@ pub async fn call_send_email(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response.json::<EmailSendResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
         Err(Error::msg(format!("Error sending email: {}", response.status_text())))
     }

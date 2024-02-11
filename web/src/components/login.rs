@@ -276,7 +276,7 @@ pub fn login() -> Html {
             match validate_user_input(&new_username, &new_password, &email) {
                 Ok(_) => {
                     match encode_password(&new_password) {
-                        Ok((hash_pw, salt)) => {
+                        Ok((hash_pw)) => {
                                         // Set the state
                             dispatch.reduce_mut(move |state| {
                                 state.add_user_request = Some(AddUserRequest {
@@ -284,7 +284,6 @@ pub fn login() -> Html {
                                     new_username,
                                     email,
                                     hash_pw,
-                                    salt,
                                 });
                             });
 

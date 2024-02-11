@@ -140,7 +140,11 @@ pub async fn call_get_user_details(server_name: &str, api_key: &str, user_id: &i
         .await?;
 
     if response.ok() {
-        let user_data: crate::requests::login_requests::GetUserDetails = response.json().await?;
+        let body_str = response.text().await?;
+        let body_c = body_str.clone();
+        console::log_1(&body_c.into()); // Print the response body
+
+        let user_data: crate::requests::login_requests::GetUserDetails = serde_json::from_str(&body_str)?;
         Ok(user_data)
     } else {
         Err(anyhow::Error::msg("Failed to get user information"))
@@ -267,7 +271,6 @@ pub struct AddUserRequest {
     pub(crate) new_username: String,
     pub(crate) email: String,
     pub(crate) hash_pw: String,
-    pub(crate) salt: String,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]

@@ -4,6 +4,10 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path,
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -1189,30 +1193,25 @@ class UserValues(BaseModel):
     fullname: str
     username: str
     email: str
-    hash_pw: bytes
-    salt: bytes
+    hash_pw: str
+
 
 
 @app.post("/api/data/add_user")
 async def api_add_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                        user_values: UserValues = Body(...)):
-    # Convert base64 strings back to bytes
-    hash_pw_bytes = base64.b64decode(user_values.hash_pw)
-    salt_bytes = base64.b64decode(user_values.salt)
     database_functions.functions.add_user(cnx, (
-        user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
+        user_values.fullname, user_values.username, user_values.email, user_values.hash_pw))
     return {"detail": "User added."}
+
 
 @app.post("/api/data/add_login_user")
 async def api_add_user(cnx=Depends(get_database_connection),
                        user_values: UserValues = Body(...)):
     self_service = database_functions.functions.check_self_service(cnx)
     if self_service:
-        # Convert base64 strings back to bytes
-        hash_pw_bytes = base64.b64decode(user_values.hash_pw)
-        salt_bytes = base64.b64decode(user_values.salt)
         database_functions.functions.add_user(cnx, (
-            user_values.fullname, user_values.username, user_values.email, hash_pw_bytes, salt_bytes))
+            user_values.fullname, user_values.username, user_values.email, user_values.hash_pw))
         return {"detail": "User added."}
     else:
         raise HTTPException(status_code=403,
@@ -1245,7 +1244,7 @@ async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends
 
 
 @app.put("/api/data/set_password/{user_id}")
-async def api_set_password(user_id: int, salt: str = Body(...), hash_pw: str = Body(...),
+async def api_set_password(user_id: int, hash_pw: str = Body(...),
                            cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
 
@@ -1263,10 +1262,10 @@ async def api_set_password(user_id: int, salt: str = Body(...), hash_pw: str = B
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
     try:
-        database_functions.functions.set_password(cnx, user_id, salt, hash_pw)
+        database_functions.functions.set_password(cnx, user_id, hash_pw)
         return {"detail": "Password updated."}
-    except:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User not found. Error: {str(e)}")
 
 
 @app.put("/api/data/user/set_email")
@@ -1430,60 +1429,93 @@ class SendTestEmailValues(BaseModel):
     message: str  # Add this line
 
 
-@app.post("/api/data/send_test_email")
-async def api_send_email(payload: SendTestEmailValues, cnx=Depends(get_database_connection),
-                         api_key: str = Depends(get_api_key_from_header)):
-    import smtplib, ssl
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
-
-    # Prepare the email message
+def send_email(payload: SendTestEmailValues):
+    # This is now a synchronous function
     msg = MIMEMultipart()
     msg['From'] = payload.from_email
-    msg['To'] = payload.to_email  # Assuming you're sending the test email to yourself
+    msg['To'] = payload.to_email
     msg['Subject'] = "Test Email"
     msg.attach(MIMEText(payload.message, 'plain'))
-
     try:
+        port = int(payload.server_port)  # Convert port to int here
         if payload.encryption == "SSL/TLS":
-            server = smtplib.SMTP_SSL(payload.server_name, payload.server_port)
+            server = smtplib.SMTP_SSL(payload.server_name, port)
         else:
-            server = smtplib.SMTP(payload.server_name, payload.server_port)
+            server = smtplib.SMTP(payload.server_name, port)
             if payload.encryption == "StartTLS":
                 server.starttls()
-
-        # Login if auth required
         if payload.auth_required:
             server.login(payload.email_username, payload.email_password)
-
-        # Send the email
         server.send_message(msg)
         server.quit()
-        return {"email_status": "sent"}
+        return "Email sent successfully"
+    except Exception as e:
+        raise Exception(f"Failed to send email: {str(e)}")
+
+@app.post("/api/data/send_test_email")
+async def api_send_email(payload: SendTestEmailValues, is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    # Assume API key validation logic here
+    try:
+        # Use run_in_threadpool to execute the synchronous send_email function
+        send_status = await run_in_threadpool(send_email, payload)
+        return {"email_status": send_status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 class SendEmailValues(BaseModel):
     to_email: str
-    message_subject: str
+    subject : str
     message: str  # Add this line
+
+def send_email_with_settings(email_values, payload: SendEmailValues):
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = email_values['From_Email']
+        msg['To'] = payload.to_email
+        msg['Subject'] = payload.subject
+        msg.attach(MIMEText(payload.message, 'plain'))
+        
+        try:
+            port = int(email_values['Server_Port'])
+            if email_values['Encryption'] == "SSL/TLS":
+                server = smtplib.SMTP_SSL(email_values['Server_Name'], port)
+            elif email_values['Encryption'] == "StartTLS":
+                server = smtplib.SMTP(email_values['Server_Name'], port)
+                server.starttls()
+            else:
+                server = smtplib.SMTP(email_values['Server_Name'], port)
+                
+            if email_values['Auth_Required']:
+                server.login(email_values['Username'], email_values['Password'])
+                
+            server.send_message(msg)
+            server.quit()
+            return "Email sent successfully"
+        except Exception as e:
+            raise Exception(f"Failed to send email: {str(e)}")
+    except Exception as e:
+        logging.error(f"Failed to send email: {str(e)}", exc_info=True)
+        raise Exception(f"Failed to send email: {str(e)}")
+
+
 
 @app.post("/api/data/send_email")
 async def api_send_email(payload: SendEmailValues, cnx=Depends(get_database_connection),
                          api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if is_valid_key:
-        try:
-            yag = yagmail.SMTP(user=payload.email_username, password=payload.email_password, host=payload.server_name, port=payload.server_port)
-            yag.send(to=payload.to_email, subject="Test Email", contents="This is a test email.")
-            return {"email_status": "sent"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    else:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    email_values = database_functions.functions.get_email_settings(cnx)
+    if not email_values:
+        raise HTTPException(status_code=404, detail="Email settings not found")
+
+    try:
+        send_status = await run_in_threadpool(send_email_with_settings, email_values, payload)
+        return {"email_status": send_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 
 @app.post("/api/data/save_email_settings")
@@ -1564,7 +1596,6 @@ class ResetCodePayload(BaseModel):
 
 class ResetPasswordPayload(BaseModel):
     email: str
-    salt: str
     hashed_pw: str
 
 
@@ -1604,8 +1635,7 @@ async def api_reset_password_verify_route(payload: ResetPasswordPayload, cnx=Dep
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.salt,
-                                                                 payload.hashed_pw)
+    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.hashed_pw)
     if message is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": message}

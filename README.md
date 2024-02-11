@@ -314,29 +314,35 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
+### Pre-Rust Revamp Release
+- [ ] Downloads Page
+- [ ] Revamp Readme
+- [ ] Allow for episodes to be played without being added
+- [ ] User Settings
+- [ ] Require Re-Login if API Key that's saved doesn't work
+- [ ] Finalize User Stats recording and display
+- [ ] MFA Logins - Github integration and cloud logins (OAuth)
+- [ ] Verify Funtional Mobile Version
+- [ ] Verify All Button Interaction throughout
+- [ ] Update All Depends
+- [ ] Fix all CORs Issues - Verify behind Reverse Proxy
+- [ ] Ensure Queue Functions after episode End
+- [ ] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
+- [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
+
+### After Rust Revamp
+
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
-- [ ] Allow for episodes to be played without being added
 - [ ] Implement Postgresql as option for database backend
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client
 - [ ] How-to guides on doing things in the app
-- [ ] Full Screen Currently Playing Page (Mostly implemented. There's a couple bugs on the web version to fix)
-- [ ] playing page not currently removing playing bar on bottom in app version
 - [ ] Stream podcasts to other devices running pinepods over local network
-- [ ] *Pinepods Firewood*. A light client used as a remote streaming device. No frontend
-- [ ] Mass delete options not appearing in web version. This seems to be a bug. It works totally fine in client app
-- [ ] Implement page views for poddisplays that have over 30 episodes
+- [ ] *Pinepods Firewood*. A light client used as a remote streaming device. No GUI
 - [ ] Add highlight to indicate which page you're on
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Make scrolling screens roll up more. So that the currently playing episode doesn't get in the way of your view
-- [ ] Rotating currently playing
 - [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
-- [ ] Playlist Priority - Similar to podcast republic
-- [ ] Customizable login screens
-- [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] MFA Logins - Github integration and cloud logins (OAuth)
-- [ ] Implement Browser edition sign in retention (This will require some kind of OAuth provider. Part of OAuth and MFA) 
+- [ ] Retain Previously Used Theme for Login Screens
 - [ ] Flatpak Client
 - [ ] Snap Client
 - [ ] Mobile Apps
@@ -344,7 +350,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
   - [ ] Android App
   - [ ] IOS App
   - [ ] Packaging and automation
-- [ ] Add verification before deleting user
+
+### Future Nice-to-haves
+- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
+- [ ] Playlist Priority - Similar to podcast republic
+- [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
 - [ ] Sharing System
 

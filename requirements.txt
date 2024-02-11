@@ -19,7 +19,7 @@ websockets
 pytz
 psycopg2-binary
 mygpoclient
-bcrypt
 feedparser
 pyotp
 appdirs
+argon2_cffi

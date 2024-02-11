@@ -3,7 +3,7 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use yew::platform::spawn_local;
 use web_sys::console;
-use crate::requests::setting_reqs::{call_get_email_settings, EmailSettingsResponse, call_save_email_settings, call_send_test_email, TestEmailSettings};
+use crate::requests::setting_reqs::{call_get_email_settings, EmailSettingsResponse, SendEmailSettings, call_save_email_settings, call_send_test_email, call_send_email, TestEmailSettings};
 use std::ops::Deref;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
@@ -17,6 +17,7 @@ pub fn email_settings() -> Html {
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let user_email = state.user_details.as_ref().map(|ud| ud.Email.clone());
     let error_message = audio_state.error_message.clone();
+    let info_message = audio_state.info_message.clone();
     let auth_required = use_state(|| false);
     web_sys::console::log_1(&"testlog".into());
 
@@ -142,6 +143,7 @@ pub fn email_settings() -> Html {
         let password_ref = password_ref.clone();
         let auth_required = auth_required.clone();
         let page_state = page_state.clone();
+        let audio_dispatch_call = audio_dispatch.clone();
         Callback::from(move |_: MouseEvent| {
             let server_name = edit_server_name.clone();
             let server_name_ref = server_name_ref.clone().deref().to_string();
@@ -171,6 +173,7 @@ pub fn email_settings() -> Html {
             };
             spawn_local(future);
             page_state.set(PageState::Hidden);
+            audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Email Settings Saved!".to_string()));
         })
     };
 
@@ -191,7 +194,7 @@ pub fn email_settings() -> Html {
                         </button>
                     </div>
                     <p class="text-m font-semibold text-gray-900 dark:text-white">
-                    {"Once you verify you recieved it. Click Save below to save the email settings to the server."}
+                    {"Once you verify you recieved it click Save below to save the email settings to the server."}
                     </p>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
@@ -203,7 +206,10 @@ pub fn email_settings() -> Html {
             </div>
         </div>
     };
-
+    let audio_send_test = audio_dispatch.clone();
+    let dispatch_send_test = dispatch.clone();
+    let api_test = api_key.clone();
+    let submit_email = user_email.clone();
     let on_submit = {
         let server_name_ref_clone = server_name_ref.clone();
         let server_name = server_name.clone();
@@ -217,8 +223,8 @@ pub fn email_settings() -> Html {
         let page_state = page_state_edit.clone();
         Callback::from(move |_: MouseEvent| {
             console::log_1(&"Button clicked".into());
-            let dispatch_callback = dispatch.clone();
-            let audio_dispatch_call = audio_dispatch.clone();
+            let dispatch_callback = dispatch_send_test.clone();
+            let audio_dispatch_call = audio_send_test.clone();
             let server_name = server_name.clone();
             let server_name_ref = server_name_ref.clone().deref().to_string();
             let server_port = server_port_ref.clone().deref().to_string();
@@ -238,11 +244,11 @@ pub fn email_settings() -> Html {
                 auth_required: auth_required,
                 email_username: email_username.clone(),
                 email_password: email_password.clone(),
-                to_email: user_email.clone().unwrap().unwrap(),
+                to_email: submit_email.clone().unwrap().unwrap(),
                 message: "If you got this email Pinepods emailing works! Be sure to verify your settings to confirm!".to_string(),
             };
             let server_name = server_name.clone();
-            let api_key = api_key.clone().unwrap_or_default();
+            let api_key = api_test.clone().unwrap_or_default();
             let future = async move {
                 let send_email_result = call_send_test_email(server_name.clone().unwrap(), api_key.clone().unwrap(), test_email_settings.clone()).await;
                 match send_email_result {
@@ -266,6 +272,44 @@ pub fn email_settings() -> Html {
                     }
                 }
             };
+            spawn_local(future);
+        })
+    };
+
+    let on_test_email_send = {
+        let server_name = server_name.clone(); // Assuming you have these values in your component's state
+        let api_key = api_key.clone(); // Assuming you have API key in your component's state
+        let dispatch_callback = dispatch.clone(); // If you're using a global state management solution like YewDux
+        let audio_dispatch_call = audio_dispatch.clone();
+        
+        Callback::from(move |_: MouseEvent| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone().unwrap_or_default(); // Ensure server_name has a default value if it's an Option
+            let dispatch_callback = dispatch_callback.clone();
+            let info_message = info_message.clone();
+            let audio_dispatch_call = audio_dispatch_call.clone();
+            // Setting up the email settings. Adjust these values as necessary.
+            let email_settings = SendEmailSettings {
+                to_email: user_email.clone().unwrap().unwrap(), // This should be dynamically set based on your application's needs
+                subject: "Test Pinepods Email".to_string(),
+                message: "This is an email from Pinepods. If you got this your email setup works!".to_string(),
+            };
+    
+            let future = async move {
+                match call_send_email(server_name, api_key.unwrap_or_default().unwrap(), email_settings).await {
+                    Ok(_) => {
+                        audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Email sent successfully!".to_string()));
+                        console::log_1(&"Email sent successfully!".into());
+                        // Optionally, use dispatch_callback to update a global state or trigger other app-wide effects
+                    },
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error: {}", e)));
+                        // Handle the error, e.g., by updating a state with the error message
+                    }
+                }
+            };
+    
             spawn_local(future);
         })
     };
@@ -298,7 +342,7 @@ pub fn email_settings() -> Html {
                     {
                         // Access the state directly without let binding inside html!
                         html! {
-                            <tr class="table-row border-b cursor-pointer">
+                            <tr class="table-row border-b">
                                 <td class="px-6 py-4">{ format!("{}:{}", &email_values.Server_Name, &email_values.Server_Port) }</td>
                                 <td class="px-6 py-4">{ &email_values.From_Email }</td>
                                 <td class="px-6 py-4">{ &email_values.Send_Mode }</td>
@@ -312,7 +356,7 @@ pub fn email_settings() -> Html {
                 </table>
             </div>
             <div class="flex mt-4">
-            <button class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2" type="button">
+            <button onclick={on_test_email_send} class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2" type="button">
                 {"Test Current Settings"}
             </button>
         

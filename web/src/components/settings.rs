@@ -103,6 +103,7 @@ pub fn settings() -> Html {
     let (settings_state, settings_dispatch) = use_store::<SettingsState>();
     let active_tab = use_state(|| "user");
     let error_message = audio_state.error_message.clone();
+    let info_message = audio_state.info_message.clone();
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -174,12 +175,13 @@ pub fn settings() -> Html {
             }
             </div>
         </div>
-        // {
-            // Conditional rendering for the error banner
-            if let Some(error) = (error_message) {
-                <div class="error-snackbar">{ error }</div>
-            }
-        // }
+        // Conditional rendering for the error banner
+        if let Some(error) = (error_message) {
+            <div class="error-snackbar">{ error }</div>
+        }
+        if let Some(info) = (info_message) {
+            <div class="info-snackbar">{ info }</div>
+        }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }

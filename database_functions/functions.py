@@ -89,8 +89,8 @@ def add_user(cnx, user_values):
     cursor = cnx.cursor()
 
     add_user = ("INSERT INTO Users "
-                "(Fullname, Username, Email, Hashed_PW, Salt, IsAdmin) "
-                "VALUES (%s, %s, %s, %s, %s, 0)")
+                "(Fullname, Username, Email, Hashed_PW, IsAdmin) "
+                "VALUES (%s, %s, %s, %s, 0)")
 
     cursor.execute(add_user, user_values)
 
@@ -118,7 +118,7 @@ def add_admin_user(cnx, user_values):
     cursor = cnx.cursor()
 
     add_user = ("INSERT INTO Users "
-                "(Fullname, Username, Email, Hashed_PW, Salt, IsAdmin) "
+                "(Fullname, Username, Email, Hashed_PW, IsAdmin) "
                 "VALUES (%s, %s, %s, %s, %s, 1)")
 
     cursor.execute(add_user, user_values)
@@ -702,8 +702,7 @@ def get_user_details(cnx, username):
             'Fullname': result[1],
             'Username': result[2],
             'Email': result[3],
-            'Hashed_PW': result[4],
-            'Salt': result[5]
+            'Hashed_PW': result[4]
         }
     else:
         return None
@@ -723,8 +722,7 @@ def get_user_details_id(cnx, user_id):
             'Fullname': result[1],
             'Username': result[2],
             'Email': result[3],
-            'Hashed_PW': result[4],
-            'Salt': result[5]
+            'Hashed_PW': result[4]
         }
     else:
         return None
@@ -1257,13 +1255,13 @@ def set_username(cnx, user_id, new_username):
     # cnx.close()
 
 
-def set_password(cnx, user_id, salt, hash_pw):
+def set_password(cnx, user_id, hash_pw):
     cursor = cnx.cursor()
-    update_query = "UPDATE Users SET Salt=%s, Hashed_PW=%s WHERE UserID=%s"
-    cursor.execute(update_query, (salt, hash_pw, user_id))
+    update_query = "UPDATE Users SET Hashed_PW=%s WHERE UserID=%s"
+    cursor.execute(update_query, (hash_pw, user_id))
     cnx.commit()
     cursor.close()
-    # cnx.close()
+
 
 
 def set_email(cnx, user_id, new_email):
@@ -1923,21 +1921,30 @@ def reset_password_create_code(cnx, user_email, reset_code):
 def verify_password(cnx, username: str, password: str) -> bool:
     cursor = cnx.cursor()
     print('checking pw')
-    cursor.execute("SELECT Hashed_PW, Salt FROM Users WHERE Username = %s", (username,))
+    cursor.execute("SELECT Hashed_PW FROM Users WHERE Username = %s", (username,))
     result = cursor.fetchone()
     cursor.close()
 
     if not result:
-        return False  # user not found
+        return False  # User not found
 
-    hashed_password = result[0].encode('utf-8')
-    salt = result[1].encode('utf-8')
+    hashed_password = result[0]
 
-    # Hash the password with the stored salt
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
-
-    # Compare the hashed password with the stored hash
-    return password_hash == hashed_password
+    ph = PasswordHasher()
+    try:
+        # Attempt to verify the password
+        ph.verify(hashed_password, password)
+        # If verification does not raise an exception, password is correct
+        # Optionally rehash the password if needed (argon2 can detect this)
+        if ph.check_needs_rehash(hashed_password):
+            new_hash = ph.hash(password)
+            # Update database with new hash if necessary
+            # You'll need to implement this part
+            # update_hashed_password(cnx, username, new_hash)
+        return True
+    except VerifyMismatchError:
+        # If verification fails, password is incorrect
+        return False
 
 
 def verify_reset_code(cnx, user_email, reset_code):
@@ -1966,18 +1973,17 @@ def verify_reset_code(cnx, user_email, reset_code):
     return False
 
 
-def reset_password_prompt(cnx, user_email, salt, hashed_pw):
+def reset_password_prompt(cnx, user_email, hashed_pw):
     cursor = cnx.cursor()
 
     update_query = """
         UPDATE Users
         SET Hashed_PW = %s,
-            Salt = %s,
             Reset_Code = NULL,
             Reset_Expiry = NULL
         WHERE Email = %s
     """
-    params = (hashed_pw, salt, user_email)
+    params = (hashed_pw, user_email)
     cursor.execute(update_query, params)
 
     if cursor.rowcount == 0:

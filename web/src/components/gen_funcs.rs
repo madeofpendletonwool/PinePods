@@ -78,12 +78,13 @@ pub fn check_auth(effect_dispatch: Dispatch<AppState>) {
 
 
 
-pub fn encode_password(password: &str) -> Result<(String, String), argon2::password_hash::Error> {
+pub fn encode_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(password.as_bytes(), &salt)?.to_string();
-    Ok((password_hash, salt.as_str().to_string()))
+    Ok(password_hash)
 }
+
 
 pub fn validate_user_input(username: &str, password: &str, email: &str) -> Result<(), String> {
     if username.len() < 4 {

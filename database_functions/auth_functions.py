@@ -1,39 +1,24 @@
-import bcrypt
-import mysql.connector
+from passlib.context import CryptContext
 
+# Create a Passlib context for Argon2
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 def hash_password(password: str):
-    # Generate a random salt
-    salt = bcrypt.gensalt()
-
-    # Hash the password with the salt
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
-
-    # Return the salt and the hashed password
-    return salt, hashed_password
-
-# def verify_password(password: str, hashed_password: str, salt: bytes):
-#     # Hash the password with the stored salt
-#     password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
-
-#     # Compare the hashed password with the stored hash
-#     return password_hash == hashed_password
+    # Use the Passlib context to hash the password
+    hashed_password = pwd_context.hash(password)
+    return hashed_password
 
 def verify_password(cnx, username: str, password: str) -> bool:
     cursor = cnx.cursor(buffered=True)
     print('checking pw')
-    cursor.execute("SELECT Hashed_PW, Salt FROM Users WHERE Username = %s", (username,))
+    cursor.execute("SELECT Hashed_PW FROM Users WHERE Username = %s", (username,))
     result = cursor.fetchone()
     cursor.close()
 
     if not result:
-        return False  # user not found
+        return False  # User not found
 
-    hashed_password = result[0].encode('utf-8')
-    salt = result[1].encode('utf-8')
+    stored_hashed_password = result[0]
 
-    # Hash the password with the stored salt
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
-
-    # Compare the hashed password with the stored hash
-    return password_hash == hashed_password
+    # Use the Passlib context to verify the password against the stored hash
+    return pwd_context.verify(password, stored_hashed_password)

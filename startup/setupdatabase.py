@@ -4,8 +4,8 @@ import sys
 from cryptography.fernet import Fernet
 import string
 import secrets
-import bcrypt
 import logging
+from passlib.hash import argon2
 
 # Set up basic configuration for logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,12 +19,10 @@ try:
     # import Auth.Passfunctions
 
     def hash_password(password: str):
-        # Generate a random salt
-        salt = bcrypt.gensalt()
-        # Hash the password with the salt
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
-        # Return the salt and the hashed password
-        return salt, hashed_password
+        # Hash the password
+        hashed_password = argon2.hash(password)
+        # Argon2 includes the salt in the hashed output
+        return hashed_password
 
     # Retrieve database connection details from environment variables
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -53,8 +51,7 @@ try:
             Fullname TEXT,
             Username TEXT UNIQUE,
             Email VARCHAR(255),
-            Hashed_PW CHAR(60),
-            Salt CHAR(60),
+            Hashed_PW CHAR(255),
             IsAdmin TINYINT(1),
             Reset_Code TEXT,
             Reset_Expiry DATETIME,
@@ -141,8 +138,8 @@ try:
 
 
 
-    cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
-                    VALUES ('Guest User', 'guest', 'inactive', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 'Hmc7toxfqLssTdzaFGiKhigJ4VN3JeEy8VTkVHQ2FFrxAg74FrdoPRXowqgh', 0)""")
+    cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES ('Guest User', 'guest', 'inactive', '$argon2id$v=19$m=65536,t=3,p=4$nCy4H3qu2kJOJVa7dmdS5A$C5IkJLgalKIZGwAKw3V2KYKIWxzstLAmzoL41tdhDyw', 0)""")
 
     # Create the web Key
     def create_api_key(cnx, user_id=1):
@@ -187,14 +184,14 @@ try:
 
     admin_pw = os.environ.get("PASSWORD", fallback_password)
 
-    salt, hash_pw = hash_password(admin_pw)
+    # Hash the admin password
+    hashed_pw = hash_password(admin_pw)
 
-    # Parameterized INSERT statement for the admin user
-    admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, Salt, IsAdmin)
-                            VALUES (%s, %s, %s, %s, %s, %s)"""
+    admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                            VALUES (%s, %s, %s, %s, %s)"""
 
-    # Execute the INSERT statement with the admin user variables
-    cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hash_pw, salt, 1))
+    # Execute the INSERT statement without a separate salt
+    cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hashed_pw, 1))
 
 
 
