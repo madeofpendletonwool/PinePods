@@ -331,9 +331,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
 - [ ] Test Edgecases and ensure errors can't happen throughout
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
+- [ ] Client release with Tauri
 
 ### After Rust Revamp
 
+- [ ] Installable PWA
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
