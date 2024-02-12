@@ -5,7 +5,7 @@ use yew::platform::spawn_local;
 use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
-use crate::requests::setting_reqs::{APIInfo, APIInfoResponse, call_get_api_info, call_create_api_key};
+use crate::requests::setting_reqs::{APIInfo, APIInfoResponse, call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIKeyResponse, DeleteAPIRequest};
 use crate::components::gen_funcs::encode_password;
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -23,6 +23,7 @@ pub fn api_keys() -> Html {
     let api_infos = use_state(|| Vec::new());
     let api_key_modal_visible = use_state(|| false);
     let new_api_key = use_state(|| String::new());
+    let selected_api_key_id: UseStateHandle<Option<i32>> = use_state(|| None);
     // Define the type of user in the Vec
     // let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 
@@ -61,6 +62,7 @@ pub fn api_keys() -> Html {
     enum PageState {
         Hidden,
         Shown,
+        Delete,
     }
 
     // Define the initial state
@@ -77,6 +79,7 @@ pub fn api_keys() -> Html {
     };
 
     // Define the function to open the modal and request a new API key
+    let request_state = state.clone();
     let request_api_key = {
         let page_state = page_state.clone();
         let new_api_key = new_api_key.clone();
@@ -87,7 +90,7 @@ pub fn api_keys() -> Html {
         let user_id = 1; // Example user_id
         Callback::from(move |_| {
             let api_key = api_key.clone();
-            let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+            let user_id = request_state.user_details.as_ref().map(|ud| ud.UserID.clone());
             let server_name = server_name.clone();
             let page_state = page_state.clone();
             let new_api_key = new_api_key.clone();
@@ -104,6 +107,82 @@ pub fn api_keys() -> Html {
     };
     let api_key_display = (*new_api_key).clone();
 
+    // Define the function to open the modal and request a new API key
+    let delete_api_key = {
+        let page_state = page_state.clone();
+        let new_api_key = new_api_key.clone();
+        let api_key = api_key.clone();
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = server_name.clone();
+        let api_id = selected_api_key_id.clone();
+        // Assume you have user_id and api_key from context or props
+        let user_id = 1; // Example user_id
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+            let server_name = server_name.clone();
+            let page_state = page_state.clone();
+            let user_id = user_id.clone();
+            let api_id = api_id.clone();
+            let new_api_key = new_api_key.clone();
+            let delete_body = DeleteAPIRequest {
+                user_id: user_id.to_string(),
+                api_id: api_id.unwrap().to_string(),
+            };
+            wasm_bindgen_futures::spawn_local(async move {
+                let api_id = *api_id;
+                match call_delete_api_key(&server_name.unwrap(), delete_body, &api_key.unwrap().unwrap()).await {
+                    Ok(_) => {
+                        console::log_1(&"API key deleted successfully".into());
+                        // Update UI accordingly, e.g., remove the deleted API key from the list
+                    },
+                    Err(e) => console::log_1(&format!("Error deleting API key: {:?}", e).into()),
+                }
+                page_state.set(PageState::Hidden); // Hide modal after deletion
+            });
+        })
+    };
+    let api_key_display = (*new_api_key).clone();
+
+    let on_api_key_row_click = {
+        let selected_api_key_id = selected_api_key_id.clone();
+        let page_state = page_state.clone();
+        move |api_key_id: i32| Callback::from(move |_| {
+            selected_api_key_id.set(Some(api_key_id));
+            page_state.set(PageState::Delete); // Assuming you have a PageState enum value for showing the delete modal
+        })
+    };
+    
+
+
+    let delete_api_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <button onclick={close_modal.clone()} class="self-end text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"Delete Api Key"}
+                        </h3>
+                        <p class="text-m font-semibold text-gray-900 dark:text-white">
+                        {"Are you sure you want to delete this API Key? This action cannot be undone."}
+                        </p>
+                        <button onclick={delete_api_key} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                            {"Delete"}
+                        </button>
+                        <button onclick={close_modal.clone()} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                            {"Cancel"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
 
     let create_api_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
@@ -125,7 +204,7 @@ pub fn api_keys() -> Html {
                         <div class="mt-4 bg-gray-100 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
                             {api_key_display}
                         </div>
-                        <button onclick={close_modal} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                        <button onclick={close_modal.clone()} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
                             {"OK"}
                         </button>
                     </div>
@@ -142,6 +221,7 @@ pub fn api_keys() -> Html {
         {
             match *page_state {
             PageState::Shown => create_api_modal,
+            PageState::Delete => delete_api_modal,
             _ => html! {},
             }
         }
@@ -163,17 +243,21 @@ pub fn api_keys() -> Html {
                         </tr>
                     </thead>
                     <tbody>
-                        {
-                            for (*api_infos).iter().map(|api_info| html! {
-                                <tr class="table-row border-b cursor-pointer">
+                    {
+                        for (*api_infos).iter().map(|api_info| {
+                            let on_api_key_row_click = on_api_key_row_click.clone();
+                            let row_click_callback = on_api_key_row_click(api_info.APIKeyID); // Capture the APIKeyID for the callback
+                            html! {
+                                <tr class="table-row border-b cursor-pointer" onclick={row_click_callback}>
                                     <td class="px-6 py-4">{ api_info.APIKeyID }</td>
-                                    <td class="px-6 py-4">{ api_info.LastFourDigits.clone() }</td>
-                                    <td class="px-6 py-4">{ api_info.Created.clone() }</td>
-                                    <td class="px-6 py-4">{ api_info.Username.clone() }</td>
+                                    <td class="px-6 py-4">{ &api_info.LastFourDigits }</td>
+                                    <td class="px-6 py-4">{ &api_info.Created }</td>
+                                    <td class="px-6 py-4">{ &api_info.Username }</td>
                                 </tr>
-                            })
-                        }
-                    </tbody>
+                            }
+                        })
+                    }
+                </tbody>
                 </table>
             </div>
         </>

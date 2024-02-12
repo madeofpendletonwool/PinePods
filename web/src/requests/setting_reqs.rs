@@ -601,3 +601,37 @@ pub async fn call_create_api_key(
         Err(anyhow::Error::msg("Error creating API key"))
     }
 }
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct DeleteAPIKeyResponse {
+    pub detail: String,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct DeleteAPIRequest {
+    pub(crate) api_id: String,
+    pub(crate) user_id: String,
+}
+
+pub async fn call_delete_api_key(
+    server_name: &str,
+    request_body: DeleteAPIRequest,
+    api_key: &str,
+) -> Result<DeleteAPIKeyResponse, anyhow::Error> {
+    let url = format!("{}/api/data/delete_api_key", server_name);
+    let body = request_body;
+
+    let response = Request::delete(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&body)?)?
+        .send()
+        .await
+        .map_err(anyhow::Error::msg)?;
+
+    if response.ok() {
+        response.json::<DeleteAPIKeyResponse>().await.map_err(anyhow::Error::msg)
+    } else {
+        Err(anyhow::Error::msg("Error creating API key"))
+    }
+}
