@@ -329,6 +329,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Ensure Queue Functions after episode End
 - [ ] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
+- [ ] Test Edgecases and ensure errors can't happen throughout
+- [ ] Cleanup prints on server and client end. Make debugging functionality work again
 
 ### After Rust Revamp
 

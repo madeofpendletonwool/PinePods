@@ -1197,7 +1197,25 @@ def get_user_info(database_type, cnx):
     return rows
 
 
-def get_api_info(database_type, cnx):
+def get_api_info(database_type, cnx, user_id):
+    # Check if the user is an admin
+    is_admin_query = "SELECT IsAdmin FROM Users WHERE UserID = %s"
+    cursor = cnx.cursor()
+    cursor.execute(is_admin_query, (user_id,))
+    is_admin_result = cursor.fetchone()
+    cursor.close()
+
+    # Adjusting access based on the result type
+    if isinstance(is_admin_result, dict):  # Dictionary style
+        is_admin = is_admin_result.get('IsAdmin', 0)
+    elif isinstance(is_admin_result, tuple):  # Tuple style (fallback)
+        # Assuming 'IsAdmin' is the first column in the SELECT statement
+        is_admin = is_admin_result[0] if is_admin_result else 0
+    else:
+        is_admin = 0
+
+
+    # Adjust the query based on whether the user is an admin
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
@@ -1209,9 +1227,12 @@ def get_api_info(database_type, cnx):
              f"FROM APIKeys "
              f"JOIN Users ON APIKeys.UserID = Users.UserID ")
 
+    # Append condition to query if the user is not an admin
+    if not is_admin:
+        query += f"WHERE APIKeys.UserID = {user_id} "
+
     cursor.execute(query)
     rows = cursor.fetchall()
-
     cursor.close()
     # cnx.close()
 
@@ -1219,6 +1240,7 @@ def get_api_info(database_type, cnx):
         return []
 
     return rows
+
 
 
 def create_api_key(cnx, user_id):

@@ -1559,7 +1559,7 @@ async def api_delete_api_key(payload: DeleteAPIKeyHeaders, cnx=Depends(get_datab
 
         if payload.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="You are not authorized to access these remove other users api-keys.")
+                                detail="You are not authorized to access or remove other users api-keys.")
     database_functions.functions.delete_api(cnx, payload.api_id)
     return {"detail": "API key deleted."}
 
@@ -1582,7 +1582,7 @@ async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
-    api_information = database_functions.functions.get_api_info(database_type, cnx)
+    api_information = database_functions.functions.get_api_info(database_type, cnx, user_id)
     if api_information:
         return {"api_info": api_information}
     else:

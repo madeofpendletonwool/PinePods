@@ -5,7 +5,7 @@ use yew::platform::spawn_local;
 use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
-use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, EditSettingsUserRequest};
+use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_isadmin, call_set_fullname, call_set_username};
 use crate::components::gen_funcs::encode_password;
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -25,6 +25,7 @@ pub fn user_settings() -> Html {
     let fullname = use_state(|| "".to_string());
     let admin_status = use_state(|| false);
     let error_message = state.error_message.clone();
+    let selected_user_id = use_state(|| None);
     web_sys::console::log_1(&"testlog".into());
     // Define the type of user in the Vec
     let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
@@ -232,13 +233,27 @@ pub fn user_settings() -> Html {
         </div>
     };
 
-    // Define the callback functions
-    let on_edit_user = {
+    // // Define the callback functions
+    // let on_edit_user = {
+    //     let selected_user_id = selected_user_id.clone();
+    //     let page_state = page_state.clone();
+    //     Callback::from(move |_| {
+    //         page_state.set(PageState::Edit);
+    //         selected_user_id.set(Some(user_id));
+    //     })
+    // };
+
+    let on_user_row_click = {
+        let selected_user_id = selected_user_id.clone();
         let page_state = page_state.clone();
-        Callback::from(move |_| {
-            page_state.set(PageState::Edit);
-        })
+        move |select_user_id: i32| {
+            Callback::from(move |_| {
+                selected_user_id.set(Some(Some(select_user_id))); // Wrap the value in double Some()
+                page_state.set(PageState::Edit); // Move to the edit page state
+            })
+        }
     };
+    
 
     let on_edit_submit = {
         let page_state = page_state.clone();
@@ -252,6 +267,7 @@ pub fn user_settings() -> Html {
         let add_user_request = state.add_settings_user_reqeust.clone();
         let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
+        let edit_selected_user_id = selected_user_id.clone();
         Callback::from(move |e: MouseEvent| {
             let call_server = server_name.clone();
             let call_api = api_key.clone();
@@ -261,66 +277,137 @@ pub fn user_settings() -> Html {
             let fullname = fullname.clone();
             let admin_status = admin_status.clone();
             let hash_pw = String::new();
-            let salt = String::new();
             let email = email.clone();
             let page_state = page_state.clone();
             let error_message_clone = error_message_create.clone();
+            let call_selected_user_id = edit_selected_user_id.clone();
             e.prevent_default();
-            page_state.set(PageState::Hidden);
-            // Hash the password and generate a salt
-            match validate_user_input(&new_username, &new_password, &email) {
-                Ok(_) => {
-                    match encode_password(&new_password) {
-                        Ok((hash_pw)) => {
-                                        // Set the state
-                            dispatch.reduce_mut(move |state| {
-                                state.edit_settings_user_reqeust = Some(EditSettingsUserRequest {
-                                    fullname,
-                                    new_username,
-                                    email,
-                                    hash_pw,
-                                    admin_status
-                                });
-                            });
-
-                            let add_user_request = add_user_request.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match call_add_user(call_server.clone().unwrap(), call_api.clone().unwrap().unwrap(), &add_user_request.unwrap()).await {
-                                    Ok(success) => {
-                                        if success {
-                                            console::log_1(&"User added successfully".into());
-                                            page_state.set(PageState::Hidden);
-                                        } else {
-                                            console::log_1(&"Error adding user".into());
-                                            page_state.set(PageState::Hidden);
-                                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
-
-                                        }
+            
+            // Check if each field has input and call the corresponding API function
+            if !fullname.is_empty() {
+                wasm_bindgen_futures::spawn_local({
+                    let server_name_cloned = server_name.clone();
+                    let api_key_cloned = api_key.clone();
+                    let name_cloned = fullname.clone();
+                    let selected_user_id_cloned = call_selected_user_id.clone();
+            
+                    async move {
+                        if let Some(server_name_unwrapped) = server_name_cloned {
+                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                                if let Some(user_id) = *selected_user_id_cloned {
+                                    match call_set_fullname(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), name_cloned).await {
+                                        Ok(_) => console::log_1(&"Name updated successfully".into()),
+                                        Err(e) => console::log_1(&format!("Error updating name: {:?}", e).into()),
                                     }
-                                    Err(e) => {
-                                        console::log_1(&format!("Error: {}", e).into());
-                                        page_state.set(PageState::Hidden);
-                                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
-                                    }
+                                } else {
+                                    console::log_1(&"User ID not available for name update.".into());
                                 }
-                            });
-                        },
-                        Err(e) => {
-                            // Handle the error here
-                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Password Encoding Failed {:?}", e)));
+                            } else {
+                                console::log_1(&"API key not available for name update.".into());
+                            }
+                        } else {
+                            console::log_1(&"Server name not available for name update.".into());
                         }
                     }
-                },
-                Err(e) => {
-                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Invalid User Input {:?}", e)));
-                    return;
-                }
+                });
             }
 
+            if !new_username.is_empty() {
+                wasm_bindgen_futures::spawn_local({
+                    let server_name_cloned = server_name.clone();
+                    let api_key_cloned = api_key.clone();
+                    let user_cloned = new_username.clone();
+                    let selected_user_id_cloned = call_selected_user_id.clone();
+            
+                    async move {
+                        if let Some(server_name_unwrapped) = server_name_cloned {
+                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                                if let Some(user_id) = *selected_user_id_cloned {
+                                    match call_set_username(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), user_cloned).await {
+                                        Ok(_) => console::log_1(&"username updated successfully".into()),
+                                        Err(e) => console::log_1(&format!("Error updating username: {:?}", e).into()),
+                                    }
+                                } else {
+                                    console::log_1(&"User ID not available for username update.".into());
+                                }
+                            } else {
+                                console::log_1(&"API key not available for username update.".into());
+                            }
+                        } else {
+                            console::log_1(&"Server name not available for username update.".into());
+                        }
+                    }
+                });
+            }
 
+            if !email.is_empty() {
+                wasm_bindgen_futures::spawn_local({
+                    let server_name_cloned = server_name.clone();
+                    let api_key_cloned = api_key.clone();
+                    let email_cloned = email.clone();
+                    let selected_user_id_cloned = call_selected_user_id.clone();
+            
+                    async move {
+                        if let Some(server_name_unwrapped) = server_name_cloned {
+                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                                if let Some(user_id) = *selected_user_id_cloned {
+                                    match call_set_email(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), email_cloned).await {
+                                        Ok(_) => console::log_1(&"Email updated successfully".into()),
+                                        Err(e) => console::log_1(&format!("Error updating email: {:?}", e).into()),
+                                    }
+                                } else {
+                                    console::log_1(&"User ID not available for email update.".into());
+                                }
+                            } else {
+                                console::log_1(&"API key not available for email update.".into());
+                            }
+                        } else {
+                            console::log_1(&"Server name not available for email update.".into());
+                        }
+                    }
+                });
+            }
+            
+            
+            
+            if !new_password.is_empty() {
+                wasm_bindgen_futures::spawn_local({
+                    let server_name_cloned = server_name.clone();
+                    let api_key_cloned = api_key.clone();
+                    let new_password_cloned = new_password.clone();
+                    let selected_user_id_cloned = (*call_selected_user_id).clone();
+            
+                    async move {
+                        if let Some(server_name_unwrapped) = server_name_cloned {
+                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                                if let Some(Some(user_id)) = selected_user_id_cloned {
+                                    match encode_password(&new_password_cloned) {
+                                        Ok(hash_pw) => {
+                                            match call_set_password(server_name_unwrapped, api_key_unwrapped.clone(), user_id, hash_pw).await {
+                                                Ok(_) => console::log_1(&"Password updated successfully".into()),
+                                                Err(e) => console::log_1(&format!("Error updating password: {:?}", e).into()),
+                                            }
+                                        },
+                                        Err(e) => {
+                                            console::log_1(&format!("Password encoding failed: {:?}", e).into());
+                                        }
+                                    }
+                                } else {
+                                    console::log_1(&"User ID not available for password update.".into());
+                                }
+                            } else {
+                                console::log_1(&"API key not available for password update.".into());
+                            }
+                        } else {
+                            console::log_1(&"Server name not available for password update.".into());
+                        }
+                    }
+                });
+            }
+    
+            // Handle admin status change if applicable
         })
     };
-
     // Define the modal components
     let edit_user_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
@@ -393,15 +480,22 @@ pub fn user_settings() -> Html {
                             <th scope="col" class="px-6 py-3">{"Admin Status"}</th>
                         </tr>
                     </thead>
-                    <tbody onclick={on_edit_user}>
-                        { for users.borrow().iter().map(|user| html! {
-                            <tr class="table-row border-b cursor-pointer">
-                                <td class="px-6 py-4">{ user.UserID }</td>
-                                <td class="px-6 py-4">{ &user.Fullname }</td>
-                                <td class="px-6 py-4">{ &user.Email }</td>
-                                <td class="px-6 py-4">{ &user.Username }</td>
-                                <td class="px-6 py-4">{ if user.IsAdmin == 1 { "Yes" } else { "No" } }</td>
-                            </tr>
+                    <tbody>
+                        { for users.borrow().iter().map(|user| {
+                            let user_row_copy = on_user_row_click.clone();
+                            let user_row_click = user_row_copy(user.UserID);
+                            {
+                                html! {
+                                    <tr class="table-row border-b cursor-pointer" onclick={user_row_click}> // Adjust this line accordingly
+                                        <td class="px-6 py-4">{ user.UserID }</td>
+                                        <td class="px-6 py-4">{ &user.Fullname }</td>
+                                        <td class="px-6 py-4">{ &user.Email }</td>
+                                        <td class="px-6 py-4">{ &user.Username }</td>
+                                        <td class="px-6 py-4">{ if user.IsAdmin == 1 { "Yes" } else { "No" } }</td>
+                                    </tr>
+                                }
+                            }
+
                         })}
                     </tbody>
                 </table>

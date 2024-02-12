@@ -164,9 +164,9 @@ pub async fn call_set_fullname(server_name: String, api_key: String, user_id: i3
     }
 }
 
-pub async fn call_set_password(server_name: String, api_key: String, user_id: i32, salt: String, hash_pw: String) -> Result<DetailResponse, Error> {
+pub async fn call_set_password(server_name: String, api_key: String, user_id: i32, hash_pw: String) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/set_password/{}", server_name, user_id);
-    let body = serde_json::json!({ "salt": salt, "hash_pw": hash_pw });
+    let body = serde_json::json!({ "hash_pw": hash_pw });
 
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
@@ -535,5 +535,69 @@ pub async fn call_get_email_settings(
         serde_json::from_str::<EmailSettingsResponse>(&response_text).map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
         Err(Error::msg(format!("Error retrieving email settings: {}", response.status_text())))
+    }
+}
+
+// User Setting Requests
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct APIInfo {
+    pub(crate) APIKeyID: i32,
+    pub(crate) UserID: i32,
+    pub(crate) Username: String,
+    pub(crate) LastFourDigits: String,
+    pub(crate) Created: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct APIInfoResponse {
+    pub(crate) api_info: Vec<APIInfo>,
+}
+
+pub async fn call_get_api_info(
+    server_name: String,
+    user_id: i32,
+    api_key: String,
+) -> Result<APIInfoResponse, Error> {
+    let url = format!("{}/api/data/get_api_info/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<APIInfoResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error retrieving API info: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct CreateAPIKeyResponse {
+    pub api_key: String,
+}
+
+pub async fn call_create_api_key(
+    server_name: &str,
+    user_id: i32,
+    api_key: &str,
+) -> Result<CreateAPIKeyResponse, anyhow::Error> {
+    let url = format!("{}/api/data/create_api_key", server_name);
+    let request_body = serde_json::json!({ "user_id": user_id });
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(anyhow::Error::msg)?;
+
+    if response.ok() {
+        response.json::<CreateAPIKeyResponse>().await.map_err(anyhow::Error::msg)
+    } else {
+        Err(anyhow::Error::msg("Error creating API key"))
     }
 }
