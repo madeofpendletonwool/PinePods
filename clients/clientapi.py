@@ -1689,28 +1689,35 @@ class MfaSecretData(BaseModel):
 @app.post("/api/data/save_mfa_secret")
 async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
+    logging.info(f"Received request to save MFA secret for user {data.user_id}")
+    logging.error(f"Running Save mfa")
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
+        logging.warning(f"Invalid API key: {api_key}")
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
+    logging.info(f"Is web key: {is_web_key}")
 
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    logging.info(f"Key ID from API key: {key_id}")
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         success = database_functions.functions.save_mfa_secret(database_type, cnx, data.user_id, data.mfa_secret)
         if success:
+            logging.info("MFA secret saved successfully")
             return {"status": "success"}
         else:
+            logging.error("Failed to save MFA secret")
             return {"status": "error"}
     else:
+        logging.warning("Attempted to save MFA secret for another user")
         raise HTTPException(status_code=403,
                             detail="You can only save MFA secrets for yourself!")
-
-
+    
 @app.get("/api/data/check_mfa_enabled/{user_id}")
 async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connection),
                                 api_key: str = Depends(get_api_key_from_header)):

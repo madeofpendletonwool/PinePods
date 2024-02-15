@@ -55,7 +55,7 @@ try:
             IsAdmin TINYINT(1),
             Reset_Code TEXT,
             Reset_Expiry DATETIME,
-            MFA_Secret VARCHAR(50),
+            MFA_Secret VARCHAR(70),
             TimeZone VARCHAR(50) DEFAULT 'UTC',
             TimeFormat INT  DEFAULT 24,
             FirstLogin TINYINT(1) DEFAULT 0,

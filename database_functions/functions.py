@@ -2069,6 +2069,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
 
     return row
 
+import logging
 
 def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
     if database_type == "postgresql":
@@ -2084,11 +2085,11 @@ def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
         cursor.execute(query, (mfa_secret, user_id))
         cnx.commit()
         cursor.close()
+        logging.info(f"Successfully saved MFA secret for user {user_id}")
         return True
     except Exception as e:
-        print("Error saving MFA secret:", e)
+        logging.error(f"Error saving MFA secret for user {user_id}: {e}")
         return False
-
 
 def check_mfa_enabled(database_type, cnx, user_id):
     if database_type == "postgresql":

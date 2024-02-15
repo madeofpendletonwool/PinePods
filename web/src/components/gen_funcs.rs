@@ -13,6 +13,8 @@ use argon2::{
     },
     Argon2
 };
+use otpauth::TOTP;
+use js_sys::Date;
 
 
 pub fn format_date(date_str: &str) -> String {
@@ -99,4 +101,24 @@ pub fn validate_user_input(username: &str, password: &str, email: &str) -> Resul
     }
 
     Ok(())
+}
+
+/// Verifies a TOTP code provided by the user against the stored secret.
+///
+/// # Arguments
+///
+/// * `secret` - The secret used to generate the TOTP codes.
+/// * `code` - The user-entered TOTP code as a string.
+///
+/// # Returns
+///
+/// * `bool` - `true` if the code is valid, `false` otherwise.
+pub fn verify_totp_code(secret: &str, code: &str) -> bool {
+    let totp = TOTP::new(secret);
+    let timestamp = Date::now() as u64 / 1000; // Convert milliseconds to seconds
+
+    match code.parse::<u32>() {
+        Ok(code_num) => totp.verify(code_num, 30, timestamp),
+        Err(_) => false,
+    }
 }

@@ -704,11 +704,16 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
     let url = format!("{}/api/data/save_mfa_secret", server_name);
     let api_key_ref = api_key.as_str();
     let body = SaveMFASecretRequest { user_id, mfa_secret };
+    let json_body = serde_json::to_string(&body)?;
+
+    // Log the request body for debugging
+    console::log_1(&format!("Saving MFA Secret, Request Body: {:?}", &body).into());
+
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(JsValue::from_serde(&body).unwrap())?
+        .body(json_body)?
         .send()
         .await?;
 

@@ -17,6 +17,7 @@ use qrcode::Color;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use data_encoding::BASE32;
 use qrcode::render::svg;
+use crate::components::gen_funcs::verify_totp_code;
 use rand::{RngCore, rngs::OsRng};
 
 pub fn generate_totp_secret() -> String {
@@ -140,35 +141,48 @@ pub fn mfa_options() -> Html {
     // Define the function to close the modal
     let verify_code = {
         let page_state = page_state.clone();
-        let new_api_key = api_key.clone();
         let api_key = api_key.clone();
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = server_name.clone();
-        let mfa_code = mfa_code.clone();
         let mfa_secret = mfa_secret.clone();
         let code = code.clone();
-        // Assume you have user_id and api_key from context or 
+
         Callback::from(move |_| {
             let api_key = api_key.clone();
             let user_id = user_id.clone();
             let server_name = server_name.clone();
             let page_state = page_state.clone();
-            let mfa_code = mfa_code.clone();
             let mfa_secret = mfa_secret.clone();
-            let new_api_key = new_api_key.clone();
             let code = code.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                match call_save_mfa_secret(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*code).clone()).await {
-                    Ok(response) => {
-                        // new_api_key.set(response.status);
-                        console::log_1(&response.status.to_string().into());
-                        page_state.set(PageState::Hidden); // Move to the edit page state
-                    },
-                    Err(e) => console::log_1(&e.to_string().into()),
-                }
-            });
+
+            console::log_1(&"Verifying code".into());
+
+            // Use the separate function to verify the code
+            if verify_totp_code(&mfa_secret, &code) {
+                console::log_1(&"Code verified successfully".into());
+                // Proceed with action after successful verification
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_save_mfa_secret(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*mfa_secret).clone()).await {
+                        Ok(response) => {
+                            console::log_1(&format!("MFA setup successful: {}", response.status).into());
+                            page_state.set(PageState::Hidden);
+                        },
+                        Err(e) => {
+                            console::log_1(&e.to_string().into());
+                            // Handle error appropriately
+                            page_state.set(PageState::Hidden);
+                        },
+                    }
+                });
+            } else {
+                console::log_1(&"Invalid code".into());
+                page_state.set(PageState::Hidden);
+                // Handle invalid code
+                // For example, you might want to display an error message to the user
+            }
         })
     };
+
 
     let on_code_change = {
         let code = code.clone();
