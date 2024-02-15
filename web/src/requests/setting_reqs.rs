@@ -2,9 +2,9 @@ use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use web_sys::console;
-use crate::requests::pod_req::PodcastValues;
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
+use serde_json::to_string;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetThemeResponse {
@@ -70,6 +70,7 @@ pub struct UserInfoResponse {
     user_info: HashMap<String, String>,
 }
 #[derive(Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
 pub struct SettingsUser {
     pub UserID: i32,
     pub Fullname: String,
@@ -432,11 +433,9 @@ pub struct TestEmailSettings {
 
 #[derive(Deserialize, Debug)]
 pub struct EmailSendResponse {
+    #[allow(dead_code)]
     email_status: String,
 }
-
-
-use serde_json::to_string;
 
 pub async fn call_send_test_email(
     server_name: String,
@@ -504,6 +503,7 @@ pub async fn call_send_email(
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Default)]
+#[allow(non_snake_case)]
 pub struct EmailSettingsResponse {
     pub(crate) EmailSettingsID: i32,
     pub(crate) Server_Name: String,
@@ -541,6 +541,7 @@ pub async fn call_get_email_settings(
 // User Setting Requests
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
 pub struct APIInfo {
     pub(crate) APIKeyID: i32,
     pub(crate) UserID: i32,
@@ -633,5 +634,89 @@ pub async fn call_delete_api_key(
         response.json::<DeleteAPIKeyResponse>().await.map_err(anyhow::Error::msg)
     } else {
         Err(anyhow::Error::msg("Error creating API key"))
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BackupUserRequest {
+    pub user_id: i32,
+}
+
+pub async fn call_backup_user(
+    server_name: &str,
+    user_id: i32,
+    api_key: &str,
+) -> Result<String, anyhow::Error> { // Assuming the OPML content is returned as a plain string
+    let url = format!("{}/api/data/backup_user", server_name);
+    let request_body = BackupUserRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(anyhow::Error::msg)?;
+
+    if response.ok() {
+        response.text().await.map_err(anyhow::Error::msg)
+    } else {
+        Err(anyhow::Error::msg("Error backing up user data"))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct GetMFAResponse {
+    mfa_enabled: bool,
+}
+pub async fn call_mfa_settings(server_name: String, api_key: String, user_id: i32) -> Result<bool, anyhow::Error> {
+    let url = format!("{}/api/data/check_mfa_enabled/{}", server_name, user_id);
+    let api_key_ref = api_key.as_str();
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<GetMFAResponse>().await?;
+        Ok(response_body.mfa_enabled)
+    } else {
+        console::log_1(&format!("Error getting MFA status: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error getting MFA status. Is the server reachable? Server Response: {}", response.status_text())))
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct SaveMFASecretRequest {
+    pub(crate) user_id: i32,
+    pub(crate) mfa_secret: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct SaveMFASecretResponse {
+    pub(crate) status: String,
+}
+
+pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_id: i32, mfa_secret: String) -> Result<SaveMFASecretResponse, anyhow::Error> {
+    let url = format!("{}/api/data/save_mfa_secret", server_name);
+    let api_key_ref = api_key.as_str();
+    let body = SaveMFASecretRequest { user_id, mfa_secret };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(JsValue::from_serde(&body).unwrap())?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<SaveMFASecretResponse>().await?;
+        Ok(response_body)
+    } else {
+        console::log_1(&format!("Error saving MFA secret: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error saving MFA secret. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }

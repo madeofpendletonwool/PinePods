@@ -10,7 +10,7 @@ edition = "2021"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.66", features = ["CssStyleDeclaration", "DomTokenList", "HtmlSelectElement", "HtmlAudioElement", "DomRect", "Element"] }
+web-sys = { version = "0.3.68", features = ["CssStyleDeclaration", "DomTokenList", "HtmlSelectElement", "HtmlAudioElement", "DomRect", "Element", "HtmlAnchorElement"] }
 log = "0.4.20"
 wasm-bindgen = "0.2.89"
 #yew-router = "0.18.0"
@@ -35,3 +35,9 @@ async-std = "1.12.0"
 argon2 = "0.5.3"
 rand = "0.8.5"
 regex = "1.10.3"
+js-sys = "0.3.68"
+otpauth = "0.4.1"
+qrcode = "0.13.0"
+qrcode-png = "0.4.1"
+percent-encoding = "2.3.1"
+data-encoding = "2.5.0"

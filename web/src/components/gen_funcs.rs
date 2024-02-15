@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use ammonia::Builder;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
@@ -6,12 +6,10 @@ use crate::requests::login_requests::use_check_authentication;
 use yew::prelude::*;
 use yewdux::prelude::Dispatch;
 use crate::components::context::AppState;
-use base64::engine::Config;
-use base64::Engine;
 use argon2::{
     password_hash::{
         rand_core::OsRng,
-        PasswordHash, PasswordHasher, SaltString
+        PasswordHasher, SaltString
     },
     Argon2
 };

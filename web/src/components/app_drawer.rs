@@ -7,11 +7,11 @@ use super::routes::Route;
 #[allow(non_camel_case_types)]
 #[function_component(App_drawer)]
 pub fn app_drawer() -> Html {
-    let selection = use_state(|| "".to_string());
+    // let selection = use_state(|| "".to_string());
     // let (state, _dispatch) = use_store::<AppState>();
 
     let is_drawer_open = use_state(|| false);
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let username = state.user_details.as_ref().map_or("Guest".to_string(), |ud| ud.Username.clone().unwrap());
     let toggle_drawer = {
         let is_drawer_open = is_drawer_open.clone();

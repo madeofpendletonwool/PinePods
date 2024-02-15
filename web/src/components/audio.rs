@@ -52,71 +52,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
     let title_click_emit = title_click.clone();
-    // dragging attempt
-    // let audio_state_drag = audio_state.clone();
-    // let audio_dispatch_drag = _audio_dispatch.clone();
-    // let is_dragging = Rc::new(Cell::new(false));
-    // let start_y = Rc::new(Cell::new(0.0));
-    // let initial_height = Rc::new(Cell::new(0.0));
-    // let audio_player: Option<HtmlElement> = container_ref_clone2.cast::<HtmlElement>();
-
-    // let audio_player_clone = audio_player.clone();
-    // let is_dragging_clone = is_dragging.clone();
-    // let start_y_clone = start_y.clone();
-    // let initial_height_clone = initial_height.clone();
-    // let audio_state_clone = audio_state.clone();
-    // let mousedown_callback = Closure::wrap(Box::new(move |event: MouseEvent| {
-    //     event.prevent_default(); // prevent text selection
-    //     if audio_state_clone.is_expanded { // Only enable dragging when the audio player is expanded
-    //         is_dragging_clone.set(true);
-    //         start_y_clone.set(event.client_y() as f64);
-    //     }
-    // }) as Box<dyn FnMut(_)>);
-
-    // if let Some(audio_player) = &audio_player {
-    //     audio_player.add_event_listener_with_callback("mousedown", mousedown_callback.as_ref().unchecked_ref()).unwrap();
-    // }
-    // mousedown_callback.forget();
-
-    // // let audio_player_clone = audio_player.clone();
-    // // let is_dragging_clone2 = is_dragging.clone();
-    // let start_y_clone2 = start_y.clone();
-    // let initial_height_clone2 = initial_height.clone();
-    // let audio_player_clone = audio_player.clone();
-    // let is_dragging_clone2 = is_dragging.clone();
-    // let audio_player_element: Option<web_sys::HtmlElement> = audio_player.as_ref().map(|audio_player| audio_player.clone().dyn_into::<web_sys::HtmlElement>().unwrap());
-    // let audio_player_element_clone = audio_player_element.clone(); // Clone the audio_player_element
-
-    // let max_height = web_sys::window().unwrap().inner_height().unwrap().as_f64().unwrap(); // Get the window's inner height
-
-    // let mousemove_callback = Closure::wrap(Box::new(move |event: MouseEvent| {
-    //     if !is_dragging_clone2.get() || !audio_state_drag.is_expanded {
-    //         return;
-    //     }
-    //     if let Some(audio_player_element) = audio_player_element.as_ref() {
-    //         let rect = audio_player_element.get_bounding_client_rect();
-    //         let delta_y = start_y_clone2.get() - event.client_y() as f64;
-    //         let new_height = (initial_height_clone2.get() + delta_y).max(60.0).min(max_height);
-    //         if delta_y > 0.0 { // User is dragging upwards
-    //             audio_player_element.style().set_property("height", &format!("{}px", max_height)).unwrap();
-    //         } else { // User is dragging downwards
-    //             audio_player_element.style().set_property("height", "60px").unwrap();
-    //         }
-    //     }
-    // }) as Box<dyn FnMut(_)>);
-    // let document = web_sys::window().unwrap().document().unwrap();
-    // document.clone().add_event_listener_with_callback("mousemove", mousemove_callback.as_ref().unchecked_ref()).unwrap();
-    // mousemove_callback.forget();
-
-    // let is_dragging_clone = is_dragging.clone();
-    // let mouseup_callback = Closure::wrap(Box::new(move |_: web_sys::Event| {
-    //     is_dragging_clone.set(false);
-    // }) as Box<dyn FnMut(web_sys::Event)>);
-
-    // document.add_event_listener_with_callback("mouseup", mouseup_callback.as_ref().unchecked_ref()).unwrap();
-    // mouseup_callback.forget();
-    // end attempt
-    // Initialize state for current time and duration
 // Initialize state for current time and duration
     let current_time = use_state(|| "00:00:00".to_string());
     let duration = use_state(|| 0.0);
@@ -266,7 +201,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 if let Some(episode_id) = episode_id {
                     wasm_bindgen_futures::spawn_local(async move {
                         dispatch_clone.reduce_mut(move |state| {
-                            state.selected_episode_id = Some((episode_id));
+                            state.selected_episode_id = Some(episode_id);
                         });
                         history_clone.push("/episode"); // Use the route path
                     });

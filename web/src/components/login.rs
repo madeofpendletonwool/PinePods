@@ -33,8 +33,8 @@ pub fn login() -> Html {
     let email = use_state(|| "".to_string());
     let fullname = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
-    let (state, _dispatch) = use_store::<UIState>();
-    let error_message = app_state.error_message.clone();
+    let (_state, _dispatch) = use_store::<UIState>();
+    let _error_message = app_state.error_message.clone();
 
     {
         let ui_dispatch = _dispatch.clone();
@@ -79,7 +79,6 @@ pub fn login() -> Html {
                                                     // Check if the deserialized state contains valid data
                                                     if app_state.user_details.is_some() && auth_details.auth_details.is_some() && server_details.server_details.is_some() {
 
-                                                        let app_state_clone = app_state.clone();
                                                         let auth_state_clone = auth_details.clone();
                                                         console::log_1(&format!("auth deets: {:?}", &auth_state_clone).into());
                                                         let email = &app_state.user_details.as_ref().unwrap().Email;
@@ -150,21 +149,20 @@ pub fn login() -> Html {
 
 
 
-    let on_username_change = {
+    let _on_username_change = {
         let username = username.clone();
         Callback::from(move |e: InputEvent| {
             username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
     };
 
-    let on_password_change = {
+    let _on_password_change = {
         let password = password.clone();
         Callback::from(move |e: InputEvent| {
             password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
     };
     let history_clone = history.clone();
-    let dispatch_clone = dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
@@ -258,25 +256,23 @@ pub fn login() -> Html {
         let email = email.clone().to_string();
         let new_password = new_password.clone();
         let add_user_request = app_state.add_user_request.clone();
-        let error_message_create = error_message.clone();
+        // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
             let dispatch = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
             let fullname = fullname.clone();
-            let hash_pw = String::new();
-            let salt = String::new();
             let email = email.clone();
             let page_state = page_state.clone();
-            let error_message_clone = error_message_create.clone();
+            // let error_message_clone = error_message_create.clone();
             e.prevent_default();
             page_state.set(PageState::Default);
             // Hash the password and generate a salt
             match validate_user_input(&new_username, &new_password, &email) {
                 Ok(_) => {
                     match encode_password(&new_password) {
-                        Ok((hash_pw)) => {
+                        Ok(hash_pw) => {
                                         // Set the state
                             dispatch.reduce_mut(move |state| {
                                 state.add_user_request = Some(AddUserRequest {
@@ -491,13 +487,13 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, _dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
     let server_name = use_state(|| "".to_string());
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let error_message = use_state(|| None::<String>);
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, dispatch) = use_store::<AppState>();
 
 
     {
@@ -549,7 +545,6 @@ pub fn login() -> Html {
     let history_clone = history.clone();
     let error_message_clone = error_message.clone();
     // let app_state_clone = app_state.clone();
-    let dispatch_clone = dispatch.clone();
     let on_submit = {
         Callback::from(move |_| {
             let history = history_clone.clone();

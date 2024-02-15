@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use anyhow::Error;
 use gloo_net::http::Request;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Deserialize;
 use web_sys::console;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]

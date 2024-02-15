@@ -5,7 +5,7 @@ use yew::platform::spawn_local;
 use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
-use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_isadmin, call_set_fullname, call_set_username};
+use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username};
 use crate::components::gen_funcs::encode_password;
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -14,9 +14,6 @@ use crate::components::gen_funcs::validate_user_input;
 #[function_component(UserSettings)]
 pub fn user_settings() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let new_username = use_state(|| "".to_string());
@@ -115,7 +112,6 @@ pub fn user_settings() -> Html {
             admin_status.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().checked());
         })
     };
-    let user_submit_state = state.clone();
     let on_create_submit = {
         let page_state = page_state.clone();
         let server_name = server_name.clone();
@@ -124,8 +120,6 @@ pub fn user_settings() -> Html {
         let new_username = new_username.clone().to_string();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
-        let add_user_request = state.add_settings_user_reqeust.clone();
-        let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
             let call_server = server_name.clone();
@@ -134,18 +128,14 @@ pub fn user_settings() -> Html {
             let new_username = new_username.clone();
             let new_password = new_password.clone();
             let fullname = fullname.clone();
-            let hash_pw = String::new();
-            let salt = String::new();
             let email = email.clone();
-            let page_state = page_state.clone();
-            let error_message_clone = error_message_create.clone();
             e.prevent_default();
             page_state.set(PageState::Hidden);
             // Hash the password and generate a salt
             match validate_user_input(&new_username, &new_password, &email) {
                 Ok(_) => {
                     match encode_password(&new_password) {
-                        Ok((hash_pw)) => {
+                        Ok(hash_pw) => {
                             let user_settings = AddSettingsUserRequest {
                                 fullname: fullname.clone(),
                                 username: new_username.clone(),
@@ -160,7 +150,7 @@ pub fn user_settings() -> Html {
                                 // Directly use the contained value if `add_user_request` is `Some`
                                 if let Some(add_user_request_value) = add_user_request {
                                     match call_add_user(call_server.unwrap(), call_api.unwrap().unwrap(), &add_user_request_value).await {
-                                        Ok(success) => {
+                                        Ok(_success) => {
                                             // Handle success here, perhaps log or set some state
                                             console::log_1(&"User added successfully".into());
                                         },
@@ -233,16 +223,6 @@ pub fn user_settings() -> Html {
         </div>
     };
 
-    // // Define the callback functions
-    // let on_edit_user = {
-    //     let selected_user_id = selected_user_id.clone();
-    //     let page_state = page_state.clone();
-    //     Callback::from(move |_| {
-    //         page_state.set(PageState::Edit);
-    //         selected_user_id.set(Some(user_id));
-    //     })
-    // };
-
     let on_user_row_click = {
         let selected_user_id = selected_user_id.clone();
         let page_state = page_state.clone();
@@ -256,30 +236,18 @@ pub fn user_settings() -> Html {
     
 
     let on_edit_submit = {
-        let page_state = page_state.clone();
         let fullname = fullname.clone().to_string();
         let new_username = new_username.clone().to_string();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
-        let admin_status = *admin_status.clone();
-        let add_user_request = state.add_settings_user_reqeust.clone();
-        let error_message_create = error_message.clone();
-        let dispatch_wasm = dispatch.clone();
         let edit_selected_user_id = selected_user_id.clone();
         Callback::from(move |e: MouseEvent| {
-            let call_server = server_name.clone();
-            let call_api = api_key.clone();
-            let dispatch = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
             let fullname = fullname.clone();
-            let admin_status = admin_status.clone();
-            let hash_pw = String::new();
             let email = email.clone();
-            let page_state = page_state.clone();
-            let error_message_clone = error_message_create.clone();
             let call_selected_user_id = edit_selected_user_id.clone();
             e.prevent_default();
             

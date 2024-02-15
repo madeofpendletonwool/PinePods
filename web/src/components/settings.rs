@@ -1,7 +1,6 @@
 use yew::prelude::*;
 use super::app_drawer::{App_drawer};
 use super::gen_components::Search_nav;
-use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, SettingsState, UIState};
 use crate::components::audio::{AudioPlayer};
@@ -10,6 +9,7 @@ use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
+use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct TabProps {
@@ -98,12 +98,13 @@ pub fn accordion_item(AccordionItemProps { title, content, position }: &Accordio
 
 #[function_component(Settings)]
 pub fn settings() -> Html {
-    let (post_state, post_dispatch) = use_store::<AppState>();
+    let (_post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let (settings_state, settings_dispatch) = use_store::<SettingsState>();
     let active_tab = use_state(|| "user");
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
+    let auth_dispatch = post_dispatch.clone();
+    check_auth(auth_dispatch);
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -176,10 +177,10 @@ pub fn settings() -> Html {
             </div>
         </div>
         // Conditional rendering for the error banner
-        if let Some(error) = (error_message) {
+        if let Some(error) = error_message {
             <div class="error-snackbar">{ error }</div>
         }
-        if let Some(info) = (info_message) {
+        if let Some(info) = info_message {
             <div class="info-snackbar">{ info }</div>
         }
         {

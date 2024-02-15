@@ -1,13 +1,8 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
 use crate::components::context::AppState;
-use yew::platform::spawn_local;
-use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
-use std::borrow::Borrow;
-use crate::requests::setting_reqs::{APIInfo, APIInfoResponse, call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIKeyResponse, DeleteAPIRequest};
-use crate::components::gen_funcs::encode_password;
-use crate::components::gen_funcs::validate_user_input;
+use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIRequest};
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
 #[function_component(APIKeys)]
@@ -86,8 +81,6 @@ pub fn api_keys() -> Html {
         let api_key = api_key.clone();
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = server_name.clone();
-        // Assume you have user_id and api_key from context or props
-        let user_id = 1; // Example user_id
         Callback::from(move |_| {
             let api_key = api_key.clone();
             let user_id = request_state.user_details.as_ref().map(|ud| ud.UserID.clone());

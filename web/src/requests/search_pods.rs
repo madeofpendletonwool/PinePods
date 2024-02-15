@@ -3,7 +3,6 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use anyhow::Error;
 use rss::Channel;
-use web_sys::console;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {

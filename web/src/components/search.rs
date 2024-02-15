@@ -2,7 +2,6 @@ use yew::{function_component, html, use_node_ref, Html, Properties, Callback, Mo
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, empty_message, episode_item};
-use crate::requests::pod_req;
 use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -16,10 +15,6 @@ use web_sys::HtmlElement;
 use wasm_bindgen_futures::spawn_local;
 use async_std::task::sleep;
 use std::time::Duration;
-use web_sys::window;
-use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::JsFuture;
-use wasm_bindgen::closure::Closure;
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct SearchProps {

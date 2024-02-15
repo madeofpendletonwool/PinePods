@@ -1,11 +1,11 @@
-use web_sys::{Element, HtmlElement, HtmlSelectElement};
+use web_sys::{Element, HtmlSelectElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
 use crate::components::context::AppState;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{console, window};
-use crate::requests::setting_reqs::{call_set_theme, GetThemeResponse, SetThemeRequest, SetThemeResponse};
+use web_sys::window;
+use crate::requests::setting_reqs::{call_set_theme, SetThemeRequest};
 
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {

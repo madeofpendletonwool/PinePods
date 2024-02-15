@@ -242,7 +242,7 @@ pub async fn login_new_server(server_name: String, username: String, password: S
     }
 }
 
-pub(crate) fn use_check_authentication(dispatch: Dispatch<AppState>, current_route: &str) {
+pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_route: &str) {
     let window = web_sys::window().expect("no global `window` exists");
     let local_storage = window.local_storage().unwrap().unwrap();
     let session_storage = window.session_storage().unwrap().unwrap();

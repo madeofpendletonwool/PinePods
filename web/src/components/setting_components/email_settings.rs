@@ -9,15 +9,14 @@ use std::ops::Deref;
 
 #[function_component(EmailSettings)]
 pub fn email_settings() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let effect_dispatch = dispatch.clone();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let user_email = state.user_details.as_ref().map(|ud| ud.Email.clone());
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let _error_message = audio_state.error_message.clone();
+    let _info_message = audio_state.info_message.clone();
     let auth_required = use_state(|| false);
     web_sys::console::log_1(&"testlog".into());
 
@@ -207,11 +206,9 @@ pub fn email_settings() -> Html {
         </div>
     };
     let audio_send_test = audio_dispatch.clone();
-    let dispatch_send_test = dispatch.clone();
     let api_test = api_key.clone();
     let submit_email = user_email.clone();
     let on_submit = {
-        let server_name_ref_clone = server_name_ref.clone();
         let server_name = server_name.clone();
         let server_port_ref = server_port_ref.clone();
         let from_email_ref = from_email_ref.clone();
@@ -223,7 +220,6 @@ pub fn email_settings() -> Html {
         let page_state = page_state_edit.clone();
         Callback::from(move |_: MouseEvent| {
             console::log_1(&"Button clicked".into());
-            let dispatch_callback = dispatch_send_test.clone();
             let audio_dispatch_call = audio_send_test.clone();
             let server_name = server_name.clone();
             let server_name_ref = server_name_ref.clone().deref().to_string();
@@ -253,16 +249,6 @@ pub fn email_settings() -> Html {
                 let send_email_result = call_send_test_email(server_name.clone().unwrap(), api_key.clone().unwrap(), test_email_settings.clone()).await;
                 match send_email_result {
                     Ok(_) => {
-                        let email_settings = crate::requests::setting_reqs::EmailSettings {
-                            server_name: server_name_ref.clone(),
-                            server_port: server_port,
-                            from_email: from_email.clone(),
-                            send_mode: send_mode.clone(),
-                            encryption: encryption.clone(),
-                            auth_required: auth_required,
-                            email_username: email_username.clone(),
-                            email_password: email_password.clone(),
-                        };
                         page_state.set(PageState::Shown);
                     },
                     Err(e) => {
@@ -279,14 +265,11 @@ pub fn email_settings() -> Html {
     let on_test_email_send = {
         let server_name = server_name.clone(); // Assuming you have these values in your component's state
         let api_key = api_key.clone(); // Assuming you have API key in your component's state
-        let dispatch_callback = dispatch.clone(); // If you're using a global state management solution like YewDux
         let audio_dispatch_call = audio_dispatch.clone();
         
         Callback::from(move |_: MouseEvent| {
             let api_key = api_key.clone();
             let server_name = server_name.clone().unwrap_or_default(); // Ensure server_name has a default value if it's an Option
-            let dispatch_callback = dispatch_callback.clone();
-            let info_message = info_message.clone();
             let audio_dispatch_call = audio_dispatch_call.clone();
             // Setting up the email settings. Adjust these values as necessary.
             let email_settings = SendEmailSettings {

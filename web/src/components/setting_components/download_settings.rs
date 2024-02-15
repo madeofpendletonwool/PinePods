@@ -8,12 +8,11 @@ use std::borrow::Borrow;
 
 #[function_component(DownloadSettings)]
 pub fn download_settings() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
+    let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let error_message = state.error_message.clone();
+    let _error_message = state.error_message.clone();
     let download_status = use_state(|| false);
 
     {

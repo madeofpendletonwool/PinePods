@@ -1,12 +1,12 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item};
+use super::gen_components::{Search_nav, empty_message};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target};
 use crate::requests::pod_req::{EpisodeRequest, EpisodeMetadataResponse};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
