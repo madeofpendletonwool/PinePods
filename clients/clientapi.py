@@ -1,6 +1,6 @@
 # Fast API
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
-    security
+    security, BackgroundTasks
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +23,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 import secrets
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -35,6 +35,9 @@ import sys
 from pyotp import TOTP
 import base64
 import traceback
+import time
+import httpx
+import asyncio
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -114,6 +117,15 @@ def get_database_connection():
             connection_pool.putconn(db)
         else:
             db.close()
+
+def create_database_connection():
+    try:
+        db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
+        return db
+    except Exception as e:
+        logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, "Unable to connect to the database")
 
 
 def setup_connection_pool():
@@ -771,8 +783,7 @@ async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_da
 
 
 class DownloadPodcastData(BaseModel):
-    episode_url: str
-    title: str
+    episode_id: int
     user_id: int
 
 
@@ -791,7 +802,7 @@ async def api_download_podcast(data: DownloadPodcastData, cnx=Depends(get_databa
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.download_podcast(cnx, data.episode_url, data.title, data.user_id)
+        result = database_functions.functions.download_podcast(cnx, data.episode_id, data.user_id)
         if result:
             return {"detail": "Podcast downloaded."}
         else:
@@ -913,10 +924,19 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends
 
 
 @app.get("/api/data/refresh_pods")
-async def api_refresh_pods(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    database_functions.functions.refresh_pods(cnx)
+async def api_refresh_pods(background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin)):
+    background_tasks.add_task(refresh_pods_task)
     return {"detail": "Refresh initiated."}
 
+def refresh_pods_task():
+    cnx = create_database_connection()
+    try:
+        database_functions.functions.refresh_pods(cnx)
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
 
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),
@@ -1132,9 +1152,10 @@ async def api_saved_episode_list(user_id: int, cnx=Depends(get_database_connecti
                             detail="You can only return saved episodes for yourself!")
 
 
-@app.post("/api/data/download_episode_list")
+@app.get("/api/data/download_episode_list")
 async def api_download_episode_list(cnx=Depends(get_database_connection),
-                                    api_key: str = Depends(get_api_key_from_header), user_id: int = Form(...)):
+                                    api_key: str = Depends(get_api_key_from_header), 
+                                    user_id: int = Query(...)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -2155,7 +2176,7 @@ class CheckGpodderSettings(BaseModel):
     user_id: int
 
 @app.get("/api/data/get_gpodder_settings")
-async def remove_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
+async def get_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
@@ -2175,8 +2196,8 @@ async def remove_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_da
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
 
-@app.get("/api/data/check_gpodder_settings")
-async def remove_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
+@app.get("/api/data/check_gpodder_settings/{user_id}")
+async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
@@ -2189,31 +2210,117 @@ async def remove_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_da
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id)
+    if key_id == user_id or is_web_key:
+        result = database_functions.functions.check_gpodder_settings(database_type, cnx, user_id)
         return {"data": result}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
+
+class NextcloudAuthRequest(BaseModel):
+    user_id: int
+    token: str
+    poll_endpoint: HttpUrl
+    nextcloud_url: HttpUrl
+
+@app.post("/api/data/add_nextcloud_server")
+async def add_nextcloud_server(background_tasks: BackgroundTasks, data: NextcloudAuthRequest, cnx=Depends(get_database_connection),
+                               api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    elevated_access = await has_elevated_access(api_key, cnx)
+
+    if not elevated_access:
+        # Get user ID from API key
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+
+        if data.user_id != user_id_from_api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="You are not authorized to access these user details")
+
+    # Reset gPodder settings to default
+    database_functions.functions.remove_gpodder_settings(database_type, cnx, data.user_id)
+
+    # Add the polling task to the background tasks
+    background_tasks.add_task(poll_for_auth_completion_background, data, database_type)
+
+    # Return 200 status code before starting to poll
+    return {"status": "polling"}
+
+async def poll_for_auth_completion_background(data: NextcloudAuthRequest, database_type):
+    # Create a new database connection
+    cnx = create_database_connection()
+
+    try:
+        credentials = await poll_for_auth_completion(data.poll_endpoint, data.token)
+        if credentials:
+            logging.info(f"Nextcloud authentication successful: {credentials}")
+            logging.info(f"Adding Nextcloud settings for user {data.user_id}")
+            logging.info(f"Database Type: {database_type}, Connection: {cnx}, User ID: {data.user_id}")
+            logging.info(f"Nextcloud URL: {data.nextcloud_url}, Token: {data.token}")
+            result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, str(data.nextcloud_url), str(data.token))
+            if not result:
+                logging.error("User not found")
+        else:
+            logging.error("Nextcloud authentication failed.")
+    finally:
+        # Close the database connection
+        cnx.close()
+
+# Adjusted to use httpx for async HTTP requests
+async def poll_for_auth_completion(endpoint: HttpUrl, token: str):
+    payload = {"token": token}
+    timeout = 20 * 60  # 20 minutes timeout for polling
+    async with httpx.AsyncClient() as client:
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            try:
+                response = await client.post(str(endpoint), json=payload, headers={"Content-Type": "application/json"}) 
+            except httpx.ConnectTimeout:
+                logging.info("Connection timed out, retrying...")
+                logging.info(f"endpoint: {endpoint}, token: {token}")
+                continue
+            if response.status_code == 200:
+                credentials = response.json()
+                logging.info(f"Authentication successful: {credentials}")
+                return credentials
+            elif response.status_code == 404:
+                await asyncio.sleep(5)  # Non-blocking sleep
+            else:
+                logging.info(f"Polling failed with status code {response.status_code}")
+                raise HTTPException(status_code=500, detail="Polling for Nextcloud authentication failed.")
+    raise HTTPException(status_code=408, detail="Nextcloud authentication request timed out.")
 
 @app.get("/api/data/refresh_nextcloud_subscriptions")
-async def refresh_nextcloud_subscription(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection),
-                              api_key: str = Depends(get_api_key_from_header)):
+async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin), api_key: str = Depends(get_api_key_from_header)):
 
+    cnx = create_database_connection()
     try:
         users = database_functions.functions.get_nextcloud_users(database_type, cnx)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
+
+    for user_id, gpodder_url, gpodder_token in users:
+        background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token)
+
+    return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
+
+def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token):
+    cnx = create_database_connection()
     try:
-        for user_id, gpodder_url, gpodder_token in users:
-            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    return {"status": "success", "message": "Nextcloud subscriptions refreshed"}
-
-
-
+        database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token)
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
 
 class QueueBump(BaseModel):
     ep_url: str

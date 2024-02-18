@@ -316,6 +316,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### Pre-Rust Revamp Release
 - [ ] Downloads Page
+- [ ] Make Timestamps with with Auto Resume
+- [ ] Nextcloud Subscriptions
+- [ ] Nextcloud Subscription Timestamps
 - [ ] Revamp Readme
 - [ ] Allow for episodes to be played without being added
 - [ ] User Settings
@@ -328,6 +331,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Ensure Queue Functions after episode End
 - [ ] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
+- [ ] Refresh of podcasts needs to be async (Currently that process stops the server dead)
+- [ ] Issues occur server side when adding podcast without itunes_duration (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
 - [ ] Test Edgecases and ensure errors can't happen throughout
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again

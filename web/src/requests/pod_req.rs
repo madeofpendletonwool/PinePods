@@ -511,16 +511,17 @@ pub struct EpisodeDownload {
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct DownloadDataResponse {
-    pub data: Vec<EpisodeDownload>,
+    pub downloaded_episodes: Vec<EpisodeDownload>,
 }
 
 pub async fn call_get_episode_downloads(
-    server_name: &str, 
-    api_key: &Option<String>, 
-    _user_id: &i32
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32
 ) -> Result<Vec<EpisodeDownload>, anyhow::Error> {
     // Append the user_id as a query parameter
-    let url = format!("{}/api/data/download_episode_list", server_name);
+    let url = format!("{}/api/data/download_episode_list?user_id={}", server_name, user_id);
+
 
     console::log_1(&format!("URL: {}", url).into());
 
@@ -542,7 +543,7 @@ pub async fn call_get_episode_downloads(
     console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: DownloadDataResponse = serde_json::from_str(&response_text)?;
-    Ok(response_data.data)
+    Ok(response_data.downloaded_episodes)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -556,7 +557,7 @@ pub async fn call_download_episode (
     api_key: &Option<String>, 
     request_data: &DownloadEpisodeRequest
 ) -> Result<(), Error> {
-    let url = format!("{}/api/data/user/download_podcast", server_name);
+    let url = format!("{}/api/data/download_podcast", server_name);
 
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;

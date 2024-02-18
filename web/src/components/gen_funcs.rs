@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use ammonia::Builder;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::{DomParser, SupportedType, XmlHttpRequest};
+use wasm_bindgen::JsCast;
 use web_sys::window;
+use yew::prelude::*;
 use crate::requests::login_requests::use_check_authentication;
 use yew::prelude::*;
 use yewdux::prelude::Dispatch;
@@ -121,4 +124,50 @@ pub fn verify_totp_code(secret: &str, code: &str) -> bool {
         Ok(code_num) => totp.verify(code_num, 30, timestamp),
         Err(_) => false,
     }
+}
+
+
+// fn window() -> Window {
+//     web_sys::window().expect("no global `window` exists")
+// }
+//
+// fn document() -> Document {
+//     window().document().expect("should have a document on window")
+// }
+
+// pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
+//     let parser = window().dom_parser().expect("should get DOM parser");
+//     let doc = parser.parse_from_string(&opml_content, web_sys::SupportedType::Xml)
+//         .expect("should parse the document");
+//
+//     let outlines = doc.query_selector_all("outline").expect("should query for outlines");
+//     let mut podcasts = Vec::new();
+//
+//     for i in 0..outlines.length() {
+//         if let Some(outline) = outlines.item(i).and_then(|item| item.dyn_into::<Element>().ok()) {
+//             let title = outline.get_attribute("title").unwrap_or_default();
+//             let xml_url = outline.get_attribute("xmlUrl").unwrap_or_default();
+//             podcasts.push((title, xml_url));
+//         }
+//     }
+//
+//     podcasts
+// }
+pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
+    let parser = DomParser::new().unwrap();
+    let doc = parser.parse_from_string(opml_content, SupportedType::TextXml)
+        .unwrap()
+        .dyn_into::<web_sys::Document>()
+        .unwrap();
+
+    let mut podcasts = Vec::new();
+    let outlines = doc.query_selector_all("outline").unwrap();
+    for i in 0..outlines.length() {
+        if let Some(outline) = outlines.item(i).and_then(|o| o.dyn_into::<web_sys::Element>().ok()) {
+            let title = outline.get_attribute("title").unwrap_or_default();
+            let xml_url = outline.get_attribute("xmlUrl").unwrap_or_default();
+            podcasts.push((title, xml_url));
+        }
+    }
+    podcasts
 }

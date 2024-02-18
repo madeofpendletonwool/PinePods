@@ -748,20 +748,32 @@ def user_history(cnx, user_id):
     return results
 
 
-def download_podcast(cnx, url, title, user_id):
+def download_podcast(cnx, episode_id, user_id):
     cursor = cnx.cursor()
 
     # First, get the EpisodeID and PodcastID from the Episodes table
-    query = ("SELECT EpisodeID, PodcastID FROM Episodes "
-             "WHERE EpisodeURL = %s AND EpisodeTitle = %s")
-    cursor.execute(query, (url, title))
+    query = ("SELECT PodcastID FROM Episodes "
+             "WHERE EpisodeID = %s")
+    cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
 
     if result is None:
         # Episode not found
         return False
 
-    episode_id, podcast_id = result
+    podcast_id = result[0]
+
+    # First, get the EpisodeID and PodcastID from the Episodes table
+    query = ("SELECT EpisodeURL FROM Episodes "
+             "WHERE EpisodeID = %s")
+    cursor.execute(query, (episode_id,))
+    result = cursor.fetchone()
+
+    if result is None:
+        # Episode not found
+        return False
+
+    episode_url = result[0]
 
     # Next, using the PodcastID, get the PodcastName from the Podcasts table
     query = ("SELECT PodcastName FROM Podcasts WHERE PodcastID = %s")
@@ -776,7 +788,7 @@ def download_podcast(cnx, url, title, user_id):
     filename = f"{user_id}-{episode_id}.mp3"
     file_path = os.path.join(download_dir, filename)
 
-    response = requests.get(url, stream=True)
+    response = requests.get(episode_url, stream=True)
     response.raise_for_status()
 
     # Get the current date and time for DownloadedDate
@@ -2512,10 +2524,14 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
         "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
         (gpodder_url, decoded_token, user_id)
     )
-    result = cursor.fetchone()
+    # Check if the update was successful
+    if cursor.rowcount == 0:
+        return None
 
     cnx.commit()  # Commit changes to the database
     cursor.close()
+
+    return True
 
 
 def get_gpodder_settings(database_type, cnx, user_id):

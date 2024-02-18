@@ -9,4 +9,6 @@ pub mod guest_settings;
 pub mod download_settings;
 pub mod user_self_service;
 pub mod email_settings;
+pub mod backup_server;
+pub mod restore_server;
 // ...other submodule declarations if any...

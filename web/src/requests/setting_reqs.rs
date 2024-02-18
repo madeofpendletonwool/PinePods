@@ -725,3 +725,71 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
         Err(Error::msg(format!("Error saving MFA secret. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
+
+#[derive(Serialize)]
+pub struct NextcloudAuthRequest {
+    pub(crate) user_id: i32,
+    pub(crate) token: String,
+    pub(crate) poll_endpoint: String,
+    pub(crate) nextcloud_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct NextcloudAuthResponse {
+    pub(crate) status: String,
+    // Define additional fields as needed
+}
+
+pub async fn call_add_nextcloud_server(
+    server_name: &String,
+    api_key: &String,
+    auth_request: NextcloudAuthRequest,
+) -> Result<NextcloudAuthResponse, anyhow::Error> {
+    let url = format!("{}/api/data/add_nextcloud_server", server_name);
+    let api_key_ref = api_key.as_str();
+    let request_body = serde_json::to_string(&auth_request)?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<NextcloudAuthResponse>().await?;
+        Ok(response_body)
+    } else {
+        console::log_1(&format!("Error saving Nextcloud Server Info: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct NextcloudCheckResponse {
+    pub(crate) data: bool,
+    // Define additional fields as needed
+}
+
+pub async fn call_check_nextcloud_server(
+    server_name: &String,
+    api_key: &String,
+    user_id: i32
+) -> Result<NextcloudCheckResponse, anyhow::Error> {
+    let url = format!("{}/api/data/check_gpodder_settings/{}", server_name, user_id);
+    let api_key_ref = api_key.as_str();
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<NextcloudCheckResponse>().await?;
+        Ok(response_body)
+    } else {
+        console::log_1(&format!("Error saving Nextcloud Server Info: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+    }
+}
