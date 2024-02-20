@@ -11,6 +11,10 @@ use crate::requests::pod_req::QueuedEpisodesResponse;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::check_auth;
+use crate::components::episodes_layout::UIStateMsg;
+use wasm_bindgen::closure::Closure;
+use web_sys::window;
+use wasm_bindgen::JsCast;
 
 #[function_component(Queue)]
 pub fn queue() -> Html {
@@ -22,6 +26,8 @@ pub fn queue() -> Html {
     let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let error_message = audio_state.error_message.clone();
+    let info_message = audio_state.info_message.clone();
     let dropdown_open = use_state(|| false);
 
     let toggle_dropdown = {
@@ -31,6 +37,27 @@ pub fn queue() -> Html {
             dropdown_open.set(!*dropdown_open);
         })
     };
+
+    {
+        let ui_dispatch = audio_dispatch.clone();
+        use_effect(move || {
+            let window = window().unwrap();
+            let document = window.document().unwrap();
+
+            let closure = Closure::wrap(Box::new(move |_event: Event| {
+                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
+                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
+            }) as Box<dyn Fn(_)>);
+
+            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+
+            // Return cleanup function
+            move || {
+                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                closure.forget(); // Prevents the closure from being dropped
+            }
+        });
+    }
 
 
     // Fetch episodes on component mount
@@ -182,6 +209,13 @@ pub fn queue() -> Html {
             } else {
                 html! {}
             }
+        }
+        // Conditional rendering for the error banner
+        if let Some(error) = error_message {
+            <div class="error-snackbar">{ error }</div>
+        }
+        if let Some(info) = info_message {
+            <div class="info-snackbar">{ info }</div>
         }
         </div>
         <App_drawer />

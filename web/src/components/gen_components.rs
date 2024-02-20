@@ -7,7 +7,7 @@ use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use web_sys::{HtmlInputElement, window, MouseEvent};
 use web_sys::HtmlSelectElement;
 use yewdux::prelude::*;
-use crate::components::context::{AppState};
+use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
 use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode};
@@ -333,11 +333,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let search_index = use_state(|| "podcast_index".to_string());
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
-
     let dropdown_ref = NodeRef::default();
     
     let toggle_dropdown = {
@@ -360,13 +359,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let queue_api_key = api_key.clone();
     let queue_server_name = server_name.clone();
-
+    let queue_post = audio_dispatch.clone();
     // let server_name = server_name.clone();
     let on_add_to_queue = {
         let episode = props.episode.clone();
         Callback::from(move |_| {
             let server_name_copy = queue_server_name.clone();
             let api_key_copy = queue_api_key.clone();
+            let queue_post = queue_post.clone();
             let request = QueuePodcastRequest {
                 episode_title: episode.get_episode_title(),
                 ep_url: episode.get_episode_artwork(),
@@ -375,7 +375,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
             let future = async move {
-                let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("Episode added to Queue!")));
+                match call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
+                    Ok(success_message) => {
+                        queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                    },
+                    Err(e) => {
+                        queue_post.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
+                        // Handle error, e.g., display the error message
+                    }
+                }
             };
             wasm_bindgen_futures::spawn_local(future);
             // dropdown_open.set(false);
@@ -384,12 +394,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let saved_api_key = api_key.clone();
     let saved_server_name = server_name.clone();
-
+    let save_post = audio_dispatch.clone();
     let on_save_episode = {
         let episode = props.episode.clone();
         Callback::from(move |_| {
             let server_name_copy = saved_server_name.clone();
             let api_key_copy = saved_api_key.clone();
+            let post_state = save_post.clone();
             let request = SavePodcastRequest {
                 episode_id: episode.get_episode_id(), // changed from episode_title
                 user_id: user_id.unwrap(), // replace with the actual user ID
@@ -397,7 +408,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
             let future = async move {
-                let _ = call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // let return_mes = call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode saved successfully")));
+                match call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
+                    Ok(success_message) => {
+                        post_state.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                    },
+                    Err(e) => {
+                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
+                        // Handle error, e.g., display the error message
+                    }
+                }
             };
             wasm_bindgen_futures::spawn_local(future);
             // dropdown_open.set(false);
@@ -406,10 +427,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let download_api_key = api_key.clone();
     let download_server_name = server_name.clone();
-
+    let download_post = audio_dispatch.clone();
     let on_download_episode = {
         let episode = props.episode.clone();
         Callback::from(move |_| {
+            let post_state = download_post.clone();
             let server_name_copy = download_server_name.clone();
             let api_key_copy = download_api_key.clone();
             let request = DownloadEpisodeRequest {
@@ -419,7 +441,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
             let future = async move {
-                let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                match call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
+                    Ok(success_message) => {
+                        post_state.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                    },
+                    Err(e) => {
+                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
+                        // Handle error, e.g., display the error message
+                    }
+                }
             };
             wasm_bindgen_futures::spawn_local(future);
             // dropdown_open.set(false);

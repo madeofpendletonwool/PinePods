@@ -3,7 +3,7 @@ use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use web_sys::console;
-
+use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
     where
@@ -224,7 +224,7 @@ pub async fn call_queue_episode(
     server_name: &String, 
     api_key: &Option<String>, 
     request_data: &QueuePodcastRequest
-) -> Result<(), Error> {
+) -> Result<String, Error> {
     let url = format!("{}/api/data/queue_pod", server_name);
 
     // Convert Option<String> to Option<&str>
@@ -239,11 +239,15 @@ pub async fn call_queue_episode(
         .send()
         .await?;
 
-    if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to queue episode: {}", response.status_text())));
+    if response.ok() {
+        // Read the success message from the response body as text
+        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode queued successfully"));
+        Ok(success_message)
+    } else {
+        // Read the error response body as text to include in the error
+        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!("Failed to queue episode: {} - {}", response.status_text(), error_text)))
     }
-
-    Ok(())
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -260,7 +264,8 @@ pub struct QueuedEpisode {
     pub EpisodeDescription: String,
     pub EpisodeArtwork: String,
     pub EpisodeURL: String,
-    pub QueuePosition: i32,
+    #[serde(default)]
+    pub QueuePosition: Option<i32>,
     pub EpisodeDuration: i32,
     pub QueueDate: String,
     pub ListenDuration: Option<i32>,
@@ -372,7 +377,7 @@ pub async fn call_save_episode(
     server_name: &String, 
     api_key: &Option<String>, 
     request_data: &SavePodcastRequest
-) -> Result<(), Error> {
+) -> Result<String, Error> {
     let url = format!("{}/api/data/save_episode", server_name);
 
     // Convert Option<String> to Option<&str>
@@ -387,13 +392,15 @@ pub async fn call_save_episode(
         .send()
         .await?;
 
-    if !response.ok() {
-        // Read the response body as text
+    if response.ok() {
+        // Read the success message from the response body as text
+        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode saved successfully"));
+        Ok(success_message)
+    } else {
+        // Read the error response body as text to include in the error
         let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        return Err(anyhow::Error::msg(format!("Failed to save episode: {} - {}", response.status_text(), error_text)));
+        Err(anyhow::Error::msg(format!("Failed to save episode: {} - {}", response.status_text(), error_text)))
     }
-
-    Ok(())
 }
 
 // History calls
@@ -502,16 +509,17 @@ pub struct EpisodeDownload {
     pub EpisodeDescription: String,
     pub EpisodeArtwork: String,
     pub EpisodeURL: String,
-    pub QueuePosition: i32,
     pub EpisodeDuration: i32,
-    pub QueueDate: String,
     pub ListenDuration: Option<i32>,
     pub EpisodeID: i32,
+    pub DownloadedLocation: String,
+    pub PodcastID: i32,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct DownloadDataResponse {
-    pub downloaded_episodes: Vec<EpisodeDownload>,
+    #[serde(rename = "downloaded_episodes")]
+    pub episodes: Vec<EpisodeDownload>,
 }
 
 pub async fn call_get_episode_downloads(
@@ -543,7 +551,8 @@ pub async fn call_get_episode_downloads(
     console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: DownloadDataResponse = serde_json::from_str(&response_text)?;
-    Ok(response_data.downloaded_episodes)
+    console::log_1(&format!("Downloaded Episodes: {:?}", response_data.episodes.clone()).into());
+    Ok(response_data.episodes)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -556,7 +565,7 @@ pub async fn call_download_episode (
     server_name: &String, 
     api_key: &Option<String>, 
     request_data: &DownloadEpisodeRequest
-) -> Result<(), Error> {
+) -> Result<String, Error> {
     let url = format!("{}/api/data/download_podcast", server_name);
 
     // Convert Option<String> to Option<&str>
@@ -571,11 +580,15 @@ pub async fn call_download_episode (
         .send()
         .await?;
 
-    if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to download episode: {}", response.status_text())));
+    if response.ok() {
+        // Read the success message from the response body as text
+        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode downloaded successfully"));
+        Ok(success_message)
+    } else {
+        // Read the error response body as text to include in the error
+        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!("Failed to download episode: {} - {}", response.status_text(), error_text)))
     }
-
-    Ok(())
 }
 
 // Get Single Epsiode
@@ -639,4 +652,47 @@ pub async fn call_get_episode_metadata(
         .map_err(|e| anyhow::Error::msg(format!("Deserialization Error: {}", e)))?;
 
     Ok(response_data.episode)
+}
+
+#[derive(Serialize)]
+pub struct RecordListenDurationRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub listen_duration: f32, // Assuming float is appropriate here; adjust the type if necessary
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RecordListenDurationResponse {
+    pub status: String, // Assuming a simple status response; adjust according to actual API response
+}
+
+
+pub async fn call_record_listen_duration(
+    server_name: &str,
+    api_key: &str,
+    request_data: RecordListenDurationRequest,
+) -> Result<RecordListenDurationResponse, Error> {
+    let url = format!("{}/api/data/record_listen_duration", server_name);
+    let request_body = serde_json::to_string(&request_data)
+        .map_err(|e| Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(&request_body)
+        .map_err(|e| Error::msg(format!("Request Building Error: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network Request Error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<RecordListenDurationResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Response Parsing Error: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error recording listen duration. Server Response: {}",
+            response.status_text()
+        )))
+    }
 }

@@ -10,7 +10,11 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
-use crate::requests::pod_req::{call_add_history, HistoryAddRequest};
+use std::cell::RefCell;
+use std::time::Duration;
+use gloo_timers::future::sleep;
+use std::rc::Rc;
+use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest};
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
@@ -348,11 +352,13 @@ pub fn on_play_click(
         //     api_key, 
         //     &history_add
         // );
-    
+        let history_server_name = server_name.clone();
+        let history_api_key = api_key.clone();
+        
         spawn_local(async move {
             let add_history_future = call_add_history(
-                &server_name,
-                api_key, 
+                &history_server_name,
+                history_api_key, 
                 &history_add
             );
             match add_history_future.await {
@@ -364,6 +370,41 @@ pub fn on_play_click(
                 }
             }
         });
+        let timer_server_name = server_name.clone();
+        let timer_api_key = api_key.clone();
+        let timer_user_id = user_id.clone();
+        // Wrap the loop in spawn_local to run it asynchronously
+        spawn_local({
+            let api_key = timer_api_key.clone();
+            let server_name = timer_server_name.clone();
+            let user_id = timer_user_id.clone();
+            
+            async move {
+                loop {
+                    // Assuming the listen_duration can be determined or tracked
+                    let listen_duration = 30.0; // Placeholder for actual duration tracking
+
+                    let request_data = RecordListenDurationRequest {
+                        episode_id,
+                        user_id,
+                        listen_duration,
+                    };
+
+                    match call_record_listen_duration(&server_name, &api_key, request_data).await {
+                        Ok(response) => {
+                            web_sys::console::log_1(&format!("Listen duration recorded: {:?}", response).into());
+                        },
+                        Err(e) => {
+                            web_sys::console::log_1(&format!("Failed to record listen duration: {:?}", e).into());
+                        }
+                    }
+
+                    // Wait for a short period before repeating the task
+                    sleep(Duration::from_secs(30)).await;
+                }
+            }
+        });
+
         audio_dispatch.reduce_mut(move |audio_state| {
             audio_state.audio_playing = Some(true);
             audio_state.currently_playing = Some(AudioPlayerProps {

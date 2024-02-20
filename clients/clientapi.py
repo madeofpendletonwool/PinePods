@@ -788,7 +788,7 @@ class DownloadPodcastData(BaseModel):
 
 
 @app.post("/api/data/download_podcast")
-async def api_download_podcast(data: DownloadPodcastData, cnx=Depends(get_database_connection),
+async def api_download_podcast(data: DownloadPodcastData, background_tasks: BackgroundTasks, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
@@ -802,15 +802,25 @@ async def api_download_podcast(data: DownloadPodcastData, cnx=Depends(get_databa
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.download_podcast(cnx, data.episode_id, data.user_id)
-        if result:
-            return {"detail": "Podcast downloaded."}
+        ep_status = database_functions.functions.check_downloaded(cnx, data.user_id, data.episode_id)
+        if ep_status:
+            return {"detail": "Podcast already downloaded."}
         else:
-            raise HTTPException(status_code=400, detail="Error downloading podcast.")
+            background_tasks.add_task(download_podcast_fun, data.episode_id, data.user_id)
+            return {"detail": "Podcast download started."}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only make sessions for yourself!")
+                            detail="You can only download podcasts for yourself!")
+    
+def download_podcast_fun(episode_id: int, user_id: int):
+    cnx = create_database_connection()  # replace with your function to create a new database connection
+    try:
+        database_functions.functions.download_podcast(cnx, episode_id, user_id)
+    finally:
+        cnx.close()  # make sure to close the connection when you're done
 
+def test_download_podcast_fun(episode_id: int, user_id: int):
+    print(f"Downloading podcast {episode_id} for user {user_id}")
 
 class DeletePodcastData(BaseModel):
     episode_url: str
@@ -860,9 +870,13 @@ async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_conne
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        success = database_functions.functions.save_episode(cnx, data.episode_id, data.user_id)
+        ep_status = database_functions.functions.check_saved(cnx, data.user_id, data.episode_id)
+        if ep_status:
+            return {"detail": "Episode already saved."}
+        else:
+            success = database_functions.functions.save_episode(cnx, data.episode_id, data.user_id)
         if success:
-            return {"detail": "Episode saved."}
+            return {"detail": "Episode saved!"}
         else:
             raise HTTPException(status_code=400, detail="Error saving episode.")
     else:
@@ -894,8 +908,7 @@ async def api_remove_saved_episode(data: RemoveSavedEpisodeData, cnx=Depends(get
 
 
 class RecordListenDurationData(BaseModel):
-    episode_url: str
-    title: str
+    episode_id: int
     user_id: int
     listen_duration: float
 
@@ -915,7 +928,7 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_listen_duration(cnx, data.episode_url, data.title, data.user_id,
+        database_functions.functions.record_listen_duration(cnx, data.episode_id, data.user_id,
                                                             data.listen_duration)
         return {"detail": "Listen duration recorded."}
     else:
@@ -2039,8 +2052,7 @@ async def search_data(data: SearchPodcastData, cnx=Depends(get_database_connecti
 
 
 class QueuePodData(BaseModel):
-    episode_title: str
-    ep_url: str
+    episode_id: int
     user_id: int
 
 
@@ -2059,9 +2071,13 @@ async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.queue_pod(database_type, cnx, data.episode_title, data.ep_url,
-                                                        data.user_id)
-        return {"data": result}
+        ep_status = database_functions.functions.check_queued(database_type, cnx, data.episode_id, data.user_id)
+        if ep_status:
+            return {"data": "Episode already in queue"}
+        else:
+            result = database_functions.functions.queue_pod(database_type, cnx, data.episode_id, data.user_id)
+            return {"data": result}
+
     else:
         raise HTTPException(status_code=403,
                             detail="You can only add episodes to your own queue!")

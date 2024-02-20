@@ -317,7 +317,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ### Pre-Rust Revamp Release
 - [ ] Downloads Page
 - [ ] Make Timestamps with with Auto Resume
-- [ ] Nextcloud Subscriptions
+- [x] Nextcloud Subscriptions
 - [ ] Nextcloud Subscription Timestamps
 - [ ] Revamp Readme
 - [ ] Allow for episodes to be played without being added

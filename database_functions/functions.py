@@ -822,20 +822,10 @@ def download_podcast(cnx, episode_id, user_id):
     return True
 
 
-def check_downloaded(cnx, user_id, title, url):
+def check_downloaded(cnx, user_id, episode_id):
     cursor = None
     try:
         cursor = cnx.cursor()
-
-        # Get the EpisodeID from the Episodes table
-        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
-        cursor.execute(query, (title, url))
-        result = cursor.fetchone()
-
-        if result is None:  # add this check
-            return False
-
-        episode_id = result[0]
 
         # Check if the episode is downloaded for the user
         query = "SELECT DownloadID FROM DownloadedEpisodes WHERE UserID = %s AND EpisodeID = %s"
@@ -1048,23 +1038,9 @@ def check_usernames(cnx, username):
     return count > 0
 
 
-def record_listen_duration(cnx, url, title, user_id, listen_duration):
+def record_listen_duration(cnx, episode_id, user_id, listen_duration):
     listen_date = datetime.datetime.now()
     cursor = cnx.cursor()
-
-    # Get EpisodeID from Episodes table by joining with Podcasts table
-    query = """SELECT e.EpisodeID
-               FROM Episodes e
-               JOIN Podcasts p ON e.PodcastID = p.PodcastID
-               WHERE e.EpisodeURL = %s AND e.EpisodeTitle = %s AND p.UserID = %s"""
-    cursor.execute(query, (url, title, user_id))
-    result = cursor.fetchone()
-    if result is None:
-        # Episode not found in database, handle this case
-        cursor.close()
-        # cnx.close()
-        return
-    episode_id = result[0]
 
     # Check if UserEpisodeHistory row already exists for the given user and episode
     cursor.execute("SELECT * FROM UserEpisodeHistory WHERE UserID=%s AND EpisodeID=%s", (user_id, episode_id))
@@ -1667,15 +1643,10 @@ def save_episode(cnx, episode_id, user_id):
     return True
 
 
-def check_saved(cnx, user_id, title, url):
+def check_saved(cnx, user_id, episode_id):
     cursor = None
     try:
         cursor = cnx.cursor()
-
-        # Get the EpisodeID from the Episodes table
-        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeTitle = %s AND EpisodeURL = %s"
-        cursor.execute(query, (title, url))
-        episode_id = cursor.fetchone()[0]
 
         # Check if the episode is saved for the user
         query = "SELECT * FROM SavedEpisodes WHERE UserID = %s AND EpisodeID = %s"
@@ -2374,19 +2345,11 @@ def search_data(database_type, cnx, search_term, user_id):
         return None
 
 
-def queue_pod(database_type, cnx, episode_title, ep_url, user_id):
+def queue_pod(database_type, cnx, episode_id, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
-
-    # Fetch the EpisodeID using EpisodeTitle and EpisodeURL
-    query_get_episode_id = """
-    SELECT EpisodeID FROM Episodes 
-    WHERE EpisodeTitle = %s AND EpisodeURL = %s
-    """
-    cursor.execute(query_get_episode_id, (episode_title, ep_url))
-    result = cursor.fetchone()
 
     # If Episode not found, raise exception or handle it as per your requirement
     if not result:
@@ -2421,6 +2384,24 @@ def queue_pod(database_type, cnx, episode_title, ep_url, user_id):
 
     return {"detail": "Podcast Episode queued successfully."}
 
+def check_queued(database_type, cnx, episode_id, user_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
+
+    query = """
+    SELECT * FROM EpisodeQueue 
+    WHERE EpisodeID = %s AND UserID = %s
+    """
+    cursor.execute(query, (episode_id, user_id))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        return True
+    else:
+        return False
 
 def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
     if database_type == "postgresql":
