@@ -322,6 +322,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Revamp Readme
 - [ ] Allow for episodes to be played without being added
 - [ ] User Settings
+- [ ] Make the Queue functional and verify auto removals and adds
 - [ ] Require Re-Login if API Key that's saved doesn't work
 - [ ] Finalize User Stats recording and display
 - [ ] MFA Logins - Github integration and cloud logins (OAuth)
