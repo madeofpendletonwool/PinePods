@@ -2,72 +2,35 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 use crate::components::context::AppState;
 use yew::platform::spawn_local;
-use web_sys::console;
-use crate::requests::setting_reqs::{call_mfa_settings, call_save_mfa_secret};
+use web_sys::{Element, console};
+use crate::components::episodes_layout::SafeHtml;
+use crate::requests::setting_reqs::{call_mfa_settings, call_save_mfa_secret, call_generate_mfa_secret, call_verify_temp_mfa};
 use std::borrow::Borrow;
-use otpauth::TOTP;
-use qrcode::QrCode;
-use base64::encode;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 // use std::time::{SystemTime, UNIX_EPOCH};
-use js_sys::Date;
-use qrcode_png::QrCodeEcc;
-use qrcode::Color;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use data_encoding::BASE32;
-use qrcode::render::svg;
-use crate::components::gen_funcs::verify_totp_code;
-use rand::{RngCore, rngs::OsRng};
-
-pub fn generate_totp_secret() -> String {
-    let mut secret = [0u8; 32]; // 256-bit secret
-    OsRng.fill_bytes(&mut secret);
-    BASE32.encode(&secret)
-}
-
-pub fn generate_qr_code(email: &str, issuer: &str, secret: String) -> Result<String, Box<dyn std::error::Error>> {
-    // let secret = generate_totp_secret();
-
-    // Initialize TOTP with your secret key
-    let totp = TOTP::new(secret);
-
-    // Get the base32 encoded secret
-    let secret_base32 = totp.base32_secret();
-
-    // Construct the provisioning URL according to the otpauth protocol
-    let provisioning_url = totp.to_uri(email, issuer);
-
-    // Generate the QR code
-    let qr = QrCode::new(provisioning_url.as_bytes())?;
-    let svg = qr.render::<svg::Color>().build();
-
-    // URL-encode the SVG data
-    let encoded_svg = utf8_percent_encode(&svg, NON_ALPHANUMERIC).to_string();
-
-    // Return the data URL for the SVG
-    Ok(format!("data:image/svg+xml;utf8,{}", encoded_svg))
-}
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
     let email = state.user_details.as_ref().map(|ud| ud.Email.clone());
     let mfa_status = use_state(|| false);
     let code = use_state(|| "".to_string());
 
-
+    let effect_user_id = user_id.clone();
+    let effect_api_key = api_key.clone();
+    let effect_server_name = server_name.clone();
     {
         let mfa_status = mfa_status.clone();
-        use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
+        use_effect_with((effect_api_key.clone(), effect_server_name.clone()), move |(api_key, server_name)| {
             let mfa_status = mfa_status.clone();
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let user_id = _user_id.clone();
+            let api_key = effect_api_key.clone();
+            let server_name = effect_server_name.clone();
+            let user_id = effect_user_id.clone();
             let future = async move {
                 if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
                     let response = call_mfa_settings(server_name, api_key.unwrap(), user_id.unwrap()).await;
@@ -113,31 +76,37 @@ pub fn mfa_options() -> Html {
         let page_state = page_state.clone();
         let mfa_secret = mfa_secret.clone();
         let email = email.clone();
+        let server_name = server_name.clone(); // Replace with actual server name
+        let api_key = api_key.clone(); // Replace with actual API key
+        let user_id = user_id.clone(); // Replace with actual user ID
+    
         Callback::from(move |_| {
             let mfa_code = mfa_code.clone();
             let page_state = page_state.clone();
             let mfa_secret = mfa_secret.clone();
-            let secret = generate_totp_secret();
             let email = email.clone();
-            mfa_secret.set(secret.clone());
-            // Assuming generate_qr_code_for_web is async, you might need to spawn a local future
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id;
+    
+            // Now call the API to generate the TOTP secret
             wasm_bindgen_futures::spawn_local(async move {
-                let email = email; // Example email, use actual data
-                let issuer = "Pinepods"; // Example issuer, use actual data
-                match generate_qr_code(email.unwrap().unwrap().as_str(), issuer, secret.clone()) {
-                    Ok(qr_code_base64) => {
-                        mfa_code.set(qr_code_base64);
+                match call_generate_mfa_secret(server_name.unwrap(), api_key.unwrap().unwrap(), user_id.unwrap()).await {
+                    Ok(response) => {
+                        mfa_secret.set(response.secret);
+                        mfa_code.set(response.qr_code_svg); // Directly use the SVG QR code
                         page_state.set(PageState::Setup); // Move to the setup page state
-                    }
+                    },
                     Err(e) => {
-                        log::error!("Failed to generate QR code: {}", e);
+                        log::error!("Failed to generate TOTP secret: {}", e);
                         // Handle error appropriately
                     }
                 }
             });
         })
     };
-
+    
+    let verify_mfa_code = mfa_code.clone();
     // Define the function to close the modal
     let verify_code = {
         let page_state = page_state.clone();
@@ -153,33 +122,37 @@ pub fn mfa_options() -> Html {
             let server_name = server_name.clone();
             let page_state = page_state.clone();
             let mfa_secret = mfa_secret.clone();
+            let mfa_code = verify_mfa_code.clone();
             let code = code.clone();
 
             console::log_1(&"Verifying code".into());
-
-            // Use the separate function to verify the code
-            if verify_totp_code(&mfa_secret, &code) {
-                console::log_1(&"Code verified successfully".into());
-                // Proceed with action after successful verification
-                wasm_bindgen_futures::spawn_local(async move {
-                    match call_save_mfa_secret(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*mfa_secret).clone()).await {
-                        Ok(response) => {
-                            console::log_1(&format!("MFA setup successful: {}", response.status).into());
-                            page_state.set(PageState::Hidden);
-                        },
-                        Err(e) => {
-                            console::log_1(&e.to_string().into());
-                            // Handle error appropriately
-                            page_state.set(PageState::Hidden);
-                        },
-                    }
-                });
-            } else {
-                console::log_1(&"Invalid code".into());
-                page_state.set(PageState::Hidden);
-                // Handle invalid code
-                // For example, you might want to display an error message to the user
-            }
+            console::log_1(&"test".into());
+            wasm_bindgen_futures::spawn_local(async move {
+                console::log_1(&"Verifying code".into());
+                console::log_1(&"test".into());
+                console::log_1(&JsValue::from_str(&(*mfa_code).clone()));
+                console::log_1(&server_name.clone().unwrap().into());
+                console::log_1(&api_key.clone().unwrap().unwrap().into());
+                console::log_1(&user_id.clone().unwrap().into());
+                console::log_1(&"below is the code".into());
+                console::log_1(&(*code).clone().into());
+                match call_verify_temp_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*code).clone()).await {
+                    Ok(response) => {
+                        if response.verified {
+                            console::log_1(&"MFA code verified successfully".into());
+                            // Handle successful verification, e.g., updating UI state or navigating
+                            page_state.set(PageState::Hidden); // Example: hiding MFA prompt
+                        } else {
+                            console::log_1(&"MFA code verification failed".into());
+                            // Handle failed verification, e.g., showing an error message
+                        }
+                    },
+                    Err(e) => {
+                        console::log_1(&format!("Failed to verify MFA code: {}", e).into());
+                        // Handle error appropriately, e.g., showing an error message
+                    },
+                }
+            });
         })
     };
 
@@ -190,7 +163,8 @@ pub fn mfa_options() -> Html {
             code.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
     };
-
+    // let svg_data_url = format!("data:image/svg+xml;utf8,{}", url_encode(&(*mfa_code).clone()));
+    let qr_code_svg = (*mfa_code).clone();
     let setup_mfa_modal = html! {
         <div id="setup-mfa-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
             <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
@@ -206,12 +180,13 @@ pub fn mfa_options() -> Html {
                             {"Setup MFA"}
                         </h3>
                         <p class="text-m font-semibold text-gray-900 dark:text-white">
-                        {"Either scan the QR code with your authenticator app or enter the code manually. Then enter the code from your authenticator app to verify."}
+                            {"Either scan the QR code with your authenticator app or enter the code manually. Then enter the code from your authenticator app to verify."}
                         </p>
-
-                        <div class="mt-4 bg-gray-100 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
-                            <img src={(*mfa_code).clone()} alt="QR Code" />
+                        <div class="mt-4 self-center bg-white rounded-lg overflow-hidden p-4 shadow-lg">
+                            <SafeHtml html={qr_code_svg} />
                         </div>
+                        // More HTML as needed
+
                         <div class="mt-4 bg-gray-100 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
                             {(*mfa_secret).clone()}
                         </div>

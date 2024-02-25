@@ -3,7 +3,8 @@ use web_sys::{console, window};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
-use crate::requests::login_requests;
+use crate::requests::login_requests::{self, call_check_mfa_enabled};
+use crate::requests::login_requests::{ TimeZoneInfo, call_first_login_done, call_setup_timezone_info, VerifyMFABody, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password};
 use crate::components::context::{AppState, UIState};
 // use yewdux::prelude::*;
 use md5;
@@ -12,6 +13,7 @@ use crate::requests::login_requests::{AddUserRequest, call_add_login_user};
 use crate::requests::setting_reqs::call_get_theme;
 use crate::components::gen_funcs::{encode_password, validate_user_input};
 use crate::components::episodes_layout::UIStateMsg;
+use chrono_tz::{TZ_VARIANTS, Tz};
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -29,12 +31,54 @@ pub fn login() -> Html {
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let new_username = use_state(|| "".to_string());
+    let forgot_email = use_state(|| "".to_string());
+    let forgot_username = use_state(|| "".to_string());
+    let reset_password = use_state(|| "".to_string());
+    let reset_code = use_state(|| "".to_string());
     let new_password = use_state(|| "".to_string());
     let email = use_state(|| "".to_string());
     let fullname = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let _error_message = app_state.error_message.clone();
+    let error_message = _state.error_message.clone();
+    let time_zone = use_state(|| "".to_string());
+    let time_pref = use_state(|| 12);
+    let mfa_code = use_state(|| "".to_string());
+    let temp_api_key = use_state(|| "".to_string());
+    let temp_user_id = use_state(|| 0);
+    let temp_server_name = use_state(|| "".to_string());
+    let info_message = _state.info_message.clone();
+    // Define the initial state
+    let page_state = use_state(|| PageState::Default);
+    let self_service_enabled = use_state(|| false); // State to store self-service status
+    let effect_self_service = self_service_enabled.clone();
+    use_effect_with(
+        // No dependencies, so we pass an empty tuple to run this effect once on component mount
+        (),
+        move |_| {
+            let self_service_enabled = effect_self_service.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                // Example server_name retrieval, adjust according to your needs
+                let window = web_sys::window().expect("no global `window` exists");
+                let location = window.location();
+                let server_name = location.href().expect("should have a href").trim_end_matches('/').to_string();
+
+                match call_self_service_login_status(server_name).await {
+                    Ok(status) => {
+                        self_service_enabled.set(status);
+                    }
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Error fetching self service status: {:?}", e).into());
+                    }
+                }
+            });
+
+            // Cleanup function, not needed in this case
+            || ()
+        },
+    );
+
 
     {
         let ui_dispatch = _dispatch.clone();
@@ -149,20 +193,25 @@ pub fn login() -> Html {
 
 
 
-    let _on_username_change = {
+    let on_login_username_change = {
         let username = username.clone();
         Callback::from(move |e: InputEvent| {
             username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
     };
 
-    let _on_password_change = {
+    let on_login_password_change = {
         let password = password.clone();
         Callback::from(move |e: InputEvent| {
             password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
     };
     let history_clone = history.clone();
+    let submit_state = page_state.clone();
+    let call_server_name = temp_server_name.clone();
+    let call_api_key = temp_api_key.clone();
+    let call_user_id = temp_user_id.clone();
+    let submit_post_state = _dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
@@ -170,12 +219,23 @@ pub fn login() -> Html {
             let username = username.clone();
             let password = password.clone();
             let dispatch = submit_dispatch.clone();
+            let post_state = submit_post_state.clone();
+            let page_state = submit_state.clone();
+            let temp_server_name = call_server_name.clone();
+            let temp_api_key = call_api_key.clone();
+            let temp_user_id = call_user_id.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                match login_requests::login_new_server("http://localhost:8040".to_string(), username.to_string(), password.to_string()).await {
+                let window = window().expect("no global `window` exists");
+                let location = window.location();
+                let server_name = location.href().expect("should have a href");
+                let server_name = server_name.trim_end_matches('/').to_string();
+                let page_state = page_state.clone();
+                match login_requests::login_new_server(server_name.clone(), username.to_string(), password.to_string()).await {
                     Ok((user_details, login_request, server_details)) => {
                         // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
-    
+                        let key_copy = login_request.clone();
+                        let user_copy = user_details.clone();
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
@@ -184,30 +244,73 @@ pub fn login() -> Html {
     
                             state.store_app_state();
                         });
-    
-                        history.push("/home"); // Use the route path
+
+                                    // Extract server_name, api_key, and user_id
+                        let server_name = key_copy.server_name;
+                        let api_key = key_copy.api_key;
+                        let user_id = user_copy.UserID;
+
+                        temp_server_name.set(server_name.clone());
+                        temp_api_key.set(api_key.clone().unwrap());
+                        temp_user_id.set(user_id.clone());
+
+                        match call_first_login_done(server_name.clone(), api_key.clone().unwrap(), &user_id).await {
+                            Ok(first_login_done) => {
+                                if first_login_done {
+                                    match call_check_mfa_enabled(server_name.clone(), api_key.clone().unwrap(), &user_id).await {
+                                        Ok(response) => {
+                                            if response.mfa_enabled {
+                                                page_state.set(PageState::MFAPrompt);
+                                            } else {
+                                                history.push("/home"); // Use the route path
+                                            }
+
+                                        },
+                                        Err(_) => {
+                                            post_state.reduce_mut(|state| state.error_message = Option::from("Error Checking MFA Status".to_string()));
+                                        }
+                                    }
+                                } else {
+                                    page_state.set(PageState::TimeZone);
+                                }
+                            },
+                            Err(_) => {
+                                post_state.reduce_mut(|state| state.error_message = Option::from("Error checking first login status".to_string()));
+                                console::log_1(&"Error checking first login status".into());
+                            }
+                        }
                     },
                     Err(_) => {
+                        console::log_1(&format!("Error logging into server: {}", server_name).into());
+                        post_state.reduce_mut(|state| state.error_message = Option::from("Your credentials appear to be incorrect".to_string()));
                         // Handle error
                     }
                 }
             });
         })
     };
+
+    let on_submit_click = {
+        let on_submit = on_submit.clone(); // Clone the existing on_submit logic
+        Callback::from(move |_: MouseEvent| {
+            on_submit.emit(()); // Invoke the existing on_submit logic
+        })
+    };
+
     // Define the state of the application
     #[derive(Clone, PartialEq)]
     enum PageState {
         Default,
         CreateUser,
         ForgotPassword,
+        TimeZone,
+        MFAPrompt,
+        EnterCode,
     }
-
-    // Define the initial state
-    let page_state = use_state(|| PageState::Default);
-
     // Define the callback functions
+    let create_new_state = page_state.clone();
     let on_create_new_user = {
-        let page_state = page_state.clone();
+        let page_state = create_new_state.clone();
         Callback::from(move |_| {
             page_state.set(PageState::CreateUser);
         })
@@ -259,6 +362,10 @@ pub fn login() -> Html {
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
+            let window = window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location.href().expect("should have a href");
+            let server_name = server_name.trim_end_matches('/').to_string();
             let dispatch = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
@@ -274,18 +381,16 @@ pub fn login() -> Html {
                     match encode_password(&new_password) {
                         Ok(hash_pw) => {
                                         // Set the state
-                            dispatch.reduce_mut(move |state| {
-                                state.add_user_request = Some(AddUserRequest {
-                                    fullname,
-                                    new_username,
-                                    email,
-                                    hash_pw,
-                                });
+                            let add_user_request = Some(AddUserRequest {
+                                fullname,
+                                username: new_username,
+                                email,
+                                hash_pw,
                             });
 
-                            let add_user_request = add_user_request.clone();
+                            // let add_user_request = add_user_request.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                match call_add_login_user("http://localhost:8040".to_string(), &add_user_request).await {
+                                match call_add_login_user(server_name, &add_user_request).await {
                                     Ok(success) => {
                                         if success {
                                             console::log_1(&"User added successfully".into());
@@ -369,6 +474,60 @@ pub fn login() -> Html {
         })
     };
 
+    let on_forgot_username_change = {
+        let forgot_username = forgot_username.clone();
+        Callback::from(move |e: InputEvent| {
+            forgot_username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };
+    
+    let on_forgot_email_change = {
+        let forgot_email = forgot_email.clone();
+        Callback::from(move |e: InputEvent| {
+            forgot_email.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };
+
+    let on_reset_submit = {
+        let page_state = page_state.clone();
+        let forgot_username = forgot_username.clone().to_string();
+        let forgot_email = forgot_email.clone().to_string();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |_e: yew::events::SubmitEvent| {
+            let window = window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location.href().expect("should have a href");
+            let server_name = server_name.trim_end_matches('/').to_string();
+            let dispatch = dispatch_wasm.clone();   
+            let page_state = page_state.clone();
+            page_state.set(PageState::Default); 
+            let reset_code_request = Some(ResetCodePayload {
+                username: forgot_username.clone(),
+                email: forgot_email.clone(),
+            });
+    
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_reset_password_create_code(server_name, &reset_code_request.unwrap()).await {
+                    Ok(success) => {
+                        if success {
+                            console::log_1(&"Password Reset Email Sent!".into());
+                            page_state.set(PageState::EnterCode);
+                        } else {
+                            console::log_1(&"Password Reset Email Failed".into());
+                            page_state.set(PageState::Default);
+                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Sending Reset Email")));
+                        }
+                    }
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        page_state.set(PageState::Default);
+                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error sending reset: {:?}", e)));
+                    }
+                }
+            });
+        })
+    };
+
 
     let forgot_password_modal = html! {
         <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
@@ -387,27 +546,352 @@ pub fn login() -> Html {
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
+                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            {"Please enter your username and email to reset your password."}
+                            </p>
                             <div>
                                 <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
-                                <input type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <div>
                                 <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
-                                <input type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
-                            <button type="submit" class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <button onsubmit={on_reset_submit} type="submit" class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
             </div>
         </div>
     };
+
+    let on_reset_code_change = {
+        let reset_code = reset_code.clone();
+        Callback::from(move |e: InputEvent| {
+            reset_code.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };
+    
+    let on_reset_password_change = {
+        let reset_password = reset_password.clone();
+        Callback::from(move |e: InputEvent| {
+            reset_password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    }; 
+
+    let on_reset_code_submit = {
+        let page_state = page_state.clone();
+        let forgot_username = forgot_username.clone().to_string();
+        let reset_password = reset_password.clone().to_string();
+        let forgot_email = forgot_email.clone().to_string();
+        let reset_code = reset_code.clone().to_string();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |_e: yew::events::MouseEvent| {
+            let window = window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location.href().expect("should have a href");
+            let server_name = server_name.trim_end_matches('/').to_string();
+            let dispatch = dispatch_wasm.clone();   
+            let page_state = page_state.clone();
+            page_state.set(PageState::Default);
+            // let forgot__deref = (*forgot_username.clone();
+            let reset_password_request = Some(ResetForgotPasswordPayload {
+                reset_code: forgot_username.clone(),
+                email: forgot_email.clone(),
+                new_password: reset_password.clone(),
+            });
+    
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_verify_and_reset_password(server_name, &reset_password_request.unwrap()).await {
+                    Ok(success) => {
+                        if success.message == "Password Reset Successfully" {
+                            console::log_1(&"Password has been reset!".into());
+                            page_state.set(PageState::Default);
+                        } else {
+                            console::log_1(&"Password Reset Failed".into());
+                            page_state.set(PageState::Default);
+                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Sending Reset Email")));
+                        }
+                    }
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        page_state.set(PageState::Default);
+                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Resetting Password: {:?}", e)));
+                    }
+                }
+            });
+        })
+    };
+
+    let enter_code_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"MFA Login"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            {"An email has been sent to your email address. Please enter a new password and the code contained within the email to reset your password."}
+                            </p>
+                            <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter Password Reset Code" />
+                            <input oninput={on_reset_password_change} type="text" id="reset_password" name="reset_password" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter your new password" />
+                            <button type="submit" onclick={on_reset_code_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+
     let history_clone = history.clone();
     let on_different_server = {
         Callback::from(move |_| {
             let history = history_clone.clone();
             history.push("/change_server"); // Use the route path
         })
+    };
+
+    let on_tz_change = {
+        let tz = time_zone.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            tz.set(select_element.value());
+        })
+    };
+    
+    let on_time_pref_change = {
+        let time_pref = time_pref.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            let value_str = select_element.value();
+            if let Ok(value_int) = value_str.parse::<i32>() {
+                time_pref.set(value_int);
+            } else {
+                console::log_1(&"Error parsing time preference".into());
+            }
+        })
+    };
+
+    let on_time_zone_submit = {
+        // let (state, dispatch) = use_store::<AppState>();
+        let page_state = page_state.clone();
+        let time_pref = time_pref.clone();
+        let time_zone = time_zone.clone();
+        // let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        // let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let temp_server_name = temp_server_name.clone();
+        let temp_api_key = temp_api_key.clone();
+        let temp_user_id = temp_user_id.clone();
+        let time_zone_setup = app_state.time_zone_setup.clone();
+        let history = history.clone();
+        // let error_message_create = error_message.clone();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            let post_state = _dispatch.clone();
+            console::log_1(&"Time Zone Submit".into());
+            console::log_1(&format!("Time Zone: {:?}", time_zone.clone()).into());
+            console::log_1(&format!("Hour Pref: {:?}", time_pref.clone()).into());
+            let dispatch = dispatch_wasm.clone();
+            let hour_pref = time_pref.clone();
+            let timezone = time_zone.clone();
+            e.prevent_default();
+            let server_name = (*temp_server_name).clone();
+            let api_key = (*temp_api_key).clone();
+            let user_id = *temp_user_id; 
+            console::log_1(&format!("User ID: {:?}", user_id.clone()).into());
+            console::log_1(&format!("Server Name: {:?}", server_name.clone()).into());
+            console::log_1(&format!("api_key: {:?}", api_key.clone()).into());
+            let page_state = page_state.clone();
+            let history = history.clone();
+            // let error_message_clone = error_message_create.clone();
+            e.prevent_default();
+            // page_state.set(PageState::Default);
+
+            let timezone_info = TimeZoneInfo {
+                user_id: *temp_user_id, // assuming temp_user_id is a use_state of i32
+                timezone: (*time_zone).clone(),
+                hour_pref: *time_pref,
+            };
+            console::log_1(&format!("Time Zone Info: {:?}", timezone_info).into());
+            
+            wasm_bindgen_futures::spawn_local(async move {
+                // Directly use timezone_info without checking it against time_zone_setup
+                match call_setup_timezone_info(server_name.clone(), api_key.clone(), timezone_info).await {
+                    Ok(success) => {
+                        if success.success {
+                            console::log_1(&"Time Zone Info Setup".into());
+                            page_state.set(PageState::Default);
+                            match call_check_mfa_enabled(server_name.clone(), api_key.clone(), &user_id).await {
+                                Ok(response) => {
+                                    if response.mfa_enabled {
+                                        page_state.set(PageState::MFAPrompt);
+                                    } else {
+                                        history.push("/home"); // Use the route path
+                                    }
+                                },
+                                Err(_) => {
+                                    post_state.reduce_mut(|state| state.error_message = Option::from("Error Checking MFA Status".to_string()));
+                                }
+                            }
+                        } else {
+                            console::log_1(&"Error setting up time zone".into());
+                            post_state.reduce_mut(|state| state.error_message = Option::from("Error Setting up Time Zone".to_string()));
+                            page_state.set(PageState::Default);
+                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone")));
+                        }
+                    },
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        page_state.set(PageState::Default);
+                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                    }
+                }
+            });
+        })
+    };
+
+    fn render_time_zone_option(tz: Tz) -> Html {
+        html! {
+            <option value={tz.name()}>{tz.name()}</option>
+        }
+    }
+
+    let time_zone_setup_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"Time Zone Setup"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+                            </p>
+                            <div>
+                                <label for="hour_format">{"Hour Format"}</label>
+                                <select id="hour_format" name="hour_format" oninput={on_time_pref_change}>
+                                    <option value="12">{"12 Hour"}</option>
+                                    <option value="24">{"24 Hour"}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="time_zone">{"Time Zone"}</label>
+                                <select id="time_zone" name="time_zone" oninput={on_tz_change}>
+                                    { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                                </select>
+                            </div>
+                            <button type="submit" onclick={on_time_zone_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    let on_mfa_change = {
+        let mfa_code = mfa_code.clone();
+        Callback::from(move |e: InputEvent| {
+            mfa_code.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };    
+
+    let on_mfa_submit = {
+        let (state, dispatch) = use_store::<AppState>();
+        let page_state = page_state.clone();
+        let mfa_code = mfa_code.clone();
+        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let history = history.clone();
+        // let error_message_create = error_message.clone();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            let dispatch = dispatch_wasm.clone();
+            let mfa_code = mfa_code.clone();
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id.clone();
+            let page_state = page_state.clone();
+            let history = history.clone();
+            // let error_message_clone = error_message_create.clone();
+            e.prevent_default();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                // let verify_mfa_request = VerifyMFABody {
+                //     user_id: user_id,
+                //     mfa_code: mfa_code,
+                // };
+                match call_verify_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*mfa_code).clone()).await {
+                    Ok(response) => {
+                        if response.verified {
+                            console::log_1(&"Time Zone Info Setup".into());
+                            page_state.set(PageState::Default);
+                            history.push("/home"); // Use the route path
+                        } else {
+                            console::log_1(&"Error setting up time zone".into());
+                            page_state.set(PageState::Default);
+                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone")));
+
+                        }
+                    }
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        page_state.set(PageState::Default);
+                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                    }
+                }
+            });
+        })
+    };
+
+    let mfa_code_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"MFA Login"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            {"Welcome to Pinepods! Please enter your MFA Code Below."}
+                            </p>
+                            <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter MFA Code" />
+                            <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
     };
 
 
@@ -417,6 +901,9 @@ pub fn login() -> Html {
             match *page_state {
             PageState::CreateUser => create_user_modal,
             PageState::ForgotPassword => forgot_password_modal,
+            PageState::TimeZone => time_zone_setup_modal,
+            PageState::MFAPrompt => mfa_code_modal,
+            PageState::EnterCode => enter_code_modal,
             _ => html! {},
             }
         }
@@ -432,13 +919,13 @@ pub fn login() -> Html {
                         type="text"
                         placeholder="Username"
                         class="p-2 border border-gray-300 rounded"
-                        oninput={on_username_change}
+                        oninput={on_login_username_change}
                     />
                     <input
                         type="password"
                         placeholder="Password"
                         class="p-2 border border-gray-300 rounded"
-                        oninput={on_password_change}
+                        oninput={on_login_password_change}
                     />
                     // Forgot Password and Create New User buttons
                     <div class="flex justify-between">
@@ -448,15 +935,29 @@ pub fn login() -> Html {
                         >
                             {"Forgot Password?"}
                         </button>
-                        <button
-                            onclick={on_create_new_user}
-                            class="text-sm text-blue-500 hover:text-blue-700"
-                        >
-                            {"Create New User"}
-                        </button>
+                        // <button
+                        //     onclick={on_create_new_user}
+                        //     class="text-sm text-blue-500 hover:text-blue-700"
+                        // >
+                        //     {"Create New User"}
+                        // </button>
+                        {
+                            if *self_service_enabled {
+                                html! {
+                                    <button
+                                        onclick={on_create_new_user.clone()}
+                                        class="text-sm text-blue-500 hover:text-blue-700"
+                                    >
+                                        {"Create New User"}
+                                    </button>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
                     </div>
                     <button
-                        onclick={on_submit}
+                        onclick={on_submit_click}
                         class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                     >
                         {"Login"}
@@ -468,6 +969,13 @@ pub fn login() -> Html {
                     } else {
                         html! {}
                     }
+                }
+                        // Conditional rendering for the error banner
+                if let Some(error) = error_message {
+                    <div class="error-snackbar">{ error }</div>
+                }
+                if let Some(info) = info_message {
+                    <div class="info-snackbar">{ info }</div>
                 }
                 // Connect to Different Server button at bottom right
                 <div class="fixed bottom-4 right-4">
@@ -487,35 +995,43 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
-    let (_app_state, _dispatch) = use_store::<AppState>();
+    let (app_state, dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<UIState>();
     let history = BrowserHistory::new();
     let server_name = use_state(|| "".to_string());
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let error_message = use_state(|| None::<String>);
     let (_app_state, dispatch) = use_store::<AppState>();
+    let _error_message = app_state.error_message.clone();
+    let error_message = _state.error_message.clone();
+    let time_zone = use_state(|| "".to_string());
+    let time_pref = use_state(|| 12);
+    let mfa_code = use_state(|| "".to_string());
+    let temp_api_key = use_state(|| "".to_string());
+    let temp_user_id = use_state(|| 0);
+    let temp_server_name = use_state(|| "".to_string());
+    let info_message = _state.info_message.clone();
+    let page_state = use_state(|| PageState::Default);
+
 
 
     {
-        let error_message = error_message.clone();
+        let ui_dispatch = _dispatch.clone();
         use_effect(move || {
             let window = window().unwrap();
             let document = window.document().unwrap();
 
-            let error_message_clone = error_message.clone();
             let closure = Closure::wrap(Box::new(move |_event: Event| {
-                error_message_clone.set(None);
+                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
+                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
             }) as Box<dyn Fn(_)>);
 
-            if error_message.is_some() {
-                document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
-            }
+            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
 
             // Return cleanup function
             move || {
-                if error_message.is_some() {
-                    document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
-                }
+                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
                 closure.forget(); // Prevents the closure from being dropped
             }
         });
@@ -543,35 +1059,83 @@ pub fn login() -> Html {
     };
 
     let history_clone = history.clone();
-    let error_message_clone = error_message.clone();
     // let app_state_clone = app_state.clone();
+    let submit_state = page_state.clone();
+    let call_server_name = temp_server_name.clone();
+    let call_api_key = temp_api_key.clone();
+    let call_user_id = temp_user_id.clone();
+    let submit_post_state = _dispatch.clone();
     let on_submit = {
+        let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
             let history = history_clone.clone();
             let username = username.clone();
             let password = password.clone();
+            let dispatch = submit_dispatch.clone();
+            let post_state = submit_post_state.clone();
             let server_name = server_name.clone();
-            let error_message = error_message_clone.clone();
-            let dispatch = dispatch.clone(); // No need to clone app_state here
-
+            let page_state = submit_state.clone();
+            let temp_server_name = call_server_name.clone();
+            let temp_api_key = call_api_key.clone();
+            let temp_user_id = call_user_id.clone();
             wasm_bindgen_futures::spawn_local(async move {
+                // let server_name = location.href().expect("should have a href");
+                let server_name = server_name.clone();
+                let page_state = page_state.clone();
                 match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
                     Ok((user_details, login_request, server_details)) => {
+                        // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
-
+                        let key_copy = login_request.clone();
+                        let user_copy = user_details.clone();
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
                             state.gravatar_url = Some(gravatar_url); // Store the Gravatar URL
-
+    
                             state.store_app_state();
                         });
 
-                        history.push("/home"); // Use the route path
+                                    // Extract server_name, api_key, and user_id
+                        let server_name = key_copy.server_name;
+                        let api_key = key_copy.api_key;
+                        let user_id = user_copy.UserID;
+
+                        temp_server_name.set(server_name.clone());
+                        temp_api_key.set(api_key.clone().unwrap());
+                        temp_user_id.set(user_id.clone());
+
+                        match call_first_login_done(server_name.clone(), api_key.clone().unwrap(), &user_id).await {
+                            Ok(first_login_done) => {
+                                if first_login_done {
+                                    match call_check_mfa_enabled(server_name.clone(), api_key.clone().unwrap(), &user_id).await {
+                                        Ok(response) => {
+                                            if response.mfa_enabled {
+                                                page_state.set(PageState::MFAPrompt);
+                                            } else {
+                                                history.push("/home"); // Use the route path
+                                            }
+
+                                        },
+                                        Err(_) => {
+                                            post_state.reduce_mut(|state| state.error_message = Option::from("Error Checking MFA Status".to_string()));
+                                        }
+                                    }
+                                } else {
+                                    page_state.set(PageState::TimeZone);
+                                }
+                            },
+                            Err(_) => {
+                                post_state.reduce_mut(|state| state.error_message = Option::from("Error checking first login status".to_string()));
+                                console::log_1(&"Error checking first login status".into());
+                            }
+                        }
                     },
-                    Err(e) => {
-                        error_message.set(Some(e.to_string())); // Set the error message
+                    Err(_) => {
+                        // console::log_1(&format!("Error logging into server: {}", server_name).into());
+                        post_state.reduce_mut(|state| state.error_message = Option::from("Your credentials appear to be incorrect".to_string()));
+                        // Handle error
                     }
                 }
             });
@@ -583,6 +1147,14 @@ pub fn login() -> Html {
             on_submit.emit(()); // Invoke the existing on_submit logic
         })
     };
+
+        // Define the state of the application
+        #[derive(Clone, PartialEq)]
+        enum PageState {
+            Default,
+            TimeZone,
+            MFAPrompt
+        }
 
     let history_clone = history.clone();
     let on_different_server = {
@@ -599,8 +1171,257 @@ pub fn login() -> Html {
             }
         })
     };
+    // Define the callback function for closing the modal
+    let on_close_modal = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Default);
+        })
+    };
+
+    let on_tz_change = {
+        let tz = time_zone.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            tz.set(select_element.value());
+        })
+    };
+    let time_state_error = _dispatch.clone();
+    let on_time_pref_change = {
+        let time_pref = time_pref.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            let value_str = select_element.value();
+            if let Ok(value_int) = value_str.parse::<i32>() {
+                time_pref.set(value_int);
+            } else {
+                console::log_1(&"Error parsing time preference".into());
+                time_state_error.reduce_mut(|state| state.error_message = Option::from("Error parsing time preference".to_string()));
+            }
+        })
+    };
+    let dispatch_time = _dispatch.clone();
+    let on_time_zone_submit = {
+        // let (state, dispatch) = use_store::<AppState>();
+        let page_state = page_state.clone();
+        let time_pref = time_pref.clone();
+        let time_zone = time_zone.clone();
+        // let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        // let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let temp_server_name = temp_server_name.clone();
+        let temp_api_key = temp_api_key.clone();
+        let temp_user_id = temp_user_id.clone();
+        let time_zone_setup = app_state.time_zone_setup.clone();
+        let history = history.clone();
+        // let error_message_create = error_message.clone();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            let post_state = dispatch_time.clone();
+            console::log_1(&"Time Zone Submit".into());
+            console::log_1(&format!("Time Zone: {:?}", time_zone.clone()).into());
+            console::log_1(&format!("Hour Pref: {:?}", time_pref.clone()).into());
+            let dispatch = dispatch_wasm.clone();
+            let hour_pref = time_pref.clone();
+            let timezone = time_zone.clone();
+            e.prevent_default();
+            let server_name = (*temp_server_name).clone();
+            let api_key = (*temp_api_key).clone();
+            let user_id = *temp_user_id; 
+            console::log_1(&format!("User ID: {:?}", user_id.clone()).into());
+            console::log_1(&format!("Server Name: {:?}", server_name.clone()).into());
+            console::log_1(&format!("api_key: {:?}", api_key.clone()).into());
+            let page_state = page_state.clone();
+            let history = history.clone();
+            // let error_message_clone = error_message_create.clone();
+            e.prevent_default();
+            // page_state.set(PageState::Default);
+
+            let timezone_info = TimeZoneInfo {
+                user_id: *temp_user_id, // assuming temp_user_id is a use_state of i32
+                timezone: (*time_zone).clone(),
+                hour_pref: *time_pref,
+            };
+            console::log_1(&format!("Time Zone Info: {:?}", timezone_info).into());
+            
+            wasm_bindgen_futures::spawn_local(async move {
+                // Directly use timezone_info without checking it against time_zone_setup
+                match call_setup_timezone_info(server_name.clone(), api_key.clone(), timezone_info).await {
+                    Ok(success) => {
+                        if success.success {
+                            console::log_1(&"Time Zone Info Setup".into());
+                            page_state.set(PageState::Default);
+                            match call_check_mfa_enabled(server_name.clone(), api_key.clone(), &user_id).await {
+                                Ok(response) => {
+                                    if response.mfa_enabled {
+                                        page_state.set(PageState::MFAPrompt);
+                                    } else {
+                                        history.push("/home"); // Use the route path
+                                    }
+                                },
+                                Err(_) => {
+                                    post_state.reduce_mut(|state| state.error_message = Option::from("Error Checking MFA Status".to_string()));
+                                }
+                            }
+                        } else {
+                            console::log_1(&"Error setting up time zone".into());
+                            post_state.reduce_mut(|state| state.error_message = Option::from("Error Setting up Time Zone".to_string()));
+                            page_state.set(PageState::Default);
+                        }
+                    },
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        page_state.set(PageState::Default);
+                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                    }
+                }
+            });
+        })
+    };
+
+    fn render_time_zone_option(tz: Tz) -> Html {
+        html! {
+            <option value={tz.name()}>{tz.name()}</option>
+        }
+    }
+
+    let time_zone_setup_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"Time Zone Setup"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+                            </p>
+                            <div>
+                                <label for="hour_format">{"Hour Format"}</label>
+                                <select id="hour_format" name="hour_format" oninput={on_time_pref_change}>
+                                    <option value="12">{"12 Hour"}</option>
+                                    <option value="24">{"24 Hour"}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="time_zone">{"Time Zone"}</label>
+                                <select id="time_zone" name="time_zone" oninput={on_tz_change}>
+                                    { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                                </select>
+                            </div>
+                            <button type="submit" onclick={on_time_zone_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    let on_mfa_change = {
+        let mfa_code = mfa_code.clone();
+        Callback::from(move |e: InputEvent| {
+            mfa_code.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+        })
+    };    
+    let post_state = _dispatch.clone();
+    let on_mfa_submit = {
+        let (state, dispatch) = use_store::<AppState>();
+        let page_state = page_state.clone();
+        let mfa_code = mfa_code.clone();
+        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let history = history.clone();
+        // let error_message_create = error_message.clone();
+        let dispatch_wasm = dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            let dispatch = dispatch_wasm.clone();
+            let mfa_code = mfa_code.clone();
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id.clone();
+            let page_state = page_state.clone();
+            let history = history.clone();
+            let post_state = post_state.clone();
+            // let error_message_clone = error_message_create.clone();
+            e.prevent_default();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_verify_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*mfa_code).clone()).await {
+                    Ok(response) => {
+                        if response.verified {
+                            console::log_1(&"MFA Code Validated".into());
+                            page_state.set(PageState::Default);
+                            history.push("/home"); // Use the route path
+                        } else {
+                            console::log_1(&"Error validating MFA Code".into());
+                            page_state.set(PageState::Default);
+                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error validating MFA Code")));
+                            post_state.reduce_mut(|state| state.error_message = Option::from(format!("Error validating MFA Code")));
+
+                        }
+                    }
+                    Err(e) => {
+                        console::log_1(&format!("Error: {}", e).into());
+                        page_state.set(PageState::Default);
+                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+
+                    }
+                }
+            });
+        })
+    };
+
+    let mfa_code_modal = html! {
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
+                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            {"Time Zone Setup"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            {"Welcome to Pinepods! Please enter your MFA Code Below."}
+                            </p>
+                            <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter MFA Code" />
+                            <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
 
     html! {
+        <>
+        {
+            match *page_state {
+            PageState::TimeZone => time_zone_setup_modal,
+            PageState::MFAPrompt => mfa_code_modal,
+            _ => html! {},
+            }
+        }
         <div class="flex justify-center items-center h-screen">
             <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg">
                 <div class="flex justify-center items-center">
@@ -634,8 +1455,11 @@ pub fn login() -> Html {
                 </button>
             </div>
             // Conditional rendering for the error banner
-            if let Some(error) = (*error_message).as_ref() {
+            if let Some(error) = error_message {
                 <div class="error-snackbar">{ error }</div>
+            }
+            if let Some(info) = info_message {
+                <div class="info-snackbar">{ info }</div>
             }
 
             // Connect to Different Server button at bottom right
@@ -645,6 +1469,7 @@ pub fn login() -> Html {
                 </button>
             </div>
         </div>
+        </>
     }
 
 }

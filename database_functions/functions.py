@@ -1,3 +1,5 @@
+import random
+import string
 import mysql.connector
 from mysql.connector import errorcode
 import mysql.connector.pooling
@@ -1882,7 +1884,8 @@ def user_exists(cnx, username):
     return count > 0
 
 
-def reset_password_create_code(cnx, user_email, reset_code):
+def reset_password_create_code(cnx, user_email):
+    reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     cursor = cnx.cursor()
 
     # Check if a user with this email exists
@@ -1920,7 +1923,14 @@ def reset_password_create_code(cnx, user_email, reset_code):
     cursor.close()
     # cnx.close()
 
-    return True
+    return reset_code
+
+def reset_password_remove_code(cnx, email):
+    cursor = cnx.cursor()
+    query = "UPDATE Users SET Reset_Code = NULL, Reset_Expiry = NULL WHERE Email = %s"
+    cursor.execute(query, (email,))
+    cnx.commit()
+    return cursor.rowcount > 0
 
 
 def verify_password(cnx, username: str, password: str) -> bool:
@@ -1976,6 +1986,13 @@ def verify_reset_code(cnx, user_email, reset_code):
         return True
 
     return False
+
+def check_reset_user(cnx, username, email):
+    cursor = cnx.cursor()
+    query = "SELECT * FROM Users WHERE Username = %s AND Email = %s"
+    cursor.execute(query, (username, email))
+    result = cursor.fetchone()
+    return result is not None
 
 
 def reset_password_prompt(cnx, user_email, hashed_pw):
@@ -2745,3 +2762,4 @@ def restore_server(cnx, database_pass, server_restore_data):
                 raise Exception(f"Restoration failed with error: {stderr.decode()}")
 
     return "Restoration completed successfully!"
+

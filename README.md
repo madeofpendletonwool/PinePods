@@ -329,6 +329,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout
 - [ ] Update All Depends
+- [ ] Consistent Styling Throughout
+- [ ] Setup All Themes
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Ensure Queue Functions after episode End
 - [ ] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)

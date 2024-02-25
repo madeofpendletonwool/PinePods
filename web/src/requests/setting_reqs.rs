@@ -666,6 +666,71 @@ pub async fn call_backup_user(
     }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct GenerateMFAResponse {
+    pub(crate) secret: String,
+    pub(crate) qr_code_svg: String,
+}
+
+// Then adjust the function to return this struct:
+pub async fn call_generate_mfa_secret(server_name: String, api_key: String, user_id: i32) -> Result<GenerateMFAResponse, anyhow::Error> {
+    let url = format!("{}/api/data/generate_mfa_secret/{}", server_name, user_id);
+    let api_key_ref = &api_key;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<GenerateMFAResponse>().await?;
+        Ok(response_body)
+    } else {
+        console::log_1(&format!("Error generating MFA secret: {}", response.status_text()).into());
+        Err(anyhow::Error::msg(format!("Error generating MFA secret. Server Response: {}", response.status_text())))
+    }
+}
+
+#[derive(Serialize)]
+struct VerifyTempMFABody {
+    user_id: i32,
+    mfa_code: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct VerifyTempMFAResponse {
+    pub verified: bool,
+}
+
+pub async fn call_verify_temp_mfa(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    mfa_code: String,
+) -> Result<VerifyTempMFAResponse, Error> {
+    let url = format!("{}/api/data/verify_temp_mfa", server_name);
+    let body = VerifyTempMFABody { user_id, mfa_code };
+    let request_body = serde_json::to_string(&body).map_err(Error::msg)?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(request_body)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        response.json::<VerifyTempMFAResponse>().await.map_err(Error::msg)
+    } else {
+        let status_text = response.status_text();
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!("Error verifying temp MFA: {} - {}", status_text, error_text)))
+    }
+}
+
+
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetMFAResponse {
     mfa_enabled: bool,

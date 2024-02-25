@@ -878,19 +878,33 @@ body {
     margin-bottom: 20px;
 }
 
-.play-button, .save-button, .download-button, .queue-button {
-    /* Style for action buttons */
-}
 
-.episode-divider {
-    /* Style for the divider line */
-}
 
 .episode-description {
     padding-left: 25px;
     /* Other styles as needed */
 }
 
-.description-expand-button {
-    /* Style for the 'Read More' button */
+
+.qr-code-container {
+    /* Center content */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    /* White background */
+    background-color: white;
+
+    /* Rounded corners */
+    border-radius: 8px;
+
+    /* Optional: Set a specific size for the QR code container if necessary */
+    width: auto;
+    height: auto;
+
+    /* Add some padding around the QR code for better aesthetics */
+    padding: 10px;
+
+    /* Drop shadow for depth (optional) */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }

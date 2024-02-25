@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use anyhow::Error;
+use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use web_sys::console;
@@ -208,6 +208,37 @@ pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, u
             console::log_1(&format!("Deserialization Error: {:?}", e).into());
             Err(anyhow::Error::msg("Failed to deserialize response"))
         }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct TimeInfoResponse {
+    pub timezone: String,
+    pub hour_pref: i32,
+}
+
+pub async fn call_get_time_info(
+    server: &str,
+    key: String,
+    user_id: i32,
+) -> Result<TimeInfoResponse, anyhow::Error> {
+    let endpoint = format!("{}/api/data/get_time_info?user_id={}", server, user_id);
+
+    let resp = Request::get(&endpoint)
+        .header("Api-Key", key.as_str())
+        .send()
+        .await
+        .context("Network Request Error")?;
+
+    if resp.ok() {
+        resp.json::<TimeInfoResponse>()
+            .await
+            .context("Response Parsing Error")
+    } else {
+        Err(anyhow::anyhow!(
+            "Error fetching time info. Server Response: {}",
+            resp.status_text()
+        ))
     }
 }
 

@@ -16,7 +16,6 @@ use argon2::{
     },
     Argon2
 };
-use otpauth::TOTP;
 use js_sys::Date;
 
 
@@ -106,53 +105,6 @@ pub fn validate_user_input(username: &str, password: &str, email: &str) -> Resul
     Ok(())
 }
 
-/// Verifies a TOTP code provided by the user against the stored secret.
-///
-/// # Arguments
-///
-/// * `secret` - The secret used to generate the TOTP codes.
-/// * `code` - The user-entered TOTP code as a string.
-///
-/// # Returns
-///
-/// * `bool` - `true` if the code is valid, `false` otherwise.
-pub fn verify_totp_code(secret: &str, code: &str) -> bool {
-    let totp = TOTP::new(secret);
-    let timestamp = Date::now() as u64 / 1000; // Convert milliseconds to seconds
-
-    match code.parse::<u32>() {
-        Ok(code_num) => totp.verify(code_num, 30, timestamp),
-        Err(_) => false,
-    }
-}
-
-
-// fn window() -> Window {
-//     web_sys::window().expect("no global `window` exists")
-// }
-//
-// fn document() -> Document {
-//     window().document().expect("should have a document on window")
-// }
-
-// pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
-//     let parser = window().dom_parser().expect("should get DOM parser");
-//     let doc = parser.parse_from_string(&opml_content, web_sys::SupportedType::Xml)
-//         .expect("should parse the document");
-//
-//     let outlines = doc.query_selector_all("outline").expect("should query for outlines");
-//     let mut podcasts = Vec::new();
-//
-//     for i in 0..outlines.length() {
-//         if let Some(outline) = outlines.item(i).and_then(|item| item.dyn_into::<Element>().ok()) {
-//             let title = outline.get_attribute("title").unwrap_or_default();
-//             let xml_url = outline.get_attribute("xmlUrl").unwrap_or_default();
-//             podcasts.push((title, xml_url));
-//         }
-//     }
-//
-//     podcasts
-// }
 pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
     let parser = DomParser::new().unwrap();
     let doc = parser.parse_from_string(opml_content, SupportedType::TextXml)

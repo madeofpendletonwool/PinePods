@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 use crate::requests::login_requests::AddUserRequest;
 use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
-use crate::requests::login_requests::GetApiDetails;
+use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::components::audio::AudioPlayerProps;
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
@@ -76,6 +76,7 @@ pub struct AppState {
     pub fetched_episode: Option<EpisodeMetadataResponse>,
     pub selected_episode_id: Option<i32>,
     pub add_user_request: Option<AddUserRequest>,
+    pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
     pub edit_settings_user_reqeust: Option<EditSettingsUserRequest>,
 }

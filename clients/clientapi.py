@@ -2,7 +2,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
     security, BackgroundTasks
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 import smtplib
@@ -32,12 +32,15 @@ import json
 import logging
 import argparse
 import sys
-from pyotp import TOTP
+from pyotp import TOTP, random_base32
 import base64
 import traceback
 import time
 import httpx
 import asyncio
+import io
+import qrcode
+import qrcode.image.svg
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -54,6 +57,9 @@ else:
 secret_key_middle = secrets.token_hex(32)
 
 print('Client API Server is Starting!')
+
+# Temporary storage for MFA secrets
+temp_mfa_secrets = {}
 
 app = FastAPI()
 security = HTTPBasic()
@@ -238,17 +244,6 @@ async def get_current_user(credentials: HTTPBasicCredentials = Depends(security)
 cnx = direct_database_connection()
 base_webkey.get_web_key(cnx)
 
-
-# Close the connection if needed, or manage it accordingly
-
-
-# @app.get('/api/data')
-# async def get_data(client_id: str = Depends(get_api_key)):
-#     try:
-#         return {"status": "success", "data": "Your data"}
-#     except Exception as e:
-#         logging.error(f"Error in /api/data endpoint: {e}")
-#         raise
 
 async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
     # Check if the provided API key is the web key
@@ -699,16 +694,9 @@ async def api_enable_disable_self_service(is_admin: bool = Depends(check_if_admi
 
 
 @app.get("/api/data/self_service_status")
-async def api_self_service_status(cnx=Depends(get_database_connection),
-                                  api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if is_valid_key:
-        status = database_functions.functions.self_service_status(cnx)
-        return {"status": status}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
+async def api_self_service_status(cnx=Depends(get_database_connection)):
+    status = database_functions.functions.self_service_status(cnx)
+    return {"status": status}
 
 @app.put("/api/data/increment_listen_time/{user_id}")
 async def api_increment_listen_time(user_id: int, cnx=Depends(get_database_connection),
@@ -1625,7 +1613,7 @@ async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = 
 
 class ResetCodePayload(BaseModel):
     email: str
-    reset_code: str
+    username: str
 
 
 class ResetPasswordPayload(BaseModel):
@@ -1634,44 +1622,51 @@ class ResetPasswordPayload(BaseModel):
 
 
 @app.post("/api/data/reset_password_create_code")
-async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if not is_valid_key:
+async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_database_connection)):
+    email_setup = database_functions.functions.get_email_settings(cnx)
+    if email_setup['Server_Name'] == "default_server":
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                            detail="Email settings not configured. Please contact your administrator.")
+    else:
+        check_user = database_functions.functions.check_reset_user(cnx, payload.username, payload.email)
+        if check_user:
+            create_code = database_functions.functions.reset_password_create_code(cnx, payload.email,
+                              
+                                          # Create a SendTestEmailValues instance with the email setup values and the password reset code
+            email_payload = SendEmailValues(
+                to_email=payload.email,
+                subject="Pinepods Password Reset Code",
+                message=f"Your password reset code is {create_code}"
+            )
+            # Send the email with the password reset code
+            email_send = send_email_with_settings(email_setup, email_payload)
+            if email_send:
+                return {"code_created": True}
+            else:
+                database_functions.functions.reset_password_remove_code(cnx, payload.email)
+                raise HTTPException(status_code=500, detail="Failed to send email")
+            
+            return {"user_exists": user_exists}
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Allow the action if the API key belongs to the user or it's the web API key
-    user_exists = database_functions.functions.reset_password_create_code(cnx, payload.email,
-                                                                          payload.reset_code)
-    return {"user_exists": user_exists}
+class ResetVerifyCodePayload(BaseModel):
+    reset_code: str
+    email: str
+    new_password: str
 
-
-@app.post("/api/data/verify_reset_code")
-async def api_verify_reset_code_route(payload: ResetCodePayload, cnx=Depends(get_database_connection),
-                                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
+@app.post("/api/data/verify_and_reset_password")
+async def api_verify_and_reset_password_route(payload: ResetVerifyCodePayload, cnx=Depends(get_database_connection)):
     code_valid = database_functions.functions.verify_reset_code(cnx, payload.email, payload.reset_code)
     if code_valid is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"code_valid": code_valid}
+    elif not code_valid:
+        raise HTTPException(status_code=400, detail="Code is invalid")
+        # return {"code_valid": False}
 
-
-@app.post("/api/data/reset_password_prompt")
-async def api_reset_password_verify_route(payload: ResetPasswordPayload, cnx=Depends(get_database_connection),
-                                          api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
-    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.hashed_pw)
+    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.new_password)
     if message is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=500, detail="Failed to reset password")
     return {"message": message}
 
 
@@ -1713,6 +1708,139 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
     else:
         raise HTTPException(status_code=403,
                             detail="You can only get metadata for yourself!")
+
+@app.get("/api/data/generate_mfa_secret/{user_id}")
+async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    # Perform API key validation and user authorization checks as before
+    logging.error(f"Running Save mfa")
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        logging.warning(f"Invalid API key: {api_key}")
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    logging.info(f"Is web key: {is_web_key}")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    logging.info(f"Key ID from API key: {key_id}")
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        user_details = database_functions.functions.get_user_details_id(cnx, user_id)
+        if not user_details:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        email = user_details['Email']
+        secret = random_base32()  # Correctly generate a random base32 secret
+        # Store the secret in temporary storage
+        temp_mfa_secrets[user_id] = secret
+        totp = TOTP(secret)
+        provisioning_uri = totp.provisioning_uri(name=email, issuer_name="Pinepods")
+
+        # Generate QR code as SVG
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(provisioning_uri)
+        qr.make(fit=True)
+
+        # Convert the QR code to an SVG string
+        factory = qrcode.image.svg.SvgPathImage
+        img = qr.make_image(fill_color="black", back_color="white", image_factory=factory)
+        buffered = io.BytesIO()
+        img.save(buffered)
+        qr_code_svg = buffered.getvalue().decode("utf-8")
+        logging.info(f"Generated MFA secret for user {user_id}")
+        logging.info(f"Secret: {secret}")
+
+        return {
+            "secret": secret,
+            "qr_code_svg": qr_code_svg  # Directly return the SVG string
+        }
+    else:
+        logging.warning("Attempted to generate MFA secret for another user")
+        raise HTTPException(status_code=403,
+                            detail="You can only generate MFA secrets for yourself!")
+    
+class VerifyTempMFABody(BaseModel):
+    user_id: int
+    mfa_code: str
+
+@app.post("/api/data/verify_temp_mfa")
+async def verify_temp_mfa(body: VerifyTempMFABody, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    # Perform API key validation and user authorization checks as before
+    logging.error(f"Running Save mfa")
+    logging.info(f"Verifying MFA code for user_id: {body.user_id} with code: {body.mfa_code}")
+
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        logging.warning(f"Invalid API key: {api_key}")
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    logging.info(f"Is web key: {is_web_key}")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    logging.info(f"Key ID from API key: {key_id}")
+
+    if key_id == body.user_id or is_web_key:
+        secret = temp_mfa_secrets.get(body.user_id)
+        if secret is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="MFA setup not initiated or expired.")
+        if secret:
+            logging.info(f"Retrieved secret for user_id: {body.user_id}: {secret}")
+        else:
+            logging.warning(f"No secret found for user_id: {body.user_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MFA setup not initiated or expired.")
+
+        totp = TOTP(secret)
+        if totp.verify(body.mfa_code):
+            try:
+                # Attempt to save the MFA secret to permanent storage
+                success = database_functions.functions.save_mfa_secret(database_type, cnx, body.user_id, secret)
+                if success:
+                    # Remove the temporary secret upon successful verification and storage
+                    del temp_mfa_secrets[body.user_id]
+                    logging.info(f"MFA secret successfully saved for user_id: {body.user_id}")
+                    return {"verified": True}
+                else:
+                    # Handle unsuccessful save attempt (e.g., database error)
+                    logging.error("Failed to save MFA secret to database.")
+                    logging.error(f"Failed to save MFA secret for user_id: {body.user_id}")
+                    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                        content={"message": "Failed to save MFA secret. Please try again."})
+            except Exception as e:
+                logging.error(f"Exception saving MFA secret: {e}")
+                return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                    content={"message": "An error occurred. Please try again."})
+        else:
+            return {"verified": False}
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="You are not authorized to verify MFA for this user.")
+
+# Cleanup task for temp_mfa_secrets
+async def cleanup_temp_mfa_secrets():
+    while True:
+        # Wait for 1 hour before running cleanup
+        await asyncio.sleep(3600)
+        # Current timestamp
+        current_time = time.time()
+        # Iterate over the temp_mfa_secrets and remove entries older than 1 hour
+        for user_id, (secret, timestamp) in list(temp_mfa_secrets.items()):
+            if current_time - timestamp > 3600:
+                del temp_mfa_secrets[user_id]
+        logging.info("Cleanup task: Removed expired MFA setup entries.")
 
 
 class MfaSecretData(BaseModel):
@@ -1944,12 +2072,8 @@ async def get_time_info(user_id: int, cnx=Depends(get_database_connection),
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
-class UserLoginUpdate(BaseModel):
-    user_id: int
-
-
-@app.post("/api/data/first_login_done")
-async def first_login_done(data: UserLoginUpdate, cnx=Depends(get_database_connection),
+@app.get("/api/data/first_login_done/{user_id}")
+async def first_login_done(user_id: int, cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
@@ -1962,13 +2086,12 @@ async def first_login_done(data: UserLoginUpdate, cnx=Depends(get_database_conne
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == data.user_id or is_web_key:
-        first_login_status = database_functions.functions.first_login_done(database_type, cnx, data.user_id)
+    if key_id == user_id or is_web_key:
+        first_login_status = database_functions.functions.first_login_done(database_type, cnx, user_id)
         return {"FirstLogin": first_login_status}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make sessions for yourself!")
-
 
 class SelectedEpisodesDelete(BaseModel):
     selected_episodes: List[int] = Field(..., title="List of Episode IDs")
@@ -2427,6 +2550,11 @@ async def restore_server(data: RestoreServer, is_admin: bool = Depends(check_if_
         raise HTTPException(status_code=400, detail=str(e))
     return dump_data
 
+async def async_tasks():
+    # Start cleanup task
+    logging.info("Starting cleanup tasks")
+    asyncio.create_task(cleanup_temp_mfa_secrets())
+
 
 if __name__ == '__main__':
     raw_debug_mode = os.environ.get("DEBUG_MODE", "False")
@@ -2440,6 +2568,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8032, help='Port to run the server on')
     args = parser.parse_args()
+    asyncio.run(async_tasks())
 
     import uvicorn
 
