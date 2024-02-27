@@ -689,12 +689,12 @@ pub async fn call_get_episode_metadata(
 pub struct RecordListenDurationRequest {
     pub episode_id: i32,
     pub user_id: i32,
-    pub listen_duration: f32, // Assuming float is appropriate here; adjust the type if necessary
+    pub listen_duration: f64, // Assuming float is appropriate here; adjust the type if necessary
 }
 
 #[derive(Deserialize, Debug)]
 pub struct RecordListenDurationResponse {
-    pub status: String, // Assuming a simple status response; adjust according to actual API response
+    pub detail: String, // Assuming a simple status response; adjust according to actual API response
 }
 
 
@@ -723,6 +723,55 @@ pub async fn call_record_listen_duration(
     } else {
         Err(Error::msg(format!(
             "Error recording listen duration. Server Response: {}",
+            response.status_text()
+        )))
+    }
+}
+
+
+pub async fn call_increment_listen_time(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32, // Assuming user_id is an integer based on your endpoint definition
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/increment_listen_time/{}", server_name, user_id);
+
+    let response = Request::put(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network Request Error: {}", e)))?;
+
+    if response.ok() {
+        Ok("Listen time incremented.".to_string()) // Assuming a simple success message for now
+    } else {
+        Err(Error::msg(format!(
+            "Error incrementing listen time. Server Response: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_increment_played(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32, // Assuming user_id is an integer based on your endpoint definition
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/increment_played/{}", server_name, user_id);
+
+    let response = Request::put(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network Request Error: {}", e)))?;
+
+    if response.ok() {
+        Ok("Played count incremented.".to_string()) // Assuming a simple success message for now
+    } else {
+        Err(Error::msg(format!(
+            "Error incrementing played count. Server Response: {}",
             response.status_text()
         )))
     }

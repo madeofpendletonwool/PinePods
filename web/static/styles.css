@@ -908,3 +908,17 @@ body {
     /* Drop shadow for depth (optional) */
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
+
+.progress-bar-container {
+    height: 10px; /* Or whatever height you prefer */
+    background-color: #ddd; /* Background of the unfulfilled part */
+    width: 100%; /* Or adjust to fit your layout */
+    border-radius: 5px; /* Optional, for rounded corners */
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: #4CAF50; /* Or any color you prefer */
+    border-radius: 5px; /* Match container's border-radius */
+    transition: width 0.5s ease-in-out; /* Smooth transition for changes, optional */
+}

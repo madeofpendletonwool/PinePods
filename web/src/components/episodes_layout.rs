@@ -356,6 +356,7 @@ pub fn episode_layout() -> Html {
                                         let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
                                         web_sys::console::log_1(&format!("duration format: {}", &episode_duration_for_closure).into());
                                         web_sys::console::log_1(&format!("duration sec: {}", &formatted_duration).into());
+                                        let start_pos_sec = 0.0;
                                         dispatch.reduce_mut(move |state| {
                                             state.audio_playing = Some(true);
                                             state.currently_playing = Some(AudioPlayerProps {
@@ -365,6 +366,7 @@ pub fn episode_layout() -> Html {
                                                 duration: episode_duration_for_closure.clone(),
                                                 episode_id: episode_id_for_closure.clone(),
                                                 duration_sec: formatted_duration,
+                                                start_pos_sec: start_pos_sec,
                                             });
                                             state.set_audio_source(episode_url_for_closure.to_string()); // Set the audio source here
                                             // if !state.audio_playing.unwrap_or(false) {
@@ -451,7 +453,7 @@ pub fn episode_layout() -> Html {
         // }
         {
             if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
             } else {
                 html! {}
             }

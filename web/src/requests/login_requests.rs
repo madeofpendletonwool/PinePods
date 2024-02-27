@@ -457,6 +457,12 @@ pub struct ResetCodeResponse {
     pub code_created: bool,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct ErrorResponse {
+    pub detail: String,
+}
+
+
 pub async fn call_reset_password_create_code(server_name: String, create_code: &ResetCodePayload) -> Result<bool, Error> {
     let url = format!("{}/api/data/reset_password_create_code", server_name);
 
@@ -472,8 +478,19 @@ pub async fn call_reset_password_create_code(server_name: String, create_code: &
         let response_body = response.json::<ResetCodeResponse>().await?;
         Ok(response_body.code_created)
     } else {
-        console::log_1(&format!("Error creating reset code: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error creating reset code: {}", response.status_text())))
+        let error_response: Result<ErrorResponse, _> = response.json().await;
+        match error_response {
+            Ok(err) => {
+                console::log_1(&format!("Error creating reset code: {}", err.detail).into());
+                Err(Error::msg(err.detail))
+            },
+            Err(_) => {
+                // If parsing the detailed error fails, fall back to the status text
+                let status_text = response.status_text();
+                console::log_1(&format!("Error creating reset code: {}", status_text).into());
+                Err(Error::msg(format!("Error creating reset code: {}", status_text)))
+            }
+        }
     }
 
 }
@@ -491,7 +508,7 @@ pub struct ForgotResetPasswordResponse {
 }
 
 pub async fn call_verify_and_reset_password(server_name: String, verify_and_reset: &ResetForgotPasswordPayload) -> Result<ForgotResetPasswordResponse, Error> {
-    let url = format!("{}/api/data/reset_password_create_code", server_name);
+    let url = format!("{}/api/data/verify_and_reset_password", server_name);
 
     let json_body = serde_json::to_string(&verify_and_reset)?;
 

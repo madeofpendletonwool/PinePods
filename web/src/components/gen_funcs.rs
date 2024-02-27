@@ -123,3 +123,17 @@ pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
     }
     podcasts
 }
+
+pub fn format_time(time_in_seconds: f64) -> String {
+    let hours = (time_in_seconds / 3600.0).floor() as i32;
+    let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
+    let seconds = (time_in_seconds % 60.0).floor() as i32;
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+pub fn format_time_mins(time_in_minutes: i32) -> String {
+    let time_in_minutes = time_in_minutes as f64;
+    let hours = (time_in_minutes / 60.0).floor() as i32;
+    let minutes = (time_in_minutes % 60.0).floor() as i32;
+    format!("{:02}:{:02}", hours, minutes)
+}

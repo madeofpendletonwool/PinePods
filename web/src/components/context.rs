@@ -103,6 +103,7 @@ pub struct UIState {
     pub error_message: Option<String>,
     pub info_message: Option<String>,
     pub is_expanded: bool,
+    // pub start_pos_sec: f64,
 }
 
 impl UIState {

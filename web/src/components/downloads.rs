@@ -133,6 +133,7 @@ pub fn downloads() -> Html {
                             let episode_artwork_clone = episode.EpisodeArtwork.clone();
                             let episode_duration_clone = episode.EpisodeDuration.clone();
                             let episode_id_clone = episode.EpisodeID.clone();
+                            let episode_listened_clone = episode.ListenDuration.clone();
 
                             let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
 
@@ -163,6 +164,7 @@ pub fn downloads() -> Html {
                             let episode_title_for_closure = episode_title_clone.clone();
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
+                            let listener_duration_for_closure = episode_listened_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();
                             let user_id_play = user_id.clone();
                             let server_name_play = server_name.clone();
@@ -176,10 +178,12 @@ pub fn downloads() -> Html {
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
+                                listener_duration_for_closure.clone(),
                                 api_key_play.unwrap().unwrap(),
                                 user_id_play.unwrap(),
                                 server_name_play.unwrap(),
                                 audio_dispatch.clone(),
+                                audio_state.clone(),
                             );
                             let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                             let item = episode_item(
@@ -189,6 +193,8 @@ pub fn downloads() -> Html {
                                 &format_release,
                                 on_play_click,
                                 toggle_expanded,
+                                episode_duration_clone,
+                                episode_listened_clone,
                             );
 
                             item
@@ -204,7 +210,7 @@ pub fn downloads() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
             } else {
                 html! {}
             }

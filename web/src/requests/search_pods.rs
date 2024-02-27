@@ -167,7 +167,7 @@ pub struct SearchEpisode {
     pub EpisodePubDate: String,
     pub EpisodeDuration: i32,
     // Existing fields
-    pub ListenDuration: Option<String>,
+    pub ListenDuration: Option<i32>,
 }
 
 pub async fn call_search_database (

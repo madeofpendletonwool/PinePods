@@ -13,6 +13,7 @@ use yew::Callback;
 use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode};
 use crate::requests::search_pods::SearchEpisode;
 use std::any::Any;
+use crate::components::gen_funcs::format_time;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct ErrorMessageProps {
@@ -679,7 +680,22 @@ pub fn episode_item(
     format_release: &str,
     on_play_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
+    episode_duration: i32,
+    listen_duration: Option<i32>
 ) -> Html {
+    let span_duration = listen_duration.clone();
+    let span_episode = episode_duration.clone();
+    let some_duration = listen_duration.clone();
+    let formatted_duration = format_time(span_episode as f64);
+    let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+    // Calculate the percentage of the episode that has been listened to
+    let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
+        if episode_duration > 0 {
+            (ld as f64 / episode_duration as f64) * 100.0
+        } else {
+            0.0 // Avoid division by zero
+        }
+    });
     html! {
         <div>
             <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
@@ -709,6 +725,24 @@ pub fn episode_item(
                         </svg>
                         { format_release }
                     </span>
+                    {
+                        if let Some(some_duration) = formatted_listen_duration.clone() {
+                            html! {
+                                <div class="flex items-center flex-nowrap">
+                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                    </div>
+                                    <span class="item_container-text">{ formatted_duration }</span>
+                                </div>
+                            }
+                            
+                        } else {
+                            html! {
+                                <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                            }
+                        }
+                    }
                 </div>
                 <div class="flex flex-col md:flex-row space-y-6 md:space-y-0 md:space-x-6 items-center h-full w-2/12 md:w-2/12 px-2 md:px-4">
                     <button

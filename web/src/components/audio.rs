@@ -4,7 +4,7 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use web_sys::{HtmlAudioElement, HtmlInputElement, window};
+use web_sys::{console, window, HtmlAudioElement, HtmlInputElement};
 use std::string::String;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
@@ -14,7 +14,9 @@ use std::cell::RefCell;
 use std::time::Duration;
 use gloo_timers::future::sleep;
 use std::rc::Rc;
-use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest};
+use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played};
+use futures_util::stream::StreamExt;
+
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
@@ -23,7 +25,8 @@ pub struct AudioPlayerProps {
     pub artwork_url: String,
     pub duration: String,
     pub episode_id: i32,
-    pub duration_sec: f64
+    pub duration_sec: f64,
+    pub start_pos_sec: f64,
 }
 
 #[function_component(AudioPlayer)]
@@ -31,6 +34,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let episode_id = audio_state.currently_playing.as_ref().map(|props| props.episode_id);
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
@@ -108,23 +115,119 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             let interval_handle = Interval::new(1000, move || {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
+                    
                     let hours = (time_in_seconds / 3600.0).floor() as i32;
                     let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
                     let seconds = (time_in_seconds % 60.0).floor() as i32;
                     let formatted_time = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-
+    
                     audio_dispatch.reduce_mut(move |state_clone| {
-                        // Update the current time in your state here
+                        // Update the global state with the current time
                         state_clone.current_time_seconds = time_in_seconds;
                         state_clone.current_time_formatted = formatted_time;
                     });
                 }
             });
-
+    
+            // Return a cleanup function that will be run when the component unmounts or the dependencies of the effect change
             move || drop(interval_handle)
         }
     });
 
+    // Effect for recording the listen duration
+
+    let state_clone_the_squeakuel = audio_state.clone();
+    use_effect_with((), {
+        let audio_dispatch = _audio_dispatch.clone(); // Assuming you need this for state updates
+        // Remove the audio_state clone if it's no longer needed
+        let server_name = server_name.clone(); // Assuming this is defined elsewhere in your component
+        let api_key = api_key.clone(); // Assuming this is defined elsewhere in your component
+        let episode_id = episode_id.clone(); // Assuming this is defined elsewhere in your component
+        let user_id = user_id.clone(); // Assuming this is defined elsewhere in your component
+    
+        move |_| {
+            // Spawn a new async task
+            let future = async move {
+                let mut interval = gloo_timers::future::IntervalStream::new(30_000);
+                loop {
+                    interval.next().await; // Wait for the next interval tick
+                    // Check if audio is playing before proceeding
+                    if state_clone_the_squeakuel.audio_playing.unwrap_or_default() {
+                        if let Some(audio_element) = state_clone_the_squeakuel.audio_element.as_ref() {
+                            // Use the local_current_seconds here
+                            // let listen_duration = (*local_current_seconds); // Dereference and get the value
+                            let listen_duration = audio_element.current_time();
+                            console::log_1(&format!("Listen duration in effect: {:?}", listen_duration).into());
+    
+                            let request_data = RecordListenDurationRequest {
+                                episode_id: episode_id.unwrap().clone(),
+                                user_id: user_id.unwrap().clone(),
+                                listen_duration,
+                            };
+    
+                            // Perform the API call to record the listen duration
+                            match call_record_listen_duration(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), request_data).await {
+                                Ok(response) => {
+                                    web_sys::console::log_1(&format!("Listen duration recorded: {:?}", response).into());
+                                },
+                                Err(e) => {
+                                    web_sys::console::log_1(&format!("Failed to record listen duration: {:?}", e).into());
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+    
+            // Using wasm_bindgen_futures to spawn the local future
+            wasm_bindgen_futures::spawn_local(future);
+    
+            // Cleanup function (currently no cleanup required for this future)
+            || ()
+        }
+    });
+    
+    
+    // Effect for incrementing user listen time
+    // Effect for incrementing user listen time
+    let state_increment_clone = audio_state.clone();
+    use_effect_with((), {
+        let audio_dispatch = _audio_dispatch.clone(); // Assuming you need this for any potential state updates, remove if not necessary
+        let server_name = server_name.clone(); // Make sure `server_name` is cloned from the parent scope
+        let api_key = api_key.clone(); // Make sure `api_key` is cloned from the parent scope
+        let user_id = user_id.clone(); // Make sure `user_id` is cloned from the parent scope
+
+        move |_| {
+            let interval_handle = Interval::new(60000, move || {
+                // Check if audio is playing before making the API call
+                if state_increment_clone.audio_playing.unwrap_or_default() {
+                    let server_name = server_name.clone();
+                    let api_key = api_key.clone();
+                    let user_id = user_id.clone();
+                    
+                    // Spawn a new async task for the API call
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_increment_listen_time(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap()).await {
+                            Ok(response) => {
+                                web_sys::console::log_1(&format!("Listen time incremented: {:?}", response).into());
+                            },
+                            Err(e) => {
+                                web_sys::console::log_1(&format!("Failed to increment listen time: {:?}", e).into());
+                            }
+                        }
+                    });
+                } else {
+                    // Optionally log that the audio is not playing and thus listen time was not incremented
+                    web_sys::console::log_1(&"Audio is not playing, listen time not incremented".into());
+                }
+            });
+
+            // Return a cleanup function that will be run when the component unmounts or the dependencies of the effect change
+            move || drop(interval_handle)
+        }
+    });
+
+    
 
     // Toggle playback
     let toggle_playback = {
@@ -298,10 +401,12 @@ pub fn on_play_click(
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
     episode_id_for_closure: i32,
+    listen_duration_for_closure: Option<i32>,
     api_key: String,
     user_id: i32,
     server_name: String,
     audio_dispatch: Dispatch<UIState>,
+    audio_state: Rc<UIState>,
 ) -> Callback<MouseEvent> {
     
     fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
@@ -319,17 +424,12 @@ pub fn on_play_click(
         seconds
     }
 
-
     Callback::from(move |_: MouseEvent| {
-        
-        // let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-        // let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        // let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
         let episode_duration_for_closure = episode_duration_for_closure.clone();
+        let listen_duration_for_closure = listen_duration_for_closure.clone();
         let episode_id_for_closure = episode_id_for_closure.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
@@ -347,11 +447,6 @@ pub fn on_play_click(
             user_id,
         };
         
-        // let add_history_future = call_add_history(
-        //     &server_name,
-        //     api_key, 
-        //     &history_add
-        // );
         let history_server_name = server_name.clone();
         let history_api_key = api_key.clone();
         
@@ -370,37 +465,21 @@ pub fn on_play_click(
                 }
             }
         });
-        let timer_server_name = server_name.clone();
-        let timer_api_key = api_key.clone();
-        let timer_user_id = user_id.clone();
-        // Wrap the loop in spawn_local to run it asynchronously
-        spawn_local({
-            let api_key = timer_api_key.clone();
-            let server_name = timer_server_name.clone();
-            let user_id = timer_user_id.clone();
-            
-            async move {
-                loop {
-                    // Assuming the listen_duration can be determined or tracked
-                    let listen_duration = 30.0; // Placeholder for actual duration tracking
-
-                    let request_data = RecordListenDurationRequest {
-                        episode_id,
-                        user_id,
-                        listen_duration,
-                    };
-
-                    match call_record_listen_duration(&server_name, &api_key, request_data).await {
-                        Ok(response) => {
-                            web_sys::console::log_1(&format!("Listen duration recorded: {:?}", response).into());
-                        },
-                        Err(e) => {
-                            web_sys::console::log_1(&format!("Failed to record listen duration: {:?}", e).into());
-                        }
-                    }
-
-                    // Wait for a short period before repeating the task
-                    sleep(Duration::from_secs(30)).await;
+        let increment_server_name = server_name.clone();
+        let increment_api_key = api_key.clone();
+        let increment_user_id = user_id.clone();
+        spawn_local(async move {
+            let add_history_future = call_increment_played(
+                &increment_server_name,
+                &increment_api_key, 
+                increment_user_id
+            );
+            match add_history_future.await {
+                Ok(_) => {
+                    web_sys::console::log_1(&"Successfully incremented playcount".into());
+                },
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Failed to increment: {:?}", e).into());
                 }
             }
         });
@@ -414,9 +493,11 @@ pub fn on_play_click(
                 duration: episode_duration_for_closure.clone().to_string(),
                 episode_id: episode_id_for_closure.clone(),
                 duration_sec: formatted_duration,
+                start_pos_sec: listen_duration_for_closure.unwrap_or(0) as f64, 
             });
             audio_state.set_audio_source(episode_url_for_closure.to_string());
             if let Some(audio) = &audio_state.audio_element {
+                audio.set_current_time(listen_duration_for_closure.unwrap_or(0) as f64);
                 let _ = audio.play();
             }
             audio_state.audio_playing = Some(true);

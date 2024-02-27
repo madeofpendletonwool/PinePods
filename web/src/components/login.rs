@@ -493,7 +493,8 @@ pub fn login() -> Html {
         let forgot_username = forgot_username.clone().to_string();
         let forgot_email = forgot_email.clone().to_string();
         let dispatch_wasm = dispatch.clone();
-        Callback::from(move |_e: yew::events::SubmitEvent| {
+        Callback::from(move |e: yew::events::MouseEvent| {
+            e.prevent_default();
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
@@ -557,7 +558,7 @@ pub fn login() -> Html {
                                 <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
                                 <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
-                            <button onsubmit={on_reset_submit} type="submit" class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <button onclick={on_reset_submit} type="submit" class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
@@ -595,31 +596,38 @@ pub fn login() -> Html {
             let page_state = page_state.clone();
             page_state.set(PageState::Default);
             // let forgot__deref = (*forgot_username.clone();
-            let reset_password_request = Some(ResetForgotPasswordPayload {
-                reset_code: forgot_username.clone(),
-                email: forgot_email.clone(),
-                new_password: reset_password.clone(),
-            });
-    
-            wasm_bindgen_futures::spawn_local(async move {
-                match call_verify_and_reset_password(server_name, &reset_password_request.unwrap()).await {
-                    Ok(success) => {
-                        if success.message == "Password Reset Successfully" {
-                            console::log_1(&"Password has been reset!".into());
-                            page_state.set(PageState::Default);
-                        } else {
-                            console::log_1(&"Password Reset Failed".into());
-                            page_state.set(PageState::Default);
-                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Sending Reset Email")));
+            match encode_password(&reset_password) {
+                Ok(hash_pw) => {
+                    let reset_password_request = Some(ResetForgotPasswordPayload {
+                        reset_code: reset_code.clone(),
+                        email: forgot_email.clone(),
+                        new_password: hash_pw.clone(),
+                    });
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_verify_and_reset_password(server_name, &reset_password_request.unwrap()).await {
+                            Ok(success) => {
+                                if success.message == "Password Reset Successfully" {
+                                    console::log_1(&"Password has been reset!".into());
+                                    page_state.set(PageState::Default);
+                                } else {
+                                    console::log_1(&"Password Reset Failed".into());
+                                    page_state.set(PageState::Default);
+                                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Sending Reset Email")));
+                                }
+                            }
+                            Err(e) => {
+                                console::log_1(&format!("Error: {}", e).into());
+                                page_state.set(PageState::Default);
+                                dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Resetting Password: {:?}", e)));
+                            }
                         }
-                    }
-                    Err(e) => {
-                        console::log_1(&format!("Error: {}", e).into());
-                        page_state.set(PageState::Default);
-                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error Resetting Password: {:?}", e)));
-                    }
+                    });
+                },
+                Err(e) => {
+                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Unable to hash new password: {:?}", e)));
+                    page_state.set(PageState::Default);
                 }
-            });
+            }
         })
     };
 

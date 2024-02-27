@@ -1630,7 +1630,7 @@ async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_da
     else:
         check_user = database_functions.functions.check_reset_user(cnx, payload.username, payload.email)
         if check_user:
-            create_code = database_functions.functions.reset_password_create_code(cnx, payload.email,
+            create_code = database_functions.functions.reset_password_create_code(cnx, payload.email)
                               
                                           # Create a SendTestEmailValues instance with the email setup values and the password reset code
             email_payload = SendEmailValues(

@@ -1,13 +1,13 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
-use super::app_drawer::{App_drawer};
+use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
 use crate::requests::{stat_reqs};
 use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState, UserStatsStore};
-use crate::components::audio::{AudioPlayer};
-use crate::components::gen_funcs::format_date;
+use crate::components::audio::AudioPlayer;
+use crate::components::gen_funcs::{format_date, format_time_mins};
 use crate::requests::login_requests::use_check_authentication;
 
 
@@ -97,6 +97,7 @@ pub fn user_stats() -> Html {
                         {
                             if let Some(stats) = user_stats {
                                 let formatted_date = format_date(&stats.UserCreated);
+                                let time_formatted = format_time_mins(stats.TimeListened);
                                 html! {
                                     <>
                                         <div class="stats-card">
@@ -111,7 +112,7 @@ pub fn user_stats() -> Html {
 
                                         <div class="stats-card">
                                             <p class="stats-label">{"Time Listened"}</p>
-                                            <p class="stats-value">{ &stats.TimeListened }</p>
+                                            <p class="stats-value">{ &time_formatted }</p>
                                         </div>
 
                                         <div class="stats-card">
@@ -151,7 +152,7 @@ pub fn user_stats() -> Html {
             </div>
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
             } else {
                 html! {}
             }
