@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 use gloo_timers::future::sleep;
 use std::rc::Rc;
-use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played, call_get_queued_episodes};
+use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played, call_get_queued_episodes, call_remove_queued_episode, QueuePodcastRequest, call_queue_episode};
 use futures_util::stream::StreamExt;
 
 
@@ -263,6 +263,20 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             Ok(episodes) => {
                                 if let Some(current_episode) = episodes.iter().find(|ep| ep.EpisodeID == current_episode_id.unwrap()) {
                                     let current_queue_position = current_episode.QueuePosition.unwrap_or_default();
+                                    // Remove the currently playing episode from the queue
+                                    let request = QueuePodcastRequest {
+                                        episode_id: current_episode_id.clone().unwrap(),
+                                        user_id: user_id.clone().unwrap(), // replace with the actual user ID
+                                    };
+                                    let remove_result = call_remove_queued_episode(&server_name.clone().unwrap(), &api_key.clone().unwrap(), &request).await;
+                                    match remove_result {
+                                        Ok(_) => {
+                                            web_sys::console::log_1(&"Successfully removed episode from queue".into());
+                                        },
+                                        Err(e) => {
+                                            web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
+                                        }
+                                    }
                                     if let Some(next_episode) = episodes.iter().find(|ep| ep.QueuePosition == Some(current_queue_position + 1)) {
                                         on_play_click(
                                             next_episode.EpisodeURL.clone(),
@@ -554,6 +568,33 @@ pub fn on_play_click(
                 },
                 Err(e) => {
                     web_sys::console::log_1(&format!("Failed to increment: {:?}", e).into());
+                }
+            }
+        });
+
+        let queue_server_name = server_name.clone();
+        let queue_api_key = api_key.clone();
+
+        let request = QueuePodcastRequest {
+            episode_id,
+            user_id, // replace with the actual user ID
+        };
+        
+        spawn_local(async move {
+
+            let queue_api = Option::from(queue_api_key);
+
+            let add_queue_future = call_queue_episode(
+                &queue_server_name,
+                &queue_api, 
+                &request
+            );
+            match add_queue_future.await {
+                Ok(_) => {
+                    web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                },
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
                 }
             }
         });
