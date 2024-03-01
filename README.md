@@ -315,29 +315,35 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ## ToDo (Listed in order they will be implemented)
 
 ### Pre-Rust Revamp Release
-- [ ] Downloads Page
-- [ ] Make Timestamps with with Auto Resume
+- [x] Make Timestamps with with Auto Resume
 - [x] Nextcloud Subscriptions
-- [ ] Nextcloud Subscription Timestamps
-- [ ] Revamp Readme
-- [ ] Allow for episodes to be played without being added
-- [ ] User Settings
-- [ ] Make the Queue functional and verify auto removals and adds
-- [ ] Require Re-Login if API Key that's saved doesn't work
 - [x] Finalize User Stats recording and display
 - [x] MFA Logins
-- [ ] Verify Funtional Mobile Version
+- [x] User Settings
+- [x] Ensure Queue Functions after episode End
+- [x] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
+- [x] Refresh of podcasts needs to be async (Currently that process stops the server dead)
+- [x] Make the Queue functional and verify auto removals and adds
+
+- [ ] Downloads Page
+- [ ] Issues occur server side when adding podcast without itunes_duration 
+(pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
+- [ ] Backup Server
+- [ ] Restore Server
+- [ ] Nextcloud Subscription Timestamps
+- [ ] Require Re-Login if API Key that's saved doesn't work
+- [ ] Allow for episodes to be played without being added
+
+- [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
 - [ ] Verify All Button Interaction throughout
-- [ ] Update All Depends
+- [ ] Show Currently Connected Nextcloud Server in settings
 - [ ] Better episode performance when a large number of episodes on screen
 - [ ] Consistent Styling Throughout
 - [ ] Setup All Themes
+- [ ] Revamp Readme
+- [ ] Verify Funtional Mobile Version
+- [ ] Update All Depends
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
-- [ ] Ensure Queue Functions after episode End
-- [x] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
-- [x] Refresh of podcasts needs to be async (Currently that process stops the server dead)
-- [ ] Issues occur server side when adding podcast without itunes_duration (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
-- [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
 - [ ] Test Edgecases and ensure errors can't happen throughout
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
 - [ ] Client release with Tauri
