@@ -195,6 +195,7 @@ pub fn downloads() -> Html {
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
+                                "downloads"
                             );
 
                             item

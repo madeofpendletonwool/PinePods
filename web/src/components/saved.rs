@@ -193,6 +193,7 @@ pub fn saved() -> Html {
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
+                                "saved",
                             );
 
                             item

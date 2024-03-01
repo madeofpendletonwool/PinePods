@@ -329,11 +329,12 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout
 - [ ] Update All Depends
+- [ ] Better episode performance when a large number of episodes on screen
 - [ ] Consistent Styling Throughout
 - [ ] Setup All Themes
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Ensure Queue Functions after episode End
-- [ ] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
+- [x] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
 - [x] Refresh of podcasts needs to be async (Currently that process stops the server dead)
 - [ ] Issues occur server side when adding podcast without itunes_duration (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add

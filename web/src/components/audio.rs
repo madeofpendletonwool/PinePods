@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 use gloo_timers::future::sleep;
 use std::rc::Rc;
-use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played};
+use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played, call_get_queued_episodes};
 use futures_util::stream::StreamExt;
 
 
@@ -227,6 +227,80 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         }
     });
 
+    // Effect for managing queued episodes
+    use_effect_with(audio_ref.clone(), {
+        let audio_ref = audio_ref.clone();
+        let audio_dispatch = _audio_dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let current_episode_id = episode_id.clone(); // Assuming this is correctly obtained elsewhere
+        let audio_state = audio_state.clone();
+        let audio_state_cloned = audio_state.clone();
+
+        move |_| {
+            if let Some(audio_element) = audio_state_cloned.audio_element.clone() {
+            // if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
+                // Clone all necessary data to be used inside the closure to avoid FnOnce limitation.
+                let server_name_cloned = server_name.clone();
+                let api_key_cloned = api_key.clone();
+                let user_id_cloned = user_id.clone();
+                let audio_dispatch_cloned = audio_dispatch.clone();
+                let current_episode_id_cloned = current_episode_id.clone();
+
+
+                let ended_closure = Closure::wrap(Box::new(move || {
+                    let server_name = server_name.clone();
+                    let api_key = api_key.clone();
+                    let user_id = user_id.clone();
+                    let audio_dispatch = audio_dispatch.clone();
+                    let current_episode_id = current_episode_id.clone();
+                    let audio_state = audio_state.clone();
+                    // Closure::wrap(Box::new(move |_| {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let queued_episodes_result = call_get_queued_episodes(&server_name.clone().unwrap(), &api_key.clone().unwrap(), &user_id.clone().unwrap()).await;
+                        match queued_episodes_result {
+                            Ok(episodes) => {
+                                if let Some(current_episode) = episodes.iter().find(|ep| ep.EpisodeID == current_episode_id.unwrap()) {
+                                    let current_queue_position = current_episode.QueuePosition.unwrap_or_default();
+                                    if let Some(next_episode) = episodes.iter().find(|ep| ep.QueuePosition == Some(current_queue_position + 1)) {
+                                        on_play_click(
+                                            next_episode.EpisodeURL.clone(),
+                                            next_episode.EpisodeTitle.clone(),
+                                            next_episode.EpisodeArtwork.clone(),
+                                            next_episode.EpisodeDuration,
+                                            next_episode.EpisodeID,
+                                            next_episode.ListenDuration,
+                                            api_key.clone().unwrap().unwrap(),
+                                            user_id.unwrap(),
+                                            server_name.clone().unwrap(),
+                                            audio_dispatch.clone(),
+                                            audio_state.clone(),
+                                        ).emit(MouseEvent::new("click").unwrap());
+                                    } else {
+                                        audio_dispatch.reduce_mut(|state| {
+                                            state.audio_playing = Some(false);
+                                        });
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                web_sys::console::log_1(&format!("Failed to fetch queued episodes: {:?}", e).into());
+                            }
+                        }
+                    });
+                    // }) as Box<dyn FnMut()>);
+    
+
+                }) as Box<dyn FnMut()>);
+                // Setting and forgetting the closure must be done within the same scope
+                audio_element.set_onended(Some(ended_closure.as_ref().unchecked_ref()));
+                ended_closure.forget(); // This will indeed cause a memory leak if the component mounts multiple times
+            }
+    
+            || ()
+        }
+    });
     
 
     // Toggle playback

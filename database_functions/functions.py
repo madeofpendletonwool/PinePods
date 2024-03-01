@@ -418,7 +418,7 @@ def get_podcast_id(database_type, cnx, user_id, podcast_feed):
     return row['PodcastID']  # Assuming the column name is 'PodcastID'
 
 
-def delete_podcast(cnx, url, title, user_id):
+def delete_episode(cnx, episode_id, user_id):
     cursor = cnx.cursor()
 
     # Get the download ID from the DownloadedEpisodes table
@@ -426,8 +426,8 @@ def delete_podcast(cnx, url, title, user_id):
              "FROM DownloadedEpisodes "
              "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
              "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
-    cursor.execute(query, (title, url, user_id))
+             "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s")
+    cursor.execute(query, (episode_id, user_id))
     result = cursor.fetchone()
 
     if not result:
@@ -1668,7 +1668,7 @@ def check_saved(cnx, user_id, episode_id):
             # cnx.close()
 
 
-def remove_saved_episode(cnx, url, title, user_id):
+def remove_saved_episode(cnx, episode_id, user_id):
     cursor = cnx.cursor()
 
     # Get the Save ID from the SavedEpisodes table
@@ -1676,8 +1676,8 @@ def remove_saved_episode(cnx, url, title, user_id):
              "FROM SavedEpisodes "
              "INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
              "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-             "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s")
-    cursor.execute(query, (title, url, user_id))
+             "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s")
+    cursor.execute(query, (episode_id, user_id))
     save_id = cursor.fetchone()
 
     if not save_id:
@@ -2368,12 +2368,6 @@ def queue_pod(database_type, cnx, episode_id, user_id):
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    # If Episode not found, raise exception or handle it as per your requirement
-    if not result:
-        raise Exception("Episode not found")
-
-    episode_id = result['EpisodeID']
-
     # Find the current maximum QueuePosition for the user
     query_get_max_pos = """
     SELECT MAX(QueuePosition) AS max_pos FROM EpisodeQueue
@@ -2420,7 +2414,7 @@ def check_queued(database_type, cnx, episode_id, user_id):
     else:
         return False
 
-def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
+def remove_queued_pod(database_type, cnx, episode_id, user_id):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
@@ -2431,12 +2425,12 @@ def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
     SELECT EpisodeQueue.EpisodeID, EpisodeQueue.QueuePosition
     FROM EpisodeQueue 
     INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID 
-    WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND EpisodeQueue.UserID = %s
+    WHERE Episodes.EpisodeID = %s AND EpisodeQueue.UserID = %s
     """
-    cursor.execute(get_queue_data_query, (episode_title, ep_url, user_id))
+    cursor.execute(get_queue_data_query, (episode_id, user_id))
     queue_data = cursor.fetchone()
     if queue_data is None:
-        print(f"No queued episode found for the title: {episode_title} and URL: {ep_url}")
+        print(f"No queued episode found with ID {episode_id}")
         cursor.close()
         return None
 
@@ -2460,7 +2454,7 @@ def remove_queued_pod(database_type, cnx, episode_title, ep_url, user_id):
     cursor.execute(update_queue_query, (user_id, removed_queue_position))
     cnx.commit()
 
-    print(f"Successfully removed episode: {episode_title} from queue.")
+    print(f"Successfully removed episode from queue.")
     cursor.close()
 
     return {"status": "success"}

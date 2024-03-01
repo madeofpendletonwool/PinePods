@@ -12,25 +12,24 @@ yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
 web-sys = { version = "0.3.68", features = ["CssStyleDeclaration", "DomTokenList", "HtmlSelectElement", "HtmlAudioElement", "DomRect", "Element", "HtmlAnchorElement", "FileReader", "Blob", "Document", "Element", "NodeList", "Window", "XmlHttpRequest", "DomParser", "SupportedType"] }
 log = "0.4.20"
-wasm-bindgen = "0.2.89"
-#yew-router = "0.18.0"
+wasm-bindgen = "0.2.91"
 yew-router = { version = "0.18.0" }
-serde = { version = "1.0.193", features = ["derive"] }
+serde = { version = "1.0.197", features = ["derive"] }
 gloo-net = "0.5.0"
-anyhow = { version = "1.0.75", features = [] }
-wasm-bindgen-futures = "0.4.39"
+anyhow = { version = "1.0.80", features = [] }
+wasm-bindgen-futures = "0.4.41"
 gloo-timers = "0.3.0"
-base64 = "0.21.5"
+base64 = "0.21.7"
 yewdux = "0.10.0"
-rss = "2.0.6"
-chrono = "0.4.31"
-serde_json = "1.0.110"
+rss = "2.0.7"
+chrono = "0.4.34"
+serde_json = "1.0.114"
 yewtil = "0.4.0"
 gloo-utils = "0.2.0"
 gloo-events = "0.2.0"
 md5 = "0.7.0"
 ammonia = "3.3.0"
-pulldown-cmark = "0.9.3"
+pulldown-cmark = "0.10.0"
 async-std = "1.12.0"
 argon2 = "0.5.3"
 rand = "0.8.5"
@@ -39,6 +38,6 @@ js-sys = "0.3.68"
 percent-encoding = "2.3.1"
 data-encoding = "2.5.0"
 url = "2.5.0"
-serde-wasm-bindgen = "0.6.3"
+serde-wasm-bindgen = "0.6.4"
 chrono-tz = "0.8.6"
 futures-util = "0.3.30"

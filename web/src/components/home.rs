@@ -196,6 +196,7 @@ pub fn home() -> Html {
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
+                                "home",
                             );
 
                             item

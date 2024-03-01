@@ -6,11 +6,11 @@ use yew_router::history::{BrowserHistory, History};
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use web_sys::{HtmlInputElement, window, MouseEvent};
 use web_sys::HtmlSelectElement;
-use yewdux::prelude::*;
+use yewdux::{dispatch, prelude::*};
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
-use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode};
+use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode, call_remove_downloaded_episode, call_remove_queued_episode, call_remove_saved_episode};
 use crate::requests::search_pods::SearchEpisode;
 use std::any::Any;
 use crate::components::gen_funcs::format_time;
@@ -327,6 +327,7 @@ pub fn search_bar() -> Html {
 #[derive(Properties, Clone)]
 pub struct ContextButtonProps {
     pub episode: Box<dyn EpisodeTrait>,
+    pub page_type: String,
 }
 
 #[function_component(ContextButton)]
@@ -339,6 +340,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let dropdown_ref = NodeRef::default();
+
+    let should_update = use_state(|| false); // This state will be used to trigger updates
     
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
@@ -369,8 +372,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let api_key_copy = queue_api_key.clone();
             let queue_post = queue_post.clone();
             let request = QueuePodcastRequest {
-                episode_title: episode.get_episode_title(),
-                ep_url: episode.get_episode_artwork(),
+                episode_id: episode.get_episode_id(),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -381,6 +383,52 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 match call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
                     Ok(success_message) => {
                         queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                    },
+                    Err(e) => {
+                        queue_post.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
+                        // Handle error, e.g., display the error message
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
+    let remove_queue_api_key = api_key.clone();
+    let remove_queue_server_name = server_name.clone();
+    let remove_queue_post = audio_dispatch.clone();
+    let dispatch_clone = post_dispatch.clone();
+    // let server_name = server_name.clone();
+    let on_remove_queued_episode = {
+        let episode = props.episode.clone();
+        let episode_id = props.episode.get_episode_id();
+        Callback::from(move |_| {
+            let post_dispatch = dispatch_clone.clone();
+            let episode_id_for_async = episode_id;
+            let server_name_copy = remove_queue_server_name.clone();
+            let api_key_copy = remove_queue_api_key.clone();
+            let queue_post = remove_queue_post.clone();
+            let request = QueuePodcastRequest {
+                episode_id: episode.get_episode_id(),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                // let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("Episode added to Queue!")));
+                match call_remove_queued_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
+                    Ok(success_message) => {
+                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                        post_dispatch.reduce_mut(|state| {
+                            // Here, you should remove the episode from the queued_episodes
+                            if let Some(ref mut queued_episodes) = state.queued_episodes {
+                                queued_episodes.episodes.retain(|ep| ep.get_episode_id() != episode_id);
+                            }
+                            // Optionally, you can update the info_message with success message
+                            state.info_message = Some(format!("{}", success_message).to_string());
+                        });
                     },
                     Err(e) => {
                         queue_post.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
@@ -426,6 +474,48 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let remove_saved_api_key = api_key.clone();
+    let remove_saved_server_name = server_name.clone();
+    let remove_save_post = audio_dispatch.clone();
+    let dispatch_clone = post_dispatch.clone();
+    let on_remove_saved_episode = {
+        let episode = props.episode.clone();
+        let episode_id = props.episode.get_episode_id();
+        Callback::from(move |_| {
+            let post_dispatch = dispatch_clone.clone();
+            let server_name_copy = remove_saved_server_name.clone();
+            let api_key_copy = remove_saved_api_key.clone();
+            let post_state = remove_save_post.clone();
+            let request = SavePodcastRequest {
+                episode_id: episode.get_episode_id(),
+                user_id: user_id.unwrap(),
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                match call_remove_saved_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
+                    Ok(success_message) => {
+                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                        post_dispatch.reduce_mut(|state| {
+                            // Here, you should remove the episode from the saved_episodes
+                            if let Some(ref mut saved_episodes) = state.saved_episodes {
+                                saved_episodes.episodes.retain(|ep| ep.get_episode_id() != episode_id);
+                            }
+                            // Optionally, you can update the info_message with success message
+                            state.info_message = Some(format!("{}", success_message).to_string());
+                        });
+                    },
+                    Err(e) => {
+                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
+                        // Handle error, e.g., display the error message
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
     let download_api_key = api_key.clone();
     let download_server_name = server_name.clone();
     let download_post = audio_dispatch.clone();
@@ -459,6 +549,83 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let remove_download_api_key = api_key.clone();
+    let remove_download_server_name = server_name.clone();
+    let remove_download_post = audio_dispatch.clone();
+    let dispatch_clone = post_dispatch.clone();
+    let on_remove_downloaded_episode = {
+        let episode = props.episode.clone();
+        let episode_id = props.episode.get_episode_id();
+        Callback::from(move |_| {
+            let post_dispatch = dispatch_clone.clone();
+            let post_state = remove_download_post.clone();
+            let server_name_copy = remove_download_server_name.clone();
+            let api_key_copy = remove_download_api_key.clone();
+            let request = DownloadEpisodeRequest {
+                episode_id: episode.get_episode_id(),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                match call_remove_downloaded_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
+                    Ok(success_message) => {
+                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                        post_dispatch.reduce_mut(|state| {
+                            // Here, you should remove the episode from the downloaded_episodes
+                            if let Some(ref mut downloaded_episodes) = state.downloaded_episodes {
+                                downloaded_episodes.episodes.retain(|ep| ep.get_episode_id() != episode_id);
+                            }
+                            // Optionally, you can update the info_message with success message
+                            state.info_message = Some(format!("{}", success_message).to_string());
+                        });
+                    },
+                    Err(e) => {
+                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
+                        // Handle error, e.g., display the error message
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
+    let action_buttons = match props.page_type.as_str() {
+        "saved" => html! {
+            <>
+                <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
+                <li class="dropdown-option" onclick={on_remove_saved_episode.clone()}>{ "Remove Saved Episode" }</li>
+                <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+            </>
+        },
+        "queue" => html! {
+            <>
+                <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
+                <li class="dropdown-option" onclick={on_remove_queued_episode.clone()}>{ "Remove from Queue" }</li>
+                <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+            </>
+        },
+        "downloads" => html! {
+            <>
+                <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
+                <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
+                <li class="dropdown-option" onclick={on_remove_downloaded_episode.clone()}>{ "Remove Downloaded Episode" }</li>
+            </>
+        },
+        // Add more page types and their respective button sets as needed
+        _ => html! {
+            // Default set of buttons for other page types
+            <>
+                <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
+                <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
+                <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+            </>
+        },
+    };
+
     html! {
         <>
         <div class="relative inline-block">
@@ -475,10 +642,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 html! {
                     <div class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
                         <ul class="dropdown-container py-2 text-sm text-gray-700">
-                            <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
-                            <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
-                            <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
-                            // Add more categories as needed
+                            { action_buttons }
                         </ul>
                     </div>
                 }
@@ -681,7 +845,8 @@ pub fn episode_item(
     on_play_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
-    listen_duration: Option<i32>
+    listen_duration: Option<i32>,
+    page_type: &str,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -751,7 +916,7 @@ pub fn episode_item(
                     >
                         <span class="material-icons">{"play_arrow"}</span>
                     </button>
-                    <ContextButton episode={episode.clone()} />
+                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
                 </div>
             </div>
         </div>

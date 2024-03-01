@@ -811,12 +811,11 @@ def test_download_podcast_fun(episode_id: int, user_id: int):
     print(f"Downloading podcast {episode_id} for user {user_id}")
 
 class DeletePodcastData(BaseModel):
-    episode_url: str
-    title: str
+    episode_id: int
     user_id: int
 
 
-@app.post("/api/data/delete_podcast")
+@app.post("/api/data/delete_episode")
 async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
@@ -831,7 +830,7 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.delete_podcast(cnx, data.episode_url, data.title, data.user_id)
+        database_functions.functions.delete_episode(cnx, data.episode_id, data.user_id)
         return {"detail": "Podcast deleted."}
     else:
         raise HTTPException(status_code=403,
@@ -873,8 +872,7 @@ async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_conne
 
 
 class RemoveSavedEpisodeData(BaseModel):
-    episode_url: str
-    title: str
+    episode_id: int
     user_id: int
 
 
@@ -885,7 +883,7 @@ async def api_remove_saved_episode(data: RemoveSavedEpisodeData, cnx=Depends(get
     if is_valid_key:
         key_id = database_functions.functions.id_from_api_key(cnx, api_key)
         if key_id == data.user_id:
-            database_functions.functions.remove_saved_episode(cnx, data.episode_url, data.title, data.user_id)
+            database_functions.functions.remove_saved_episode(cnx, data.episode_id, data.user_id)
             return {"detail": "Saved episode removed."}
         else:
             raise HTTPException(status_code=403,
@@ -2207,8 +2205,7 @@ async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
 
 
 class QueueRmData(BaseModel):
-    episode_title: str
-    ep_url: str
+    episode_id: int
     user_id: int
 
 
@@ -2227,8 +2224,7 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.remove_queued_pod(database_type, cnx, data.episode_title, data.ep_url,
-                                                                data.user_id)
+        result = database_functions.functions.remove_queued_pod(database_type, cnx, data.episode_id, data.user_id)
         return {"data": result}
     else:
         raise HTTPException(status_code=403,

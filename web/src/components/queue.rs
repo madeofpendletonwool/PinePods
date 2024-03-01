@@ -197,6 +197,7 @@ pub fn queue() -> Html {
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
+                                "queue",
                             );
 
                             item
