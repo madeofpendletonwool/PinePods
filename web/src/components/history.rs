@@ -164,7 +164,9 @@ pub fn history() -> Html {
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
-                                "history"
+                                "history",
+                                Callback::from(|_| {}), 
+                                false,
                             );
 
                             item

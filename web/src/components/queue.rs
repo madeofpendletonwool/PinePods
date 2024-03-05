@@ -198,6 +198,8 @@ pub fn queue() -> Html {
                                 episode_duration_clone,
                                 episode_listened_clone,
                                 "queue",
+                                Callback::from(|_| {}), 
+                                false,
                             );
 
                             item

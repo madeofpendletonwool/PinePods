@@ -2493,6 +2493,21 @@ def get_queued_episodes(database_type, cnx, user_id):
 
     return queued_episodes
 
+def check_episode_exists(cnx, user_id, episode_title, episode_url):
+    cursor = cnx.cursor()
+    query = """
+        SELECT EXISTS(
+            SELECT 1 FROM Episodes
+            JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+            WHERE Podcasts.UserID = %s AND Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s
+        )
+    """
+    cursor.execute(query, (user_id, episode_title, episode_url))
+    result = cursor.fetchone()
+    cursor.close()
+    # result[0] will be 1 if the episode exists, otherwise 0
+    return result[0] == 1
+
 
 def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token):
     the_key = get_encryption_key(cnx)
@@ -2708,7 +2723,7 @@ def backup_user(database_type, cnx, user_id):
     return opml_content
 
 
-def backup_server(cnx, backup_dir, database_pass):
+def backup_server(cnx, database_pass):
     # Replace with your database and authentication details
     print(f'pass: {database_pass}')
     cmd = [
@@ -2716,7 +2731,7 @@ def backup_server(cnx, backup_dir, database_pass):
         "-h", 'db',
         "-P", '3306',
         "-u", "root",
-        "-p" + database_pass,  # You can put the password here directly, but it's not recommended for security reasons
+        "-p" + database_pass,
         "pypods_database"
     ]
 

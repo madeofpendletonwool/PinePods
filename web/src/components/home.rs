@@ -197,6 +197,8 @@ pub fn home() -> Html {
                                 episode_duration_clone,
                                 episode_listened_clone,
                                 "home",
+                                Callback::from(|_| {}), 
+                                false,
                             );
 
                             item

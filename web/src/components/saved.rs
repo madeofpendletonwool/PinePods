@@ -194,6 +194,8 @@ pub fn saved() -> Html {
                                 episode_duration_clone,
                                 episode_listened_clone,
                                 "saved",
+                                Callback::from(|_| {}), 
+                                false,
                             );
 
                             item

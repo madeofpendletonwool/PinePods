@@ -19,17 +19,19 @@ use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::stat_reqs::UserStats;
 
 #[allow(dead_code)]
+#[allow(dead_code)]
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
     SetLoading(bool),
+    UpdateSelectedEpisodesForDeletion(i32), // Add this line
+    DeleteSelectedEpisodes, // Add this line
 }
 
 impl Reducer<AppState> for AppStateMsg {
     fn apply(self, state: Rc<AppState>) -> Rc<AppState> {
         let mut load_state = state.clone();
         let state_mut = Rc::make_mut(&mut load_state);
-
 
         match self {
             AppStateMsg::ExpandEpisode(guid) => {
@@ -40,6 +42,14 @@ impl Reducer<AppState> for AppStateMsg {
             },
             AppStateMsg::SetLoading(is_loading) => {
                 state_mut.is_loading = Option::from(is_loading);
+            },
+            AppStateMsg::UpdateSelectedEpisodesForDeletion(episode_id) => { // Add this block
+                state_mut.selected_episodes_for_deletion.insert(episode_id);
+            },
+            AppStateMsg::DeleteSelectedEpisodes => { // Add this block
+                // Here you can delete the selected episodes from your state
+                // For now, let's just clear the selected episodes
+                state_mut.selected_episodes_for_deletion.clear();
             },
         }
 
@@ -79,6 +89,8 @@ pub struct AppState {
     pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
     pub edit_settings_user_reqeust: Option<EditSettingsUserRequest>,
+    #[serde(default)]
+    pub selected_episodes_for_deletion: HashSet<i32>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
@@ -103,6 +115,7 @@ pub struct UIState {
     pub error_message: Option<String>,
     pub info_message: Option<String>,
     pub is_expanded: bool,
+    pub episode_in_db: Option<bool>,
     // pub start_pos_sec: f64,
 }
 

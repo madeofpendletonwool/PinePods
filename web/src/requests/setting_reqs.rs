@@ -666,6 +666,66 @@ pub async fn call_backup_user(
     }
 }
 
+pub async fn call_backup_server(
+    server_name: &str,
+    database_pass: &str,
+    api_key: &str,
+) -> Result<String, anyhow::Error> {
+    let url = format!("{}/api/data/backup_server", server_name);
+    let request_body = serde_json::json!({
+        "database_pass": database_pass
+    });
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(anyhow::Error::msg)?;
+
+    if response.ok() {
+        response.text().await.map_err(anyhow::Error::msg)
+    } else {
+        Err(anyhow::Error::msg(format!("Error backing up server data: {}", response.status_text())))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct RestoreServerRequest {
+    database_pass: String,
+    server_restore_data: String,
+}
+
+pub async fn call_restore_server(
+    server_name: &str,
+    database_pass: &str,
+    server_restore_data: &str,
+    api_key: &str,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/restore_server", server_name);
+    let request_body = RestoreServerRequest {
+        database_pass: database_pass.to_string().clone(),
+        server_restore_data: server_restore_data.to_string().clone(),
+    };
+    log::info!("db: {:?}", database_pass.to_string().clone());
+    log::info!("restore: {:?}", server_restore_data.to_string().clone());
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        response.text().await.map_err(Error::msg)
+    } else {
+        Err(Error::msg(format!("Error restoring server data: {}", response.status_text())))
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct GenerateMFAResponse {
     pub(crate) secret: String,

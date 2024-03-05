@@ -232,7 +232,9 @@ pub fn search(props: &SearchProps) -> Html {
                                         toggle_expanded,
                                         episode_duration_clone,
                                         episode_listened_clone,
-                                        "search"
+                                        "search",
+                                        Callback::from(|_| {}), 
+                                        false,
                                     );
 
                                     item

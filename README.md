@@ -324,15 +324,16 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
 - [x] Refresh of podcasts needs to be async (Currently that process stops the server dead)
 - [x] Make the Queue functional and verify auto removals and adds
+- [x] Downloads Page
+- [x] Backup Server
 
-- [ ] Downloads Page
 - [ ] Issues occur server side when adding podcast without itunes_duration 
 (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
-- [ ] Backup Server
 - [ ] Restore Server
 - [ ] Nextcloud Subscription Timestamps
 - [ ] Require Re-Login if API Key that's saved doesn't work
 - [ ] Allow for episodes to be played without being added
+- [ ] Fix images on some podcasts that don't appear. Likely a fallback issue
 
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
 - [ ] Verify All Button Interaction throughout
@@ -345,11 +346,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Update All Depends
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Test Edgecases and ensure errors can't happen throughout
+- [ ] Verify Users only see what they have access to
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
 - [ ] Client release with Tauri
 
 ### After Rust Revamp
 
+- [ ] Additional Downloads Page organization - Organize by Podcast
 - [ ] Login with Github integration and cloud logins (OAuth)
 - [ ] Guest User
 - [ ] Installable PWA

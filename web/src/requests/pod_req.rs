@@ -242,6 +242,45 @@ pub async fn call_get_time_info(
     }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct EpisodeInDbResponse {
+    pub episode_in_db: bool,
+}
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+
+pub async fn call_check_episode_in_db(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    episode_title: &str,
+    episode_url: &str,
+) -> Result<bool, anyhow::Error> {
+    let encoded_title = utf8_percent_encode(episode_title, NON_ALPHANUMERIC).to_string();
+    let encoded_url = utf8_percent_encode(episode_url, NON_ALPHANUMERIC).to_string();
+    let endpoint = format!("{}/api/data/check_episode_in_db/{}?episode_title={}&episode_url={}", 
+        server, user_id, encoded_title, encoded_url);
+
+    let resp = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .context("Network Request Error")?;
+
+    if resp.ok() {
+        let episode_in_db_response = resp.json::<EpisodeInDbResponse>()
+            .await
+            .context("Response Parsing Error")?;
+        Ok(episode_in_db_response.episode_in_db)
+    } else {
+        Err(anyhow::anyhow!(
+            "Error checking episode in db. Server Response: {}",
+            resp.status_text()
+        ))
+    }
+}
+
+
+
 // Queue calls
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 use gloo_timers::future::sleep;
 use std::rc::Rc;
-use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played, call_get_queued_episodes, call_remove_queued_episode, QueuePodcastRequest, call_queue_episode};
+use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played, call_get_queued_episodes, call_remove_queued_episode, QueuePodcastRequest, call_queue_episode, call_check_episode_in_db};
 use futures_util::stream::StreamExt;
 
 
@@ -40,6 +40,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let episode_id = audio_state.currently_playing.as_ref().map(|props| props.episode_id);
     let history = BrowserHistory::new();
     let history_clone = history.clone();
+    let episode_in_db = audio_state.episode_in_db.unwrap_or_default();
     let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
         classes!("artwork", "playing")
     } else {
@@ -104,7 +105,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         }
     );
 
-// Effect for setting up an interval to update the current playback time
+
     // Effect for setting up an interval to update the current playback time
     // Clone `audio_ref` for `use_effect_with`
     let state_clone = audio_state.clone();
@@ -139,14 +140,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let state_clone_the_squeakuel = audio_state.clone();
     use_effect_with((), {
         let audio_dispatch = _audio_dispatch.clone(); // Assuming you need this for state updates
+        let audio_state = audio_state.clone(); // Assuming you need this for state updates
+        // let episode_in_db_effect = episode_in_db.clone(); // Assuming this is defined elsewhere in your component
         // Remove the audio_state clone if it's no longer needed
         let server_name = server_name.clone(); // Assuming this is defined elsewhere in your component
         let api_key = api_key.clone(); // Assuming this is defined elsewhere in your component
         let episode_id = episode_id.clone(); // Assuming this is defined elsewhere in your component
         let user_id = user_id.clone(); // Assuming this is defined elsewhere in your component
+        // let episode_in_db_effect = audio_state.episode_in_db.unwrap_or_default();
     
         move |_| {
-            // Spawn a new async task
+        // Spawn a new async task
             let future = async move {
                 let mut interval = gloo_timers::future::IntervalStream::new(30_000);
                 loop {
@@ -439,11 +443,26 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         </button>
                     </div>
                     <div class="button-container flex items-center justify-center">
-                    <button onclick={Callback::from(move |e: MouseEvent| {
-                        on_shownotes_click.emit(e.clone());
-                        title_click_emit.emit(e);
-                    })} class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">{ "Shownotes" }</button>
+                    {
+                        if episode_in_db {
+                            html! {
+                                <button onclick={Callback::from(move |e: MouseEvent| {
+                                    on_shownotes_click.emit(e.clone());
+                                    title_click_emit.emit(e);
+                                })} class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">
+                                    { "Shownotes" }
+                                </button>
+                            }
+                        } else {
+                            html! {
+                                <button disabled=true class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center opacity-50 cursor-not-allowed">
+                                    { "Shownotes (Unavailable)" }
+                                </button>
+                            }
+                        }
+                    }
                     </div>
+                    
                 </div>
                 <div class="line-content">
                 <div class="left-group">
@@ -513,6 +532,27 @@ pub fn on_play_click(
     }
 
     Callback::from(move |_: MouseEvent| {
+        let check_server_name = server_name.clone();
+        let check_api_key = api_key.clone();
+        let check_user_id = user_id.clone();
+        let episode_title_for_wasm = episode_title_for_closure.clone();
+        let episode_url_for_wasm = episode_url_for_closure.clone();
+        let app_dispatch = audio_dispatch.clone();
+        let mut episode_run_additional = false;
+        spawn_local(async move {
+            let episode_exists = call_check_episode_in_db(
+                &check_server_name,
+                &check_api_key,
+                check_user_id,
+                &episode_title_for_wasm,
+                &episode_url_for_wasm
+            ).await.unwrap_or(false); // Default to false if the call fails
+            console::log_1(&format!("Episode exists: {:?}", episode_exists).into());
+            let episode_run_additional = episode_exists;
+            app_dispatch.reduce_mut(move |global_state| {
+                global_state.episode_in_db = Some(episode_exists);
+            });
+        });
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
@@ -538,21 +578,24 @@ pub fn on_play_click(
         let history_server_name = server_name.clone();
         let history_api_key = api_key.clone();
         
-        spawn_local(async move {
-            let add_history_future = call_add_history(
-                &history_server_name,
-                history_api_key, 
-                &history_add
-            );
-            match add_history_future.await {
-                Ok(_) => {
-                    web_sys::console::log_1(&"Successfully added history".into());
-                },
-                Err(e) => {
-                    web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
+        if episode_run_additional {
+
+            spawn_local(async move {
+                let add_history_future = call_add_history(
+                    &history_server_name,
+                    history_api_key, 
+                    &history_add
+                );
+                match add_history_future.await {
+                    Ok(_) => {
+                        web_sys::console::log_1(&"Successfully added history".into());
+                    },
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
+                    }
                 }
-            }
-        });
+            });
+        }
         let increment_server_name = server_name.clone();
         let increment_api_key = api_key.clone();
         let increment_user_id = user_id.clone();
@@ -580,24 +623,26 @@ pub fn on_play_click(
             user_id, // replace with the actual user ID
         };
         
-        spawn_local(async move {
+        if episode_run_additional {
+            spawn_local(async move {
 
-            let queue_api = Option::from(queue_api_key);
+                let queue_api = Option::from(queue_api_key);
 
-            let add_queue_future = call_queue_episode(
-                &queue_server_name,
-                &queue_api, 
-                &request
-            );
-            match add_queue_future.await {
-                Ok(_) => {
-                    web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
-                },
-                Err(e) => {
-                    web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+                let add_queue_future = call_queue_episode(
+                    &queue_server_name,
+                    &queue_api, 
+                    &request
+                );
+                match add_queue_future.await {
+                    Ok(_) => {
+                        web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                    },
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+                    }
                 }
-            }
-        });
+            });
+        }
 
         audio_dispatch.reduce_mut(move |audio_state| {
             audio_state.audio_playing = Some(true);

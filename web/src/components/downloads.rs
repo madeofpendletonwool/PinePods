@@ -2,18 +2,19 @@ use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, empty_message, episode_item};
-use crate::requests::pod_req::{self, EpisodeDownloadResponse};
+use crate::requests::pod_req::{self, EpisodeDownloadResponse, DownloadEpisodeRequest, call_remove_downloaded_episode};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::components::audio::on_play_click;
-use crate::components::episodes_layout::AppStateMsg;
+use crate::components::context::AppStateMsg;
 use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
+use std::borrow::Borrow;
 
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
@@ -28,6 +29,12 @@ pub fn downloads() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let dropdown_open = use_state(|| false);
+    let delete_mode = use_state(|| false);
+    let page_state = use_state(|| PageState::Normal);
+    let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
 
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
@@ -102,10 +109,124 @@ pub fn downloads() -> Html {
         );
     }
 
+    // Define the state of the application
+    #[derive(Clone, PartialEq)]
+    enum PageState {
+        Delete,
+        Normal,
+    }
+
+    // Define the function to Enter Delete Mode
+    let delete_mode_enable = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Delete);
+        })
+    };
+
+    // Define the function to Exit Delete Mode
+    let delete_mode_disable = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Normal);
+        })
+    };
+
+    let on_checkbox_change = {
+        let dispatch = dispatch.clone();
+        Callback::from(move |episode_id: i32| {
+            dispatch.reduce_mut(move |state| {
+                // Update the state of the selected episodes for deletion
+                state.selected_episodes_for_deletion.insert(episode_id);
+            });
+        })
+    };
+
+    let delete_selected_episodes = {
+        let dispatch = dispatch.clone();
+        let page_state = page_state.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone(); // Make sure this is cloned from a state or props where it's guaranteed to exist.
+    
+        Callback::from(move |_| {
+            // Clone values for use inside the async block
+            let dispatch_cloned = dispatch.clone();
+            let page_state_cloned = page_state.clone();
+            let server_name_cloned = server_name.clone().unwrap(); // Assuming you've ensured these are present
+            let api_key_cloned = api_key.clone().unwrap();
+            let user_id_cloned = user_id.unwrap();
+    
+            dispatch.reduce_mut(move |state| {
+                let selected_episodes = state.selected_episodes_for_deletion.clone();
+                // Clear the selected episodes for deletion right away to prevent re-deletion in case of re-render
+                state.selected_episodes_for_deletion.clear();
+    
+                for &episode_id in &selected_episodes {
+                    let request = DownloadEpisodeRequest {
+                        episode_id,
+                        user_id: user_id_cloned,
+                    };
+                    let server_name_cloned = server_name_cloned.clone();
+                    let api_key_cloned = api_key_cloned.clone();
+                    let future = async move {
+                        match call_remove_downloaded_episode(&server_name_cloned, &api_key_cloned, &request).await {
+                            Ok(success_message) => Some((success_message, episode_id)),
+                            Err(_) => None,
+                        }
+                    };
+    
+                    let dispatch_for_future = dispatch_cloned.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Some((success_message, episode_id)) = future.await {
+                            dispatch_for_future.reduce_mut(|state| {
+                                if let Some(downloaded_episodes) = &mut state.downloaded_episodes {
+                                    downloaded_episodes.episodes.retain(|ep| ep.EpisodeID != episode_id);
+                                }
+                                state.info_message = Some(success_message);
+                            });
+                        }
+                    });
+                }
+    
+                page_state_cloned.set(PageState::Normal); // Return to normal state after operations
+            });
+        })
+    };
+    
+    let is_delete_mode = **page_state.borrow() == PageState::Delete; // Add this line
+
     html! {
         <>
         <div class="main-container">
             <Search_nav />
+            <h1 class="text-2xl font-bold text-center mb-6">{"Downloads"}</h1>
+            <div class="flex justify-between">
+                {if **page_state.borrow() == PageState::Normal {
+                    html! {
+                        <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded inline-flex items-center"
+                            onclick={delete_mode_enable.clone()}>
+                            <span class="material-icons icon-space">{"check_box"}</span>
+                            <span class="text-lg">{"Select Multiple"}</span>
+                        </button>
+                    }
+                } else {
+                    html! {
+                        <>
+                        <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded inline-flex items-center"
+                            onclick={delete_mode_disable.clone()}>
+                            <span class="material-icons icon-space">{"cancel"}</span>
+                            <span class="text-lg">{"Cancel"}</span>
+                        </button>
+                        <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded inline-flex items-center"
+                            onclick={delete_selected_episodes.clone()}>
+                            <span class="material-icons icon-space">{"delete"}</span>
+                            <span class="text-lg">{"Delete"}</span>
+                        </button>
+                        </>
+                    }
+                }}
+            </div>
             {
                 if let Some(download_eps) = state.downloaded_episodes.clone() {
                     web_sys::console::log_1(&format!("Episode History in state: {:?}", download_eps).into()); // Log queued episodes in state
@@ -186,6 +307,8 @@ pub fn downloads() -> Html {
                                 audio_state.clone(),
                             );
                             let format_release = format!("Released on: {}", &episode.EpisodePubDate);
+                            let on_checkbox_change_cloned = on_checkbox_change.clone();
+
                             let item = episode_item(
                                 Box::new(episode),
                                 description.clone(),
@@ -195,7 +318,9 @@ pub fn downloads() -> Html {
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
-                                "downloads"
+                                "downloads",
+                                on_checkbox_change_cloned, // Add this line
+                                is_delete_mode, // Add this line
                             );
 
                             item

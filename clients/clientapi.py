@@ -2,7 +2,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
     security, BackgroundTasks
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 import smtplib
@@ -907,19 +907,20 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
-    is_web_key = api_key == base_webkey.web_key
+    # Ignore listen duration for episodes with ID 0
+    if data.episode_id == 0:
+        return {"detail": "Listen duration for episode ID 0 is ignored."}
 
+    # Continue as normal for all other episode IDs
+    is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_listen_duration(cnx, data.episode_id, data.user_id,
-                                                            data.listen_duration)
+        database_functions.functions.record_listen_duration(cnx, data.episode_id, data.user_id, data.listen_duration)
         return {"detail": "Listen duration recorded."}
     else:
-        raise HTTPException(status_code=403,
-                            detail="You can only record your own listen duration")
+        raise HTTPException(status_code=403, detail="You can only record your own listen duration")
+
 
 
 @app.get("/api/data/refresh_pods")
@@ -2256,6 +2257,20 @@ async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_databas
         raise HTTPException(status_code=403,
                             detail="You can only get episodes from your own queue!")
 
+
+@app.get("/api/data/check_episode_in_db/{user_id}")
+async def check_episode_in_db(user_id: int, episode_title: str = Query(...), episode_url: str = Query(...), cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    if database_functions.functions.id_from_api_key(cnx, api_key) != user_id:
+        raise HTTPException(status_code=403, detail="You can only check episodes for your own account")
+
+    episode_exists = database_functions.functions.check_episode_exists(cnx, user_id, episode_title, episode_url)
+    return {"episode_in_db": episode_exists}
+
 class GpodderSettings(BaseModel):
     user_id: int
     gpodder_url: str
@@ -2326,27 +2341,6 @@ async def get_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_datab
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         result = database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id)
-        return {"data": result}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="You can only remove your own gpodder data!")
-
-@app.get("/api/data/check_gpodder_settings/{user_id}")
-async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
-                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
-    # Check if the provided API key is the web key
-    is_web_key = api_key == base_webkey.web_key
-
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-
-    # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == user_id or is_web_key:
-        result = database_functions.functions.check_gpodder_settings(database_type, cnx, user_id)
         return {"data": result}
     else:
         raise HTTPException(status_code=403,
@@ -2517,34 +2511,43 @@ async def backup_user(data: BackupUser, cnx=Depends(get_database_connection),
                             detail="You can only make backups for yourself!")
 
 
-class BackupServer(BaseModel):
-    backup_dir: str
+class BackupServerRequest(BaseModel):
     database_pass: str
 
-
-@app.get("/api/data/backup_server", response_class=PlainTextResponse)
-async def backup_server(data: BackupServer, is_admin: bool = Depends(check_if_admin),
-                        cnx=Depends(get_database_connection)):
+@app.post("/api/data/backup_server", response_class=PlainTextResponse)
+async def backup_server(request: BackupServerRequest, is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
+    # logging.info(f"request: {request}")
+    if not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     try:
-        dump_data = database_functions.functions.backup_server(cnx, data.backup_dir, data.database_pass)
+        dump_data = database_functions.functions.backup_server(cnx, request.database_pass)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return dump_data
-
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return Response(content=dump_data, media_type="text/plain")
 
 class RestoreServer(BaseModel):
     database_pass: str
     server_restore_data: str
 
 
-@app.post("/api/data/restore_server", response_class=PlainTextResponse)
-async def restore_server(data: RestoreServer, is_admin: bool = Depends(check_if_admin),
-                         cnx=Depends(get_database_connection)):
+@app.post("/api/data/restore_server")
+async def api_restore_server(data: RestoreServer, background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    logging.info(f"Restoring server with data")
+    # Proceed with restoration but in the background
+    background_tasks.add_task(restore_server_fun, data.database_pass, data.server_restore_data)
+    return JSONResponse(content={"detail": "Server restoration started."})
+
+def restore_server_fun(database_pass: str, server_restore_data: str):
+    # Assuming create_database_connection and restore_server are defined in database_functions.functions
+    cnx = create_database_connection()  # Replace with your method to create a new DB connection
     try:
-        dump_data = database_functions.functions.restore_server(cnx, data.database_pass, data.server_restore_data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return dump_data
+        # Restore server using the provided password and data
+        database_functions.functions.restore_server(cnx, database_pass, server_restore_data)
+    finally:
+        cnx.close() 
 
 async def async_tasks():
     # Start cleanup task

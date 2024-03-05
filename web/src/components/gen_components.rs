@@ -847,6 +847,8 @@ pub fn episode_item(
     episode_duration: i32,
     listen_duration: Option<i32>,
     page_type: &str,
+    on_checkbox_change: Callback<i32>,
+    is_delete_mode: bool, // Add this line
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -861,9 +863,18 @@ pub fn episode_item(
             0.0 // Avoid division by zero
         }
     });
+    let checkbox_ep = episode.get_episode_id();
     html! {
         <div>
             <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
+                {if is_delete_mode {
+                    html! {
+                        <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600" 
+                            onchange={on_checkbox_change.reform(move |_| checkbox_ep)} /> // Modify this line
+                    }
+                } else {
+                    html! {}
+                }}
                 <img 
                     src={episode.get_episode_artwork()} 
                     alt={format!("Cover for {}", episode.get_episode_title())} 
