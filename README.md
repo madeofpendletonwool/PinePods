@@ -326,16 +326,19 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Make the Queue functional and verify auto removals and adds
 - [x] Downloads Page
 - [x] Backup Server
-
-- [ ] Issues occur server side when adding podcast without itunes_duration 
+- [x] Allow for episodes to be played without being added
+- [x] Fix images on some podcasts that don't appear. Likely a fallback issue
+- [x] Issues occur server side when adding podcast without itunes_duration 
 (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
+- [x] Duration Not showing when podcast played from episode layout screen
+
 - [ ] Restore Server
 - [ ] Nextcloud Subscription Timestamps
 - [ ] Require Re-Login if API Key that's saved doesn't work
-- [ ] Allow for episodes to be played without being added
-- [ ] Fix images on some podcasts that don't appear. Likely a fallback issue
-
+- [ ] Loading icon in the center of screen while episodes load in
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
+- [ ] Click Episode Title to Open into Episode Screen
+
 - [ ] Verify All Button Interaction throughout
 - [ ] Show Currently Connected Nextcloud Server in settings
 - [ ] Better episode performance when a large number of episodes on screen

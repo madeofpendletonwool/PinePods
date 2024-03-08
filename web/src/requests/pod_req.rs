@@ -154,6 +154,49 @@ pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemovePodcastValuesName {
+    pub user_id: i32,
+    pub podcast_name: String,
+    pub podcast_url: String,
+}
+
+pub async fn call_remove_podcasts_name(server_name: &String, api_key: &Option<String>, remove_podcast: &RemovePodcastValuesName) -> Result<bool, Error> {
+    let url = format!("{}/api/data/remove_podcast", server_name);
+
+    console::log_1(&format!("URL: {}", url).into());
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    // Serialize `added_podcast` into JSON
+    let json_body = serde_json::to_string(remove_podcast)?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(json_body)?
+        .send()
+        .await?;
+
+    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    console::log_1(&format!("Response Text: {}", response_text).into());
+
+
+    if response.ok() {
+        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+            Ok(parsed_response) => Ok(parsed_response.success),
+            Err(parse_error) => {
+                console::log_1(&format!("Error parsing response: {:?}", parse_error).into());
+                Err(anyhow::Error::msg("Failed to parse response"))
+            }
+        }
+    } else {
+        console::log_1(&format!("Error removing podcast: {}", response.status_text()).into());
+        Err(anyhow::Error::msg(format!("Error removing podcast: {}", response.status_text())))
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct PodcastResponse {
@@ -237,6 +280,44 @@ pub async fn call_get_time_info(
     } else {
         Err(anyhow::anyhow!(
             "Error fetching time info. Server Response: {}",
+            resp.status_text()
+        ))
+    }
+}
+
+
+#[derive(Default, Deserialize, Debug)]
+pub struct CheckPodcastResponse {
+    pub exists: bool,
+}
+
+pub async fn call_check_podcast(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    podcast_name: &str,
+    podcast_url: &str,
+) -> Result<CheckPodcastResponse, Error> {
+    let encoded_name = utf8_percent_encode(podcast_name, NON_ALPHANUMERIC).to_string();
+    let encoded_url = utf8_percent_encode(podcast_url, NON_ALPHANUMERIC).to_string();
+    let endpoint = format!(
+        "{}/api/data/check_podcast?user_id={}&podcast_name={}&podcast_url={}", 
+        server, user_id, encoded_name, encoded_url
+    );
+
+    let resp = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .context("Network Request Error")?;
+
+    if resp.ok() {
+        resp.json::<CheckPodcastResponse>()
+            .await
+            .context("Response Parsing Error")
+    } else {
+        Err(anyhow::anyhow!(
+            "Error checking podcast. Server Response: {}",
             resp.status_text()
         ))
     }

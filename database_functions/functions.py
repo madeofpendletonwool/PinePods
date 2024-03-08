@@ -154,97 +154,90 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
 
     cursor = cnx.cursor()
 
-    try:
-        for entry in episode_dump.entries:
-            if hasattr(entry, "title") and hasattr(entry, "summary") and hasattr(entry, "enclosures"):
-                # get the episode title
-                parsed_title = entry.title
-
-                # get the episode description
-                parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
-
-                # get the URL of the audio file for the episode
-                if entry.enclosures:
-                    parsed_audio_url = entry.enclosures[0].href
-                else:
-                    parsed_audio_url = ""
-
-                # get the release date of the episode and convert it to a MySQL date format
-                parsed_release_date = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d")
-
-                # get the URL of the episode artwork, or use the podcast image URL if not available
-                parsed_artwork_url = entry.get('itunes_image', {}).get('href', None) or entry.get('image', {}).get(
-                    'href', None)
-                if parsed_artwork_url == None:
-                    parsed_artwork_url = artwork_url
-
-                def parse_duration(duration_string: str) -> int:
-                    match = re.match(r'(\d+):(\d+)(?::(\d+))?', duration_string)  # Regex to optionally match HH:MM:SS
-                    if match:
-                        if match.group(3):  # If there is an HH part
-                            parsed_duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(
-                                match.group(3))
-                        else:  # It's only MM:SS
-                            parsed_duration = int(match.group(1)) * 60 + int(match.group(2))
-                    else:
-                        try:
-                            parsed_duration = int(duration_string)
-                        except ValueError:
-                            print(f'Error parsing duration from duration_string: {duration_string}')
-                            parsed_duration = 0
-                    return parsed_duration
-
-                parsed_duration = 0
-                if entry.itunes_duration:
-                    parsed_duration = parse_duration(entry.itunes_duration)
-                elif entry.itunes_duration_seconds:
-                    parsed_duration = entry.itunes_duration_seconds
-                elif entry.duration:
-                    parsed_duration = parse_duration(entry.duration)
-                elif entry.length:
-                    parsed_duration = parse_duration(entry.length)
-
-                # check if the episode already exists
-                check_episode = ("SELECT * FROM Episodes "
-                                 "WHERE PodcastID = %s AND EpisodeTitle = %s")
-                check_episode_values = (podcast_id, parsed_title)
-                cursor.execute(check_episode, check_episode_values)
-                if cursor.fetchone() is not None:
-                    # episode already exists, skip it
-                    continue
-
-                # insert the episode into the database
-                query = "INSERT INTO Episodes (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                values = (
-                    podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url,
-                    parsed_release_date,
-                    parsed_duration)
-                cursor.execute(query, values)
-
-                # check if any rows were affected by the insert operation
-                if cursor.rowcount > 0:
-                    print(f"Added episode '{parsed_title}'")
-
+    def parse_duration(duration_string: str) -> int:
+        # First, check if duration is in seconds (no colons)
+        if ':' not in duration_string:
+            try:
+                # Directly return seconds if no colon is found
+                return int(duration_string)
+            except ValueError:
+                print(f'Error parsing duration from pure seconds: {duration_string}')
+                return 0  # Return 0 or some default value in case of error
+        else:
+            # Handle HH:MM:SS format
+            parts = duration_string.split(':')
+            if len(parts) == 1:
+                # If there's only one part, it's in seconds
+                return int(parts[0])
             else:
-                print("Skipping entry without required attributes or enclosures")
-
-        cnx.commit()
-
-    except Exception as e:
-        print(f"Error adding episodes: {e}")
-        cnx.rollback()
-
-    finally:
-        cursor.close()
+                while len(parts) < 3:
+                    parts.insert(0, '0')  # Prepend zeros if any parts are missing (ensuring HH:MM:SS format)
+                h, m, s = map(int, parts)
+                return h * 3600 + m * 60 + s
 
 
-def remove_podcast(cnx, podcast_name, user_id):
+
+    for entry in episode_dump.entries:
+        # Check necessary fields are present
+        if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]):
+            continue
+
+        # Extract necessary information
+        parsed_title = entry.title
+        parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
+        parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
+        parsed_release_date = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d")
+        parsed_artwork_url = entry.get('itunes_image', {}).get('href', artwork_url)
+
+        # Duration parsing
+        parsed_duration = 0
+        duration_str = getattr(entry, 'itunes_duration', '')
+        if ':' in duration_str:
+            # If duration contains ":", then process as HH:MM:SS or MM:SS
+            time_parts = list(map(int, duration_str.split(':')))
+            while len(time_parts) < 3:
+                time_parts.insert(0, 0)  # Pad missing values with zeros
+            h, m, s = time_parts
+            parsed_duration = h * 3600 + m * 60 + s
+        elif duration_str.isdigit():
+            # If duration is all digits (no ":"), treat as seconds directly
+            parsed_duration = int(duration_str)
+        elif hasattr(entry, 'itunes_duration_seconds'):
+            # Additional format as fallback, if explicitly provided as seconds
+            parsed_duration = int(entry.itunes_duration_seconds)
+        elif hasattr(entry, 'duration'):
+            # Other specified duration formats (assume they are in correct format or seconds)
+            parsed_duration = parse_duration(entry.duration)
+        elif hasattr(entry, 'length'):
+            # If duration not specified but length is, use length (assuming it's in seconds)
+            parsed_duration = int(entry.length)
+
+
+        # Check for existing episode
+        cursor.execute("SELECT * FROM Episodes WHERE PodcastID = %s AND EpisodeTitle = %s", (podcast_id, parsed_title))
+        if cursor.fetchone():
+            continue  # Episode already exists
+
+        # Insert the new episode
+        cursor.execute("""
+            INSERT INTO Episodes 
+            (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, parsed_duration))
+
+        if cursor.rowcount > 0:
+            print(f"Added episode '{parsed_title}'")
+
+    cnx.commit()
+
+
+def remove_podcast(cnx, podcast_name, podcast_url, user_id):
     cursor = cnx.cursor()
 
     try:
         # Get the PodcastID for the given podcast name
-        select_podcast_id = "SELECT PodcastID FROM Podcasts WHERE PodcastName = %s"
-        cursor.execute(select_podcast_id, (podcast_name,))
+        select_podcast_id = "SELECT PodcastID FROM Podcasts WHERE PodcastName = %s AND FeedURL = %s"
+        cursor.execute(select_podcast_id, (podcast_name, podcast_url))
         result = cursor.fetchall()  # fetch all results
         podcast_id = result[0][0] if result else None
 
@@ -1744,13 +1737,13 @@ def get_user_episode_count(cnx, user_id):
     return episode_count
 
 
-def check_podcast(cnx, user_id, podcast_name):
+def check_podcast(cnx, user_id, podcast_name, podcast_url):
     cursor = None
     try:
         cursor = cnx.cursor()
 
-        query = "SELECT PodcastID FROM Podcasts WHERE UserID = %s AND PodcastName = %s"
-        cursor.execute(query, (user_id, podcast_name))
+        query = "SELECT PodcastID FROM Podcasts WHERE UserID = %s AND PodcastName = %s AND FeedURL = %s"
+        cursor.execute(query, (user_id, podcast_name, podcast_url))
 
         if cursor.fetchone() is not None:
             return True

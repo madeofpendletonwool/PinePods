@@ -3,6 +3,7 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use anyhow::Error;
 use rss::Channel;
+use web_sys::console;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -98,10 +99,13 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
     let response_text = Request::get(podcast_url).send().await?.text().await?;
     let channel = Channel::read_from(response_text.as_bytes())?;
 
-    let podcast_artwork_url = channel.image().map(|img| img.url().to_string());
+    // Fallback to podcast's main artwork if individual episode artwork is not available
+    let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
+        .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
 
     let episodes = channel.items().iter().map(|item| {
-        let episode_artwork_url = item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()).or_else(|| podcast_artwork_url.clone());
+        let episode_artwork_url = item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string())
+            .or_else(|| podcast_artwork_url.clone());
         let audio_url = item.enclosure().map(|enclosure| enclosure.url().to_string());
         let itunes_extension = item.itunes_ext();
         let duration = itunes_extension.and_then(|ext| ext.duration()).map(|d| d.to_string());

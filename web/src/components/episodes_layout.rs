@@ -294,6 +294,7 @@ pub fn episode_layout() -> Html {
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
                                 let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
                                 let episode_duration_clone = episode.duration.clone().unwrap_or_default();
+                                console::log_1(&format!("Duration: {:?}", episode_duration_clone).into());
                                 let episode_id_clone = 0;
                                 let server_name_play = server_name.clone();
                                 let user_id_play = user_id.clone();

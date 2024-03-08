@@ -994,22 +994,20 @@ async def api_get_user_info(is_admin: bool = Depends(check_if_admin), cnx=Depend
     return user_info
 
 
-class CheckPodcastData(BaseModel):
-    user_id: int
-    podcast_name: str
-
-
-@app.post("/api/data/check_podcast", response_model=Dict[str, bool])
-async def api_check_podcast(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
-                            data: CheckPodcastData = Body(...)):
+@app.get("/api/data/check_podcast", response_model=Dict[str, bool])
+async def api_check_podcast(
+    user_id: int, 
+    podcast_name: str, 
+    podcast_url: str,
+    cnx=Depends(get_database_connection), 
+    api_key: str = Depends(get_api_key_from_header)
+):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if is_valid_key:
-        exists = database_functions.functions.check_podcast(cnx, data.user_id, data.podcast_name)
+        exists = database_functions.functions.check_podcast(cnx, user_id, podcast_name, podcast_url)
         return {"exists": exists}
     else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 @app.get("/api/data/user_admin_check/{user_id}")
 async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header),
@@ -1036,6 +1034,7 @@ async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_ap
 class RemovePodcastData(BaseModel):
     user_id: int
     podcast_name: str
+    podcast_url: str
 
 
 @app.post("/api/data/remove_podcast")
@@ -1056,7 +1055,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
-    database_functions.functions.remove_podcast(cnx, data.podcast_name, data.user_id)
+    database_functions.functions.remove_podcast(cnx, data.podcast_name, data.podcast_url, data.user_id)
     return {"success": True}
 
 class RemovePodcastIDData(BaseModel):
