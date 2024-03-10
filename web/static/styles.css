@@ -922,3 +922,37 @@ body {
     border-radius: 5px; /* Match container's border-radius */
     transition: width 0.5s ease-in-out; /* Smooth transition for changes, optional */
 }
+
+.cursor-pointer:hover {
+    cursor: pointer;
+}
+
+@keyframes frameAnimation {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
+
+.loading-animation {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%; /* Full width of the container */
+    height: 100vh; /* Full height of the viewport */
+    position: relative; /* Necessary for absolute positioning of children */
+}
+
+.loading-animation div {
+    position: absolute; /* Align images directly on top of each other */
+    width: 500px; /* Set width */
+    height: 500px; /* Set height */
+    background-size: cover;
+    animation: frameAnimation 3s infinite; /* Total animation duration adjusted to 3 seconds */
+}
+
+/* Apply negative delays here */
+.loading-animation .frame1 { background-image: url('./assets/images/og-same.png'); animation-delay: -4.5s; }
+.loading-animation .frame2 { background-image: url('./assets/images/low5.png'); animation-delay: -4s; }
+.loading-animation .frame3 { background-image: url('./assets/images/low4.png'); animation-delay: -3.5s; }
+.loading-animation .frame4 { background-image: url('./assets/images/low3.png'); animation-delay: -3s; }
+.loading-animation .frame5 { background-image: url('./assets/images/low2.png'); animation-delay: -2.5s; }
+.loading-animation .frame6 { background-image: url('./assets/images/low1.png'); animation-delay: -2s; }

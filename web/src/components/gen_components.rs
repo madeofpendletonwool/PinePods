@@ -836,6 +836,23 @@ impl EpisodeTrait for SearchEpisode {
     
 
     // Implement other methods
+pub fn on_shownotes_click(
+    history: BrowserHistory,
+    dispatch: Dispatch<AppState>,
+    episode_id: i32,
+) -> Callback<MouseEvent> {
+    Callback::from(move |_: MouseEvent| {
+        let dispatch_clone = dispatch.clone();
+        let history_clone = history.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            dispatch_clone.reduce_mut(move |state| {
+                state.selected_episode_id = Some(episode_id);
+            });
+            history_clone.push("/episode"); // Use the route path
+        });
+    })
+}
+
 
 pub fn episode_item(
     episode: Box<dyn EpisodeTrait>,
@@ -843,6 +860,7 @@ pub fn episode_item(
     is_expanded: bool,
     format_release: &str,
     on_play_click: Callback<MouseEvent>,
+    on_shownotes_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
     listen_duration: Option<i32>,
@@ -881,7 +899,9 @@ pub fn episode_item(
                     class="w-2/12 md:w-4/12 object-cover pl-4"
                 />
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-5/12">
-                    <p class="item_container-text text-xl font-semibold">{ episode.get_episode_title() }</p>
+                    <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_shownotes_click}>
+                        { episode.get_episode_title() }
+                    </p>
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {

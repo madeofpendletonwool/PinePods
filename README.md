@@ -330,32 +330,44 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Fix images on some podcasts that don't appear. Likely a fallback issue
 - [x] Issues occur server side when adding podcast without itunes_duration 
 (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
+- [x] Click Episode Title to Open into Episode Screen
 - [x] Duration Not showing when podcast played from episode layout screen
 
-- [ ] Restore Server
+- [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page 
+
+- [ ] Episodes not appearing in history
+- [ ] Panic being caused when searching podcasts sometimes (due to an empty value)
+
 - [ ] Nextcloud Subscription Timestamps
 - [ ] Require Re-Login if API Key that's saved doesn't work
-- [ ] Loading icon in the center of screen while episodes load in
-- [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add
-- [ ] Click Episode Title to Open into Episode Screen
 
-- [ ] Verify All Button Interaction throughout
 - [ ] Show Currently Connected Nextcloud Server in settings
-- [ ] Better episode performance when a large number of episodes on screen
+
 - [ ] Consistent Styling Throughout
 - [ ] Setup All Themes
-- [ ] Revamp Readme
+
+- [ ] Loading icon in the center of screen while episodes load in (DOne on home - Further test)
+
 - [ ] Verify Funtional Mobile Version
+- [ ] Verify All Button Interaction throughout
+- [ ] Restore Server - Should be done (doublecheck)
+
 - [ ] Update All Depends
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Test Edgecases and ensure errors can't happen throughout
+
 - [ ] Verify Users only see what they have access to
+
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
 - [ ] Client release with Tauri
+
+- [ ] Revamp Readme
+- [ ] Revamp Documentation
 
 ### After Rust Revamp
 
 - [ ] Additional Downloads Page organization - Organize by Podcast
+- [ ] Better episode performance when a large number of episodes on screen
 - [ ] Login with Github integration and cloud logins (OAuth)
 - [ ] Guest User
 - [ ] Installable PWA

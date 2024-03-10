@@ -1,10 +1,11 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item};
+use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::pod_req::{self, EpisodeDownloadResponse, DownloadEpisodeRequest, call_remove_downloaded_episode};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
+use yew_router::history::{BrowserHistory, History};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::components::audio::on_play_click;
@@ -20,6 +21,7 @@ use std::borrow::Borrow;
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let effect_dispatch = dispatch.clone();
+    let history = BrowserHistory::new();
 
     check_auth(effect_dispatch);
 
@@ -241,7 +243,7 @@ pub fn downloads() -> Html {
                             let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
                             let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                             let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-                    
+                            let history_clone = history.clone();
                             let state_ep = state.clone();
                             let id_string = &episode.EpisodeID.to_string();
     
@@ -306,6 +308,13 @@ pub fn downloads() -> Html {
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
                             );
+
+                            let on_shownotes_click = on_shownotes_click(
+                                history_clone.clone(),
+                                dispatch.clone(),
+                                episode_id_for_closure.clone(),
+                            );
+
                             let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                             let on_checkbox_change_cloned = on_checkbox_change.clone();
 
@@ -315,6 +324,7 @@ pub fn downloads() -> Html {
                                 is_expanded,
                                 &format_release,
                                 on_play_click,
+                                on_shownotes_click,
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,

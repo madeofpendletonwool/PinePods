@@ -137,3 +137,26 @@ pub fn format_time_mins(time_in_minutes: i32) -> String {
     let minutes = (time_in_minutes % 60.0).floor() as i32;
     format!("{:02}:{:02}", hours, minutes)
 }
+
+pub fn convert_time_to_seconds(time: &str) -> Result<u32, Box<dyn std::error::Error>> {
+    let parts: Vec<&str> = time.split(':').collect();
+
+    match parts.len() {
+        3 => {
+            let hours: u32 = parts[0].parse()?;
+            let minutes: u32 = parts[1].parse()?;
+            let seconds: u32 = parts[2].parse()?;
+            Ok(hours * 3600 + minutes * 60 + seconds)
+        }
+        2 => {
+            let minutes: u32 = parts[0].parse()?;
+            let seconds: u32 = parts[1].parse()?;
+            Ok(minutes * 60 + seconds)
+        }
+        1 => {
+            let seconds: u32 = parts[0].parse()?;
+            Ok(seconds)
+        }
+        _ => Err("Invalid time format".into()),
+    }
+}

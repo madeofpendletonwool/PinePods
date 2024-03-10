@@ -1,10 +1,11 @@
 use yew::{function_component, html, use_node_ref, Html, Properties, Callback, MouseEvent};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item};
+use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
+use yew_router::history::{BrowserHistory, History};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::components::audio::on_play_click;
@@ -33,6 +34,7 @@ pub fn search(props: &SearchProps) -> Html {
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let dropdown_open = use_state(|| false);
+    let history = BrowserHistory::new();
     // let search_results = use_state(|| Vec::new());
     // let search_results_clone = search_results.clone();
 
@@ -169,7 +171,7 @@ pub fn search(props: &SearchProps) -> Html {
                                     let episode_duration_clone = episode.EpisodeDuration.clone();
                                     let episode_id_clone = episode.EpisodeID.clone();
                                     let episode_listened_clone = episode.ListenDuration.clone();
-
+                                    let history_clone = history.clone();
                                     let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
 
                                     let (description, is_truncated) = if is_expanded {
@@ -222,6 +224,12 @@ pub fn search(props: &SearchProps) -> Html {
                                         audio_state.clone(),
                                     );
 
+                                    let on_shownotes_click = on_shownotes_click(
+                                        history_clone.clone(),
+                                        dispatch.clone(),
+                                        episode_id_for_closure.clone(),
+                                    );
+
                                     let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                                     let item = episode_item(
                                         Box::new(episode),
@@ -229,6 +237,7 @@ pub fn search(props: &SearchProps) -> Html {
                                         is_expanded,
                                         &format_release,
                                         on_play_click,
+                                        on_shownotes_click,
                                         toggle_expanded,
                                         episode_duration_clone,
                                         episode_listened_clone,

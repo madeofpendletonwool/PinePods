@@ -11,7 +11,7 @@ use crate::requests::pod_req::{call_add_podcast, PodcastValues, call_check_episo
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::{Properties};
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -293,8 +293,16 @@ pub fn episode_layout() -> Html {
                                 let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
                                 let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
+                                // let episode_duration_clone = episode.duration.clone().unwrap_or_default();
                                 let episode_duration_clone = episode.duration.clone().unwrap_or_default();
-                                console::log_1(&format!("Duration: {:?}", episode_duration_clone).into());
+                                let episode_duration_in_seconds = match convert_time_to_seconds(&episode_duration_clone) {
+                                    Ok(seconds) => seconds as i32,
+                                    Err(e) => {
+                                        eprintln!("Failed to convert time to seconds: {}", e);
+                                        0
+                                    }
+                                };
+                                console::log_1(&episode_duration_clone.clone().into());
                                 let episode_id_clone = 0;
                                 let server_name_play = server_name.clone();
                                 let user_id_play = user_id.clone();
@@ -334,7 +342,7 @@ pub fn episode_layout() -> Html {
                                     episode_url_clone.clone(),
                                     episode_title_clone.clone(),
                                     episode_artwork_clone.clone(),
-                                    episode_duration,
+                                    episode_duration_in_seconds,
                                     episode_id_clone.clone(),
                                     Some(0),
                                     api_key_play.unwrap().unwrap(),
@@ -344,93 +352,7 @@ pub fn episode_layout() -> Html {
                                     state.clone(),
                                 );
 
-                                // let play_and_check_db = {
 
-                                // }
-
-                                
-                                // let on_play_click = {
-                                //     let episode_url_for_closure = episode_url_clone.clone();
-                                //     let dispatch = dispatch.clone();
-                                //     let app_dispatch = search_dispatch.clone();
-
-                                //     fn parse_duration_to_seconds(duration_convert: &str) -> f64 {
-                                //         let parts: Vec<&str> = duration_convert.split(':').collect();
-                                //         let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
-
-                                //         let seconds = match parts.len() {
-                                //             3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
-                                //             2 => parts[0] * 60.0 + parts[1],
-                                //             1 => parts[0],
-                                //             _ => 0.0,
-                                //         };
-
-                                //         seconds
-                                //     }
-                                //     let call_api_key = api_key.clone();
-                                //     let call_server_name = server_name.clone();
-                                //     let call_user_id = user_id.clone();
-
-
-
-                                //     Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
-                                //         web_sys::console::log_1(&"Play Clicked".to_string().into());
-                                //         let episode_url_for_closure = episode_url_for_closure.clone();
-                                //         let episode_title_for_closure = episode_title_clone.clone();
-                                //         let episode_artwork_for_closure = episode_artwork_clone.clone();
-                                //         let episode_duration_for_closure = episode_duration_clone.clone();
-                                //         let episode_id_for_closure = episode_id_clone.clone();
-                                //         web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
-                                //         let dispatch = dispatch.clone();
-                                //         let app_dispatch = app_dispatch.clone();
-                                //         // let duration = episode_duration_for_closure;
-                                //         let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
-                                //         web_sys::console::log_1(&format!("duration format: {}", &episode_duration_for_closure).into());
-                                //         web_sys::console::log_1(&format!("duration sec: {}", &formatted_duration).into());
-                                //         let start_pos_sec = 0.0;
-                                //         let episode_exists = false;
-                                //         let server_name = call_server_name.clone();
-                                //         let api_key = call_api_key.clone();
-                                //         let user_id = call_user_id.clone();
-                                //         let episode_url_for_wasm = episode_url_for_closure.clone();
-                                //         let episode_title_for_wasm = episode_title_for_closure.clone();
-
-                                        // wasm_bindgen_futures::spawn_local(async move {
-                                        //     let episode_exists = call_check_episode_in_db(
-                                        //         &server_name.unwrap(),
-                                        //         &api_key.unwrap().unwrap(),
-                                        //         user_id.unwrap(),
-                                        //         &episode_title_for_wasm,
-                                        //         &episode_url_for_wasm
-                                        //     ).await.unwrap_or(false); // Default to false if the call fails
-                                        // });
-                                        // app_dispatch.reduce_mut(move |global_state| {
-                                        //     global_state.episode_in_db = Some(episode_exists);
-                                        // });
-
-                                //         dispatch.reduce_mut(move |state| {
-                                //             state.audio_playing = Some(true);
-                                //             state.currently_playing = Some(AudioPlayerProps {
-                                //                 src: episode_url_for_closure.clone(),
-                                //                 title: episode_title_for_closure.clone(),
-                                //                 artwork_url: episode_artwork_for_closure.clone(),
-                                //                 duration: episode_duration_for_closure.clone(),
-                                //                 episode_id: episode_id_for_closure.clone(),
-                                //                 duration_sec: formatted_duration,
-                                //                 start_pos_sec: start_pos_sec,
-                                //             });
-                                //             state.set_audio_source(episode_url_for_closure.to_string()); // Set the audio source here
-                                //             // if !state.audio_playing.unwrap_or(false) {
-                                //             //     state.audio_playing = Some(true);
-                                //             //     // state.toggle_playback(); // Ensure this only plays if not already playing
-                                //             // }
-                                //             if let Some(audio) = &state.audio_element {
-                                //                 let _ = audio.play();
-                                //             }
-                                //             state.audio_playing = Some(true);
-                                //         });
-                                //     })
-                                // };
                                 let format_release = format!("Released on: {}", &episode.pub_date.clone().unwrap_or_default());
                                 html! {
                                     <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
