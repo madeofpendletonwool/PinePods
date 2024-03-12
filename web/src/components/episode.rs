@@ -6,12 +6,11 @@ use crate::requests::pod_req;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target};
+use crate::components::gen_funcs::sanitize_html_with_blank_target;
 use crate::requests::pod_req::{EpisodeRequest, EpisodeMetadataResponse, QueuePodcastRequest, call_queue_episode, SavePodcastRequest, call_save_episode, DownloadEpisodeRequest, call_download_episode};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::episodes_layout::{AppStateMsg, UIStateMsg};
-use crate::components::gen_funcs::check_auth;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -21,7 +20,7 @@ pub fn epsiode() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let effect_dispatch = dispatch.clone();
 
-    check_auth(effect_dispatch);
+    // check_auth(effect_dispatch);
 
     let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();

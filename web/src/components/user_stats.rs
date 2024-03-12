@@ -2,13 +2,13 @@ use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
-use crate::requests::{stat_reqs};
+use crate::requests::stat_reqs;
 use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{format_date, format_time_mins};
-use crate::requests::login_requests::use_check_authentication;
+// use crate::requests::login_requests::use_check_authentication;
 
 
 #[function_component(UserStats)]
@@ -18,21 +18,21 @@ pub fn user_stats() -> Html {
     let user_stats = stat_state.stats.as_ref();
     let effect_dispatch = dispatch.clone();
 
-    use_effect_with(
-        (),
-        move |_| {
-            let effect_dispatch_clone = effect_dispatch.clone();
+    // use_effect_with(
+    //     (),
+    //     move |_| {
+    //         let effect_dispatch_clone = effect_dispatch.clone();
 
-            wasm_bindgen_futures::spawn_local(async move {
-                let window = web_sys::window().expect("no global `window` exists");
-                let location = window.location();
-                let current_route = location.href().expect("should be able to get href");
-                use_check_authentication(effect_dispatch_clone, &current_route);
-            });
+    //         wasm_bindgen_futures::spawn_local(async move {
+    //             let window = web_sys::window().expect("no global `window` exists");
+    //             let location = window.location();
+    //             let current_route = location.href().expect("should be able to get href");
+    //             use_check_authentication(effect_dispatch_clone, &current_route);
+    //         });
 
-            || ()
-        }
-    );
+    //         || ()
+    //     }
+    // );
 
     // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();

@@ -91,6 +91,7 @@ pub struct AppState {
     pub edit_settings_user_reqeust: Option<EditSettingsUserRequest>,
     #[serde(default)]
     pub selected_episodes_for_deletion: HashSet<i32>,
+    pub reload_occured: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

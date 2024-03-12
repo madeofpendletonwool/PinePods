@@ -2,14 +2,14 @@ use yew::prelude::*;
 use super::app_drawer::{App_drawer};
 use super::gen_components::Search_nav;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, SettingsState, UIState};
-use crate::components::audio::{AudioPlayer};
+use crate::components::context::{AppState, UIState};
+use crate::components::audio::AudioPlayer;
 use crate::components::setting_components;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
-use crate::components::gen_funcs::check_auth;
+// use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct TabProps {
@@ -104,7 +104,7 @@ pub fn settings() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let auth_dispatch = post_dispatch.clone();
-    check_auth(auth_dispatch);
+    // check_auth(auth_dispatch);
 
     {
         let ui_dispatch = audio_dispatch.clone();

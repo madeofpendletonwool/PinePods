@@ -332,21 +332,26 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
 - [x] Click Episode Title to Open into Episode Screen
 - [x] Duration Not showing when podcast played from episode layout screen
+- [x] Episodes not appearing in history (Issue due to recent episode in db check)
+- [x] Panic being caused when searching podcasts sometimes (due to an empty value) <- Silly Categories being empty
+- [x] Auto close queue, download, save context menu when clicking an option or clicking away from it 
 
 - [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page 
 
-- [ ] Episodes not appearing in history
-- [ ] Panic being caused when searching podcasts sometimes (due to an empty value)
+- [ ] Show released time of episodes - use function call_get_time_info in pod_reqs
+
+- [ ] Loading icon in the center of screen while episodes load in (Done on home - Further test)
 
 - [ ] Nextcloud Subscription Timestamps
+
 - [ ] Require Re-Login if API Key that's saved doesn't work
+- [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes)
 
 - [ ] Show Currently Connected Nextcloud Server in settings
+- [ ] Allow Setting and removing user admin status in settings
 
 - [ ] Consistent Styling Throughout
 - [ ] Setup All Themes
-
-- [ ] Loading icon in the center of screen while episodes load in (DOne on home - Further test)
 
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout

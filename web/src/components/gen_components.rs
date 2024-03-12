@@ -4,9 +4,9 @@ use wasm_bindgen::JsCast;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
-use web_sys::{HtmlInputElement, window, MouseEvent};
+use web_sys::{window, HtmlInputElement, MouseEvent};
 use web_sys::HtmlSelectElement;
-use yewdux::{dispatch, prelude::*};
+use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
@@ -104,7 +104,6 @@ pub fn search_bar() -> Html {
                     Ok(_) => {
                         match call_get_podcast_info(&search_value, &api_url.unwrap(), &search_index).await {
                             Ok(search_results) => {
-                                web_sys::console::log_1(&format!("results: {:?}", search_results).into());
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
                                 });
@@ -113,13 +112,11 @@ pub fn search_bar() -> Html {
                             },
                             Err(e) => {
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                web_sys::console::log_1(&format!("Error: {}", e).into());
                             }
                         }
                     },
                     Err(err_msg) => {
                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                        web_sys::console::log_1(&format!("Error: {}", err_msg).into());
                     }
                 }
             });
@@ -186,7 +183,6 @@ pub fn search_bar() -> Html {
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
         Callback::from(move |_: MouseEvent| {
-            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
             dropdown_open.set(!*dropdown_open);
         })
     };
@@ -345,11 +341,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation(); // Stop the event from propagating further
             dropdown_open.set(!*dropdown_open);
         })
     };
+    
 
     
     let on_dropdown_select = {
@@ -360,6 +357,48 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             dropdown_open.set(false);
         }
     };
+
+
+
+    {
+        let dropdown_open = dropdown_open.clone(); // Clone for use in the effect hook
+        let dropdown_open_squak = dropdown_open.clone();
+        let dropdown_ref = dropdown_ref.clone(); // Clone for use in the effect hook
+    
+        // Use this cloned state specifically for checking within the closure
+        let dropdown_state_for_closure = dropdown_open.clone();
+    
+        use_effect_with(dropdown_open.clone(), move |_| {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let dropdown_ref_clone = dropdown_ref.clone(); // Clone again to move into the closure
+    
+            let click_handler_closure = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+                if let Some(target) = event.target() {
+                    if let Some(dropdown_element) = dropdown_ref_clone.cast::<web_sys::HtmlElement>() {
+                        if let Ok(node) = target.dyn_into::<web_sys::Node>() {
+                            if !dropdown_element.contains(Some(&node)) {
+                                dropdown_state_for_closure.set(false);
+                            }
+                        }
+                    }
+                }
+                
+            }) as Box<dyn FnMut(_)>);
+    
+            // Only add the event listener if the dropdown is open to avoid unnecessary listeners
+            if *dropdown_open {
+                document.add_event_listener_with_callback("click", click_handler_closure.as_ref().unchecked_ref()).unwrap();
+            }
+    
+            // Cleanup function
+            move || {
+                // Always remove the event listener to avoid memory leaks
+                document.remove_event_listener_with_callback("click", click_handler_closure.as_ref().unchecked_ref()).unwrap();
+            }
+        });
+    }
+    
+    
 
     let queue_api_key = api_key.clone();
     let queue_server_name = server_name.clone();
@@ -640,7 +679,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         {
             if *dropdown_open {
                 html! {
-                    <div class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
+                    <div ref={dropdown_ref.clone()} class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
                         <ul class="dropdown-container py-2 text-sm text-gray-700">
                             { action_buttons }
                         </ul>

@@ -4,13 +4,13 @@ use web_sys::{console, Event, MouseEvent, window};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use crate::components::audio::{AudioPlayerProps, AudioPlayer, on_play_click};
+use crate::components::audio::{AudioPlayer, on_play_click};
 use super::gen_components::Search_nav;
 use super::app_drawer::App_drawer;
-use crate::requests::pod_req::{call_add_podcast, PodcastValues, call_check_episode_in_db};
+use crate::requests::pod_req::{call_add_podcast, PodcastValues};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use yew::{Properties};
+use yew::Properties;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
 
 #[derive(Properties, PartialEq)]

@@ -12,7 +12,7 @@ pub fn backup_server() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let mut blob_property_bag = BlobPropertyBag::new();
+    let blob_property_bag = BlobPropertyBag::new();
 
     let on_download_click = {
         let database_password = database_password.clone();

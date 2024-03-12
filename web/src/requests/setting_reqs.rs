@@ -3,7 +3,6 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use web_sys::console;
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 use serde_json::to_string;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -221,7 +220,7 @@ pub async fn call_set_username(server_name: String, api_key: String, user_id: i3
         Err(Error::msg(format!("Error setting username: {}", response.status_text())))
     }
 }
-
+#[allow(dead_code)]
 pub async fn call_set_isadmin(server_name: String, api_key: String, user_id: i32, isadmin: bool) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/user/set_isadmin", server_name);
     let body = serde_json::json!({ "user_id": user_id, "isadmin": isadmin });
@@ -824,7 +823,7 @@ pub struct SaveMFASecretRequest {
 pub struct SaveMFASecretResponse {
     pub(crate) status: String,
 }
-
+#[allow(dead_code)]
 pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_id: i32, mfa_secret: String) -> Result<SaveMFASecretResponse, anyhow::Error> {
     let url = format!("{}/api/data/save_mfa_secret", server_name);
     let api_key_ref = api_key.as_str();
@@ -861,7 +860,6 @@ pub struct NextcloudAuthRequest {
 
 #[derive(Deserialize, Debug)]
 pub struct NextcloudAuthResponse {
-    pub(crate) status: String,
     // Define additional fields as needed
 }
 

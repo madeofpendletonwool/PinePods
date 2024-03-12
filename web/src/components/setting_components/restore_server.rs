@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 use yewdux::prelude::*;
@@ -6,10 +5,8 @@ use yew_router::history::{BrowserHistory, History};
 use crate::components::context::AppState;
 use crate::requests::setting_reqs::call_restore_server;
 use web_sys::{HtmlInputElement, Event};
-use web_sys::console;
 use web_sys::{Blob, FileReader};
 use wasm_bindgen::closure::Closure;
-use gloo_file::{callbacks::read_as_text, File};
 
 #[function_component(RestoreServer)]
 pub fn restore_server() -> Html {

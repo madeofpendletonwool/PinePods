@@ -11,11 +11,8 @@ use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
 use crate::components::context::{AppState};
 use crate::requests::search_pods::{call_parse_podcast_url, Podcast};
-use crate::requests::pod_req::{call_check_podcast, CheckPodcastResponse, call_add_podcast, call_remove_podcasts_name, RemovePodcastValuesName, PodcastValues};
-use std::cell::RefCell;
-use crate::components::search;
+use crate::requests::pod_req::{call_check_podcast, call_add_podcast, call_remove_podcasts_name, RemovePodcastValuesName, PodcastValues};
 use std::collections::HashSet;
-use std::borrow::Borrow;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ClickedFeedURL {
@@ -146,7 +143,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let pod_title_og = podcast_add.title.clone();
         let pod_artwork_og = podcast_add.artwork.clone();
         let pod_author_og = podcast_add.author.clone();
-        let categories_og = podcast_add.categories.unwrap().clone();
+        let categories_og = podcast_add.categories.unwrap_or_default().clone();
         let pod_description_og = podcast_add.description.clone();
         let pod_episode_count_og = podcast_add.episodeCount.clone();
         let pod_feed_url_og = podcast_add.url.clone();

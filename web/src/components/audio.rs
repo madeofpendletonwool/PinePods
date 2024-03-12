@@ -10,9 +10,6 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
-use std::cell::RefCell;
-use std::time::Duration;
-use gloo_timers::future::sleep;
 use std::rc::Rc;
 use crate::requests::pod_req::{call_add_history, HistoryAddRequest, call_record_listen_duration, RecordListenDurationRequest, call_increment_listen_time, call_increment_played, call_get_queued_episodes, call_remove_queued_episode, QueuePodcastRequest, call_queue_episode, call_check_episode_in_db};
 use futures_util::stream::StreamExt;
@@ -515,44 +512,23 @@ pub fn on_play_click(
     audio_dispatch: Dispatch<UIState>,
     audio_state: Rc<UIState>,
 ) -> Callback<MouseEvent> {
-    
-    fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
-        let dur_string = duration_convert.to_string();
-        let parts: Vec<&str> = dur_string.split(':').collect();
-        let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
-
-        let seconds = match parts.len() {
-            3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
-            2 => parts[0] * 60.0 + parts[1],
-            1 => parts[0],
-            _ => 0.0,
-        };
-
-        seconds
-    }
 
     Callback::from(move |_: MouseEvent| {
-        let check_server_name = server_name.clone();
-        let check_api_key = api_key.clone();
-        let check_user_id = user_id.clone();
-        let episode_title_for_wasm = episode_title_for_closure.clone();
-        let episode_url_for_wasm = episode_url_for_closure.clone();
-        let app_dispatch = audio_dispatch.clone();
-        let mut episode_run_additional = false;
-        spawn_local(async move {
-            let episode_exists = call_check_episode_in_db(
-                &check_server_name,
-                &check_api_key,
-                check_user_id,
-                &episode_title_for_wasm,
-                &episode_url_for_wasm
-            ).await.unwrap_or(false); // Default to false if the call fails
-            console::log_1(&format!("Episode exists: {:?}", episode_exists).into());
-            let episode_run_additional = episode_exists;
-            app_dispatch.reduce_mut(move |global_state| {
-                global_state.episode_in_db = Some(episode_exists);
-            });
-        });
+        fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
+            let dur_string = duration_convert.to_string();
+            let parts: Vec<&str> = dur_string.split(':').collect();
+            let parts: Vec<f64> = parts.iter().map(|part| part.parse::<f64>().unwrap_or(0.0)).collect();
+    
+            let seconds = match parts.len() {
+                3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
+                2 => parts[0] * 60.0 + parts[1],
+                1 => parts[0],
+                _ => 0.0,
+            };
+    
+            seconds
+        }
+    
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
@@ -569,18 +545,45 @@ pub fn on_play_click(
         let episode_pos: f32 = 0.0;
         let episode_id = episode_id_for_closure.clone();
         web_sys::console::log_1(&"Adding hisotry".to_string().into());
-        let history_add = HistoryAddRequest{
-            episode_id,
-            episode_pos,
-            user_id,
-        };
         
-        let history_server_name = server_name.clone();
-        let history_api_key = api_key.clone();
-        
-        if episode_run_additional {
+        let call_ep_url = episode_url_for_closure.clone();
+        let check_server_name = server_name.clone();
+        let check_api_key = api_key.clone();
+        let check_user_id = user_id.clone();
+        let episode_title_for_wasm = episode_title_for_closure.clone();
+        let episode_url_for_wasm = call_ep_url.clone();
+        let episode_artwork_for_wasm = episode_artwork_for_closure.clone();
+        let episode_duration_for_wasm = episode_duration_for_closure.clone();
+        let episode_id_for_wasm = episode_id_for_closure.clone();
+        let app_dispatch = audio_dispatch.clone();
+        let episode_url = episode_url_for_wasm.clone();
+        let episode_title = episode_title_for_wasm.clone();
+        let mut episode_run_additional = false;
+        spawn_local(async move {
+            let episode_exists = call_check_episode_in_db(
+                &check_server_name.clone(),
+                &check_api_key.clone(),
+                check_user_id.clone(),
+                &episode_title.clone(),
+                &episode_url.clone()
+            ).await.unwrap_or(false); // Default to false if the call fails
+            console::log_1(&format!("Episode exists: {:?}", episode_exists).into());
+            let episode_run_additional = episode_exists;
+            app_dispatch.reduce_mut(move |global_state| {
+                global_state.episode_in_db = Some(episode_exists);
+            });
+            console::log_1(&format!("Episode exists - Now running hsitory add: {:?}", episode_exists).into());
+            if episode_exists {
+                console::log_1(&"Episode exists - History ran".to_string().into());
+                let history_server_name = check_server_name.clone();
+                let history_api_key = check_api_key.clone();
 
-            spawn_local(async move {
+                let history_add = HistoryAddRequest{
+                    episode_id,
+                    episode_pos,
+                    user_id,
+                };
+
                 let add_history_future = call_add_history(
                     &history_server_name,
                     history_api_key, 
@@ -594,8 +597,35 @@ pub fn on_play_click(
                         web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
                     }
                 }
-            });
-        }
+
+                let queue_server_name = check_server_name.clone();
+                let queue_api_key = check_api_key.clone();
+        
+                let request = QueuePodcastRequest {
+                    episode_id,
+                    user_id, // replace with the actual user ID
+                };
+
+
+                let queue_api = Option::from(queue_api_key);
+
+                let add_queue_future = call_queue_episode(
+                    &queue_server_name,
+                    &queue_api, 
+                    &request
+                );
+                match add_queue_future.await {
+                    Ok(_) => {
+                        web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                    },
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+                    }
+                }
+            }
+        });
+
+
         let increment_server_name = server_name.clone();
         let increment_api_key = api_key.clone();
         let increment_user_id = user_id.clone();
@@ -615,47 +645,20 @@ pub fn on_play_click(
             }
         });
 
-        let queue_server_name = server_name.clone();
-        let queue_api_key = api_key.clone();
 
-        let request = QueuePodcastRequest {
-            episode_id,
-            user_id, // replace with the actual user ID
-        };
-        
-        if episode_run_additional {
-            spawn_local(async move {
-
-                let queue_api = Option::from(queue_api_key);
-
-                let add_queue_future = call_queue_episode(
-                    &queue_server_name,
-                    &queue_api, 
-                    &request
-                );
-                match add_queue_future.await {
-                    Ok(_) => {
-                        web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
-                    },
-                    Err(e) => {
-                        web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
-                    }
-                }
-            });
-        }
 
         audio_dispatch.reduce_mut(move |audio_state| {
             audio_state.audio_playing = Some(true);
             audio_state.currently_playing = Some(AudioPlayerProps {
-                src: episode_url_for_closure.clone(),
-                title: episode_title_for_closure.clone(),
-                artwork_url: episode_artwork_for_closure.clone(),
-                duration: episode_duration_for_closure.clone().to_string(),
-                episode_id: episode_id_for_closure.clone(),
+                src: episode_url_for_wasm.clone(),
+                title: episode_title_for_wasm.clone(),
+                artwork_url: episode_artwork_for_wasm.clone(),
+                duration: episode_duration_for_wasm.clone().to_string(),
+                episode_id: episode_id_for_wasm.clone(),
                 duration_sec: formatted_duration,
                 start_pos_sec: listen_duration_for_closure.unwrap_or(0) as f64, 
             });
-            audio_state.set_audio_source(episode_url_for_closure.to_string());
+            audio_state.set_audio_source(episode_url_for_wasm.to_string());
             if let Some(audio) = &audio_state.audio_element {
                 audio.set_current_time(listen_duration_for_closure.unwrap_or(0) as f64);
                 let _ = audio.play();

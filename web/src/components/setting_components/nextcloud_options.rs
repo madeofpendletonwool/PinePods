@@ -1,12 +1,9 @@
 use serde::Deserialize;
 use yew::prelude::*;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{window, Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
+use wasm_bindgen::JsCast;
+use web_sys::{Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
 use crate::requests::setting_reqs::{NextcloudAuthRequest, call_add_nextcloud_server, call_check_nextcloud_server};
-use wasm_bindgen_futures::{JsFuture, spawn_local};
-use std::time::Duration;
-use std::collections::HashMap;
-use url::form_urlencoded;
+use wasm_bindgen_futures::JsFuture;
 use yewdux::use_store;
 use crate::components::context::AppState;
 use serde_wasm_bindgen;

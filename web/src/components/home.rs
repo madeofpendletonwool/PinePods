@@ -4,18 +4,19 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::requests::pod_req::RecentEps;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
-use crate::components::gen_funcs::check_auth;
+// use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
-use web_sys::window;
+use web_sys::{console, window};
 use wasm_bindgen::JsCast;
+use crate::requests::login_requests::use_check_authentication;
 
 
 #[function_component(Home)]
@@ -24,7 +25,62 @@ pub fn home() -> Html {
     let effect_dispatch = dispatch.clone();
     let history = BrowserHistory::new();
 
-    check_auth(effect_dispatch);
+    console::log_1(&format!("About to run check auth").into());
+    // check_auth(effect_dispatch);
+
+    let session_dispatch = effect_dispatch.clone();
+    let session_state = state.clone();
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+            
+            if navigation_type == 1 { // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage.set_item("isAuthenticated", "false").unwrap();
+                console::log_1(&"Page was reloaded, user not authenticated, clearing session storage".into());
+            }
+    
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+    
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+    
+        || ()
+    });
+    
+    
+    
+    
+    // use_effect_with(
+    //     (),
+    //     move |_| {
+    //         let effect_dispatch_clone = effect_dispatch.clone();
+
+    //         spawn_local(async move {
+    //             let window = window().expect("no global `window` exists");
+    //             let location = window.location();
+    //             let current_route = location.href().expect("should be able to get href");
+    //             console::log_1(&current_route.clone().into());
+    //             console::log_1(&"Checking authentication... Inside Check_auth".into());
+    //             use_check_authentication(effect_dispatch_clone, &current_route);
+    //         });
+
+    //         || ()
+    //     }
+    // );
 
     let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
@@ -70,6 +126,8 @@ pub fn home() -> Html {
     let loading_ep = loading.clone();
     {
         // let episodes = episodes.clone();
+        console::log_1(&format!("loading ep value: {:?}", loading_ep).into());
+
         let error = error.clone();
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -108,6 +166,8 @@ pub fn home() -> Html {
             },
         );
     }
+
+    console::log_1(&format!("loading ep value: {:?}", *loading).into());
 
     html! {
         <>

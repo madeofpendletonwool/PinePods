@@ -4,14 +4,14 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::requests::pod_req::SavedEpisodesResponse;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
-use crate::components::gen_funcs::check_auth;
+// use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use web_sys::window;
@@ -23,7 +23,7 @@ pub fn saved() -> Html {
     let effect_dispatch = dispatch.clone();
     let history = BrowserHistory::new();
 
-    check_auth(effect_dispatch);
+    // check_auth(effect_dispatch);
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();

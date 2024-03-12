@@ -4,7 +4,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
-use crate::requests::login_requests::{ TimeZoneInfo, call_first_login_done, call_setup_timezone_info, VerifyMFABody, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password};
+use crate::requests::login_requests::{ TimeZoneInfo, call_first_login_done, call_setup_timezone_info, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password};
 use crate::components::context::{AppState, UIState};
 // use yewdux::prelude::*;
 use md5;
@@ -106,6 +106,7 @@ pub fn login() -> Html {
         // let error_clone_use = error_message_clone.clone();
         let history = history.clone();
         move |_| {
+            console::log_1(&"Auto Login Effect".into());
             if let Some(window) = web_sys::window() {
                 if let Ok(local_storage) = window.local_storage() {
                     if let Some(storage) = local_storage {
@@ -149,7 +150,7 @@ pub fn login() -> Html {
                                                             let session_storage = window.session_storage().unwrap().unwrap();
                                                             session_storage.set_item("isAuthenticated", "true").unwrap();
                                                             let requested_route = storage.get_item("requested_route").unwrap_or(None);
-    
+                                                            console::log_1(&format!("isAuthenticated is now true").into());
                                                             // Get Theme
                                                             wasm_bindgen_futures::spawn_local(async move {
                                                                 console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());

@@ -2,13 +2,12 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 use crate::components::context::AppState;
 use yew::platform::spawn_local;
-use web_sys::{Element, console};
+use web_sys::console;
 use crate::components::episodes_layout::SafeHtml;
-use crate::requests::setting_reqs::{call_mfa_settings, call_save_mfa_secret, call_generate_mfa_secret, call_verify_temp_mfa};
+use crate::requests::setting_reqs::{call_mfa_settings, call_generate_mfa_secret, call_verify_temp_mfa};
 use std::borrow::Borrow;
 use wasm_bindgen::JsValue;
-// use std::time::{SystemTime, UNIX_EPOCH};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {

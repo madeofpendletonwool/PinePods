@@ -3,7 +3,7 @@ use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use yewdux::prelude::*;
 use crate::components::context::AppState;
-use web_sys::{window, Blob, Url, console, FileReader, HtmlInputElement, XmlHttpRequest, DomParser, SupportedType};
+use web_sys::{console, FileReader, HtmlInputElement};
 use wasm_bindgen::closure::Closure;
 use crate::components::gen_funcs::parse_opml;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};

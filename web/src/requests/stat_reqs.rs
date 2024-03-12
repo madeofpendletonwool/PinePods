@@ -45,26 +45,3 @@ pub async fn call_get_stats(server_name: String, api_key: Option<String>, user_i
     }
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-pub struct EpisodeCount {
-    user_ep_count: i32,
-    status: String,
-}
-pub async fn call_get_user_episode_count(server_name: String, api_key: Option<String>) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_user_episode_count", server_name);
-    let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
-
-    let response = Request::get(&url)
-        .header("Api-Key", api_key_ref)
-        .header("Content-Type", "application/json")
-        .send()
-        .await?;
-
-    if response.ok() {
-        let response_body = response.json::<EpisodeCount>().await?;
-        Ok(response_body.status)
-    } else {
-        console::log_1(&format!("Error Pulling Episode Count: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error logging in. Is the server reachable? Server Response: {}", response.status_text())))
-    }
-}

@@ -1,14 +1,7 @@
 use std::collections::HashMap;
 use ammonia::Builder;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::{DomParser, SupportedType, XmlHttpRequest};
+use web_sys::{DomParser, SupportedType};
 use wasm_bindgen::JsCast;
-use web_sys::window;
-use yew::prelude::*;
-use crate::requests::login_requests::use_check_authentication;
-use yew::prelude::*;
-use yewdux::prelude::Dispatch;
-use crate::components::context::AppState;
 use argon2::{
     password_hash::{
         rand_core::OsRng,
@@ -16,7 +9,6 @@ use argon2::{
     },
     Argon2
 };
-use js_sys::Date;
 
 
 pub fn format_date(date_str: &str) -> String {
@@ -60,23 +52,26 @@ pub fn sanitize_html_with_blank_target(description: &str) -> String {
 //     let sanitized_html = clean(description);
 // }
 
-pub fn check_auth(effect_dispatch: Dispatch<AppState>) {
-    use_effect_with(
-        (),
-        move |_| {
-            let effect_dispatch_clone = effect_dispatch.clone();
+// pub fn check_auth(effect_dispatch: Dispatch<AppState>) {
+//     console::log_1(&"Checking authentication... Pre use_effect".into());
+//     use_effect_with(
+//         (),
+//         move |_| {
+//             let effect_dispatch_clone = effect_dispatch.clone();
 
-            spawn_local(async move {
-                let window = window().expect("no global `window` exists");
-                let location = window.location();
-                let current_route = location.href().expect("should be able to get href");
-                use_check_authentication(effect_dispatch_clone, &current_route);
-            });
+//             spawn_local(async move {
+//                 let window = window().expect("no global `window` exists");
+//                 let location = window.location();
+//                 let current_route = location.href().expect("should be able to get href");
+//                 console::log_1(&current_route.clone().into());
+//                 console::log_1(&"Checking authentication... Inside Check_auth".into());
+//                 use_check_authentication(effect_dispatch_clone, &current_route);
+//             });
 
-            || ()
-        }
-    );
-}
+//             || ()
+//         }
+//     );
+// }
 
 
 

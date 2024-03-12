@@ -5,12 +5,12 @@ use super::gen_components::{Search_nav, empty_message, episode_item, on_shownote
 use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
-use crate::components::gen_funcs::check_auth;
+// use crate::components::gen_funcs::check_auth;
 use web_sys::HtmlInputElement;
 use web_sys::HtmlElement;
 use wasm_bindgen_futures::spawn_local;
@@ -28,7 +28,7 @@ pub fn search(props: &SearchProps) -> Html {
     let effect_dispatch = dispatch.clone();
     let search_dispatch = dispatch.clone();
 
-    check_auth(effect_dispatch);
+    // check_auth(effect_dispatch);
 
     // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();

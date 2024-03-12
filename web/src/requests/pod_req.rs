@@ -3,7 +3,6 @@ use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use web_sys::console;
-use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
     where
@@ -259,7 +258,7 @@ pub struct TimeInfoResponse {
     pub timezone: String,
     pub hour_pref: i32,
 }
-
+#[allow(dead_code)]
 pub async fn call_get_time_info(
     server: &str,
     key: String,
