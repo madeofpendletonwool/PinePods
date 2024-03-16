@@ -364,7 +364,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Verify Users only see what they have access to
 
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
-- [ ] Client release with Tauri
+- [ ] Client release with Tauri (Compiles and runs. Feature testing needed)
 
 - [ ] Revamp Readme
 - [ ] Revamp Documentation
@@ -387,7 +387,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add highlight to indicate which page you're on
 - [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
 - [ ] Retain Previously Used Theme for Login Screens
-- [ ] Flatpak Client
+- [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
 - [ ] Snap Client
 - [ ] Mobile Apps
   - [ ] Sign in retention for mobile editions
