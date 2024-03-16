@@ -2015,6 +2015,7 @@ class TimeZoneInfo(BaseModel):
     user_id: int
     timezone: str
     hour_pref: int
+    date_format: str
 
 
 # FastAPI endpoint
@@ -2038,7 +2039,7 @@ async def setup_timezone_info(data: TimeZoneInfo, cnx=Depends(get_database_conne
                                 detail="You are not authorized to access these user details")
 
     success = database_functions.functions.setup_timezone_info(database_type, cnx, data.user_id, data.timezone,
-                                                               data.hour_pref)
+                                                               data.hour_pref, data.date_format)
     if success:
         return {"success": success}
     else:
@@ -2063,9 +2064,9 @@ async def get_time_info(user_id: int, cnx=Depends(get_database_connection),
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
-    timezone, hour_pref = database_functions.functions.get_time_info(database_type, cnx, user_id)
+    timezone, hour_pref, date_format = database_functions.functions.get_time_info(database_type, cnx, user_id)
     if timezone:
-        return {"timezone": timezone, "hour_pref": hour_pref}
+        return {"timezone": timezone, "hour_pref": hour_pref, "date_format": date_format}
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -2321,12 +2322,33 @@ async def remove_gpodder_settings(data: RemoveGpodderSettings, cnx=Depends(get_d
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
 
-class CheckGpodderSettings(BaseModel):
-    user_id: int
+# class CheckGpodderSettings(BaseModel):
+#     user_id: int
 
-@app.get("/api/data/get_gpodder_settings")
-async def get_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
-                              api_key: str = Depends(get_api_key_from_header)):
+# @app.get("/api/data/get_gpodder_settings")
+# async def get_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
+#                               api_key: str = Depends(get_api_key_from_header)):
+#     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+#     if not is_valid_key:
+#         raise HTTPException(status_code=403,
+#                             detail="Your API key is either invalid or does not have correct permission")
+
+#     # Check if the provided API key is the web key
+#     is_web_key = api_key == base_webkey.web_key
+
+#     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+#     # Allow the action if the API key belongs to the user or it's the web API key
+#     if key_id == data.user_id or is_web_key:
+#         result = database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id)
+#         return {"data": result}
+#     else:
+#         raise HTTPException(status_code=403,
+#                             detail="You can only remove your own gpodder data!")
+    
+@app.get("/api/data/check_gpodder_settings/{user_id}")
+async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
+                               api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -2338,8 +2360,29 @@ async def get_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_datab
     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id)
+    if key_id == user_id or is_web_key:
+        result = database_functions.functions.check_gpodder_settings(database_type, cnx, user_id)
+        return {"data": result}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only remove your own gpodder data!")
+    
+@app.get("/api/data/get_gpodder_settings/{user_id}")
+async def get_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
+                               api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        result = database_functions.functions.get_gpodder_settings(database_type, cnx, user_id)
         return {"data": result}
     else:
         raise HTTPException(status_code=403,

@@ -2,7 +2,7 @@ use serde::Deserialize;
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
-use crate::requests::setting_reqs::{NextcloudAuthRequest, call_add_nextcloud_server, call_check_nextcloud_server};
+use crate::requests::setting_reqs::{NextcloudAuthRequest, call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudGetResponse};
 use wasm_bindgen_futures::JsFuture;
 use yewdux::use_store;
 use crate::components::context::AppState;
@@ -80,6 +80,7 @@ pub fn nextcloud_options() -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let server_url = use_state(|| String::new());
     let auth_status = use_state(|| String::new());
+    let nextcloud_url = use_state(|| String::new()); // State to hold the Nextcloud server URL
 
     // Handler for server URL input change
     let on_server_url_change = {
@@ -91,6 +92,31 @@ pub fn nextcloud_options() -> Html {
             }
         })
     };
+
+    {
+        let nextcloud_url = nextcloud_url.clone();
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+        use_effect_with(&(), move |_| {
+            let nextcloud_url = nextcloud_url.clone();
+            let user_id = user_id.clone().unwrap_or_default(); // Make sure user_id is available
+
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_get_nextcloud_server(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id).await {
+                    Ok(server) => {
+                        nextcloud_url.set(server.gpodder_url);
+                    },
+                    Err(_) => {
+                        nextcloud_url.set(String::from("Not currently syncing with Nextcloud server"));
+                    }
+                }
+            });
+
+            || () // Return empty cleanup function
+        });
+    }
 
     // Handler for initiating authentication
     let on_authenticate_click = {
@@ -164,7 +190,7 @@ pub fn nextcloud_options() -> Html {
         <div class="p-4"> // You can adjust the padding as needed
             <p class="text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
             <p class="text-md mb-4">{"With this option you can authenticate with a Nextcloud server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! Clicking the Authenticate Button will prompt you to externally import your Nextcloud Server."}</p> // Styled paragraph
-            
+            <p class="text-md mb-4">{"Current Nextcloud Server: "}<span class="font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
             <input type="text" class="input" placeholder="Enter Nextcloud server URL" value={(*server_url).clone()} oninput={on_server_url_change} />
             <button onclick={on_authenticate_click} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
                 {"Authenticate Nextcloud Server"}

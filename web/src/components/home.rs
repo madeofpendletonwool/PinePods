@@ -7,7 +7,7 @@ use yewdux::prelude::*;
 use yew_router::history::BrowserHistory;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, format_datetime, parse_date, DateFormat};
 use crate::requests::pod_req::RecentEps;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
@@ -273,7 +273,26 @@ pub fn home() -> Html {
                                     episode_id_for_closure.clone(),
                                 );
     
-                                let format_release = format!("Released on: {}", &episode.EpisodePubDate);
+                                // let format_release = format!("Released on: {}", &episode.EpisodePubDate);
+                                console::log_1(&format!("Episode pub date: {}", &episode.EpisodePubDate).into());
+                                console::log_1(&format!("User timezone: {:?}", &state.user_tz).into());
+                                console::log_1(&format!("User date format: {:?}", &state.date_format).into());
+                                let date_format = match state.date_format.as_deref() {
+                                    Some("MDY") => DateFormat::MDY,
+                                    Some("DMY") => DateFormat::DMY,
+                                    Some("YMD") => DateFormat::YMD,
+                                    Some("JUL") => DateFormat::JUL,
+                                    Some("ISO") => DateFormat::ISO,
+                                    Some("USA") => DateFormat::USA,
+                                    Some("EUR") => DateFormat::EUR,
+                                    Some("JIS") => DateFormat::JIS,
+                                    _ => DateFormat::ISO, // default to ISO if the format is not recognized
+                                };
+                                
+                                let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, date_format.clone());
+                                // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
+                                let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                                console::log_1(&format!("Formatted release: {}", &format_release).into());
                                 let item = episode_item(
                                     Box::new(episode),
                                     description.clone(),

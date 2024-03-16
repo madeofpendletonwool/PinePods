@@ -326,6 +326,7 @@ pub struct TimeZoneInfo {
     pub user_id: i32,
     pub timezone: String,
     pub hour_pref: i32,
+    pub date_format: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -362,6 +363,40 @@ pub async fn call_setup_timezone_info(
         ))
     }
 }
+
+#[derive(Deserialize, Debug)]
+pub struct TimeInfoResponse {
+    pub timezone: String,
+    pub hour_pref: i16,
+    pub date_format: String,
+}
+
+pub async fn call_get_time_info(
+    server_name: String,
+    api_key: String,
+    user_id: &i32,
+) -> Result<TimeInfoResponse, anyhow::Error> {
+    let url = format!("{}/api/data/get_time_info?user_id={}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .context("Network Request Error")?;
+
+    if response.ok() {
+        response.json::<TimeInfoResponse>()
+            .await
+            .context("Response Parsing Error")
+    } else {
+        Err(anyhow::anyhow!(
+            "Error fetching time info. Server Response: {}",
+            response.status_text()
+        ))
+    }
+}
+
 
 #[derive(Deserialize, Debug)]
 pub struct CheckMfaEnabledResponse {

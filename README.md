@@ -335,20 +335,20 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Episodes not appearing in history (Issue due to recent episode in db check)
 - [x] Panic being caused when searching podcasts sometimes (due to an empty value) <- Silly Categories being empty
 - [x] Auto close queue, download, save context menu when clicking an option or clicking away from it 
+- [x] Added login screen random image selection. For some nice styling 
+- [x] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page 
+- [x] Show Currently Connected Nextcloud Server in settings
+- [x] Allow Setting and removing user admin status in settings
+- [x] Show released time of episodes - use function call_get_time_info in pod_reqs (Additional date format display implemented along with AM/PM time based on user pref)
+- [x] Require Re-Login if API Key that's saved doesn't work
 
-- [ ] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page 
-
-- [ ] Show released time of episodes - use function call_get_time_info in pod_reqs
+- [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes)
 
 - [ ] Loading icon in the center of screen while episodes load in (Done on home - Further test)
 
+- [ ] Episodes directly get the wrong images sometimes. This likely has to do with the way the database is parsing the podcasts as they refresh and pull in. 
+
 - [ ] Nextcloud Subscription Timestamps
-
-- [ ] Require Re-Login if API Key that's saved doesn't work
-- [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes)
-
-- [ ] Show Currently Connected Nextcloud Server in settings
-- [ ] Allow Setting and removing user admin status in settings
 
 - [ ] Consistent Styling Throughout
 - [ ] Setup All Themes

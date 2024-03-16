@@ -1,11 +1,11 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{UIState, AppState};
 use yew::platform::spawn_local;
 use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
-use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username};
+use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, FinalAdminResponse, call_set_isadmin};
 use crate::components::gen_funcs::encode_password;
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -14,6 +14,7 @@ use crate::components::gen_funcs::validate_user_input;
 #[function_component(UserSettings)]
 pub fn user_settings() -> Html {
     let (state, dispatch) = use_store::<AppState>();
+    let (ui_state, ui_dispatch) = use_store::<UIState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let new_username = use_state(|| "".to_string());
@@ -226,8 +227,14 @@ pub fn user_settings() -> Html {
     let on_user_row_click = {
         let selected_user_id = selected_user_id.clone();
         let page_state = page_state.clone();
+        error_message.clone();
         move |select_user_id: i32| {
+            console::log_1(&format!("Selected user ID: {:?}", select_user_id).into());
             Callback::from(move |_| {
+                if select_user_id == 1 {
+                    ui_dispatch.reduce_mut(|state| state.error_message = Option::from("You cannot edit the guest user.".to_string()));
+                    return;
+                }
                 selected_user_id.set(Some(Some(select_user_id))); // Wrap the value in double Some()
                 page_state.set(PageState::Edit); // Move to the edit page state
             })
@@ -237,6 +244,7 @@ pub fn user_settings() -> Html {
 
     let on_edit_submit = {
         let fullname = fullname.clone().to_string();
+        let page_state = page_state.clone();
         let new_username = new_username.clone().to_string();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
@@ -248,6 +256,7 @@ pub fn user_settings() -> Html {
             let new_password = new_password.clone();
             let fullname = fullname.clone();
             let email = email.clone();
+            let admin_status = admin_status.clone();
             let call_selected_user_id = edit_selected_user_id.clone();
             e.prevent_default();
             
@@ -372,6 +381,73 @@ pub fn user_settings() -> Html {
                     }
                 });
             }
+
+            if *admin_status == true {
+                wasm_bindgen_futures::spawn_local({
+                    let server_name_cloned = server_name.clone();
+                    let api_key_cloned = api_key.clone();
+                    let admin_status_cloned = admin_status.clone();
+                    let selected_user_id_cloned = (*call_selected_user_id).clone();
+            
+                    async move {
+                        if let Some(server_name_unwrapped) = server_name_cloned {
+                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                                if let Some(Some(user_id)) = selected_user_id_cloned {
+                                    match call_set_isadmin(server_name_unwrapped, api_key_unwrapped.clone(), user_id, *admin_status_cloned).await {
+                                        Ok(_) => console::log_1(&"Admin status updated successfully".into()),
+                                        Err(e) => console::log_1(&format!("Error updating admin status: {:?}", e).into()),
+                                    }
+                                } else {
+                                    console::log_1(&"User ID not available for admin status update.".into());
+                                }
+                            } else {
+                                console::log_1(&"API key not available for admin status update.".into());
+                            }
+                        } else {
+                            console::log_1(&"Server name not available for admin status update.".into());
+                        }
+                    }
+                });
+            }
+
+            if *admin_status == false {
+                wasm_bindgen_futures::spawn_local({
+                    let server_name_cloned = server_name.clone();
+                    let api_key_cloned = api_key.clone();
+                    let admin_status_cloned = admin_status.clone();
+                    let selected_user_id_cloned = (*call_selected_user_id).clone();
+            
+                    async move {
+                        if let Some(server_name_unwrapped) = server_name_cloned {
+                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                                if let Some(Some(user_id)) = selected_user_id_cloned {
+                                    match call_check_admin(server_name_unwrapped.clone(), api_key_unwrapped.clone(), user_id).await {
+                                        Ok(final_admin) => {
+                                            if final_admin.final_admin == true {
+                                                console::log_1(&"Unable to remove admin status from final administrator".into());
+                                            } else {
+                                                match call_set_isadmin(server_name_unwrapped, api_key_unwrapped.clone(), user_id, *admin_status_cloned).await {
+                                                    Ok(_) => console::log_1(&"Admin status updated successfully".into()),
+                                                    Err(e) => console::log_1(&format!("Error updating admin status: {:?}", e).into()),
+                                                }
+                                            }
+                                        },
+                                        Err(e) => console::log_1(&format!("Error checking admin status: {:?}", e).into()),
+                                    }
+                                } else {
+                                    console::log_1(&"User ID not available for admin status update.".into());
+                                }
+                            } else {
+                                console::log_1(&"API key not available for admin status update.".into());
+                            }
+                        } else {
+                            console::log_1(&"Server name not available for admin status update.".into());
+                        }
+                    }
+                });
+            }
+
+            page_state.set(PageState::Hidden);
     
             // Handle admin status change if applicable
         })
@@ -412,6 +488,10 @@ pub fn user_settings() -> Html {
                             <div>
                                 <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
                                 <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            </div>
+                            <div class="flex items-center">
+                                <label for="admin" class="mr-2 text-sm font-medium text-gray-900 dark:text-white">{"Admin User?"}</label>
+                                <input oninput={on_admin_change} type="checkbox" id="admin" name="admin" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                             </div>
                             <button type="submit" onclick={on_edit_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>

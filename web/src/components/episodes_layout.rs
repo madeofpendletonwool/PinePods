@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use yew::{Callback, function_component, Html, html, TargetCast, use_effect, use_effect_with, use_force_update, use_node_ref};
+use yew::prelude::*;
 use web_sys::{console, Event, MouseEvent, window};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
@@ -7,11 +8,40 @@ use crate::components::context::{AppState, UIState};
 use crate::components::audio::{AudioPlayer, on_play_click};
 use super::gen_components::Search_nav;
 use super::app_drawer::App_drawer;
-use crate::requests::pod_req::{call_add_podcast, PodcastValues};
+use crate::requests::pod_req::{call_add_podcast, PodcastValues, call_check_podcast, call_remove_podcasts_name, RemovePodcastValuesName};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::Properties;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
+
+fn add_icon() -> Html {
+    html! {
+        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24">
+            <path d="M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z"/>
+        </svg>
+    }
+}
+
+fn trash_icon() -> Html {
+    html! {
+        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24">
+            <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/>
+        </svg>
+
+    }
+}
+
+fn play_icon() -> Html {
+    html! {
+<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="m380-300 280-180-280-180v360ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+    }
+}
+
+fn pause_icon() -> Html {
+    html! {
+        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M360-320h80v-320h-80v320Zm160 0h80v-320h-80v320ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+    }
+}
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -79,6 +109,7 @@ pub fn episode_layout() -> Html {
     // let dispatch = Dispatch::<AppState>::global();
     // // let (state, _dispatch) = use_store::<AppState>();
     // let state: Rc<AppState> = dispatch.get();
+    let is_added = use_state(|| false);
     let (state, _dispatch) = use_store::<UIState>();
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
@@ -92,14 +123,40 @@ pub fn episode_layout() -> Html {
     let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let api_key = search_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = search_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+    // On mount, check if the podcast is in the database
+    let effect_user_id = user_id.unwrap().clone();
+    let effect_api_key = api_key.clone();
+
+    {
+        let is_added = is_added.clone();
+        let podcast = clicked_podcast_info.clone();
+        let dispatch = _search_dispatch.clone();
+        let user_id = effect_user_id.clone();
+        let api_key = effect_api_key.clone();
+        let server_name = server_name.clone();
+
+        use_effect_with(
+            &(),
+            move |_| {
+                let is_added = is_added.clone();
+                let podcast = podcast.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let added = call_check_podcast(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id, podcast.clone().unwrap().podcast_title.as_str(), podcast.clone().unwrap().podcast_url.as_str()).await.unwrap_or_default().exists;
+                    console::log_1(&format!("{} added: {}", podcast.clone().unwrap().podcast_title, added).into());
+                    is_added.set(added);
+                });
+                || ()
+            },
+        );
+    }
+
     // Function to handle link clicks
     let handle_click = Callback::from(move |event: MouseEvent| {
-        web_sys::console::log_1(&"click handle".to_string().into());
         if let Some(target) = event.target_dyn_into::<web_sys::HtmlElement>() {
             if let Some(href) = target.get_attribute("href") {
                 event.prevent_default();
                 if href.starts_with("http") {
-                    web_sys::console::log_1(&"running external".to_string().into());
                     // External link, open in a new tab
                     web_sys::window()
                         .unwrap()
@@ -156,7 +213,7 @@ pub fn episode_layout() -> Html {
     }
 
 
-    let on_add_click = {
+    let toggle_podcast = {
         let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
 
@@ -175,8 +232,11 @@ pub fn episode_layout() -> Html {
         let server_name_clone = server_name.clone();
         let user_id_clone = user_id.clone();
 
+        let is_added = is_added.clone();
 
-        Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
+        if *is_added == true{
+            Callback::from(move |_: MouseEvent| { 
+            let is_added_inner = is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
             let pod_artwork = pod_artwork_og.clone();
@@ -188,50 +248,111 @@ pub fn episode_layout() -> Html {
             let pod_website = pod_website_og.clone();
             let pod_explicit = pod_explicit_og.clone();
             let user_id = user_id_og.clone();
-            web_sys::console::log_1(&"Add Clicked".to_string().into());
-            let podcast_values = PodcastValues {
-                pod_title,
-                pod_artwork,
-                pod_author,
-                categories,
-                pod_description,
-                pod_episode_count,
-                pod_feed_url,
-                pod_website,
-                pod_explicit,
-                user_id
+            web_sys::console::log_1(&"Remove Clicked".to_string().into());
+            let podcast_values = RemovePodcastValuesName {
+                podcast_name: pod_title,
+                podcast_url: pod_feed_url,
+                user_id: user_id
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
             let user_id_call = user_id_clone.clone();
-
             wasm_bindgen_futures::spawn_local(async move {
                 let dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
                 let user_id_wasm = user_id_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
                 let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
-
-                match call_add_podcast(&server_name_wasm.unwrap(), &api_key_wasm, user_id_wasm, &pod_values_clone).await {
+                match call_remove_podcasts_name(&server_name_wasm.unwrap(), &api_key_wasm, &pod_values_clone).await {
                     Ok(success) => {
                         if success {
-                            console::log_1(&"Podcast successfully added".into());
+                            console::log_1(&"Podcast successfully removed".into());
                             dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
+                            is_added_inner.set(false);
                         } else {
-                            console::log_1(&"Failed to add podcast".into());
+                            console::log_1(&"Failed to remove podcast".into());
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
                         }
                     },
                     Err(e) => {
-                        console::log_1(&format!("Error adding podcast: {:?}", e).into());
+                        console::log_1(&format!("Error removing podcast: {:?}", e).into());
                         dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
                     }
                 }
             });
         })
+
+        } else {        
+            Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
+                let is_added_inner = is_added.clone();
+                let call_dispatch = add_dispatch.clone();
+                let pod_title = pod_title_og.clone();
+                let pod_artwork = pod_artwork_og.clone();
+                let pod_author = pod_author_og.clone();
+                let categories = categories_og.clone();
+                let pod_description = pod_description_og.clone();
+                let pod_episode_count = pod_episode_count_og.clone();
+                let pod_feed_url = pod_feed_url_og.clone();
+                let pod_website = pod_website_og.clone();
+                let pod_explicit = pod_explicit_og.clone();
+                let user_id = user_id_og.clone();
+                web_sys::console::log_1(&"Add Clicked".to_string().into());
+                let podcast_values = PodcastValues {
+                    pod_title,
+                    pod_artwork,
+                    pod_author,
+                    categories,
+                    pod_description,
+                    pod_episode_count,
+                    pod_feed_url,
+                    pod_website,
+                    pod_explicit,
+                    user_id
+                };
+                let api_key_call = api_key_clone.clone();
+                let server_name_call = server_name_clone.clone();
+                let user_id_call = user_id_clone.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    let dispatch_wasm = call_dispatch.clone();
+                    let api_key_wasm = api_key_call.clone().unwrap();
+                    let user_id_wasm = user_id_call.clone().unwrap();
+                    let server_name_wasm = server_name_call.clone();
+                    let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
+
+                    match call_add_podcast(&server_name_wasm.unwrap(), &api_key_wasm, user_id_wasm, &pod_values_clone).await {
+                        Ok(success) => {
+                            if success {
+                                console::log_1(&"Podcast successfully added".into());
+                                dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
+                                is_added_inner.set(true);
+                            } else {
+                                console::log_1(&"Failed to add podcast".into());
+                                dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
+                            }
+                        },
+                        Err(e) => {
+                            console::log_1(&format!("Error adding podcast: {:?}", e).into());
+                            dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
+                        }
+                    }
+                });
+            })
+        }
     };
 
-
+    // let button_text = if *is_added { "trash" } else { "add" };
+    // let button_class = if *is_added { "bg-red-500" } else { "bg-blue-500" };
+    let icon_style = if *is_added { "visibility: visible;" } else { "visibility: hidden;" };
+    let button_content = if *is_added {
+        trash_icon()
+    } else {
+        add_icon()
+    };
+    
+    let button_class = if *is_added { "bg-red-500" } else { "bg-blue-500" };
+    
+    // console::log_1(&format!("button text here: {}", button_text).into());
 
     html! {
         <div class="main-container">
@@ -270,9 +391,10 @@ pub fn episode_layout() -> Html {
 
                             </div>
                         </div>
-                            <button class="item-header-button selector-button font-bold py-2 px-4 rounded" title="Add Podcast" onclick={on_add_click}>
-                                <span class="material-icons">{"add"}</span>
-                            </button>
+
+                    <button onclick={toggle_podcast} class={format!("item-container-button selector-button w-1/4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded {}", button_class)}>
+                        { button_content }
+                    </button>
                     </div>
                 }
             } else {
@@ -302,7 +424,6 @@ pub fn episode_layout() -> Html {
                                         0
                                     }
                                 };
-                                console::log_1(&episode_duration_clone.clone().into());
                                 let episode_id_clone = 0;
                                 let server_name_play = server_name.clone();
                                 let user_id_play = user_id.clone();

@@ -240,6 +240,29 @@ pub async fn call_set_isadmin(server_name: String, api_key: String, user_id: i32
     }
 }
 
+#[derive(Deserialize, PartialEq)]
+pub struct FinalAdminResponse {
+    pub(crate) final_admin: bool,
+}
+
+
+#[allow(dead_code)]
+pub async fn call_check_admin(server_name: String, api_key: String, user_id: i32) -> Result<FinalAdminResponse, Error> {
+    let url = format!("{}/api/data/user/final_admin/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<FinalAdminResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error getting admin status: {}", response.status_text())))
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 pub struct EditSettingsUserRequest {
     pub(crate) fullname: String,
@@ -912,7 +935,37 @@ pub async fn call_check_nextcloud_server(
         let response_body = response.json::<NextcloudCheckResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error saving Nextcloud Server Info: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+        console::log_1(&format!("Error pulling Nextcloud Server Info: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct NextcloudGetResponse {
+    pub(crate) gpodder_url: String,
+    pub(crate) gpodder_token: String,
+    // Define additional fields as needed
+}
+
+pub async fn call_get_nextcloud_server(
+    server_name: &String,
+    api_key: &String,
+    user_id: i32
+) -> Result<NextcloudGetResponse, anyhow::Error> {
+    let url = format!("{}/api/data/get_gpodder_settings/{}", server_name, user_id);
+    let api_key_ref = api_key.as_str();
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<NextcloudGetResponse>().await?;
+        Ok(response_body)
+    } else {
+        console::log_1(&format!("Error pulling Nextcloud Server Info: {}", response.status_text()).into());
+        Err(Error::msg(format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }

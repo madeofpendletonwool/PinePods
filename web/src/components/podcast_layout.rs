@@ -98,7 +98,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
-    let effect_podcast = podcast.clone();
     let effect_api_key = api_key.clone();
     let added_clone = added_podcasts.clone();
     {

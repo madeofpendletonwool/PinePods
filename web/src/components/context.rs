@@ -92,6 +92,9 @@ pub struct AppState {
     #[serde(default)]
     pub selected_episodes_for_deletion: HashSet<i32>,
     pub reload_occured: Option<bool>,
+    pub user_tz: Option<String>,
+    pub hour_preference: Option<i16>,
+    pub date_format: Option<String>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

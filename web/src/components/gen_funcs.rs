@@ -9,12 +9,62 @@ use argon2::{
     },
     Argon2
 };
+use chrono::{DateTime, NaiveDateTime, Utc, TimeZone};
+use chrono_tz::Tz;
 
 
 pub fn format_date(date_str: &str) -> String {
     let date = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
         .unwrap_or_else(|_| chrono::NaiveDateTime::from_timestamp(0, 0)); // Fallback for parsing error
     date.format("%m-%d-%Y").to_string()
+}
+
+#[derive(Clone)]
+pub enum DateFormat {
+    MDY,
+    DMY,
+    YMD,
+    JUL,
+    ISO,
+    USA,
+    EUR,
+    JIS,
+}
+
+pub fn parse_date(date_str: &str, user_tz: &Option<String>, date_format: DateFormat) -> DateTime<Tz> {
+    let format_str = match date_format {
+        DateFormat::MDY => "%m-%d-%Y",
+        DateFormat::DMY => "%d-%m-%Y",
+        DateFormat::YMD => "%Y-%m-%d",
+        DateFormat::JUL => "%y/%j",
+        DateFormat::ISO => "%Y-%m-%d",
+        DateFormat::USA => "%m/%d/%Y",
+        DateFormat::EUR => "%d.%m.%Y",
+        DateFormat::JIS => "%Y-%m-%d",
+    };
+
+    let naive_datetime = NaiveDateTime::parse_from_str(date_str, format_str).unwrap_or_else(|_| Utc::now().naive_utc());
+    let datetime_utc = Utc.from_utc_datetime(&naive_datetime);
+    let tz: Tz = user_tz.as_ref().and_then(|tz| tz.parse().ok()).unwrap_or_else(|| chrono_tz::UTC);
+    datetime_utc.with_timezone(&tz)
+}
+
+pub fn format_datetime(datetime: &DateTime<Tz>, hour_preference: &Option<i16>, date_format: DateFormat) -> String {
+    let format_str = match date_format {
+        DateFormat::MDY => "%m-%d-%Y",
+        DateFormat::DMY => "%d-%m-%Y",
+        DateFormat::YMD => "%Y-%m-%d",
+        DateFormat::JUL => "%y/%j",
+        DateFormat::ISO => "%Y-%m-%d",
+        DateFormat::USA => "%m/%d/%Y",
+        DateFormat::EUR => "%d.%m.%Y",
+        DateFormat::JIS => "%Y-%m-%d",
+    };
+
+    match hour_preference {
+        Some(12) => datetime.format(&format!("{} %l:%M %p", format_str)).to_string(),
+        _ => datetime.format(&format!("{} %H:%M", format_str)).to_string(),
+    }
 }
 
 pub fn truncate_description(description: String, max_length: usize) -> (String, bool) {

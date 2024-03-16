@@ -58,6 +58,7 @@ try:
             MFA_Secret VARCHAR(70),
             TimeZone VARCHAR(50) DEFAULT 'UTC',
             TimeFormat INT  DEFAULT 24,
+            DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin TINYINT(1) DEFAULT 0,
             GpodderUrl VARCHAR(255) DEFAULT '',
             GpodderToken TEXT DEFAULT ''
@@ -221,7 +222,7 @@ try:
                         EpisodeDescription TEXT,
                         EpisodeURL TEXT,
                         EpisodeArtwork TEXT,
-                        EpisodePubDate DATE,
+                        EpisodePubDate DATETIME,
                         EpisodeDuration INT,
                         FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                     )""")

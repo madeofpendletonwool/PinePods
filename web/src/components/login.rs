@@ -4,8 +4,9 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
-use crate::requests::login_requests::{ TimeZoneInfo, call_first_login_done, call_setup_timezone_info, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password};
+use crate::requests::login_requests::{ TimeZoneInfo, call_first_login_done, call_setup_timezone_info, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password, call_get_time_info, call_verify_key};
 use crate::components::context::{AppState, UIState};
+// use crate::setting_components::theme_options;
 // use yewdux::prelude::*;
 use md5;
 use yewdux::prelude::*;
@@ -14,6 +15,7 @@ use crate::requests::setting_reqs::call_get_theme;
 use crate::components::gen_funcs::{encode_password, validate_user_input};
 use crate::components::episodes_layout::UIStateMsg;
 use chrono_tz::{TZ_VARIANTS, Tz};
+use rand::Rng;
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -43,6 +45,7 @@ pub fn login() -> Html {
     let _error_message = app_state.error_message.clone();
     let error_message = _state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
+    let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
     let mfa_code = use_state(|| "".to_string());
     let temp_api_key = use_state(|| "".to_string());
@@ -134,41 +137,80 @@ pub fn login() -> Html {
                                                             let server_name = auth_details.server_name.clone();
                                                             let api_key = auth_details.api_key.clone().unwrap_or_default();
                                                             
-                                                            console::log_1(&format!("user email: {:?}", &email).into());
-                                                            let gravatar_url = generate_gravatar_url(&Some(email.clone().unwrap()), 80);
-                                                            console::log_1(&format!("gravatar_url: {:?}", &gravatar_url).into());
-                                                            // Auto login logic here
-                                                            effect_displatch.reduce_mut(move |state| {
-                                                                state.user_details = app_state.user_details;
-                                                                state.auth_details = Some(auth_details.clone());
-                                                                state.server_details = server_details.server_details;
-                                                                state.gravatar_url = Some(gravatar_url);
-    
-                                                            });
-                                                            // let mut error_message = app_state.error_message;
-                                                            // Retrieve the originally requested route, if any
-                                                            let session_storage = window.session_storage().unwrap().unwrap();
-                                                            session_storage.set_item("isAuthenticated", "true").unwrap();
-                                                            let requested_route = storage.get_item("requested_route").unwrap_or(None);
-                                                            console::log_1(&format!("isAuthenticated is now true").into());
-                                                            // Get Theme
+                                                            // Now verify the API key
+                                                            // let wasm_user_id = user_id.clone();
+                                                            let wasm_app_state = app_state.clone();
+                                                            let wasm_auth_details: login_requests::LoginServerRequest = auth_details.clone();
+                                                            let wasm_email = email.clone();
+                                                            let wasm_user_id = user_id.clone();
                                                             wasm_bindgen_futures::spawn_local(async move {
-                                                                console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
-                                                                console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
-                                                                match call_get_theme(server_name, api_key, &user_id).await{
-                                                                    Ok(theme) => {
-                                                                        console::log_1(&format!("theme test: {:?}", &theme).into());
-                                                                        crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                                match call_verify_key(&server_name.clone(), &api_key.clone()).await {
+                                                                    Ok(_) => {
+                                                                        // API key is valid, user can stay logged in
+                                                                        console::log_1(&"API key verified".into());
+                                                                        console::log_1(&format!("user email: {:?}", &wasm_email).into());
+                                                                        let final_dispatch = effect_displatch.clone();
+                                                                        let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
+                                                                        console::log_1(&format!("gravatar_url: {:?}", &gravatar_url).into());
+                                                                        // Auto login logic here
+                                                                        final_dispatch.reduce_mut(move |state| {
+                                                                            state.user_details = wasm_app_state.user_details;
+                                                                            state.auth_details = Some(wasm_auth_details.clone());
+                                                                            state.server_details = server_details.server_details;
+                                                                            state.gravatar_url = Some(gravatar_url);
+                
+                                                                        });
+                                                                        // let mut error_message = app_state.error_message;
+                                                                        // Retrieve the originally requested route, if any
+                                                                        let session_storage = window.session_storage().unwrap().unwrap();
+                                                                        session_storage.set_item("isAuthenticated", "true").unwrap();
+                                                                        let requested_route = storage.get_item("requested_route").unwrap_or(None);
+                                                                        console::log_1(&format!("isAuthenticated is now true").into());
+                                                                        // Get Theme
+                                                                        let theme_api = api_key.clone();
+                                                                        let theme_server = server_name.clone();
+                                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                                            console::log_1(&format!("theme test server: {:?}", theme_server.clone()).into());
+                                                                            console::log_1(&format!("theme test api: {:?}", theme_api.clone()).into());
+                                                                            match call_get_theme(theme_server, theme_api, &wasm_user_id).await{
+                                                                                Ok(theme) => {
+                                                                                    console::log_1(&format!("theme test: {:?}", &theme).into());
+                                                                                    crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                                                }
+                                                                                Err(e) => {
+                                                                                    console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                                            console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
+                                                                            console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
+                                                                            match call_get_time_info(server_name, api_key, &wasm_user_id).await{
+                                                                                Ok(tz_response) => {
+                                                                                    effect_displatch.reduce_mut(move |state| {
+                                                                                        state.user_tz = Some(tz_response.timezone);
+                                                                                        state.hour_preference = Some(tz_response.hour_pref);
+                                                                                        state.date_format = Some(tz_response.date_format);
+                                                                                    });
+                                                                                }
+                                                                                Err(e) => {
+                                                                                    console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                        let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                                        history.push(&redirect_route); // Redirect to the requested or home page
+                                                                        // console::log_1(&format!("Server: {:?}", server_name).into());
+                                                                        // console::log_1(&format!("API Key: {:?}", api_key).into());
                                                                     }
-                                                                    Err(e) => {
-                                                                        console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                                    Err(_) => {
+                                                                        // API key is not valid, redirect to login
+                                                                        console::log_1(&"Invalid API key, redirecting...".into());
+                                                                        history.push("/");
                                                                     }
                                                                 }
                                                             });
-                                                            let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
-                                                            history.push(&redirect_route); // Redirect to the requested or home page
-                                                            // console::log_1(&format!("Server: {:?}", server_name).into());
-                                                            // console::log_1(&format!("API Key: {:?}", api_key).into());
+
                                                         } else {
                                                             console::log_1(&"Auth details are None".into());
                                                         }
@@ -191,7 +233,22 @@ pub fn login() -> Html {
         }
     });
 
-
+    // This effect runs only once when the component mounts
+    let background_image_url = use_state(|| String::new());
+    let effect_background_image = background_image_url.clone();
+    // This effect runs only once when the component mounts
+    use_effect_with(
+        (), // Dependencies, an empty tuple here signifies no dependencies.
+        move |_| {
+            let background_number = rand::thread_rng().gen_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
+            effect_background_image.set(format!("static/assets/backgrounds/{}.jpg", background_number));
+    
+            // Return the cleanup function, which is required but can be empty if no cleanup is needed.
+            || {}
+        },
+    );
+    
+    
 
 
     let on_login_username_change = {
@@ -263,6 +320,37 @@ pub fn login() -> Html {
                                             if response.mfa_enabled {
                                                 page_state.set(PageState::MFAPrompt);
                                             } else {
+                                                let theme_api = api_key.clone();
+                                                let theme_server = server_name.clone();
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    console::log_1(&format!("theme test server: {:?}", theme_server.clone()).into());
+                                                    console::log_1(&format!("theme test api: {:?}", theme_api.clone()).into());
+                                                    match call_get_theme(theme_server, theme_api.unwrap(), &user_id).await{
+                                                        Ok(theme) => {
+                                                            console::log_1(&format!("theme test: {:?}", &theme).into());
+                                                            crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                        }
+                                                        Err(e) => {
+                                                            console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                        }
+                                                    }
+                                                });
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
+                                                    console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
+                                                    match call_get_time_info(server_name, api_key.unwrap(), &user_id).await{
+                                                        Ok(tz_response) => {
+                                                            dispatch.reduce_mut(move |state| {
+                                                                state.user_tz = Some(tz_response.timezone);
+                                                                state.hour_preference = Some(tz_response.hour_pref);
+                                                                state.date_format = Some(tz_response.date_format);
+                                                            });
+                                                        }
+                                                        Err(e) => {
+                                                            console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                        }
+                                                    }
+                                                });
                                                 history.push("/home"); // Use the route path
                                             }
 
@@ -678,6 +766,13 @@ pub fn login() -> Html {
             tz.set(select_element.value());
         })
     };
+    let on_df_change = {
+        let df = date_format.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            df.set(select_element.value());
+        })
+    };
     
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
@@ -697,6 +792,7 @@ pub fn login() -> Html {
         let page_state = page_state.clone();
         let time_pref = time_pref.clone();
         let time_zone = time_zone.clone();
+        let date_format = date_format.clone();
         // let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
         // let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -732,6 +828,7 @@ pub fn login() -> Html {
                 user_id: *temp_user_id, // assuming temp_user_id is a use_state of i32
                 timezone: (*time_zone).clone(),
                 hour_pref: *time_pref,
+                date_format: (*date_format).clone(),
             };
             console::log_1(&format!("Time Zone Info: {:?}", timezone_info).into());
             
@@ -810,6 +907,19 @@ pub fn login() -> Html {
                                     { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
                                 </select>
                             </div>
+                            <div>
+                            <label for="date_format">{"Date Format"}</label>
+                            <select id="date_format" name="date_format" oninput={on_df_change}>
+                                <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
+                                <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
+                                <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
+                                <option value="JUL">{"JUL (YY/DDD)"}</option>
+                                <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
+                                <option value="USA">{"USA (MM/DD/YYYY)"}</option>
+                                <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
+                                <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                            </select>
+                        </div>
                             <button type="submit" onclick={on_time_zone_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>
                     </div>
@@ -851,11 +961,42 @@ pub fn login() -> Html {
                 //     user_id: user_id,
                 //     mfa_code: mfa_code,
                 // };
-                match call_verify_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*mfa_code).clone()).await {
+                match call_verify_mfa(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.clone().unwrap(), (*mfa_code).clone()).await {
                     Ok(response) => {
                         if response.verified {
                             console::log_1(&"Time Zone Info Setup".into());
                             page_state.set(PageState::Default);
+                            let theme_api = api_key.clone();
+                            let theme_server = server_name.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                console::log_1(&format!("theme test server: {:?}", theme_server.clone()).into());
+                                console::log_1(&format!("theme test api: {:?}", theme_api.clone()).into());
+                                match call_get_theme(theme_server.unwrap(), theme_api.unwrap().unwrap(), &user_id.unwrap()).await{
+                                    Ok(theme) => {
+                                        console::log_1(&format!("theme test: {:?}", &theme).into());
+                                        crate::components::setting_components::theme_options::changeTheme(&theme);
+                                    }
+                                    Err(e) => {
+                                        console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                    }
+                                }
+                            });
+                            wasm_bindgen_futures::spawn_local(async move {
+                                console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
+                                console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
+                                match call_get_time_info(server_name.unwrap(), api_key.unwrap().unwrap(), &user_id.unwrap()).await{
+                                    Ok(tz_response) => {
+                                        dispatch.reduce_mut(move |state| {
+                                            state.user_tz = Some(tz_response.timezone);
+                                            state.hour_preference = Some(tz_response.hour_pref);
+                                            state.date_format = Some(tz_response.date_format);
+                                        });
+                                    }
+                                    Err(e) => {
+                                        console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                    }
+                                }
+                            });
                             history.push("/home"); // Use the route path
                         } else {
                             console::log_1(&"Error setting up time zone".into());
@@ -904,8 +1045,10 @@ pub fn login() -> Html {
     };
 
 
+
     html! {
         <>
+        <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
         {
             match *page_state {
             PageState::CreateUser => create_user_modal,
@@ -918,7 +1061,7 @@ pub fn login() -> Html {
         }
         
             <div class="flex justify-center items-center h-screen">
-                <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg">
+                <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg bg-gray-600">
                     <div class="flex justify-center items-center">
                         <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                     </div>
@@ -996,8 +1139,9 @@ pub fn login() -> Html {
                     </button>
                 </div>
             </div>
-        
+            </div>
         </>
+
     }
 
 }
@@ -1015,6 +1159,7 @@ pub fn login() -> Html {
     let _error_message = app_state.error_message.clone();
     let error_message = _state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
+    let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
     let mfa_code = use_state(|| "".to_string());
     let temp_api_key = use_state(|| "".to_string());
@@ -1045,6 +1190,22 @@ pub fn login() -> Html {
             }
         });
     }
+
+    // This effect runs only once when the component mounts
+    let background_image_url = use_state(|| String::new());
+    let effect_background_image = background_image_url.clone();
+    // This effect runs only once when the component mounts
+    use_effect_with(
+        (), // Dependencies, an empty tuple here signifies no dependencies.
+        move |_| {
+            let background_number = rand::thread_rng().gen_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
+            effect_background_image.set(format!("static/assets/backgrounds/{}.jpg", background_number));
+    
+            // Return the cleanup function, which is required but can be empty if no cleanup is needed.
+            || {}
+        },
+    );
+    
 
     let on_server_name_change = {
         let server_name = server_name.clone();
@@ -1123,6 +1284,37 @@ pub fn login() -> Html {
                                             if response.mfa_enabled {
                                                 page_state.set(PageState::MFAPrompt);
                                             } else {
+                                                let theme_api = api_key.clone();
+                                                let theme_server = server_name.clone();
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    console::log_1(&format!("theme test server: {:?}", theme_server.clone()).into());
+                                                    console::log_1(&format!("theme test api: {:?}", theme_api.clone()).into());
+                                                    match call_get_theme(theme_server, theme_api.unwrap(), &user_id).await{
+                                                        Ok(theme) => {
+                                                            console::log_1(&format!("theme test: {:?}", &theme).into());
+                                                            crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                        }
+                                                        Err(e) => {
+                                                            console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                        }
+                                                    }
+                                                });
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
+                                                    console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
+                                                    match call_get_time_info(server_name, api_key.unwrap(), &user_id).await{
+                                                        Ok(tz_response) => {
+                                                            dispatch.reduce_mut(move |state| {
+                                                                state.user_tz = Some(tz_response.timezone);
+                                                                state.hour_preference = Some(tz_response.hour_pref);
+                                                                state.date_format = Some(tz_response.date_format);
+                                                            });
+                                                        }
+                                                        Err(e) => {
+                                                            console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                        }
+                                                    }
+                                                });
                                                 history.push("/home"); // Use the route path
                                             }
 
@@ -1195,6 +1387,13 @@ pub fn login() -> Html {
             tz.set(select_element.value());
         })
     };
+    let on_df_change = {
+        let df = date_format.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            df.set(select_element.value());
+        })
+    };
     let time_state_error = _dispatch.clone();
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
@@ -1215,6 +1414,7 @@ pub fn login() -> Html {
         let page_state = page_state.clone();
         let time_pref = time_pref.clone();
         let time_zone = time_zone.clone();
+        let date_format = date_format.clone();
         // let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
         // let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -1250,6 +1450,7 @@ pub fn login() -> Html {
                 user_id: *temp_user_id, // assuming temp_user_id is a use_state of i32
                 timezone: (*time_zone).clone(),
                 hour_pref: *time_pref,
+                date_format: (*date_format).clone(),
             };
             console::log_1(&format!("Time Zone Info: {:?}", timezone_info).into());
             
@@ -1328,6 +1529,19 @@ pub fn login() -> Html {
                                     { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
                                 </select>
                             </div>
+                            <div>
+                                <label for="date_format">{"Date Format"}</label>
+                                <select id="date_format" name="date_format" oninput={on_df_change}>
+                                    <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
+                                    <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
+                                    <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
+                                    <option value="JUL">{"JUL (YY/DDD)"}</option>
+                                    <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
+                                    <option value="USA">{"USA (MM/DD/YYYY)"}</option>
+                                    <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
+                                    <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                                </select>
+                            </div>
                             <button type="submit" onclick={on_time_zone_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
                         </form>
                     </div>
@@ -1366,11 +1580,42 @@ pub fn login() -> Html {
             e.prevent_default();
 
             wasm_bindgen_futures::spawn_local(async move {
-                match call_verify_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*mfa_code).clone()).await {
+                match call_verify_mfa(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.clone().unwrap(), (*mfa_code).clone()).await {
                     Ok(response) => {
                         if response.verified {
                             console::log_1(&"MFA Code Validated".into());
                             page_state.set(PageState::Default);
+                            let theme_api = api_key.clone();
+                            let theme_server = server_name.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                console::log_1(&format!("theme test server: {:?}", theme_server.clone()).into());
+                                console::log_1(&format!("theme test api: {:?}", theme_api.clone()).into());
+                                match call_get_theme(theme_server.unwrap(), theme_api.unwrap().unwrap(), &user_id.unwrap()).await{
+                                    Ok(theme) => {
+                                        console::log_1(&format!("theme test: {:?}", &theme).into());
+                                        crate::components::setting_components::theme_options::changeTheme(&theme);
+                                    }
+                                    Err(e) => {
+                                        console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                    }
+                                }
+                            });
+                            wasm_bindgen_futures::spawn_local(async move {
+                                console::log_1(&format!("theme test server: {:?}", server_name.clone()).into());
+                                console::log_1(&format!("theme test api: {:?}", api_key.clone()).into());
+                                match call_get_time_info(server_name.unwrap(), api_key.unwrap().unwrap(), &user_id.unwrap()).await{
+                                    Ok(tz_response) => {
+                                        dispatch.reduce_mut(move |state| {
+                                            state.user_tz = Some(tz_response.timezone);
+                                            state.hour_preference = Some(tz_response.hour_pref);
+                                            state.date_format = Some(tz_response.date_format);
+                                        });
+                                    }
+                                    Err(e) => {
+                                        console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                    }
+                                }
+                            });
                             history.push("/home"); // Use the route path
                         } else {
                             console::log_1(&"Error validating MFA Code".into());
@@ -1424,6 +1669,7 @@ pub fn login() -> Html {
 
     html! {
         <>
+        <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
         {
             match *page_state {
             PageState::TimeZone => time_zone_setup_modal,
@@ -1432,7 +1678,7 @@ pub fn login() -> Html {
             }
         }
         <div class="flex justify-center items-center h-screen">
-            <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg">
+            <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg bg-gray-600">
                 <div class="flex justify-center items-center">
                     <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                 </div>
@@ -1477,6 +1723,7 @@ pub fn login() -> Html {
                     {"Connect to Local Server"}
                 </button>
             </div>
+        </div>
         </div>
         </>
     }

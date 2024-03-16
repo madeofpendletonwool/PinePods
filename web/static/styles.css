@@ -27,6 +27,13 @@ body {
     padding: 0 20px;
 }
 
+#login-page {
+    background-image: url('./assets/backgrounds/2.jpg');
+    background-repeat: no-repeat;
+    background-attachment: fixed;  
+    background-size: cover;
+}
+
 .search-page-container {
     max-width: 1200px; /* Set the maximum width you desire */
     margin: 0 auto; /* This centers the div */

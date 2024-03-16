@@ -186,7 +186,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
         parsed_title = entry.title
         parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
         parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
-        parsed_release_date = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d")
+        parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
         parsed_artwork_url = entry.get('itunes_image', {}).get('href', artwork_url)
 
         # Duration parsing
@@ -223,7 +223,7 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
             INSERT INTO Episodes 
             (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration) 
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_date, parsed_duration))
+            """, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
 
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
@@ -2188,16 +2188,16 @@ def remove_episode_history(database_type, cnx, url, title, user_id):
         return False
 
 
-def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref):
+def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref, date_format):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    query = f"""UPDATE Users SET Timezone = %s, TimeFormat = %s, FirstLogin = %s WHERE UserID = %s"""
+    query = f"""UPDATE Users SET Timezone = %s, TimeFormat = %s, DateFormat = %s, FirstLogin = %s WHERE UserID = %s"""
 
     try:
-        cursor.execute(query, (timezone, hour_pref, 1, user_id))
+        cursor.execute(query, (timezone, hour_pref, date_format, 1, user_id))
         cnx.commit()
         cursor.close()
 
@@ -2212,16 +2212,16 @@ def get_time_info(database_type, cnx, user_id):
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
-    query = (f"""SELECT Timezone, TimeFormat FROM Users WHERE UserID = %s""")
+    query = (f"""SELECT Timezone, TimeFormat, DateFormat FROM Users WHERE UserID = %s""")
 
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
 
     if result:
-        return result['Timezone'], result['TimeFormat']
+        return result['Timezone'], result['TimeFormat'], result['DateFormat']
     else:
-        return None
+        return None, None, None
 
 
 def first_login_done(database_type, cnx, user_id):
@@ -2539,8 +2539,8 @@ def get_gpodder_settings(database_type, cnx, user_id):
 
     # Check if the user already has gPodder settings
     cursor.execute(
-        "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
-        (gpodder_url, gpodder_token, user_id)
+        "SELECT GpodderUrl, GpodderToken FROM Users WHERE UserID = %s",
+        (user_id,)
     )
     result = cursor.fetchone()
 
