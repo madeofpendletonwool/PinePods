@@ -66,7 +66,7 @@ pub fn login() -> Html {
                 let window = web_sys::window().expect("no global `window` exists");
                 let location = window.location();
                 let server_name = location.href().expect("should have a href").trim_end_matches('/').to_string();
-
+                console::log_1(&format!("Server Name: {:?}", &server_name).into());
                 match call_self_service_login_status(server_name).await {
                     Ok(status) => {
                         self_service_enabled.set(status);
@@ -447,7 +447,6 @@ pub fn login() -> Html {
         let new_username = new_username.clone().to_string();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
-        let add_user_request = app_state.add_user_request.clone();
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
@@ -671,7 +670,6 @@ pub fn login() -> Html {
 
     let on_reset_code_submit = {
         let page_state = page_state.clone();
-        let forgot_username = forgot_username.clone().to_string();
         let reset_password = reset_password.clone().to_string();
         let forgot_email = forgot_email.clone().to_string();
         let reset_code = reset_code.clone().to_string();
@@ -799,7 +797,6 @@ pub fn login() -> Html {
         let temp_server_name = temp_server_name.clone();
         let temp_api_key = temp_api_key.clone();
         let temp_user_id = temp_user_id.clone();
-        let time_zone_setup = app_state.time_zone_setup.clone();
         let history = history.clone();
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
@@ -809,8 +806,6 @@ pub fn login() -> Html {
             console::log_1(&format!("Time Zone: {:?}", time_zone.clone()).into());
             console::log_1(&format!("Hour Pref: {:?}", time_pref.clone()).into());
             let dispatch = dispatch_wasm.clone();
-            let hour_pref = time_pref.clone();
-            let timezone = time_zone.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();
@@ -1148,13 +1143,12 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (app_state, _app_dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let history = BrowserHistory::new();
     let server_name = use_state(|| "".to_string());
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
-    let error_message = use_state(|| None::<String>);
     let (_app_state, dispatch) = use_store::<AppState>();
     let _error_message = app_state.error_message.clone();
     let error_message = _state.error_message.clone();
@@ -1421,7 +1415,6 @@ pub fn login() -> Html {
         let temp_server_name = temp_server_name.clone();
         let temp_api_key = temp_api_key.clone();
         let temp_user_id = temp_user_id.clone();
-        let time_zone_setup = app_state.time_zone_setup.clone();
         let history = history.clone();
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
@@ -1431,8 +1424,6 @@ pub fn login() -> Html {
             console::log_1(&format!("Time Zone: {:?}", time_zone.clone()).into());
             console::log_1(&format!("Hour Pref: {:?}", time_pref.clone()).into());
             let dispatch = dispatch_wasm.clone();
-            let hour_pref = time_pref.clone();
-            let timezone = time_zone.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();

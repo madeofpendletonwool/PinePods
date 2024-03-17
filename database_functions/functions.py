@@ -187,7 +187,11 @@ def add_episodes(cnx, podcast_id, feed_url, artwork_url):
         parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
         parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
         parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
-        parsed_artwork_url = entry.get('itunes_image', {}).get('href', artwork_url)
+        
+        # Artwork prioritizing episode-specific artwork, then falling back to the feed's artwork if necessary
+        parsed_artwork_url = (entry.get('itunes_image', {}).get('href') or 
+                            getattr(entry, 'image', {}).get('href') or
+                            artwork_url)
 
         # Duration parsing
         parsed_duration = 0

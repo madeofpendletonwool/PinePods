@@ -2,7 +2,7 @@ use serde::Deserialize;
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
-use crate::requests::setting_reqs::{NextcloudAuthRequest, call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudGetResponse};
+use crate::requests::setting_reqs::{NextcloudAuthRequest, call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server};
 use wasm_bindgen_futures::JsFuture;
 use yewdux::use_store;
 use crate::components::context::AppState;
@@ -73,8 +73,7 @@ async fn initiate_nextcloud_login(server_url: &str) -> Result<NextcloudLoginResp
 
 #[function_component(NextcloudOptions)]
 pub fn nextcloud_options() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
+    let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());

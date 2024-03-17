@@ -341,12 +341,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Allow Setting and removing user admin status in settings
 - [x] Show released time of episodes - use function call_get_time_info in pod_reqs (Additional date format display implemented along with AM/PM time based on user pref)
 - [x] Require Re-Login if API Key that's saved doesn't work
+- [x] Episodes directly get the wrong images sometimes. This likely has to do with the way the database is parsing the podcasts as they refresh and pull in. (Should be fixed. Need to allow feeds to load in some episodes to know for sure)
+
+- [ ] Episode Releases are showing now time. Rather than actual release in app
 
 - [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes)
 
 - [ ] Loading icon in the center of screen while episodes load in (Done on home - Further test)
-
-- [ ] Episodes directly get the wrong images sometimes. This likely has to do with the way the database is parsing the podcasts as they refresh and pull in. 
 
 - [ ] Nextcloud Subscription Timestamps
 

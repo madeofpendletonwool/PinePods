@@ -45,8 +45,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     };
 
     let container_ref = use_node_ref();
-    let container_ref_clone1 = container_ref.clone();
-    let container_ref_clone2 = container_ref.clone();
 
     let title_click = {
         let audio_dispatch = _audio_dispatch.clone();
@@ -61,9 +59,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
     let title_click_emit = title_click.clone();
-// Initialize state for current time and duration
-    let current_time = use_state(|| "00:00:00".to_string());
-    let duration = use_state(|| 0.0);
     let src_clone = props.src.clone();
 
     // Update the audio source when `src` changes
@@ -107,7 +102,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     // Clone `audio_ref` for `use_effect_with`
     let state_clone = audio_state.clone();
     use_effect_with((), {
-        let dispatch = _dispatch.clone();
         let audio_dispatch = _audio_dispatch.clone();
         move |_| {
             let interval_handle = Interval::new(1000, move || {
@@ -136,10 +130,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     let state_clone_the_squeakuel = audio_state.clone();
     use_effect_with((), {
-        let audio_dispatch = _audio_dispatch.clone(); // Assuming you need this for state updates
-        let audio_state = audio_state.clone(); // Assuming you need this for state updates
-        // let episode_in_db_effect = episode_in_db.clone(); // Assuming this is defined elsewhere in your component
-        // Remove the audio_state clone if it's no longer needed
         let server_name = server_name.clone(); // Assuming this is defined elsewhere in your component
         let api_key = api_key.clone(); // Assuming this is defined elsewhere in your component
         let episode_id = episode_id.clone(); // Assuming this is defined elsewhere in your component
@@ -193,7 +183,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     // Effect for incrementing user listen time
     let state_increment_clone = audio_state.clone();
     use_effect_with((), {
-        let audio_dispatch = _audio_dispatch.clone(); // Assuming you need this for any potential state updates, remove if not necessary
         let server_name = server_name.clone(); // Make sure `server_name` is cloned from the parent scope
         let api_key = api_key.clone(); // Make sure `api_key` is cloned from the parent scope
         let user_id = user_id.clone(); // Make sure `user_id` is cloned from the parent scope
@@ -230,7 +219,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     // Effect for managing queued episodes
     use_effect_with(audio_ref.clone(), {
-        let audio_ref = audio_ref.clone();
         let audio_dispatch = _audio_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
@@ -243,12 +231,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             if let Some(audio_element) = audio_state_cloned.audio_element.clone() {
             // if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
                 // Clone all necessary data to be used inside the closure to avoid FnOnce limitation.
-                let server_name_cloned = server_name.clone();
-                let api_key_cloned = api_key.clone();
-                let user_id_cloned = user_id.clone();
-                let audio_dispatch_cloned = audio_dispatch.clone();
-                let current_episode_id_cloned = current_episode_id.clone();
-
 
                 let ended_closure = Closure::wrap(Box::new(move || {
                     let server_name = server_name.clone();
@@ -320,7 +302,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     // Toggle playback
     let toggle_playback = {
-        let dispatch = _dispatch.clone();
         let dispatch = _audio_dispatch.clone();
         web_sys::console::log_1(&format!("Current playing state: {:?}", &audio_state.audio_playing).into());
         Callback::from(move |_| {
@@ -336,7 +317,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 //     let current_time_seconds = use_state(|| 0.0);
 
     let update_time = {
-        let dispatch = _dispatch.clone();
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |e: InputEvent| {
             // Get the value from the target of the InputEvent
@@ -405,7 +385,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             })
         };
         let audio_bar_class = classes!("audio-player", "border", "border-solid", "border-color", "fixed", "bottom-0", "z-50", "w-full", if audio_state.is_expanded { "expanded" } else { "" });
-        let expanded = audio_state.is_expanded.clone();
         html! {
             <div class={audio_bar_class} ref={container_ref.clone()}>
                 <div class="top-section">
@@ -510,7 +489,7 @@ pub fn on_play_click(
     user_id: i32,
     server_name: String,
     audio_dispatch: Dispatch<UIState>,
-    audio_state: Rc<UIState>,
+    _audio_state: Rc<UIState>,
 ) -> Callback<MouseEvent> {
 
     Callback::from(move |_: MouseEvent| {
@@ -558,7 +537,6 @@ pub fn on_play_click(
         let app_dispatch = audio_dispatch.clone();
         let episode_url = episode_url_for_wasm.clone();
         let episode_title = episode_title_for_wasm.clone();
-        let mut episode_run_additional = false;
         spawn_local(async move {
             let episode_exists = call_check_episode_in_db(
                 &check_server_name.clone(),
@@ -568,7 +546,6 @@ pub fn on_play_click(
                 &episode_url.clone()
             ).await.unwrap_or(false); // Default to false if the call fails
             console::log_1(&format!("Episode exists: {:?}", episode_exists).into());
-            let episode_run_additional = episode_exists;
             app_dispatch.reduce_mut(move |global_state| {
                 global_state.episode_in_db = Some(episode_exists);
             });

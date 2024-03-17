@@ -23,17 +23,15 @@ pub struct SearchProps {
 }
 
 #[function_component(Search)]
-pub fn search(props: &SearchProps) -> Html {
+pub fn search(_props: &SearchProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
     let search_dispatch = dispatch.clone();
 
     // check_auth(effect_dispatch);
 
     // let error = use_state(|| None);
-    let (post_state, post_dispatch) = use_store::<AppState>();
+    let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let dropdown_open = use_state(|| false);
     let history = BrowserHistory::new();
     // let search_results = use_state(|| Vec::new());
     // let search_results_clone = search_results.clone();
@@ -44,10 +42,8 @@ pub fn search(props: &SearchProps) -> Html {
     let input_ref_clone2 = input_ref.clone();
     let form_ref = NodeRef::default();
     let form_ref_clone1 = form_ref.clone();
-    let form_ref_clone2 = form_ref.clone();
     let container_ref = use_node_ref();
     let container_ref_clone1 = container_ref.clone();
-    let on_search = props.on_search.clone();
 
     let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -158,7 +154,6 @@ pub fn search(props: &SearchProps) -> Html {
                                 )
                             } else {
                                 episodes.into_iter().map(|episode| {
-                                    let state_ep = state.clone();
                                     let id_string = &episode.EpisodeID.to_string();
 
                                     let is_expanded = state.expanded_descriptions.contains(id_string);
@@ -174,7 +169,7 @@ pub fn search(props: &SearchProps) -> Html {
                                     let history_clone = history.clone();
                                     let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
 
-                                    let (description, is_truncated) = if is_expanded {
+                                    let (description, _is_truncated) = if is_expanded {
                                         (sanitized_description, false)
                                     } else {
                                         truncate_description(sanitized_description, 300)
@@ -208,7 +203,6 @@ pub fn search(props: &SearchProps) -> Html {
                                     let server_name_play = server_name.clone();
                                     let api_key_play = api_key.clone();
                                     let audio_dispatch = audio_dispatch.clone();
-                                    let play_state = state_ep.clone();
         
                                     let on_play_click = on_play_click(
                                         episode_url_for_closure.clone(),

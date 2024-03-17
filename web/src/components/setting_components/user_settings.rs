@@ -5,7 +5,7 @@ use yew::platform::spawn_local;
 use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
-use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, FinalAdminResponse, call_set_isadmin};
+use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, call_set_isadmin};
 use crate::components::gen_funcs::encode_password;
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -13,8 +13,8 @@ use crate::components::gen_funcs::validate_user_input;
 
 #[function_component(UserSettings)]
 pub fn user_settings() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let (ui_state, ui_dispatch) = use_store::<UIState>();
+    let (state, _dispatch) = use_store::<AppState>();
+    let (_ui_state, ui_dispatch) = use_store::<UIState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let new_username = use_state(|| "".to_string());
@@ -22,12 +22,12 @@ pub fn user_settings() -> Html {
     let email = use_state(|| "".to_string());
     let fullname = use_state(|| "".to_string());
     let admin_status = use_state(|| false);
-    let error_message = state.error_message.clone();
     let selected_user_id = use_state(|| None);
     web_sys::console::log_1(&"testlog".into());
     // Define the type of user in the Vec
     let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 
+    let user_dispatch = ui_dispatch.clone();
     {
         let users = users.clone();
         use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
@@ -41,7 +41,9 @@ pub fn user_settings() -> Html {
                         Ok(user_info) => {
                             users.set(user_info);
                         },
-                        Err(e) => console::log_1(&format!("Error getting user info: {}", e).into()),
+                        Err(e) => {
+                            user_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
+                        },
                     }
                 }
             };
@@ -113,6 +115,7 @@ pub fn user_settings() -> Html {
             admin_status.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().checked());
         })
     };
+    let create_dispatch = ui_dispatch.clone();
     let on_create_submit = {
         let page_state = page_state.clone();
         let server_name = server_name.clone();
@@ -121,7 +124,7 @@ pub fn user_settings() -> Html {
         let new_username = new_username.clone().to_string();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
-        let dispatch_wasm = dispatch.clone();
+        let dispatch_wasm = create_dispatch.clone();
         Callback::from(move |e: MouseEvent| {
             let call_server = server_name.clone();
             let call_api = api_key.clone();
@@ -157,11 +160,11 @@ pub fn user_settings() -> Html {
                                         },
                                         Err(e) => {
                                             // Handle error here, perhaps log or set some error state
-                                            console::log_1(&format!("Error adding user: {:?}", e).into());
+                                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e).to_string()));
                                         },
                                     }
                                 } else {
-                                    console::log_1(&"add_user_request is None, cannot proceed with adding user.".into());
+                                    dispatch.reduce_mut(|state| state.error_message = Option::from(("add_user_request is None, cannot proceed with adding user.").to_string()))
                                 }
                             });
                             
@@ -223,16 +226,15 @@ pub fn user_settings() -> Html {
             </div>
         </div>
     };
-
+    let user_dispatch = ui_dispatch.clone();
     let on_user_row_click = {
         let selected_user_id = selected_user_id.clone();
         let page_state = page_state.clone();
-        error_message.clone();
         move |select_user_id: i32| {
             console::log_1(&format!("Selected user ID: {:?}", select_user_id).into());
             Callback::from(move |_| {
                 if select_user_id == 1 {
-                    ui_dispatch.reduce_mut(|state| state.error_message = Option::from("You cannot edit the guest user.".to_string()));
+                    user_dispatch.reduce_mut(|state| state.error_message = Option::from("You cannot edit the guest user.".to_string()));
                     return;
                 }
                 selected_user_id.set(Some(Some(select_user_id))); // Wrap the value in double Some()
@@ -250,8 +252,10 @@ pub fn user_settings() -> Html {
         let api_key = api_key.clone();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
+        let dispatch_wasm = ui_dispatch.clone();
         let edit_selected_user_id = selected_user_id.clone();
         Callback::from(move |e: MouseEvent| {
+            let dispatch_wasm = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
             let fullname = fullname.clone();
@@ -261,6 +265,7 @@ pub fn user_settings() -> Html {
             e.prevent_default();
             
             // Check if each field has input and call the corresponding API function
+            let fullname_dispatch = dispatch_wasm.clone();
             if !fullname.is_empty() {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
@@ -274,16 +279,16 @@ pub fn user_settings() -> Html {
                                 if let Some(user_id) = *selected_user_id_cloned {
                                     match call_set_fullname(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), name_cloned).await {
                                         Ok(_) => console::log_1(&"Name updated successfully".into()),
-                                        Err(e) => console::log_1(&format!("Error updating name: {:?}", e).into()),
+                                        Err(e) => fullname_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error updating name: {}", e).to_string())),
                                     }
                                 } else {
-                                    console::log_1(&"User ID not available for name update.".into());
+                                    fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("User ID not available for name update.".to_string()));
                                 }
                             } else {
-                                console::log_1(&"API key not available for name update.".into());
+                                fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("API key not available for name update.".to_string()));
                             }
                         } else {
-                            console::log_1(&"Server name not available for name update.".into());
+                            fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("Server name not available for name update.".to_string()));
                         }
                     }
                 });
@@ -302,16 +307,16 @@ pub fn user_settings() -> Html {
                                 if let Some(user_id) = *selected_user_id_cloned {
                                     match call_set_username(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), user_cloned).await {
                                         Ok(_) => console::log_1(&"username updated successfully".into()),
-                                        Err(e) => console::log_1(&format!("Error updating username: {:?}", e).into()),
+                                        Err(e) => dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error updating username: {:?}", e).to_string())),
                                     }
                                 } else {
-                                    console::log_1(&"User ID not available for username update.".into());
+                                    dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("User ID not available for username update.".to_string()));
                                 }
                             } else {
-                                console::log_1(&"API key not available for username update.".into());
+                                dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("API key not available for username update.".to_string()));
                             }
                         } else {
-                            console::log_1(&"Server name not available for username update.".into());
+                            dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Server name not available for username update.".to_string()));
                         }
                     }
                 });

@@ -5,7 +5,6 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
 use web_sys::{window, HtmlInputElement, MouseEvent};
-use web_sys::HtmlSelectElement;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -25,7 +24,7 @@ pub struct ErrorMessageProps {
 pub fn error_message(props: &ErrorMessageProps) -> Html {
     // Your existing logic here...
     let error_message = use_state(|| None::<String>);
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
 
     {
         let error_message = error_message.clone();
@@ -52,18 +51,6 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
         });
     }
 
-    let error_message_clone = error_message.clone();
-
-    let on_error = {
-        Callback::from(move |_: ()| {
-            let error_message = error_message_clone.clone();
-
-            wasm_bindgen_futures::spawn_local(async move {
-
-            });
-        })
-    };
-
     if let Some(error) = props.error_message.as_ref() {
         html! {
             <div class="error-snackbar">{ error }</div>
@@ -81,12 +68,11 @@ pub fn search_bar() -> Html {
     let state: Rc<AppState> = dispatch.get();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, dispatch) = use_store::<AppState>();
 
     let history_clone = history.clone();
     let podcast_value_clone = podcast_value.clone();
     let search_index_clone = search_index.clone();
-    let dispatch_clone = dispatch.clone();
     // State for toggling the dropdown in mobile view
     let mobile_dropdown_open = use_state(|| false);
     let on_submit = {
@@ -110,12 +96,12 @@ pub fn search_bar() -> Html {
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/pod_layout"); // Use the route path
                             },
-                            Err(e) => {
+                            Err(_) => {
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
                         }
                     },
-                    Err(err_msg) => {
+                    Err(_) => {
                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
@@ -130,25 +116,6 @@ pub fn search_bar() -> Html {
             podcast_value.set(input.value());
         })
     };
-
-    let on_select_change = {
-        let search_index = search_index.clone();
-        Callback::from(move |e: Event| {
-            if let Some(select) = e.target_dyn_into::<HtmlSelectElement>() {
-                search_index.set(select.value());
-            }
-        })
-    };
-
-    let on_select_radio_change = {
-        let search_index = search_index.clone();
-        Callback::from(move |e: MouseEvent| {
-            if let Some(radio) = e.target_dyn_into::<HtmlInputElement>() {
-                search_index.set(radio.value());
-            }
-        })
-    };
-    
 
     let on_submit_click = {
         let on_submit = on_submit.clone(); // Clone the existing on_submit logic
@@ -205,14 +172,6 @@ pub fn search_bar() -> Html {
         let on_dropdown_select = on_dropdown_select.clone();
         Callback::from(move |_| on_dropdown_select("podcast_index"))
     };
-
-    let toggle_mobile_dropdown = {
-        let mobile_dropdown_open = mobile_dropdown_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            mobile_dropdown_open.set(!*mobile_dropdown_open);
-        })
-    };
-
 
 
     html! {
@@ -328,16 +287,13 @@ pub struct ContextButtonProps {
 
 #[function_component(ContextButton)]
 pub fn context_button(props: &ContextButtonProps) -> Html {
-    let search_index = use_state(|| "podcast_index".to_string());
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let dropdown_ref = NodeRef::default();
-
-    let should_update = use_state(|| false); // This state will be used to trigger updates
     
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
@@ -346,23 +302,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             dropdown_open.set(!*dropdown_open);
         })
     };
-    
-
-    
-    let on_dropdown_select = {
-        let dropdown_open = dropdown_open.clone();
-        let search_index = search_index.clone();
-        move |category: &str| {
-            search_index.set(category.to_string());
-            dropdown_open.set(false);
-        }
-    };
 
 
 
     {
         let dropdown_open = dropdown_open.clone(); // Clone for use in the effect hook
-        let dropdown_open_squak = dropdown_open.clone();
         let dropdown_ref = dropdown_ref.clone(); // Clone for use in the effect hook
     
         // Use this cloned state specifically for checking within the closure
@@ -444,7 +388,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         let episode_id = props.episode.get_episode_id();
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
-            let episode_id_for_async = episode_id;
             let server_name_copy = remove_queue_server_name.clone();
             let api_key_copy = remove_queue_api_key.clone();
             let queue_post = remove_queue_post.clone();
@@ -716,7 +659,7 @@ pub trait EpisodeTrait {
 }
 
 impl PartialEq for ContextButtonProps {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         if let Some(other) = self.episode.as_any().downcast_ref::<Episode>() {
             if let Some(self_episode) = self.episode.as_any().downcast_ref::<Episode>() {
                 return self_episode == other;
@@ -909,7 +852,6 @@ pub fn episode_item(
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
-    let some_duration = listen_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
     // Calculate the percentage of the episode that has been listened to
@@ -961,7 +903,7 @@ pub fn episode_item(
                         { format_release }
                     </span>
                     {
-                        if let Some(some_duration) = formatted_listen_duration.clone() {
+                        if formatted_listen_duration.is_some() {
                             html! {
                                 <div class="flex items-center flex-nowrap">
                                     <span class="item_container-text">{ formatted_listen_duration.clone() }</span>

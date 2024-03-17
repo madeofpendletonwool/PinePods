@@ -942,9 +942,7 @@ pub async fn call_check_nextcloud_server(
 
 #[derive(Deserialize, Debug)]
 pub struct NextcloudGetResponse {
-    pub(crate) gpodder_url: String,
-    pub(crate) gpodder_token: String,
-    // Define additional fields as needed
+    pub(crate) gpodder_url: String
 }
 
 pub async fn call_get_nextcloud_server(

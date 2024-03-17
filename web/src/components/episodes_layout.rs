@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use yew::{Callback, function_component, Html, html, TargetCast, use_effect, use_effect_with, use_force_update, use_node_ref};
+use yew::{Callback, function_component, Html, html, TargetCast, use_effect, use_effect_with, use_node_ref};
 use yew::prelude::*;
 use web_sys::{console, Event, MouseEvent, window};
 use yew_router::history::{BrowserHistory, History};
@@ -31,12 +31,14 @@ fn trash_icon() -> Html {
     }
 }
 
+#[allow(dead_code)]
 fn play_icon() -> Html {
     html! {
 <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="m380-300 280-180-280-180v360ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
     }
 }
 
+#[allow(dead_code)]
 fn pause_icon() -> Html {
     html! {
         <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24"><path d="M360-320h80v-320h-80v320Zm160 0h80v-320h-80v320ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
@@ -114,11 +116,7 @@ pub fn episode_layout() -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
-    let error_message = state.error_message.clone();
-    let info_message = state.info_message.clone();
     let history = BrowserHistory::new();
-    let trigger = use_force_update();
-    let history_clone = history.clone();
     // let node_ref = use_node_ref();
     let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let api_key = search_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -131,7 +129,6 @@ pub fn episode_layout() -> Html {
     {
         let is_added = is_added.clone();
         let podcast = clicked_podcast_info.clone();
-        let dispatch = _search_dispatch.clone();
         let user_id = effect_user_id.clone();
         let api_key = effect_api_key.clone();
         let server_name = server_name.clone();
@@ -239,14 +236,7 @@ pub fn episode_layout() -> Html {
             let is_added_inner = is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
-            let pod_artwork = pod_artwork_og.clone();
-            let pod_author = pod_author_og.clone();
-            let categories = categories_og.clone();
-            let pod_description = pod_description_og.clone();
-            let pod_episode_count = pod_episode_count_og.clone();
             let pod_feed_url = pod_feed_url_og.clone();
-            let pod_website = pod_website_og.clone();
-            let pod_explicit = pod_explicit_og.clone();
             let user_id = user_id_og.clone();
             web_sys::console::log_1(&"Remove Clicked".to_string().into());
             let podcast_values = RemovePodcastValuesName {
@@ -256,11 +246,9 @@ pub fn episode_layout() -> Html {
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
-            let user_id_call = user_id_clone.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
-                let user_id_wasm = user_id_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
                 let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
                 match call_remove_podcasts_name(&server_name_wasm.unwrap(), &api_key_wasm, &pod_values_clone).await {
@@ -341,9 +329,6 @@ pub fn episode_layout() -> Html {
         }
     };
 
-    // let button_text = if *is_added { "trash" } else { "add" };
-    // let button_class = if *is_added { "bg-red-500" } else { "bg-blue-500" };
-    let icon_style = if *is_added { "visibility: visible;" } else { "visibility: hidden;" };
     let button_content = if *is_added {
         trash_icon()
     } else {
@@ -408,7 +393,6 @@ pub fn episode_layout() -> Html {
                             { for results.episodes.iter().map(|episode| {
                                 let dispatch = _dispatch.clone();
                                 let search_dispatch = _search_dispatch.clone();
-                                let history = history_clone.clone();
                                 let search_state_clone = search_state.clone(); // Clone search_state
 
                                 // Clone the variables outside the closure
@@ -433,7 +417,7 @@ pub fn episode_layout() -> Html {
 
                                 let sanitized_description = sanitize_html_with_blank_target(&episode.description.clone().unwrap_or_default());
 
-                                let (description, is_truncated) = if is_expanded {
+                                let (description, _is_truncated) = if is_expanded {
                                     (sanitized_description, false)
                                 } else {
                                     truncate_description(sanitized_description, 300)
@@ -456,8 +440,6 @@ pub fn episode_layout() -> Html {
                                     })
                                 };
 
-                                let episode_duration: i32 = episode_duration_clone.parse().unwrap_or(0);
-                                let app_dispatch = search_dispatch.clone();
                                 let state = state.clone();
                                 let on_play_click = on_play_click(
                                     episode_url_clone.clone(),

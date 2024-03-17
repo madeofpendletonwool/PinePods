@@ -8,13 +8,10 @@ use crate::requests::setting_reqs::{call_backup_user};
 
 #[function_component(ExportOptions)]
 pub fn export_options() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
+    let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let error_message = state.error_message.clone();
         
     let mut blob_property_bag = BlobPropertyBag::new();
     blob_property_bag.type_("text/xml");

@@ -33,11 +33,7 @@ pub struct ClickedFeedURL {
 pub fn pod_layout() -> Html {
     let dispatch = Dispatch::<AppState>::global();
     let state: Rc<AppState> = dispatch.get();
-    let search_results = state.search_results.clone();
-    let history = BrowserHistory::new();
-    let history_clone = history.clone();
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());   
-    
+    let search_results = state.search_results.clone();    
 
     html! {
     <div class="main-container">
@@ -94,8 +90,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         // Use a Set to track added podcast URLs for efficiency
     let added_podcasts = use_state(|| HashSet::new());
 
-    let effect_dispatch = dispatch.clone();
-
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
     let effect_api_key = api_key.clone();
@@ -103,7 +97,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     {
         let is_added = is_added.clone();
         let podcast = podcast.clone();
-        let dispatch = effect_dispatch.clone();
         let user_id = effect_user_id.clone();
         let api_key = effect_api_key.clone();
         let server_name = server_name.clone();
@@ -132,12 +125,9 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     }
 
     let podcast_add = podcast.clone();
-    let add_dispatch = dispatch.clone();
 
     let toggle_podcast = {
         let podcast_add = podcast_add.clone();
-        let add_dispatch = add_dispatch.clone();
-        let user_id_og = user_id.unwrap().clone();
 
         let pod_title_og = podcast_add.title.clone();
         let pod_artwork_og = podcast_add.artwork.clone();
@@ -148,18 +138,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let pod_feed_url_og = podcast_add.url.clone();
         let pod_website_og = podcast_add.link.clone();
         let pod_explicit_og = podcast_add.explicit.clone();
-        let user_id_og = user_id.unwrap().clone();
 
         let api_key_clone = api_key.clone();
         let server_name_clone = server_name.clone();
         let user_id_clone = user_id.clone();
 
         let added_podcasts = added_podcasts.clone();
-        let podcast_remove = podcast.clone(); // Assume this is the podcast you want to remove
         let dispatch = dispatch.clone(); // Clone the dispatch for updating global state after removing
-        let api_key = api_key.clone().unwrap(); // Assuming you have api_key available here
-        let user_id = user_id.clone().unwrap(); // Assuming you have user_id available here
-        let server_name = server_name.clone().unwrap(); // Assuming you have server_name available here
         let podcast_url = podcast.url.clone(); // The URL of the podcast to toggle
         let pod_title_og_clone = pod_title_og.clone();
 
@@ -170,7 +155,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let api_key = api_key_clone.clone();
             let server_name = server_name_clone.clone();
 
-            let mut current_set = (*added_podcasts).clone();
+            let current_set = (*added_podcasts).clone();
 
             let dispatch = dispatch.clone();
             let added_podcasts = added_podcasts.clone();
@@ -178,12 +163,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             
             if current_set.contains(&podcast_url) {
                 // If the podcast was added, remove it from the set and call remove_podcast.
-                // current_set.remove(&podcast_url);
-                // added_podcasts.set(current_set); // Update the state with the modified set.
-                
                 // Call remove_podcast asynchronously.
-                let dispatch_for_remove = dispatch.clone();
-                let remove_podcast_clone = podcast_remove.clone(); // Clone the podcast info for the remove function
                 let pod_title_og = pod_title_og_clone.clone();
                 let pod_feed_url_og = pod_feed_url_og.clone();
                 let value_id = user_id.clone().unwrap();
@@ -217,11 +197,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 });
             } else {
                 // If the podcast was not added, add it to the set and call add_podcast.
-                // current_set.insert(podcast_url.clone());
-                // added_podcasts.set(current_set); // Update the state with the modified set.
-                
-                // Call add_podcast asynchronously.
-                let dispatch_for_add = dispatch.clone();
                 let pod_title_og = pod_title_og.clone();
                 let pod_artwork_og = pod_artwork_og.clone();
                 let pod_author_og = pod_author_og.clone();
@@ -282,13 +257,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let podcast_description_clone = podcast.description.clone();
     let podcast_author_clone = podcast.author.clone();
     let podcast_artwork_clone = podcast.artwork.clone();
-    let podcast_last_update_clone = podcast.lastUpdateTime.clone();
     let podcast_explicit_clone = podcast.explicit.clone();
     let podcast_episode_count_clone = podcast.episodeCount.clone();
     let podcast_categories_clone = podcast.categories.clone();
     let podcast_link_clone = podcast.link.clone();
-
-    let dispatch_clone = dispatch.clone(); // Clone the dispatch here
     let history = history_clone.clone();
     // let is_added = added_podcasts.contains(&podcast.url);
     // let button_text = if is_added { "Remove" } else { "Add" };
@@ -307,7 +279,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let podcast_description = podcast_description_clone.clone();
             let podcast_author = podcast_author_clone.clone();
             let podcast_artwork = podcast_artwork_clone.clone();
-            let podcast_last_update = podcast_last_update_clone.clone();
             let podcast_explicit = podcast_explicit_clone.clone();
             let podcast_episode_count = podcast_episode_count_clone.clone();
             let podcast_categories = podcast_categories_clone.clone();

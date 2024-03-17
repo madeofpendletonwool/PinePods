@@ -10,7 +10,7 @@ use crate::components::gen_funcs::sanitize_html_with_blank_target;
 use crate::requests::pod_req::{EpisodeRequest, EpisodeMetadataResponse, QueuePodcastRequest, call_queue_episode, SavePodcastRequest, call_save_episode, DownloadEpisodeRequest, call_download_episode};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::episodes_layout::{AppStateMsg, UIStateMsg};
+use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -18,14 +18,12 @@ use web_sys::window;
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
 
     // check_auth(effect_dispatch);
 
     let error = use_state(|| None);
-    let (post_state, post_dispatch) = use_store::<AppState>();
+    let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let dropdown_open = use_state(|| false);
     let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -60,10 +58,6 @@ pub fn epsiode() -> Html {
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
-        let server_name_effect = server_name.clone();
-        let user_id_effect = user_id.clone();
-        let api_key_effect = api_key.clone();
         let effect_dispatch = dispatch.clone();
 
         let episode_id = state.selected_episode_id.clone();
@@ -111,13 +105,6 @@ pub fn epsiode() -> Html {
                 if let Some(episode) = state.fetched_episode.clone() {
                     web_sys::console::log_1(&format!("Fetched episode: {:?}", episode).into()); // Log fetched episode
     
-                    let state_ep = state.clone();
-                    let id_string = &episode.episode.EpisodeID.to_string();
-    
-                    let is_expanded = state.expanded_descriptions.contains(id_string);
-    
-                    let dispatch = dispatch.clone();
-    
                     let episode_url_clone = episode.episode.EpisodeURL.clone();
                     let episode_title_clone = episode.episode.EpisodeTitle.clone();
                     let episode_artwork_clone = episode.episode.EpisodeArtwork.clone();
@@ -127,23 +114,6 @@ pub fn epsiode() -> Html {
     
                     let sanitized_description = sanitize_html_with_blank_target(&episode.episode.EpisodeDescription.clone());
                     let description = sanitized_description;
-    
-                    let toggle_expanded = {
-                        let search_dispatch_clone = dispatch.clone();
-                        let state_clone = state.clone();
-                        let episode_guid = episode.episode.EpisodeID.clone();
-    
-                        Callback::from(move |_: MouseEvent| {
-                            let guid_clone = episode_guid.to_string().clone();
-                            let search_dispatch_call = search_dispatch_clone.clone();
-    
-                            if state_clone.expanded_descriptions.contains(&guid_clone) {
-                                search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                            } else {
-                                search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                            }
-                        })
-                    };
     
                     let episode_url_for_closure = episode_url_clone.clone();
                     let episode_title_for_closure = episode_title_clone.clone();
@@ -156,7 +126,6 @@ pub fn epsiode() -> Html {
                     let server_name_play = server_name.clone();
                     let api_key_play = api_key.clone();
                     let audio_dispatch = audio_dispatch.clone();
-                    let play_state = state_ep.clone();
 
                     let on_play_click = on_play_click(
                         episode_url_for_closure.clone(),

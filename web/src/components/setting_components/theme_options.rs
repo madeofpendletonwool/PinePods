@@ -9,7 +9,7 @@ use crate::requests::setting_reqs::{call_set_theme, SetThemeRequest};
 
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     // Use state to manage the selected theme
     let selected_theme = use_state(|| "Light".to_string());
     // let selected_theme = state.selected_theme.as_ref();

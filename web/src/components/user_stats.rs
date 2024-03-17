@@ -13,10 +13,9 @@ use crate::components::gen_funcs::{format_date, format_time_mins};
 
 #[function_component(UserStats)]
 pub fn user_stats() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
     let user_stats = stat_state.stats.as_ref();
-    let effect_dispatch = dispatch.clone();
 
     // use_effect_with(
     //     (),
@@ -35,8 +34,8 @@ pub fn user_stats() -> Html {
     // );
 
     // let error = use_state(|| None);
-    let (post_state, post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
 
     // Fetch episodes on component mount
     {
@@ -63,7 +62,6 @@ pub fn user_stats() -> Html {
         let server_name_effect = server_name.clone();
         let user_id_effect = user_id.clone();
         let api_key_effect = api_key.clone();
-        let effect_dispatch = dispatch.clone();
 
         console::log_1(&format!("server_name: {:?}", &server_name_effect).into());
         console::log_1(&format!("user_id: {:?}", &user_id_effect).into());

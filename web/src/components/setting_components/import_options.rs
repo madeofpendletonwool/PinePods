@@ -77,50 +77,46 @@ async fn add_podcasts(server_name: &str, api_key: &Option<String>, user_id: i32,
 
 #[function_component(ImportOptions)]
 pub fn import_options() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let (state, _dispatch) = use_store::<AppState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let error_message = state.error_message.clone();
-    let opml_content = use_state(|| String::new());
     let import_pods = use_state(|| Vec::new());
     let show_verification = use_state(|| false);
 
 
-    let onclick = {
-        let import_pods = import_pods.clone();
-        Callback::from(move |e: Event| {
-            let import_pods = import_pods.clone();
-            let input: HtmlInputElement = e.target_unchecked_into();
-            if let Some(file_list) = input.files() {
-                if let Some(file) = file_list.get(0) {
-                    let reader = FileReader::new().unwrap();
+    // let onclick = {
+    //     let import_pods = import_pods.clone();
+    //     Callback::from(move |e: Event| {
+    //         let import_pods = import_pods.clone();
+    //         let input: HtmlInputElement = e.target_unchecked_into();
+    //         if let Some(file_list) = input.files() {
+    //             if let Some(file) = file_list.get(0) {
+    //                 let reader = FileReader::new().unwrap();
 
-                    // Create a closure for handling the file load event
-                    let onload_closure = Closure::wrap(Box::new(move |event: web_sys::ProgressEvent| {
-                        let reader: FileReader = event.target().unwrap().dyn_into().unwrap();
-                        if reader.ready_state() == FileReader::DONE {
-                            // Since `result` returns a `JsValue`, directly attempt to convert it to a string
-                            if let Some(text) = reader.result().unwrap().as_string() {
-                                // Parse the OPML content directly from the file reader result
-                                let import_data = parse_opml(&text);
-                                // Set the parsed podcasts directly
-                                import_pods.set(import_data);
-                            }
-                        }
-                    }) as Box<dyn FnMut(_)>);
+    //                 // Create a closure for handling the file load event
+    //                 let onload_closure = Closure::wrap(Box::new(move |event: web_sys::ProgressEvent| {
+    //                     let reader: FileReader = event.target().unwrap().dyn_into().unwrap();
+    //                     if reader.ready_state() == FileReader::DONE {
+    //                         // Since `result` returns a `JsValue`, directly attempt to convert it to a string
+    //                         if let Some(text) = reader.result().unwrap().as_string() {
+    //                             // Parse the OPML content directly from the file reader result
+    //                             let import_data = parse_opml(&text);
+    //                             // Set the parsed podcasts directly
+    //                             import_pods.set(import_data);
+    //                         }
+    //                     }
+    //                 }) as Box<dyn FnMut(_)>);
 
-                    reader.set_onload(Some(onload_closure.as_ref().unchecked_ref()));
-                    reader.read_as_text(&file).unwrap();
+    //                 reader.set_onload(Some(onload_closure.as_ref().unchecked_ref()));
+    //                 reader.read_as_text(&file).unwrap();
 
-                    // Forget the closure to keep it alive
-                    onload_closure.forget();
-                }
-            }
-        })
-    };
+    //                 // Forget the closure to keep it alive
+    //                 onload_closure.forget();
+    //             }
+    //         }
+    //     })
+    // };
     let onclick = {
         let import_pods = import_pods.clone();
         let show_verification = show_verification.clone();

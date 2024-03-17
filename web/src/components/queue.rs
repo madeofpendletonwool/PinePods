@@ -20,25 +20,15 @@ use wasm_bindgen::JsCast;
 #[function_component(Queue)]
 pub fn queue() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
     let history = BrowserHistory::new();
 
     // check_auth(effect_dispatch);
 
     let error = use_state(|| None);
-    let (post_state, post_dispatch) = use_store::<AppState>();
+    let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
-    let dropdown_open = use_state(|| false);
-
-    let toggle_dropdown = {
-        let dropdown_open = dropdown_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
-            dropdown_open.set(!*dropdown_open);
-        })
-    };
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -69,10 +59,6 @@ pub fn queue() -> Html {
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
-        let server_name_effect = server_name.clone();
-        let user_id_effect = user_id.clone();
-        let api_key_effect = api_key.clone();
         let effect_dispatch = dispatch.clone();
 
         // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
@@ -124,7 +110,6 @@ pub fn queue() -> Html {
                             let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                             let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
                             let history_clone = history.clone();
-                            let state_ep = state.clone();
                             let id_string = &episode.EpisodeID.to_string();
     
                             let is_expanded = state.expanded_descriptions.contains(id_string);
@@ -140,7 +125,7 @@ pub fn queue() -> Html {
 
                             let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
 
-                            let (description, is_truncated) = if is_expanded {
+                            let (description, _is_truncated) = if is_expanded {
                                 (sanitized_description, false)
                             } else {
                                 truncate_description(sanitized_description, 300)
@@ -174,7 +159,6 @@ pub fn queue() -> Html {
                             let server_name_play = server_name.clone();
                             let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
-                            let play_state = state_ep.clone();
 
                             let on_play_click = on_play_click(
                                 episode_url_for_closure.clone(),

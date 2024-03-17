@@ -16,7 +16,6 @@ pub fn mfa_options() -> Html {
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
-    let email = state.user_details.as_ref().map(|ud| ud.Email.clone());
     let mfa_status = use_state(|| false);
     let code = use_state(|| "".to_string());
 
@@ -25,7 +24,7 @@ pub fn mfa_options() -> Html {
     let effect_server_name = server_name.clone();
     {
         let mfa_status = mfa_status.clone();
-        use_effect_with((effect_api_key.clone(), effect_server_name.clone()), move |(api_key, server_name)| {
+        use_effect_with((effect_api_key.clone(), effect_server_name.clone()), move |(_api_key, _server_name)| {
             let mfa_status = mfa_status.clone();
             let api_key = effect_api_key.clone();
             let server_name = effect_server_name.clone();
@@ -74,7 +73,6 @@ pub fn mfa_options() -> Html {
         let mfa_code = mfa_code.clone();
         let page_state = page_state.clone();
         let mfa_secret = mfa_secret.clone();
-        let email = email.clone();
         let server_name = server_name.clone(); // Replace with actual server name
         let api_key = api_key.clone(); // Replace with actual API key
         let user_id = user_id.clone(); // Replace with actual user ID
@@ -83,7 +81,6 @@ pub fn mfa_options() -> Html {
             let mfa_code = mfa_code.clone();
             let page_state = page_state.clone();
             let mfa_secret = mfa_secret.clone();
-            let email = email.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id;
@@ -112,7 +109,6 @@ pub fn mfa_options() -> Html {
         let api_key = api_key.clone();
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = server_name.clone();
-        let mfa_secret = mfa_secret.clone();
         let code = code.clone();
 
         Callback::from(move |_| {
@@ -120,7 +116,6 @@ pub fn mfa_options() -> Html {
             let user_id = user_id.clone();
             let server_name = server_name.clone();
             let page_state = page_state.clone();
-            let mfa_secret = mfa_secret.clone();
             let mfa_code = verify_mfa_code.clone();
             let code = code.clone();
 

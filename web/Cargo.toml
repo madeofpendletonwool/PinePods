@@ -10,20 +10,20 @@ edition = "2021"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.68", features = ["CssStyleDeclaration", "DomTokenList", "HtmlSelectElement", "HtmlAudioElement", "DomRect", "Element", "HtmlAnchorElement", "FileReader", "Blob", "Document", "Element", "NodeList", "Window", "XmlHttpRequest", "DomParser", "SupportedType", "Performance", "PerformanceNavigation"] }
-log = "0.4.20"
-wasm-bindgen = "0.2.91"
+web-sys = { version = "0.3.69", features = ["CssStyleDeclaration", "DomTokenList", "HtmlSelectElement", "HtmlAudioElement", "DomRect", "Element", "HtmlAnchorElement", "FileReader", "Blob", "Document", "Element", "NodeList", "Window", "XmlHttpRequest", "DomParser", "SupportedType", "Performance", "PerformanceNavigation"] }
+log = "0.4.21"
+wasm-bindgen = "0.2.92"
 yew-router = { version = "0.18.0" }
 serde = { version = "1.0.197", features = ["derive"] }
 gloo-net = "0.5.0"
 gloo = "0.11.0"
-anyhow = { version = "1.0.70", features = [] }
-wasm-bindgen-futures = "0.4.41"
+anyhow = { version = "1.0.81", features = [] }
+wasm-bindgen-futures = "0.4.42"
 gloo-timers = "0.3.0"
-base64 = "0.21.7"
+base64 = "0.22.0"
 yewdux = "0.10.0"
 rss = "2.0.7"
-chrono = "0.4.34"
+chrono = "0.4.35"
 serde_json = "1.0.114"
 yewtil = "0.4.0"
 gloo-utils = "0.2.0"
@@ -39,7 +39,7 @@ js-sys = "0.3.68"
 percent-encoding = "2.3.1"
 data-encoding = "2.5.0"
 url = "2.5.0"
-serde-wasm-bindgen = "0.6.4"
+serde-wasm-bindgen = "0.6.5"
 chrono-tz = "0.8.6"
 futures-util = "0.3.30"
 gloo-file = "0.3.0"

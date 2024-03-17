@@ -8,15 +8,11 @@ use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call
 #[function_component(APIKeys)]
 pub fn api_keys() -> Html {
 
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let (state, _dispatch) = use_store::<AppState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let error_message = state.error_message.clone();
     let api_infos = use_state(|| Vec::new());
-    let api_key_modal_visible = use_state(|| false);
     let new_api_key = use_state(|| String::new());
     let selected_api_key_id: UseStateHandle<Option<i32>> = use_state(|| None);
     // Define the type of user in the Vec
@@ -79,7 +75,6 @@ pub fn api_keys() -> Html {
         let page_state = page_state.clone();
         let new_api_key = new_api_key.clone();
         let api_key = api_key.clone();
-        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = server_name.clone();
         Callback::from(move |_| {
             let api_key = api_key.clone();
@@ -98,14 +93,11 @@ pub fn api_keys() -> Html {
             });
         })
     };
-    let api_key_display = (*new_api_key).clone();
 
     // Define the function to open the modal and request a new API key
     let delete_api_key = {
         let page_state = page_state.clone();
-        let new_api_key = new_api_key.clone();
         let api_key = api_key.clone();
-        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = server_name.clone();
         let api_id = selected_api_key_id.clone();
         // Assume you have user_id and api_key from context or props
@@ -117,13 +109,11 @@ pub fn api_keys() -> Html {
             let page_state = page_state.clone();
             let user_id = user_id.clone();
             let api_id = api_id.clone();
-            let new_api_key = new_api_key.clone();
             let delete_body = DeleteAPIRequest {
                 user_id: user_id.to_string(),
                 api_id: api_id.unwrap().to_string(),
             };
             wasm_bindgen_futures::spawn_local(async move {
-                let api_id = *api_id;
                 match call_delete_api_key(&server_name.unwrap(), delete_body, &api_key.unwrap().unwrap()).await {
                     Ok(_) => {
                         console::log_1(&"API key deleted successfully".into());

@@ -20,7 +20,6 @@ use wasm_bindgen::JsCast;
 #[function_component(Saved)]
 pub fn saved() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
     let history = BrowserHistory::new();
 
     // check_auth(effect_dispatch);

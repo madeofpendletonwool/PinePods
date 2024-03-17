@@ -1,6 +1,8 @@
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
-use base64::encode;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+
 use yew_router::history::{BrowserHistory, History};
 use yewdux::Dispatch;
 // Add imports for your context modules
@@ -179,7 +181,7 @@ pub async fn call_get_api_config(server_name: &str, api_key: &str) -> Result<cra
 }
 
 pub async fn login_new_server(server_name: String, username: String, password: String) -> Result<(GetUserDetails, LoginServerRequest, GetApiDetails), anyhow::Error> {
-    let credentials = encode(format!("{}:{}", username, password));
+    let credentials = STANDARD.encode(format!("{}:{}", username, password).as_bytes());
     let auth_header = format!("Basic {}", credentials);
     let url = format!("{}/api/data/get_key", server_name);
 
@@ -288,7 +290,6 @@ pub async fn call_add_login_user(server_name: String, add_user: &Option<AddUserR
         .await?;
 
     if response.ok() {
-        let response_body = response.json::<AddUserResponse>().await?;
         Ok(true)
     } else {
         console::log_1(&format!("Error adding user: {}", response.status_text()).into());

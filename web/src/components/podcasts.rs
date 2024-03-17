@@ -48,7 +48,7 @@ impl Reducer<AppState> for AppStateMsg {
 #[function_component(Podcasts)]
 pub fn podcasts() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (_audio_state, _audio_dispatch) = use_store::<UIState>();
     console::log_1(&format!("User Context in podcasts: {:?}", &state.user_details).into());
     let history = BrowserHistory::new();
     let history_clone = history.clone();
@@ -143,9 +143,6 @@ pub fn podcasts() -> Html {
                             // let podcast_ep_count = podcast.EpisodeCount.clone();
                             // let podcast_artwork_clone = podcast.ArtworkURL.clone();
                             let podcast_description_clone = podcast.Description.clone();
-                            // let podcast_website_clone = podcast.WebsiteURL.clone();
-                            // let podcast_author_clone = podcast.Author.clone();
-                            let podcast_categories_clone = podcast.Categories.clone();
                             // let categories: HashMap<String, String> = serde_json::from_str(&podcast_categories_clone).unwrap_or_else(|_| HashMap::new());
                             let on_remove_click = {
                                 let dispatch_remove = dispatch.clone();

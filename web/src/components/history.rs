@@ -15,7 +15,6 @@ use crate::components::episodes_layout::AppStateMsg;
 #[function_component(PodHistory)]
 pub fn history() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
     let history = BrowserHistory::new();
 
     // check_auth(effect_dispatch);

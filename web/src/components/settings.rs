@@ -98,12 +98,11 @@ pub fn accordion_item(AccordionItemProps { title, content, position }: &Accordio
 
 #[function_component(Settings)]
 pub fn settings() -> Html {
-    let (_post_state, post_dispatch) = use_store::<AppState>();
+    let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let active_tab = use_state(|| "user");
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
-    let auth_dispatch = post_dispatch.clone();
     // check_auth(auth_dispatch);
 
     {
@@ -136,6 +135,8 @@ pub fn settings() -> Html {
         let active_tab = active_tab.clone();
         Callback::from(move |_| active_tab.set("admin"))
     };
+
+
 
     html! {
     <>
