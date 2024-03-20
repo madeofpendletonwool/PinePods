@@ -96,14 +96,17 @@ pub fn restore_server() -> Html {
 
     html! {
         <div class="p-4">
-            <p class="text-lg font-bold mb-4">{"Restore Server:"}</p>
-            <p class="text-md mb-4">{"With this option you can restore your entire server with all its previous settings, users, and data from a backup. Take a backup above to restore here. WARNING: This will delete everything on your server now and restore to the point that the backup contains."}</p>
+            <p class="item_container-text text-lg font-bold mb-4">{"Restore Server:"}</p>
+            <p class="item_container-text text-md mb-4">{"With this option you can restore your entire server with all its previous settings, users, and data from a backup. Take a backup above to restore here. WARNING: This will delete everything on your server now and restore to the point that the backup contains."}</p>
             
-            <input oninput={on_password_change.clone()} type="password" placeholder="Database Password"/>
+            <br/>
             <input onchange={on_file_change} type="file" accept=".sql"/>
-            <button onclick={onclick_restore} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+            <div class="flex items-center">
+                <input type="password" id="db_pw" oninput={on_password_change.clone()} class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="mYDBp@ss!" />
+                <button onclick={onclick_restore} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                 {"Restore Server"}
-            </button>
+                </button>
+            </div>
             // Conditional rendering for the error banner
             // if let Some(error) = error_message {
             //     <div class="error-snackbar">{ error }</div>

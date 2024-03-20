@@ -105,6 +105,7 @@ pub fn saved() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Saved Episodes"}</h1>
             {
                 if let Some(saved_eps) = state.saved_episodes.clone() {
                     web_sys::console::log_1(&format!("Saved episodes in state: {:?}", saved_eps).into()); // Log queued episodes in state

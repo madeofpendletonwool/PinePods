@@ -88,8 +88,8 @@ pub fn user_stats() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
-            <div class="container mx-auto p-6 bg-white shadow-md rounded">
-                <h1 class="text-2xl font-bold text-center mb-6">{"User Statistics"}</h1>
+            <div class="item-container mx-auto p-6 shadow-md rounded">
+                <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"User Statistics"}</h1>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
                         {
@@ -129,11 +129,11 @@ pub fn user_stats() -> Html {
                                         </div>
                                         <div class="large-card col-span-1 md:col-span-3">
                                             <img src="static/assets/favicon.png" alt="Pinepods Logo" class="large-card-image"/>
-                                            <p class="large-card-paragraph">{"Thanks for using Pinepods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data. Feel free to reach out for questions and open an issue if you have ideas for new features. Pull Requests on this software are welcome and encouraged. If you feel that you've gotten use out of this software and are thankful for it's existence donations to my Buymeacoffee are welcome but never required. Lastly, this app will ALWAYS remain open source."}</p>
+                                            <p class="large-card-paragraph item_container-text">{"Thanks for using Pinepods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data. Feel free to reach out for questions and open an issue if you have ideas for new features. Pull Requests on this software are welcome and encouraged. If you feel that you've gotten use out of this software and are thankful for it's existence donations to my Buymeacoffee are welcome but never required. Lastly, this app will ALWAYS remain open source."}</p>
                                             <div class="large-card-content flex flex-col space-y-2">
-                                                <a href="https://pinepods.online" target="_blank" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">{"Pinepods Documentation"}</a>
-                                                <a href="https://github.com/madeofpendletonwool/pinepods" target="_blank" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">{"Pinepods Github Repo"}</a>
-                                                <a href="https://www.buymeacoffee.com/collinscoffee" target="_blank" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">{"Buy me a Coffee"}</a>
+                                                <a href="https://pinepods.online" target="_blank" class="item-header-button hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">{"Pinepods Documentation"}</a>
+                                                <a href="https://github.com/madeofpendletonwool/pinepods" target="_blank" class="item-header-button hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">{"Pinepods Github Repo"}</a>
+                                                <a href="https://www.buymeacoffee.com/collinscoffee" target="_blank" class="item-header-button hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">{"Buy me a Coffee"}</a>
 
                                                 // Additional content...
                                             </div>
@@ -142,7 +142,7 @@ pub fn user_stats() -> Html {
                                     </>
                                 }
                             } else {
-                                html! { <p>{"Loading user stats..."}</p> } // or handle the `None` case appropriately
+                                html! { <p class="item_container-text">{"Loading user stats..."}</p> } // or handle the `None` case appropriately
                             }
                         }
                     // </div>

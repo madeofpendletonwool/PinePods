@@ -274,7 +274,7 @@ pub fn home() -> Html {
                                     _ => DateFormat::ISO, // default to ISO if the format is not recognized
                                 };
                                 
-                                let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, date_format.clone());
+                                let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
                                 // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
                                 let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                                 console::log_1(&format!("Formatted release: {}", &format_release).into());

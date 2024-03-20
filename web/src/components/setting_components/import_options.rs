@@ -171,15 +171,17 @@ pub fn import_options() -> Html {
 
     html! {
         <div class="p-4">
-            <p class="text-lg font-bold mb-4">{"Import Options:"}</p>
-            <p class="text-md mb-4">{"You can Import an OPML of podcasts here. If you're migrating from a different podcast app this is probably the solution you want. Most podcast apps allow you to export a backup of your saved podcasts to an OPML file and this option can easily import them into Pinepods."}</p>
-            <input type="file" accept=".opml" onchange={onclick} />
+            <p class="item_container-text text-lg font-bold mb-4">{"Import Options:"}</p>
+            <p class="item_container-text text-md mb-4">{"You can Import an OPML of podcasts here. If you're migrating from a different podcast app this is probably the solution you want. Most podcast apps allow you to export a backup of your saved podcasts to an OPML file and this option can easily import them into Pinepods."}</p>
+            // <input class="settings-button" type="file" accept=".opml" onchange={onclick} />
+            <label class="input-button-label" for="fileInput">{ "Choose File" }</label>
+            <input id="fileInput" class="input-button" type="file" accept=".opml" onchange={onclick} />
             // Optionally display the content of the OPML file for debugging
 
             if *show_verification {
                 <div>
-                    <p>{"These podcasts were found, are you sure you want to add them?"}</p>
-                    <button onclick={on_confirm}>{"Yes, add them"}</button>
+                    <p class="item_container-text">{"These podcasts were found, are you sure you want to add them?"}</p>
+                    <button class="settings-button" onclick={on_confirm}>{"Yes, add them"}</button>
                 </div>
             }
             <div class="podcasts-list">
@@ -187,8 +189,8 @@ pub fn import_options() -> Html {
                     for (*import_pods).iter().map(|(title, url)| {
                         html! {
                             <div class="podcast">
-                                <p>{format!("Title: {}", title)}</p>
-                                <p>{format!("URL: {}", url)}</p>
+                                <p class="item_container-text">{format!("Title: {}", title)}</p>
+                                <p class="item_container-text">{format!("URL: {}", url)}</p>
                             </div>
                         }
                     })

@@ -187,25 +187,27 @@ pub fn downloads() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
-            <h1 class="text-2xl font-bold text-center mb-6">{"Downloads"}</h1>
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Downloaded Episodes"}</h1>
             <div class="flex justify-between">
                 {if **page_state.borrow() == PageState::Normal {
                     html! {
-                        <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded inline-flex items-center"
+                        <>
+                        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                             onclick={delete_mode_enable.clone()}>
                             <span class="material-icons icon-space">{"check_box"}</span>
                             <span class="text-lg">{"Select Multiple"}</span>
                         </button>
+                        </>
                     }
                 } else {
                     html! {
                         <>
-                        <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded inline-flex items-center"
+                        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                             onclick={delete_mode_disable.clone()}>
                             <span class="material-icons icon-space">{"cancel"}</span>
                             <span class="text-lg">{"Cancel"}</span>
                         </button>
-                        <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded inline-flex items-center"
+                        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                             onclick={delete_selected_episodes.clone()}>
                             <span class="material-icons icon-space">{"delete"}</span>
                             <span class="text-lg">{"Delete"}</span>

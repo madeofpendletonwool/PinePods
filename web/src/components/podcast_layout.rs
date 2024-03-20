@@ -38,7 +38,7 @@ pub fn pod_layout() -> Html {
     html! {
     <div class="main-container">
         <Search_nav />
-        <h1 class="text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
+        <h1 class="item_container-text text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
         {
             if let Some(results) = search_results {
                 {
@@ -266,8 +266,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // let button_text = if is_added { "Remove" } else { "Add" };
     // let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
     let is_added = added_podcasts.contains(&podcast.url);
-    let button_text = if is_added { "Remove" } else { "Add" };
+    let button_text = if is_added { "delete" } else { "add" };
     let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
+    console::log_1(&format!("Is added: {}", button_text.clone()).into());
+    console::log_1(&format!("Is added: {}", button_class.clone()).into());
     
     let on_title_click = {
         let dispatch = dispatch.clone();
@@ -316,21 +318,25 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
     html! {
         <div>
-            //Get podcast info for state
             {
                 html! {
-                    <div key={podcast.id.to_string()} class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
-                        <img src={podcast.image.clone()} alt={format!("Cover for {}", &podcast.title)} class="w-1/4 object-cover"/>
-                        <div class="flex flex-col p-4 space-y-2 w-7/12">
+                    <div key={podcast.id.to_string()} class="item-container flex mb-4 shadow-md rounded-lg overflow-hidden">
+                        <img src={podcast.image.clone()} alt={format!("Cover for {}", &podcast.title)} class="w-1/6 items-center object-cover"/>
+                        <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
                             <a onclick={on_title_click.clone()} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.title }</a>
-                            <p class="item-container-text">{ &podcast.description }</p>
+                            <p class="item_container-text">{ &podcast.description }</p>
                         </div>
-                        <button onclick={toggle_podcast} class={format!("item-container-button selector-button w-1/4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded {}", button_class)}>
-                            { button_text }
-                        </button>
+                        <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
+                            <button class={format!("selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>
+                                <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
+                                // { button_text }
+                            </button>
+                        </div>
                     </div>
                 }
             }
         </div>
     }
+    
+    
 }

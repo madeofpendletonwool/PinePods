@@ -942,14 +942,15 @@ pub async fn call_check_nextcloud_server(
 
 #[derive(Deserialize, Debug)]
 pub struct NextcloudGetResponse {
-    pub(crate) gpodder_url: String
+    pub(crate) data: Vec<String>, // Assuming the response always wraps the gpodder_url and token in a list under "data"
 }
+
 
 pub async fn call_get_nextcloud_server(
     server_name: &String,
     api_key: &String,
     user_id: i32
-) -> Result<NextcloudGetResponse, anyhow::Error> {
+) -> Result<String, anyhow::Error> {
     let url = format!("{}/api/data/get_gpodder_settings/{}", server_name, user_id);
     let api_key_ref = api_key.as_str();
 
@@ -959,11 +960,31 @@ pub async fn call_get_nextcloud_server(
         .send()
         .await?;
 
+    console::log_1(&format!("Request URL: {}", url).into());
+
+    // Here we are using the .ok() method from the Yew Fetch service response,
+    // which is equivalent to checking if the status is in the 200-299 range
     if response.ok() {
         let response_body = response.json::<NextcloudGetResponse>().await?;
-        Ok(response_body)
+        if !response_body.data.is_empty() {
+            console::log_1(&format!("Gpodder URL: {}", response_body.data[0]).into());
+            // Assuming the first element is always the URL and the second is the token, you might want to check this
+            let gpodder_url = response_body.data.get(0).cloned().unwrap_or_default(); 
+            // Now you can use gpodder_url and gpodder_token as needed
+            Ok(gpodder_url) // Adjust this line based on how you plan to use the response
+        } else {
+            console::log_1(&"Error: Received empty 'data' array in response".into());
+            Err(anyhow::Error::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Received empty 'data' array in Nextcloud server response",
+            )))
+        }
     } else {
-        console::log_1(&format!("Error pulling Nextcloud Server Info: {}", response.status_text()).into());
-        Err(Error::msg(format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+        let error_text = response.text().await.unwrap_or_default(); // Get error text if any
+        console::log_1(&format!("Error pulling Nextcloud Server Info: {}, {}", response.status_text(), error_text).into());
+        Err(anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}, {}", response.status_text(), error_text),
+        )))
     }
 }

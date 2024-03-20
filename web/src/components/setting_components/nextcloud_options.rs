@@ -105,7 +105,7 @@ pub fn nextcloud_options() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match call_get_nextcloud_server(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id).await {
                     Ok(server) => {
-                        nextcloud_url.set(server.gpodder_url);
+                        nextcloud_url.set(server);
                     },
                     Err(_) => {
                         nextcloud_url.set(String::from("Not currently syncing with Nextcloud server"));
@@ -187,13 +187,19 @@ pub fn nextcloud_options() -> Html {
 
     html! {
         <div class="p-4"> // You can adjust the padding as needed
-            <p class="text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
-            <p class="text-md mb-4">{"With this option you can authenticate with a Nextcloud server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! Clicking the Authenticate Button will prompt you to externally import your Nextcloud Server."}</p> // Styled paragraph
-            <p class="text-md mb-4">{"Current Nextcloud Server: "}<span class="font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
-            <input type="text" class="input" placeholder="Enter Nextcloud server URL" value={(*server_url).clone()} oninput={on_server_url_change} />
-            <button onclick={on_authenticate_click} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
-                {"Authenticate Nextcloud Server"}
-            </button>
+            <p class="item_container-text text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
+            <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! Clicking the Authenticate Button will prompt you to externally import your Nextcloud Server."}</p> // Styled paragraph
+            <p class="item_container-text text-md mb-4">{"Current Nextcloud Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
+            <br/>
+            <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "New Nextcloud Server" }</label>
+            <div class="flex items-center">
+                <input type="text" id="first_name" oninput={on_server_url_change} class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="https://nextcloud.com" />
+                <button onclick={on_authenticate_click} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                {"Authenticate"}
+                </button>
+            </div>
+            // <input type="text" class="input" placeholder="Enter Nextcloud server URL" value={(*server_url).clone()} oninput={on_server_url_change} />
+
         </div>
     }
 }

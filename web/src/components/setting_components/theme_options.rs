@@ -59,11 +59,11 @@ pub fn theme() -> Html {
 
     html! {
         <div class="p-4"> // You can adjust the padding as needed
-            <p class="text-lg font-bold mb-4">{"Theme Select:"}</p> // Styled paragraph
-            <p class="text-md mb-4">{"You can select your application theme here. Choosing a theme will follow you to any official Pinepods application as your theme preference gets saved to your user settings."}</p> // Styled paragraph
+            <p class="item_container-text text-lg font-bold mb-4">{"Theme Select:"}</p> // Styled paragraph
+            <p class="item_container-text text-md mb-4">{"You can select your application theme here. Choosing a theme will follow you to any official Pinepods application as your theme preference gets saved to your user settings."}</p> // Styled paragraph
 
-            <div class="relative inline-block text-gray-700">
-                <select onchange={on_change} class="appearance-none w-full bg-white border border-gray-300 hover:border-gray-500 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
+            <div class="theme-select-dropdown relative inline-block">
+                <select onchange={on_change} class="theme-select-dropdown appearance-none w-full border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
                     <option value="Light" selected={(*selected_theme) == "Light"}>{"Light"}</option>
                     <option value="Dark" selected={(*selected_theme) == "Dark"}>{"Dark"}</option>
                     <option value="Nordic" selected={(*selected_theme) == "Nordic"}>{"Nordic"}</option>
@@ -75,12 +75,12 @@ pub fn theme() -> Html {
                     <option value="Wildberries" selected={(*selected_theme) == "Wildberries"}>{"Wildberries"}</option>
                     <option value="Hot Dog Stand - MY EYES" selected={(*selected_theme) == "Hot Dog Stand - MY EYES"}>{"Hot Dog Stand - MY EYES"}</option>
                 </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                <div class="theme-dropdown-arrow pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
                     <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M6.293 9.293a1 1 0 0 1 1.414 0L10 10.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-3 3a1 1 0 0 1-1.414 0l-3-3a1 1 0 0 1 0-1.414z"/></svg>
                 </div>
             </div>
 
-            <button onclick={on_submit} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+            <button onclick={on_submit} class="theme-submit-button mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
                 {"Submit"}
             </button>
         </div>
@@ -119,7 +119,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--secondary-background', '#32333b');
                 root.style.setProperty('--container-background', '#1b1d1e');
                 root.style.setProperty('--standout-color', '#797b85');
-                root.style.setProperty('--hover-color', '#6590fd');
+                root.style.setProperty('--hover-color', '#4b5563');
                 root.style.setProperty('--link-color', '#6590fd');
                 break;
 

@@ -219,10 +219,10 @@ pub fn podcasts() -> Html {
     
                             html! {
                                 <div>
-                                    <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
-                                        <img src={podcast.ArtworkURL.clone()} alt={format!("Cover for {}", &podcast.PodcastName)} class="w-2/12 object-cover"/>
-                                        <div class="flex flex-col p-4 space-y-2 w-9/12">
-                                            <a onclick={on_title_click} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.PodcastName }</a>
+                                    <div class="item-container flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
+                                        <img onclick={on_title_click.clone()} src={podcast.ArtworkURL.clone()} alt={format!("Cover for {}", &podcast.PodcastName)} class="w-2/12 object-cover"/>
+                                        <div class="flex flex-col p-4 space-y-2 w-8/12">
+                                            <a onclick={on_title_click} class="item_container-text text-xl font-semibold hover:underline">{ &podcast.PodcastName }</a>
                                             {
                                                 html! {
                                                     <div class="item_container-text episode-description-container">
@@ -232,11 +232,12 @@ pub fn podcasts() -> Html {
                                                     </div>
                                                 }
                                             }
-                                            <p class="item-container-text">{ &podcast.EpisodeCount }</p>
+                                            <p class="item_container-text">{ format!("Episode Count: {}", &podcast.EpisodeCount) }</p>
                                         </div>
-                                        <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded">
+                                        <button class="item-container-action-button selector-button w-1/12 mx-auto font-bold py-2 px-4 rounded">
                                             <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
                                         </button>
+                                    
                                     </div>
                                 </div>
                             }

@@ -306,9 +306,9 @@ pub fn email_settings() -> Html {
             }
         }
         <div class="p-4">
-            <h2 class="text-xl font-bold mb-4">{"Email Setup:"}</h2>
-            <p class="text-md mb-4">{"You can setup server Email settings here. Email is mostly used for self service password resets. The server will require that you verify your email settings setup before it will allow you to submit the settings you've entered."}</p>
-            <p class="text-lg font-bold mb-4">{"Current Settings:"}</p>
+            <h2 class="item_container-text text-xl font-bold mb-4">{"Email Setup:"}</h2>
+            <p class="item_container-text text-md mb-4">{"You can setup server Email settings here. Email is mostly used for self service password resets. The server will require that you verify your email settings setup before it will allow you to submit the settings you've entered."}</p>
+            <p class="item_container-text text-lg font-bold mb-4">{"Current Settings:"}</p>
             <div class="relative overflow-x-auto">
                 <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
                     <thead class="text-xs uppercase table-header">
@@ -339,27 +339,27 @@ pub fn email_settings() -> Html {
                 </table>
             </div>
             <div class="flex mt-4">
-            <button onclick={on_test_email_send} class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2" type="button">
+            <button onclick={on_test_email_send} class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2">
                 {"Test Current Settings"}
             </button>
         
         </div>
-        <p class="text-lg font-bold mb-4">{"Update Settings:"}</p>
+        <p class="item_container-text text-lg font-bold mb-4">{"Update Settings:"}</p>
 
         <div class="flex mt-4">
             <input oninput={on_server_name_change.clone()} type="text" placeholder="Server Name" class="border p-2 mr-2 rounded"/>
-            <span>{":"}</span>
+            <span class="item_container-text">{":"}</span>
             <input oninput={on_server_port_change.clone()} type="text" placeholder="Port" class="border p-2 ml-2 rounded"/>
         </div>
 
         <div class="mt-4">
-            <p class="font-medium">{"Send Mode:"}</p>
+            <p class="item_container-text font-medium">{"Send Mode:"}</p>
             <select oninput={on_send_mode_change.clone()} class="border p-2 rounded mr-2">
                 <option value="SMTP" selected=true>{"SMTP"}</option>
             </select>
         </div>
         <div class="mt-4">
-            <p class="font-medium">{"Encryption:"}</p>
+            <p class="item_container-text font-medium">{"Encryption:"}</p>
             <select oninput={on_encryption_change.clone()} class="border p-2 rounded">
                 <option value="none" selected=true>{"None"}</option>
                 <option>{"SSL/TLS"}</option>
@@ -371,7 +371,7 @@ pub fn email_settings() -> Html {
 
         <div class="flex items-center mt-4">
             <input type="checkbox" id="auth_required" checked={*auth_required} onclick={toggle_auth_required}/>
-            <label for="auth_required" class="ml-2">{"Authentication Required"}</label>
+            <label for="auth_required" class="item_container-text ml-2">{"Authentication Required"}</label>
         </div>
         {
             if *auth_required {
@@ -386,7 +386,7 @@ pub fn email_settings() -> Html {
             }
         }
         <div class="flex mt-4">
-            <button onclick={on_submit} class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2" type="button">
+            <button onclick={on_submit} class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2">
                 {"Test & Submit"}
             </button>
         </div>

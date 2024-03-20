@@ -56,20 +56,20 @@ pub fn backup_server() -> Html {
 
     html! {
         <div class="p-4">
-            <p class="text-lg font-bold mb-4">{"Backup Server Data:"}</p>
-            <p class="text-md mb-4">{"Download a backup of the entire server database here. This includes all users, podcasts, episodes, settings, and API keys. Use this to migrate to a new server or restore your current server."}</p>
-            <input type="password"
-                   class="input border mb-4"
-                   placeholder="Database Password"
-                   value={(*database_password).clone()}
-                   oninput={Callback::from(move |e: InputEvent| {
-                       let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-                       database_password.set(input.value());
-                   })}
-            />
-            <button onclick={on_download_click} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
-                {"Download Server Backup"}
-            </button>
+            <p class="item_container-text text-lg font-bold mb-4">{"Backup Server Data:"}</p>
+            <p class="item_container-text text-md mb-4">{"Download a backup of the entire server database here. This includes all users, podcasts, episodes, settings, and API keys. Use this to migrate to a new server or restore your current server."}</p>
+            <br/>
+            <div class="flex items-center">
+                <input type="text" id="db=pw"                    
+                oninput={Callback::from(move |e: InputEvent| {
+                    let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                    database_password.set(input.value());
+                })} 
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="mYDBp@ss!" />
+                <button onclick={on_download_click} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                {"Authenticate"}
+                </button>
+            </div>
         </div>
     }
 }

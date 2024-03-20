@@ -14,6 +14,9 @@
     --link-color: #6590fd;
     --container-background: #2c3032;
     --transparent-background: rgba(63, 57, 90, 0.089);
+    --alert-color: #880101;
+    --warning-color: #ffcc00;
+    --success-color: #00cc00;
 }
 
 body {
@@ -496,6 +499,8 @@ body {
     animation: spin 3s linear infinite;
   }
 
+
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -574,6 +579,17 @@ body {
     font-size: 0.8em;
 }
 
+.download-button {
+    color: var(--text-color);
+    background-color: var(--button-color);
+    border-color: var(--border-color);
+    margin-bottom: 10px;
+}
+
+.download-button:hover {
+    background-color: var(--hover-color);
+}
+
 .link {
     color: var(--link-color);
     text-decoration: none;
@@ -582,13 +598,24 @@ body {
 .item-container {
     background-color: var(--container-background);
     border-color: var(--border-color);
+    display: flex;
+    justify-content: space-between;
 }
+
+.button-container {
+    display: flex;
+    justify-content: center; /* Centers button horizontally */
+    align-items: center;     /* Centers button vertically */
+}
+
+
+
 
 .item-container img {
     max-width: 200px; /* Adjust this value as needed */
     max-height: 200px; /* Adjust this value as needed */
     object-fit: cover; /* This will ensure the image covers the area without stretching */
-    
+    align-self: center;
 }
 
 .item_container-text {
@@ -598,6 +625,7 @@ body {
 .item-container-text-link {
     color: var(--standout-color);
     /*background-color: var(--accent-color);*/
+    cursor: pointer;
 }
 
 .item-container-button {
@@ -608,6 +636,20 @@ body {
 
 .item-container-button.selector-button:hover {
     background-color: var(--hover-color); /* Replace #your-hover-color with your desired color */
+}
+
+.item-container-alert-button {
+    color: var(--text-color);
+    background-color: var(--alert-color);
+    border: 1px solid var(--border-color);
+    border-radius: 5px; /* Adjust as needed */
+    padding: 10px 20px; /* Adjust as needed */
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+button.item-container-action-button.item-container-action-button {
+    background-color: var(--alert-color);
 }
 
 .text-button {
@@ -648,27 +690,28 @@ body {
 }
 
 .stats-card {
-    background-color: #f7fafc;
+    background-color: var(--secondary-background);
     padding: 2rem;
     border-radius: 0.5rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     text-align: center;
+    border-color: var(--border-color);
 }
 
 .stats-label {
     font-size: 1rem;
-    color: #718096;
+    color: var(--text-secondary-color);
     margin-bottom: 0.5rem;
 }
 
 .stats-value {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-secondary-color);
 }
 
 .large-card {
-    background-color: #f7fafc;
+    background-color: var(--secondary-background);
     padding: 2rem;
     border-radius: 0.5rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -676,6 +719,7 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    border-color: var(--border-color);
 }
 
 .large-card-image {
@@ -734,11 +778,12 @@ body {
 }
 
 .episode-time-badge {
-    background-color: var(--background-color); /* Light gray background */
     color: var(--text-color); /* Dark gray text */
     font-size: 0.875rem; /* Larger text */
-    border: 1px solid var(--border-color); /* Light gray border */
+    display: inline-flex; /* Keeps elements in line but allows for internal flex properties */
+    align-items: center; /* Aligns children vertically in the center */
 }
+
 
 .time-icon {
     /* Customize your SVG icon here if needed */
@@ -759,6 +804,11 @@ body {
     background-color: var(--background-color); /* Adjust the color as needed */
 }
 
+.setting-box {
+    background-color: var(--accent-color);
+    border-color: var(--border-color);
+}
+
 /* Specific targeting for first and last accordion item */
 #accordion-collapse > :first-child > button {
     border-top-left-radius: 0.75rem; /* 12px */
@@ -773,11 +823,78 @@ body {
 /* Background color for accordion content */
 .accordion-content {
     background-color: var(--secondary-background); /* Example color, adjust as needed */
+    color: --var(--text-color);
 }
 
 /* Hover background color for accordion header */
 .accordion-header:hover {
     background-color: var(--hover-color); /* Example color, adjust as needed */
+    color: var(--text-color);
+}
+
+/* Styles for the select dropdown */
+.theme-select-dropdown {
+    background-color: var(--button-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+.theme-select-dropdown:hover {
+    border-color: var(--dropdown-hover-border-color);
+}
+
+.theme-select-dropdown:focus {
+    outline-color: var(--dropdown-focus-outline-color);
+    box-shadow: 0 0 0 3px var(--dropdown-focus-shadow-color);
+}
+
+/* Styles for the dropdown arrow */
+.theme-dropdown-arrow {
+    color: var(--text-color);
+}
+
+/* Styles for the submit button */
+.theme-submit-button {
+    background-color: var(--transparent-background);
+    color: var(--text-color);
+}
+
+.theme-submit-button:hover {
+    background-color: var(--hover-color);
+}
+
+.theme-submit-button:focus {
+    outline-color: var(--button-focus-outline-color);
+    box-shadow: 0 0 0 3px var(--button-focus-shadow-color);
+}
+
+.settings-button {
+    color: var(--text-color);
+    background-color: var(--button-color);
+    border-color: var(--border-color);
+    margin-bottom: 10px;
+}
+
+.settings-button:hover {
+    background-color: var(--hover-color);
+}
+
+.input-button {
+    display: none; /* Hide the default file input */
+}
+
+.input-button-label {
+    display: inline-block;
+    padding: 10px 20px; /* Adjust as needed */
+    background-color: var(--button-color);
+    color: var(--text-color);
+    cursor: pointer;
+    border-radius: 5px; /* Adjust as needed */
+    border: 1px solid var(--button-border-color);
+}
+
+.input-button-label:hover {
+    background-color: var(--hover-color);
 }
 
 .dropdown-content-class {
@@ -825,7 +942,7 @@ body {
 .table-header {
     text-transform: uppercase;
     background-color: var(--bonus-color); /* Light gray background for table header */
-    color: #333; /* Dark font color */
+    color: var(--text-color);
 }
 
 .table-row {
@@ -836,15 +953,6 @@ body {
 
 .table-row:hover {
     background-color: var(--secondary-background); /* Slightly darker background on hover */
-}
-
-
-
-
-
-
-.episode-layout-container {
-    /* Styles for the main container */
 }
 
 .episode-top-info {
@@ -867,16 +975,24 @@ body {
 
 .podcast-title {
     /* Larger font size for podcast title */
-    font-size: 1.5rem; /* Example size */
+    font-size: 1.75rem; /* Adjust as needed */
+    color: var(--text-color);
+    font-weight: bold; /* Make the title bold */
+    margin-bottom: 0.5rem; /* Add some space below the title */
 }
 
 .episode-title {
-    font-size: 1.5rem; /* Example size */
+    font-size: 1.5rem; /* Adjust as needed */
+    color: var(--text-color);
+    font-weight: bold; /* Make the title bold */
+    margin-bottom: 0.5rem; /* Add some space below the title */
 }
 
 .episode-duration, .episode-release-date {
     /* Style for duration and release date */
-    font-size: 1.5rem; /* Example size */
+    font-size: 1.0rem; /* Adjust as needed */
+    color: var(--text-color);
+    font-style: italic; /* Make the text italic */
 }
 
 .episode-action-buttons {
@@ -885,6 +1001,29 @@ body {
     margin-bottom: 20px;
 }
 
+.episode-action-buttons button {
+    background-color: transparent;
+    color: var(--text-color);
+    padding: 2.5px 6px;
+    font-size: 1.0rem;
+    font-weight: 500; /* Equivalent to font-medium */
+    line-height: normal;
+    transition: color 0.15s ease-in-out;
+}
+
+.episode-action-buttons button:hover {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+}
+
+.episode-action-buttons button:focus {
+    color: var(--text-color);
+    outline: none;
+}
+
+.episode-action-buttons button:active {
+    color: var(--text-color);
+}
 
 
 .episode-description {

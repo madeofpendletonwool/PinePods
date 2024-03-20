@@ -95,6 +95,7 @@ pub fn queue() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Queue"}</h1>
             {
                 if let Some(queued_eps) = state.queued_episodes.clone() {
                     web_sys::console::log_1(&format!("Queued episodes in state: {:?}", queued_eps).into()); // Log queued episodes in state

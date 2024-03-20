@@ -31,19 +31,23 @@ pub enum DateFormat {
     JIS,
 }
 
-pub fn parse_date(date_str: &str, user_tz: &Option<String>, date_format: DateFormat) -> DateTime<Tz> {
-    let format_str = match date_format {
-        DateFormat::MDY => "%m-%d-%Y",
-        DateFormat::DMY => "%d-%m-%Y",
-        DateFormat::YMD => "%Y-%m-%d",
-        DateFormat::JUL => "%y/%j",
-        DateFormat::ISO => "%Y-%m-%d",
-        DateFormat::USA => "%m/%d/%Y",
-        DateFormat::EUR => "%d.%m.%Y",
-        DateFormat::JIS => "%Y-%m-%d",
+pub fn match_date_format(date_format: Option<&str>) -> DateFormat {
+    let date_format = match date_format {
+        Some("MDY") => DateFormat::MDY,
+        Some("DMY") => DateFormat::DMY,
+        Some("YMD") => DateFormat::YMD,
+        Some("JUL") => DateFormat::JUL,
+        Some("ISO") => DateFormat::ISO,
+        Some("USA") => DateFormat::USA,
+        Some("EUR") => DateFormat::EUR,
+        Some("JIS") => DateFormat::JIS,
+        _ => DateFormat::ISO, // default to ISO if the format is not recognized
     };
+    date_format
+}
 
-    let naive_datetime = NaiveDateTime::parse_from_str(date_str, format_str).unwrap_or_else(|_| Utc::now().naive_utc());
+pub fn parse_date(date_str: &str, user_tz: &Option<String>) -> DateTime<Tz> {
+    let naive_datetime = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").unwrap_or_else(|_| Utc::now().naive_utc());
     let datetime_utc = Utc.from_utc_datetime(&naive_datetime);
     let tz: Tz = user_tz.as_ref().and_then(|tz| tz.parse().ok()).unwrap_or_else(|| chrono_tz::UTC);
     datetime_utc.with_timezone(&tz)

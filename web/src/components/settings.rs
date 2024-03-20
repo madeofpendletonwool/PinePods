@@ -143,12 +143,12 @@ pub fn settings() -> Html {
     <div class="main-container">
         <Search_nav />
         <div class="my-4">
-            <h1 class="text-2xl font-bold mb-3">{ "Settings" }</h1>
+            <h1 class="item_container-text text-2xl font-bold mb-3">{ "Settings" }</h1>
             <div class="tabs flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200">
                 <Tab is_active={*active_tab == "user"} class="me-2" label={"User Settings".to_string()} onclick={on_user_tab_click.clone()} />
                 <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
             </div>
-            <div class="tab-content bg-white p-4 shadow rounded-lg">
+            <div class="tab-content setting-box p-4 shadow rounded-lg">
             {
                 if *active_tab == "user" {
                     html! {

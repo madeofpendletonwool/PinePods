@@ -13,6 +13,7 @@ import base64
 import subprocess
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from requests.exceptions import RequestException
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -964,6 +965,24 @@ def get_episode_id(cnx, podcast_id, episode_title, episode_url):
     return episode_id
 
 
+def get_episode_id_by_url(cnx, episode_url):
+    cursor = cnx.cursor()
+
+    query = "SELECT EpisodeID FROM Episodes WHERE EpisodeURL = %s"
+    params = (episode_url,)  # Ensure this is a tuple
+
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+
+    episode_id = None  # Initialize episode_id
+    if result:
+        episode_id = result[0]
+
+    cursor.close()
+    return episode_id
+
+
+
 def queue_podcast_entry(cnx, user_id, episode_title, episode_url):
     cursor = cnx.cursor()
 
@@ -1061,6 +1080,15 @@ def record_listen_duration(cnx, episode_id, user_id, listen_duration):
     cnx.commit()
     cursor.close()
     # cnx.close()
+
+def get_local_episode_times(cnx, user_id):
+    cursor = cnx.cursor()
+    # Fetch all listen durations for the given user
+    cursor.execute("SELECT EpisodeID, ListenDuration FROM UserEpisodeHistory WHERE UserID=%s", (user_id,))
+    episode_times = [{"episode_id": row[0], "listen_duration": row[1]} for row in cursor.fetchall()]
+    cursor.close()
+    return episode_times
+
 
 
 def check_episode_playback(cnx, user_id, episode_title, episode_url):
@@ -2598,6 +2626,9 @@ def get_nextcloud_users(database_type, cnx):
 
     return users
 
+def current_timestamp():
+    # Return the current time in ISO 8601 format
+    return datetime.utcnow().isoformat() + 'Z'  # Adding 'Z' indicates Zulu time, which is UTC
 
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token):
     from cryptography.fernet import Fernet
@@ -2615,6 +2646,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
         gpodder_token = None
 
     # Now, use the decrypted token in your API request
+    print(f"Decrypted gPodder token: {gpodder_token}")
     response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions",
                             headers={"Authorization": f"Bearer {gpodder_token}"})
     print(f"Response status: {response.status_code}, Content: {response.text}")
@@ -2657,6 +2689,61 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
     if podcasts_to_add or podcasts_to_remove:
         sync_subscription_change(gpodder_url, {"Authorization": f"Bearer {gpodder_token}"}, list(podcasts_to_add),
                                  list(podcasts_to_remove))
+        
+    # from requests.exceptions import RequestException
+
+    # Fetch episode actions from Nextcloud
+    try:
+        episode_actions_response = requests.get(
+            f"{gpodder_url}/index.php/apps/gpoddersync/episode_action",
+            headers={"Authorization": f"Bearer {gpodder_token}"}
+        )
+        episode_actions_response.raise_for_status()  # This will raise an exception for HTTP errors
+        episode_actions = episode_actions_response.json()
+    except RequestException as e:
+        print(f"Error fetching Nextcloud episode actions: {e}")
+        episode_actions = []
+
+    # Process episode actions from Nextcloud
+    for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
+        try:
+            # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
+            if action["action"] in ["play", "update_time"] and "position" in action and "episode" in action:
+                episode_id = get_episode_id_by_url(cnx, action["episode"])
+                if episode_id:
+                    record_listen_duration(cnx, episode_id, user_id, int(action["position"]))
+        except Exception as e:
+            print(f"Error processing episode action {action}: {e}")
+
+    # Collect local episode listen times and push to Nextcloud if necessary
+    try:
+        local_episode_times = get_local_episode_times(cnx, user_id)
+    except Exception as e:
+        print(f"Error fetching local episode times: {e}")
+        local_episode_times = []
+
+    # Send local episode listen times to Nextcloud
+    update_actions = []
+    for episode_time in local_episode_times:
+        update_actions.append({
+            "podcast": episode_time["podcast_url"],
+            "episode": episode_time["episode_url"],
+            "action": "update_time",  # This is a hypothetical action
+            "timestamp": current_timestamp(),  # Your method to get the current timestamp
+            "position": episode_time["listen_duration"]
+        })
+
+    if update_actions:
+        try:
+            response = requests.post(
+                f"{gpodder_url}/index.php/apps/gpoddersync/episode_action/create",
+                json=update_actions,
+                headers={"Authorization": f"Bearer {gpodder_token}"}
+            )
+            response.raise_for_status()  # Check for HTTP errors
+            print(f"Update episode times response: {response.status_code}")
+        except RequestException as e:
+            print(f"Error updating episode times in Nextcloud: {e}")
 
 
 # database_functions.py

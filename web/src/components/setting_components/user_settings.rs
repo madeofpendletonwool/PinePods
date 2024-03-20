@@ -516,9 +516,9 @@ pub fn user_settings() -> Html {
             }
         }
             <div class="p-4">
-                <p class="text-lg font-bold mb-4">{"User Management:"}</p>
-                <p class="text-md mb-4">{"You can manage users here. Click a user in the table to manage settings for that existing user or click 'Create New' to add a new user. Note that the guest user will always show regardless of whether it's enabled or not. View the Guest Settings Area to properly manage that."}</p>
-                <button onclick={on_create_new_user} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                <p class="item_container-text text-lg font-bold mb-4">{"User Management:"}</p>
+                <p class="item_container-text text-md mb-4">{"You can manage users here. Click a user in the table to manage settings for that existing user or click 'Create New' to add a new user. Note that the guest user will always show regardless of whether it's enabled or not. View the Guest Settings Area to properly manage that."}</p>
+                <button onclick={on_create_new_user} class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                     {"Create New User"}
                 </button>
             </div>

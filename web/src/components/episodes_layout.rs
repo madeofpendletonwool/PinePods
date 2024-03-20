@@ -458,26 +458,34 @@ pub fn episode_layout() -> Html {
 
                                 let format_release = format!("Released on: {}", &episode.pub_date.clone().unwrap_or_default());
                                 html! {
-                                    <div class="item-container flex items-center mb-4 bg-white shadow-md rounded-lg overflow-hidden">
-                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 object-cover"/>
-                                        <div class="flex flex-col p-4 space-y-2 w-9/12">
-                                            <p class="item-container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
+                                    <div class="item-container flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
+                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 md:w-4/12 object-cover pl-4"/>
+                                        <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                                            <p class="item_container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
                                             // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                             {
-                                            html! {
-                                                <div class="item_container-text episode-description-container">
-                                                    <div>
-                                                        <SafeHtml html={description} />
+                                                html! {
+                                                    <div class="item_container-text hidden md:block">
+                                                        <div class="item_container-text episode-description-container">
+                                                            <SafeHtml html={description} />
+                                                        </div>
+                                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
+                                                            { if is_expanded { "See Less" } else { "See More" } }
+                                                        </a>
                                                     </div>
-                                                    <button class="item-container-button selector-button w-1/4 hover:bg-blue-700 font-bold py-1 px-2 rounded" onclick={toggle_expanded}>
-                                                        { if is_expanded { "See Less" } else { "See More" } }
-                                                    </button>
-                                                </div>
-                                            }
                                                 }
-                                            <p class="item-container-text">{ format_release.clone() }</p>
+                                            }
+                                            <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2">
+                                                <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                                                </svg>
+                                                { format_release }
+                                            </span>
                                         </div>
-                                        <button class="item-container-button selector-button w-1/12 font-bold py-2 px-4 rounded" onclick={on_play_click}>
+                                        <button
+                                            class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+                                            onclick={on_play_click}
+                                        >
                                             <span class="material-icons">{"play_arrow"}</span>
                                         </button>
 

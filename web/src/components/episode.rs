@@ -6,7 +6,7 @@ use crate::requests::pod_req;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::sanitize_html_with_blank_target;
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, format_datetime, format_time, match_date_format, parse_date};
 use crate::requests::pod_req::{EpisodeRequest, EpisodeMetadataResponse, QueuePodcastRequest, call_queue_episode, SavePodcastRequest, call_save_episode, DownloadEpisodeRequest, call_download_episode};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::SafeHtml;
@@ -242,9 +242,14 @@ pub fn epsiode() -> Html {
                             // dropdown_open.set(false);
                         })
                     };
+
+                    let datetime = parse_date(&episode.episode.EpisodePubDate, &state.user_tz);
+                    let date_format = match_date_format(state.date_format.as_deref());
+                    let format_duration = format_time(episode.episode.EpisodeDuration as f64);
+                    let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                     
-                    let format_duration = format!("Duration: {} minutes", episode.episode.EpisodeDuration / 60); // Assuming duration is in seconds
-                    let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
+                    // let format_duration = format!("Duration: {} minutes", e / 60); // Assuming duration is in seconds
+                    // let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
     
                     html! {
                         <div class="episode-layout-container">
@@ -258,10 +263,22 @@ pub fn epsiode() -> Html {
                                 </div>
                             </div>
                             <div class="episode-action-buttons">
-                                <button onclick={on_play_click} class="play-button">{"Play"}</button>
-                                <button onclick={on_add_to_queue} class="queue-button">{"Queue"}</button>
-                                <button onclick={on_save_episode} class="save-button">{"Save"}</button>
-                                <button onclick={on_download_episode} class="download-button">{"Download"}</button>
+                                <button onclick={on_play_click} class="play-button">
+                                    <i class="material-icons">{ "play_arrow" }</i>
+                                    {"Play"}
+                                </button>
+                                <button onclick={on_add_to_queue} class="queue-button">
+                                    <i class="material-icons">{ "playlist_add" }</i>
+                                    {"Queue"}
+                                </button>
+                                <button onclick={on_save_episode} class="save-button">
+                                    <i class="material-icons">{ "favorite" }</i>
+                                    {"Save"}
+                                </button>
+                                <button onclick={on_download_episode} class="download-button-ep">
+                                    <i class="material-icons">{ "download" }</i>
+                                    {"Download"}
+                                </button>
                             </div>
                             <hr class="episode-divider" />
                             <div class="episode-description">

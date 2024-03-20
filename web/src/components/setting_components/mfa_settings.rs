@@ -212,13 +212,13 @@ pub fn mfa_options() -> Html {
             }
         }
         <div class="p-4"> // You can adjust the padding as needed
-            <p class="text-lg font-bold mb-4">{"MFA Options:"}</p>
-            <p class="text-md mb-4">{"You can setup edit, or remove MFA for your account here. MFA will only be prompted when new authentication is needed."}</p> // Styled paragraph
+            <p class="item_container-text text-lg font-bold mb-4">{"MFA Options:"}</p>
+            <p class="item_container-text text-md mb-4">{"You can setup edit, or remove MFA for your account here. MFA will only be prompted when new authentication is needed."}</p> // Styled paragraph
 
             <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" disabled={**loading.borrow()} checked={**mfa_status.borrow()} class="sr-only peer" onclick={open_setup_modal.clone()} />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">{"Enable MFA"}</span>
+                <span class="ms-3 text-sm font-medium item_container-text">{"Enable MFA"}</span>
             </label>
         </div>
         </>
