@@ -377,9 +377,11 @@ pub fn episode_layout() -> Html {
                             </div>
                         </div>
 
-                    <button onclick={toggle_podcast} class={format!("item-container-button selector-button w-1/4 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded {}", button_class)}>
-                        { button_content }
-                    </button>
+                        <div class="button-container">
+                        <button onclick={toggle_podcast} class={format!("item-container-button selector-button hover:bg-blue-700 text-white font-bold py-2 px-4 rounded {}", button_class)}>
+                            { button_content }
+                        </button>
+                        </div>
                     </div>
                 }
             } else {
@@ -482,12 +484,15 @@ pub fn episode_layout() -> Html {
                                                 { format_release }
                                             </span>
                                         </div>
-                                        <button
-                                            class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
-                                            onclick={on_play_click}
-                                        >
-                                            <span class="material-icons">{"play_arrow"}</span>
-                                        </button>
+                                        <div class="mr-4">
+                                            <button
+                                                class="item-container-button border-solid border selector-button font-bold rounded-full flex items-center justify-center"
+                                                style="width: 60px; height: 60px;"
+                                                onclick={on_play_click}
+                                            >
+                                                <span class="material-icons large-material-icons">{"play_arrow"}</span>
+                                            </button>
+                                        </div>
 
 
                                     </div>

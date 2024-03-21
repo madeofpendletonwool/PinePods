@@ -347,27 +347,27 @@ pub fn email_settings() -> Html {
         <p class="item_container-text text-lg font-bold mb-4">{"Update Settings:"}</p>
 
         <div class="flex mt-4">
-            <input oninput={on_server_name_change.clone()} type="text" placeholder="Server Name" class="border p-2 mr-2 rounded"/>
+            <input oninput={on_server_name_change.clone()} type="text" placeholder="Server Name" class="email-input border p-2 mr-2 rounded"/>
             <span class="item_container-text">{":"}</span>
-            <input oninput={on_server_port_change.clone()} type="text" placeholder="Port" class="border p-2 ml-2 rounded"/>
+            <input oninput={on_server_port_change.clone()} type="text" placeholder="Port" class="email-input border p-2 ml-2 rounded"/>
         </div>
 
         <div class="mt-4">
             <p class="item_container-text font-medium">{"Send Mode:"}</p>
-            <select oninput={on_send_mode_change.clone()} class="border p-2 rounded mr-2">
+            <select oninput={on_send_mode_change.clone()} class="email-select border p-2 rounded mr-2">
                 <option value="SMTP" selected=true>{"SMTP"}</option>
             </select>
         </div>
         <div class="mt-4">
             <p class="item_container-text font-medium">{"Encryption:"}</p>
-            <select oninput={on_encryption_change.clone()} class="border p-2 rounded">
+            <select oninput={on_encryption_change.clone()} class="email-select border p-2 rounded">
                 <option value="none" selected=true>{"None"}</option>
                 <option>{"SSL/TLS"}</option>
                 <option>{"StartTLS"}</option>
             </select>
         </div>
 
-        <input oninput={on_from_email_change.clone()} type="text" placeholder="From Address" class="border p-2 mt-4 rounded"/>
+        <input oninput={on_from_email_change.clone()} type="text" placeholder="From Address" class="email-input border p-2 mt-4 rounded"/>
 
         <div class="flex items-center mt-4">
             <input type="checkbox" id="auth_required" checked={*auth_required} onclick={toggle_auth_required}/>
@@ -377,8 +377,8 @@ pub fn email_settings() -> Html {
             if *auth_required {
                 html! {
                                 <>
-                                    <input oninput={on_username_change.clone()} type="text" placeholder="Username" class="border p-2 mt-4 rounded"/>
-                                    <input oninput={on_password_change.clone()} type="password" placeholder="Password" class="border p-2 mt-4 rounded"/>
+                                    <input oninput={on_username_change.clone()} type="text" placeholder="Username" class="email-input border p-2 mt-4 rounded"/>
+                                    <input oninput={on_password_change.clone()} type="password" placeholder="Password" class="email-input border p-2 mt-4 rounded"/>
                                 </>
                             }
             } else {

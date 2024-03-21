@@ -222,7 +222,7 @@ pub fn podcasts() -> Html {
                                     <div class="item-container flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
                                         <img onclick={on_title_click.clone()} src={podcast.ArtworkURL.clone()} alt={format!("Cover for {}", &podcast.PodcastName)} class="w-2/12 object-cover"/>
                                         <div class="flex flex-col p-4 space-y-2 w-8/12">
-                                            <a onclick={on_title_click} class="item_container-text text-xl font-semibold hover:underline">{ &podcast.PodcastName }</a>
+                                            <a onclick={on_title_click} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.PodcastName }</a>
                                             {
                                                 html! {
                                                     <div class="item_container-text episode-description-container">
@@ -234,9 +234,15 @@ pub fn podcasts() -> Html {
                                             }
                                             <p class="item_container-text">{ format!("Episode Count: {}", &podcast.EpisodeCount) }</p>
                                         </div>
-                                        <button class="item-container-action-button selector-button w-1/12 mx-auto font-bold py-2 px-4 rounded">
-                                            <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
-                                        </button>
+                                        // <button class="item-container-action-button selector-button w-1/12 mx-auto font-bold py-2 px-4 rounded">
+                                        //     <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
+                                        // </button>
+                                        <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
+                                            <button class={"selector-button font-bold py-2 px-4 rounded bg-red-500"} style={"min-width: 35px;"}>
+                                                <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
+                                                // { button_text }
+                                            </button>
+                                        </div>
                                     
                                     </div>
                                 </div>

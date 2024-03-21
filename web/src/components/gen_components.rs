@@ -611,27 +611,27 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     html! {
         <>
         <div class="relative inline-block">
-        <button
-            id="dropdown-button"
-            onclick={toggle_dropdown.clone()}
-            class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
-        >
-            <span class="material-icons">{"more_vert"}</span>
-        </button>
-        // Dropdown Content
-        {
-            if *dropdown_open {
-                html! {
-                    <div ref={dropdown_ref.clone()} class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
-                        <ul class="dropdown-container py-2 text-sm text-gray-700">
-                            { action_buttons }
-                        </ul>
-                    </div>
+            <button
+                id="dropdown-button"
+                onclick={toggle_dropdown.clone()}
+                class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+            >
+                <span class="material-icons large-material-icons md:text-6xl text-4xl">{"more_vert"}</span>
+            </button>
+            // Dropdown Content
+            {
+                if *dropdown_open {
+                    html! {
+                        <div ref={dropdown_ref.clone()} class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
+                            <ul class="dropdown-container py-2 text-sm text-gray-700">
+                                { action_buttons }
+                            </ul>
+                        </div>
+                    }
+                } else {
+                    html! {}
                 }
-            } else {
-                html! {}
             }
-        }
         </div>
         </>
     }
@@ -905,7 +905,7 @@ pub fn episode_item(
                     {
                         if formatted_listen_duration.is_some() {
                             html! {
-                                <div class="flex items-center flex-nowrap">
+                                <div class="flex items-center space-x-2">
                                     <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
                                     <div class="progress-bar-container">
                                         <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
@@ -921,15 +921,19 @@ pub fn episode_item(
                         }
                     }
                 </div>
-                <div class="flex flex-col md:flex-row space-y-6 md:space-y-0 md:space-x-6 items-center h-full w-2/12 md:w-2/12 px-2 md:px-4">
+                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
                     <button
-                        class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+                        class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                         onclick={on_play_click}
                     >
-                        <span class="material-icons">{"play_arrow"}</span>
+                        <span class="material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                     </button>
                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
                 </div>
+                
+                
+                
+                
             </div>
         </div>
     }

@@ -343,6 +343,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Require Re-Login if API Key that's saved doesn't work
 - [x] Episodes directly get the wrong images sometimes. This likely has to do with the way the database is parsing the podcasts as they refresh and pull in. (Should be fixed. Need to allow feeds to load in some episodes to know for sure)
 - [x] Episode Releases are showing now time. Rather than actual release in app (Bug with Parsing)
+- [x] Consistent Styling Throughout
 
 - [ ] Handle situation where there's no audio in a feed
 
@@ -354,7 +355,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 - [ ] Nextcloud Subscription Timestamps
 
-- [ ] Consistent Styling Throughout
 - [ ] Setup All Themes
 
 - [ ] Verify Funtional Mobile Version

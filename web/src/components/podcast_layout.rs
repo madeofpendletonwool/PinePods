@@ -325,6 +325,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                         <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
                             <a onclick={on_title_click.clone()} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.title }</a>
                             <p class="item_container-text">{ &podcast.description }</p>
+                            <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
                         <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
                             <button class={format!("selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>

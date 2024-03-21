@@ -30,6 +30,18 @@ body {
     padding: 0 20px;
 }
 
+.item_container-text.episode-description-container a {
+    color: var(--link-color); /* Replace #yourColorCode with the color you want */
+    text-decoration: none; /* Example property, adjust as needed */
+}
+
+.item_container-text.episode-description-container a:hover {
+    color: var(--hover-color); /* Replace #hoverColorCode with the color you want for hover state */
+    text-decoration: underline; /* Example property, adjust as needed */
+}
+
+
+
 #login-page {
     background-image: url('./assets/backgrounds/2.jpg');
     background-repeat: no-repeat;
@@ -346,7 +358,7 @@ body {
     font-size: 48px;
 }
 
-.audio-player .top-section .retract-button span.material-icons {
+.audio-player .top-section .retract-button {
     font-size: 48px; /* Adjust as needed */
 }
 
@@ -527,24 +539,43 @@ body {
 .header-text {
     font-weight: bold;
     margin-bottom: 5px;
-    padding-left: 10px;
+    color: var(--text-color);
 }
 
 .item-header {
     display: flex;
-    align-items: center;
+    align-items: center; /* Ensure items are centered vertically */
     background-color: var(--bonus-color);
     padding: 20px;
     margin-bottom: 20px;
     border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Soft shadow for depth */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .item-header-cover {
-    width: 25%; /* Adjust size as needed */
+    flex-shrink: 0; /* Prevent the image from shrinking */
+    flex-basis: 25%; /* Set a base width */
+    min-width: 150px; /* Prevent the image from becoming too small */
     object-fit: cover;
     border-radius: 5px;
     margin-right: 20px;
+    height: auto; /* Adjust height automatically */
+}
+
+.header-add-button-container {
+    display: flex; /* Use flexbox to center the button */
+    justify-content: center; /* Center button horizontally */
+    width: 100%; /* Take the full width of its parent */
+    padding: 10px 0; /* Optional: Add some vertical padding */
+    width: 150px; /* Fixed width for the button */
+}
+
+.header-add-button {
+    display: flex; /* Use flexbox to center the button */
+    justify-content: center; /* Center button horizontally */
+    width: 100%; /* Take the full width of its parent */
+    padding: 10px 0; /* Optional: Add some vertical padding */
+    width: 150px; /* Fixed width for the button */
 }
 
 .item-header-info {
@@ -561,6 +592,7 @@ body {
 .item-header-description {
     color: var(--text-color);
     line-height: 1.4;
+    margin-bottom: 15px;
 }
 
 .item-header-button {
@@ -572,7 +604,7 @@ body {
 .category-box {
     display: inline-block;
     background-color: var(--accent-color);
-    color: #333;
+    color: var(--bonus-color);
     padding: 5px 10px;
     margin: 5px;
     border-radius: 4px; /* Slightly rounded corners */
@@ -669,10 +701,14 @@ button.item-container-action-button.item-container-action-button {
     padding: 0;
     line-height: 1;
     /* Adjust the size if necessary */
-    width: 24px;
-    height: 24px;
     color: var(--text-color);
 }
+.large-material-icons {
+    width: 40px;
+    height: 40px;
+    font-size: 36px !important; /* Or whatever size you prefer */
+}
+
 
 .icon-space {
     transform: translateY(4px);
@@ -868,6 +904,36 @@ button.item-container-action-button.item-container-action-button {
     box-shadow: 0 0 0 3px var(--button-focus-shadow-color);
 }
 
+.email-input {
+    background-color: var(--background-color); /* Change to your desired background color */
+    color: var(--text-color); /* Change to your desired text color */
+    border: 1px solid var(--border-color); /* You can change this as needed */
+    padding: 8px; /* Adjust padding as needed */
+    border-radius: 4px; /* Rounded corners */
+}
+
+.email-input::placeholder { /* Chrome, Firefox, Opera, Safari 10.1+ */
+    color: var(--accent-color); /* Change to your desired placeholder text color */
+    opacity: 1; /* Firefox */
+}
+
+.email-input:-ms-input-placeholder { /* Internet Explorer 10-11 */
+    color: var(--accent-color);
+}
+
+.email-input::-ms-input-placeholder { /* Microsoft Edge */
+    color: var(--accent-color);
+}
+
+.email-select {
+    background-color: var(--background-color); /* Change to your desired background color */
+    color: var(--text-color); /* Change to your desired text color */
+    border: 1px solid var(--border-color); /* You can change this as needed */
+    padding: 8px; /* Adjust padding as needed */
+    border-radius: 4px; /* Rounded corners */
+}
+
+
 .settings-button {
     color: var(--text-color);
     background-color: var(--button-color);
@@ -1057,14 +1123,14 @@ button.item-container-action-button.item-container-action-button {
 
 .progress-bar-container {
     height: 10px; /* Or whatever height you prefer */
-    background-color: #ddd; /* Background of the unfulfilled part */
+    background-color: var(--accent-color); /* Background of the unfulfilled part */
     width: 100%; /* Or adjust to fit your layout */
     border-radius: 5px; /* Optional, for rounded corners */
 }
 
 .progress-bar {
     height: 100%;
-    background-color: #4CAF50; /* Or any color you prefer */
+    background-color: var(--link-color); /* Or any color you prefer */
     border-radius: 5px; /* Match container's border-radius */
     transition: width 0.5s ease-in-out; /* Smooth transition for changes, optional */
 }
