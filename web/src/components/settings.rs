@@ -74,7 +74,7 @@ pub fn accordion_item(AccordionItemProps { title, content, position }: &Accordio
         <div class={format!("border border-gray-200 dark:border-gray-700 {}", border_class)}>
             <h2>
                 <button
-                    class={format!("flex accordion-header items-center justify-between w-full p-5 font-medium text-gray-500 {} focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-800 dark:text-gray-400 gap-3", button_class)}
+                    class={format!("flex accordion-header items-center justify-between w-full p-5 font-medium {} focus:ring-4 gap-3", button_class)}
                     onclick={toggle}
                 >
                     <span>{ title }</span>
@@ -144,11 +144,11 @@ pub fn settings() -> Html {
         <Search_nav />
         <div class="my-4">
             <h1 class="item_container-text text-2xl font-bold mb-3">{ "Settings" }</h1>
-            <div class="tabs flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200">
+            <div class="item_container-text tabs flex flex-wrap text-sm font-medium text-center border-b border-gray-200">
                 <Tab is_active={*active_tab == "user"} class="me-2" label={"User Settings".to_string()} onclick={on_user_tab_click.clone()} />
                 <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
             </div>
-            <div class="tab-content setting-box p-4 shadow rounded-lg">
+            <div class="tab-content setting-box p-1 shadow rounded-lg">
             {
                 if *active_tab == "user" {
                     html! {

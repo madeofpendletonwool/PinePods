@@ -344,8 +344,11 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Episodes directly get the wrong images sometimes. This likely has to do with the way the database is parsing the podcasts as they refresh and pull in. (Should be fixed. Need to allow feeds to load in some episodes to know for sure)
 - [x] Episode Releases are showing now time. Rather than actual release in app (Bug with Parsing)
 - [x] Consistent Styling Throughout
+- [x] Setup All Themes
 
 - [ ] Handle situation where there's no audio in a feed
+
+- [ ] Initial Screen loading as we pull in context
 
 - [ ] Downloads page playing streamed episodes. Should stream from server files
 
@@ -354,8 +357,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Loading icon in the center of screen while episodes load in (Done on home - Further test)
 
 - [ ] Nextcloud Subscription Timestamps
-
-- [ ] Setup All Themes
 
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout

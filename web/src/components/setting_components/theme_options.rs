@@ -66,11 +66,15 @@ pub fn theme() -> Html {
                 <select onchange={on_change} class="theme-select-dropdown appearance-none w-full border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
                     <option value="Light" selected={(*selected_theme) == "Light"}>{"Light"}</option>
                     <option value="Dark" selected={(*selected_theme) == "Dark"}>{"Dark"}</option>
+                    <option value="Github Light" selected={(*selected_theme) == "Github Light"}>{"Github Light"}</option>   
+                    <option value="Nordic Light" selected={(*selected_theme) == "Nordic Light"}>{"Nordic Light"}</option>                                     
                     <option value="Nordic" selected={(*selected_theme) == "Nordic"}>{"Nordic"}</option>
                     <option value="Abyss" selected={(*selected_theme) == "Abyss"}>{"Abyss"}</option>
                     <option value="Dracula" selected={(*selected_theme) == "Dracula"}>{"Dracula"}</option>
                     <option value="Neon" selected={(*selected_theme) == "Neon"}>{"Neon"}</option>
                     <option value="Kimbie" selected={(*selected_theme) == "Kimbie"}>{"Kimbie"}</option>
+                    <option value="Gruvbox Light" selected={(*selected_theme) == "Gruvbox Light"}>{"Gruvbox Light"}</option>
+                    <option value="Gruvbox Dark" selected={(*selected_theme) == "Gruvbox Dark"}>{"Gruvbox Dark"}</option>
                     <option value="Greenie Meanie" selected={(*selected_theme) == "Greenie Meanie"}>{"Greenie Meanie"}</option>
                     <option value="Wildberries" selected={(*selected_theme) == "Wildberries"}>{"Wildberries"}</option>
                     <option value="Hot Dog Stand - MY EYES" selected={(*selected_theme) == "Hot Dog Stand - MY EYES"}>{"Hot Dog Stand - MY EYES"}</option>
@@ -92,28 +96,52 @@ pub fn theme() -> Html {
         const root = document.documentElement;
         switch (theme) {
             case 'Light':
-                root.style.setProperty('--background-color', '#32333b');
-                root.style.setProperty('--button-color', '#2c3032');
-                root.style.setProperty('--text-color', '#000000');
-                root.style.setProperty('--text-secondary-color', '#000000');
-                root.style.setProperty('--border-color', '#000000');
-                root.style.setProperty('--accent-color', '#000000'); // Assuming black as accent color
+                root.style.setProperty('--background-color', '#f9f9f9');
+                root.style.setProperty('--button-color', '#0099e1');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#24292e');
+                root.style.setProperty('--text-color', '#4a4a4a');
+                root.style.setProperty('--text-secondary-color', '#ababab');
+                root.style.setProperty('--border-color', '#4a4a4a');
+                root.style.setProperty('--accent-color', '#969797');
+                root.style.setProperty('--prog-bar-color', '#d5d7d8');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
-                root.style.setProperty('--secondary-background', '#32333b');
-                root.style.setProperty('--standout-color', '#304BFF');
-                root.style.setProperty('--hover-color', '#304BFF');
+                root.style.setProperty('--bonus-color', '#0099e1');
+                root.style.setProperty('--secondary-background', '#f1f1f1');
+                root.style.setProperty('--container-background', '#e8e8e8');
+                root.style.setProperty('--standout-color', '#705697');
+                root.style.setProperty('--hover-color', '#0099e1');
+                root.style.setProperty('--link-color', '#0099e1');
+                break;
+
+            case 'Github Light':
+                root.style.setProperty('--background-color', '#ffffff');
+                root.style.setProperty('--button-color', '#54a3ff');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#24292e');
+                root.style.setProperty('--text-color', '#70777e');
+                root.style.setProperty('--text-secondary-color', '#707378');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#666d76');
+                root.style.setProperty('--prog-bar-color', '#f1f2f3');
+                root.style.setProperty('--error-color', 'red');
+                root.style.setProperty('--bonus-color', '#d3dbcd');
+                root.style.setProperty('--secondary-background', '#24292e');
+                root.style.setProperty('--container-background', '#fafbfc');
+                root.style.setProperty('--standout-color', '#705697');
+                root.style.setProperty('--hover-color', '#d5d0e2');
                 root.style.setProperty('--link-color', '#6590fd');
-                root.style.setProperty('--transparent-background', 'rgba(63, 57, 90, 0.089');
                 break;
 
             case 'Dark':
                 root.style.setProperty('--background-color', '#2a2b33');
                 root.style.setProperty('--button-color', '#303648');
+                root.style.setProperty('--button-text-color', '#f6f5f4');
                 root.style.setProperty('--text-color', '#f6f5f4');
                 root.style.setProperty('--text-secondary-color', '#f6f5f4');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#4a535e');
+                root.style.setProperty('--prog-bar-color', '#4a535e');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#32333b');
@@ -123,100 +151,202 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6590fd');
                 break;
 
+            case 'Nordic Light':
+                root.style.setProperty('--background-color', '#eceff4');
+                root.style.setProperty('--button-color', '#d8dee9');
+                root.style.setProperty('--button-text-color', '#696c00');
+                root.style.setProperty('--text-color', '#656d76');
+                root.style.setProperty('--text-secondary-color', '#9aa2aa');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#878d95');
+                root.style.setProperty('--prog-bar-color', '#cbdbf0');
+                root.style.setProperty('--error-color', 'red');
+                root.style.setProperty('--bonus-color', '#d8dee9'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#e5e9f0');
+                root.style.setProperty('--container-background', '#d8dee9');
+                root.style.setProperty('--standout-color', '#2f363d');
+                root.style.setProperty('--hover-color', '#2a85cf');
+                root.style.setProperty('--link-color', '#2a85cf');
+                break;
+
             case 'Nordic':
                 root.style.setProperty('--background-color', '#3C4252');
-                root.style.setProperty('--button-color', '#FFFFFF');
-                root.style.setProperty('--text-color', '#FFFFFF');
-                root.style.setProperty('--accent-color', '#FFFFFF'); // Assuming white as accent color
+                root.style.setProperty('--button-color', '#3e4555');
+                root.style.setProperty('--button-text-color', '#f6f5f4');
+                root.style.setProperty('--text-color', '#f6f5f4');
+                root.style.setProperty('--text-secondary-color', '#f6f5f4');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#6d747f');
+                root.style.setProperty('--prog-bar-color', '#323542');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
-                root.style.setProperty('--secondary-background', '#323542');
-                root.style.setProperty('--standout-color', '#304BFF');
-                root.style.setProperty('--hover-color', '#304BFF');
+                root.style.setProperty('--secondary-background', '#2e3440');
+                root.style.setProperty('--container-background', '#2b2f3a');
+                root.style.setProperty('--standout-color', '#6e8e92');
+                root.style.setProperty('--hover-color', '#5d80aa');
+                root.style.setProperty('--link-color', '#5d80aa');
                 break;
 
             case 'Abyss':
                 root.style.setProperty('--background-color', '#000C18');
-                root.style.setProperty('--button-color', '#FFFFFF'); // White
-                root.style.setProperty('--text-color', '#42A5F5'); // Light blue
-                root.style.setProperty('--accent-color', '#FFFFFF'); // White
+                root.style.setProperty('--button-color', '#303648');
+                root.style.setProperty('--button-text-color', '#f6f5f4');
+                root.style.setProperty('--text-color', '#f6f5f4');
+                root.style.setProperty('--text-secondary-color', '#f6f5f4');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#838385');
+                root.style.setProperty('--prog-bar-color', '#051336');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#000000'); // Black
-                root.style.setProperty('--secondary-background', '#13326A'); // Dark blue
-                root.style.setProperty('--standout-color', '#42A5F5'); // Light blue
-                root.style.setProperty('--hover-color', '#42A5F5'); // Light blue
+                root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#051336');
+                root.style.setProperty('--container-background', '#061940');
+                root.style.setProperty('--standout-color', '#000000');
+                root.style.setProperty('--hover-color', '#152037');
+                root.style.setProperty('--link-color', '#c8aa7d');
                 break;
 
             case 'Dracula':
                 root.style.setProperty('--background-color', '#282A36');
-                root.style.setProperty('--button-color', '#5196B2'); // Light blue
-                root.style.setProperty('--text-color', '#FFFFFF'); // White
-                root.style.setProperty('--accent-color', '#5196B2'); // Light blue
+                root.style.setProperty('--button-color', '#292e42');
+                root.style.setProperty('--button-text-color', '#f6f5f4');
+                root.style.setProperty('--text-color', '#f6f5f4');
+                root.style.setProperty('--text-secondary-color', '#f6f5f4');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#727580');
+                root.style.setProperty('--prog-bar-color', '#282a36');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#D5BC5C'); // Yellow
-                root.style.setProperty('--secondary-background', '#262626'); // Dark gray
-                root.style.setProperty('--standout-color', '#5196B2'); // Light blue
-                root.style.setProperty('--hover-color', '#5196B2'); // Light blue
+                root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#262626');
+                root.style.setProperty('--container-background', '#191a21');
+                root.style.setProperty('--standout-color', '#575a68');
+                root.style.setProperty('--hover-color', '#4b5563');
+                root.style.setProperty('--link-color', '#6590fd');
                 break;
 
             case 'Kimbie':
-                root.style.setProperty('--background-color', '#221A0F'); // Dark brown
-                root.style.setProperty('--button-color', '#B23958'); // Pink
-                root.style.setProperty('--text-color', '#B1AD86'); // Beige
-                root.style.setProperty('--accent-color', '#B23958'); // Pink
+                root.style.setProperty('--background-color', '#221a0f');
+                root.style.setProperty('--button-color', '#65533c');
+                root.style.setProperty('--button-text-color', '#B1AD86');
+                root.style.setProperty('--text-color', '#B1AD86');
+                root.style.setProperty('--text-secondary-color', '#B1AD86');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#4a535e');
+                root.style.setProperty('--prog-bar-color', '#453928');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#221A1F'); // Dark purple
-                root.style.setProperty('--secondary-background', '#AC8E2F'); // Gold
-                root.style.setProperty('--standout-color', '#B23958'); // Pink
-                root.style.setProperty('--hover-color', '#B23958'); // Pink
+                root.style.setProperty('--bonus-color', '#221A1F'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#131510');
+                root.style.setProperty('--container-background', '#362712');
+                root.style.setProperty('--standout-color', '#B1AD86');
+                root.style.setProperty('--hover-color', '#d3af86');
+                root.style.setProperty('--link-color', '#f6f5f4');
                 break;
 
             case 'Neon':
-                root.style.setProperty('--background-color', '#120E16');
-                root.style.setProperty('--button-color', '#7000FF'); // Purple
-                root.style.setProperty('--text-color', '#9F9DA1'); // Grey
-                root.style.setProperty('--accent-color', '#7000FF'); // Purple
+                root.style.setProperty('--background-color', '#120e16');
+                root.style.setProperty('--button-color', '#303648');
+                root.style.setProperty('--button-text-color', '#af565f');
+                root.style.setProperty('--text-color', '#9F9DA1');
+                root.style.setProperty('--text-secondary-color', '#92bb75');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#4a535e');
+                root.style.setProperty('--prog-bar-color', '#39363b');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#01FFF4'); // Neon Blue
-                root.style.setProperty('--secondary-background', '#161C26'); // Dark Blue
-                root.style.setProperty('--standout-color', '#FF1178'); // Neon Pink
-                root.style.setProperty('--hover-color', '#FF1178'); // Neon Pink
+                root.style.setProperty('--bonus-color', '#1a171e'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#120e16');
+                root.style.setProperty('--container-background', '#1a171e');
+                root.style.setProperty('--standout-color', '#797b85');
+                root.style.setProperty('--hover-color', '#7000ff');
+                root.style.setProperty('--link-color', '#7000ff');
                 break;
 
             case 'Greenie Meanie':
-                root.style.setProperty('--background-color', '#1E1F21');
-                root.style.setProperty('--button-color', '#737373'); // Grey
-                root.style.setProperty('--text-color', '#489D50'); // Green
-                root.style.setProperty('--accent-color', '#737373'); // Grey
+                root.style.setProperty('--background-color', '#142e28');
+                root.style.setProperty('--button-color', '#489D50');
+                root.style.setProperty('--button-text-color', '#f6f5f4');
+                root.style.setProperty('--text-color', '#489D50');
+                root.style.setProperty('--text-secondary-color', '#489D50');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#446448');
+                root.style.setProperty('--prog-bar-color', '#224e44');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#849CA0'); // Blue-Grey
-                root.style.setProperty('--secondary-background', '#292A2E'); // Dark Grey
-                root.style.setProperty('--standout-color', '#446448'); // Dark Green
-                root.style.setProperty('--hover-color', '#43603D'); // Darker Green
+                root.style.setProperty('--bonus-color', '#1a3c35'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#292A2E');
+                root.style.setProperty('--container-background', '#292A2E');
+                root.style.setProperty('--standout-color', '#797b85');
+                root.style.setProperty('--hover-color', '#4b5563');
+                root.style.setProperty('--link-color', '#6590fd');
+                break;
+
+            case 'Gruvbox Light':
+                root.style.setProperty('--background-color', '#f9f5d7');
+                root.style.setProperty('--button-color', '#aca289');
+                root.style.setProperty('--button-text-color', '#5f5750');
+                root.style.setProperty('--text-color', '#5f5750');
+                root.style.setProperty('--text-secondary-color', '#aca289');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#e0dbb2');
+                root.style.setProperty('--prog-bar-color', '#f2e5bc');
+                root.style.setProperty('--error-color', 'red');
+                root.style.setProperty('--bonus-color', '#f2e5bc'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#fbf1c7');
+                root.style.setProperty('--container-background', '#fbf1c7');
+                root.style.setProperty('--standout-color', '#797b85');
+                root.style.setProperty('--hover-color', '#cfd2a8');
+                root.style.setProperty('--link-color', '#a68738');
+                break;
+
+            case 'Gruvbox Dark':
+                root.style.setProperty('--background-color', '#32302f');
+                root.style.setProperty('--button-color', '#303648');
+                root.style.setProperty('--button-text-color', '#868729');
+                root.style.setProperty('--text-color', '#868729');
+                root.style.setProperty('--text-secondary-color', '#868729');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#ebdbb2');
+                root.style.setProperty('--prog-bar-color', '#1d2021');
+                root.style.setProperty('--error-color', 'red');
+                root.style.setProperty('--bonus-color', '#363332'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#282828');
+                root.style.setProperty('--container-background', '#302e2e');
+                root.style.setProperty('--standout-color', '#ebdbb2');
+                root.style.setProperty('--hover-color', '#59544a');
+                root.style.setProperty('--link-color', '#6f701b');
                 break;
 
             case 'Wildberries':
                 root.style.setProperty('--background-color', '#240041');
-                root.style.setProperty('--button-color', '#F55385'); // Pink
-                root.style.setProperty('--text-color', '#CF8B3E'); // Orange
-                root.style.setProperty('--accent-color', '#F55385'); // Pink
+                root.style.setProperty('--button-color', '#3a264a');
+                root.style.setProperty('--button-text-color', '#F55385');
+                root.style.setProperty('--text-color', '#CF8B3E');
+                root.style.setProperty('--text-secondary-color', '#CF8B3E');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#C79BFF');
+                root.style.setProperty('--prog-bar-color', '#4b246b');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#C79BFF'); // Light Purple
-                root.style.setProperty('--secondary-background', '#19002E'); // Dark Purple
-                root.style.setProperty('--standout-color', '#00FFB7'); // Bright Green
-                root.style.setProperty('--hover-color', '#44433A'); // Dark Grey
+                root.style.setProperty('--bonus-color', '#44433A'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#19002E');
+                root.style.setProperty('--container-background', '#19002E');
+                root.style.setProperty('--standout-color', '#00FFB7');
+                root.style.setProperty('--hover-color', '#44433A');
+                root.style.setProperty('--link-color', '#5196B2');
                 break;
 
             case 'Hot Dog Stand - MY EYES':
-                root.style.setProperty('--background-color', '#E31836');
-                root.style.setProperty('--button-color', '#C3590D'); // Orange
-                root.style.setProperty('--text-color', '#FFFFFF'); // White
-                root.style.setProperty('--accent-color', '#EEB911'); // Yellow
+                root.style.setProperty('--background-color', '#670b0a');
+                root.style.setProperty('--button-color', '#730B1B');
+                root.style.setProperty('--button-text-color', '#121215');
+                root.style.setProperty('--text-color', '#121215');
+                root.style.setProperty('--text-secondary-color', '#D5BC5C');
+                root.style.setProperty('--border-color', '#000000');
+                root.style.setProperty('--accent-color', '#D5BC5C');
+                root.style.setProperty('--prog-bar-color', '#D5BC5C');
                 root.style.setProperty('--error-color', 'red');
-                root.style.setProperty('--bonus-color', '#D5BC5C'); // Gold
-                root.style.setProperty('--secondary-background', '#730B1B'); // Dark Red
-                root.style.setProperty('--standout-color', '#D5BC5C'); // Gold
-                root.style.setProperty('--hover-color', '#C3590D'); // Orange
+                root.style.setProperty('--bonus-color', '#D5BC5C'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#EEB911');
+                root.style.setProperty('--container-background', '#C3590D');
+                root.style.setProperty('--standout-color', '#797b85');
+                root.style.setProperty('--hover-color', '#4b5563');
+                root.style.setProperty('--link-color', '#6590fd');
                 break;
 
             default:

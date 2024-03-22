@@ -182,7 +182,7 @@ pub fn search_bar() -> Html {
                 <button
                     id="dropdown-button"
                     onclick={toggle_dropdown}
-                    class="hidden md:flex md:block flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center text-gray-900 bg-gray-100 border border-r-0 border-gray-300 dark:border-gray-700 dark:text-white rounded-l-lg hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800"
+                    class="dropdown-button hidden md:flex md:block flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center border border-r-0 border-gray-300 dark:border-gray-700 rounded-l-lg focus:ring-4 focus:outline-none"
                     type="button"
                 >
                     {format!("{} ", (*search_index).as_str())}
@@ -196,7 +196,7 @@ pub fn search_bar() -> Html {
                     if *dropdown_open {
                         html! {
                             <div class="search-dropdown-content-class absolute z-10 divide-y rounded-lg shadow">
-                                <ul class="dropdown-container py-2 text-sm text-gray-700">
+                                <ul class="dropdown-container py-2 text-sm">
                                     <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
                                     <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
                                     // Add more categories as needed
@@ -926,7 +926,7 @@ pub fn episode_item(
                         class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                         onclick={on_play_click}
                     >
-                        <span class="material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                     </button>
                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
                 </div>

@@ -35,7 +35,7 @@ pub fn app_drawer() -> Html {
                 <div class="flex flex-col justify-between h-full">
                     <div class="px-6 py-4 mt-16">
                         <h2 class="drawer-text text-lg font-semibold">{"Pinepods"}</h2>
-                        <hr class="my-4 border-gray-200" />
+                        <hr class="my-4 drawer-hr" />
                         <div class="space-y-4">
                             // User Account with Gravatar
                         <div class="flex items-center space-x-3">
@@ -58,7 +58,7 @@ pub fn app_drawer() -> Html {
                             <div class="m-0 p-0 flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Home}>
-                                        <span class="material-icons icon-space">{"home"}</span>
+                                        <span class="material-standard-color material-icons icon-space">{"home"}</span>
                                         <span class="text-lg">{"Home"}</span>
                                     </Link<Route>>
                                 </div>
@@ -139,9 +139,9 @@ pub fn app_drawer() -> Html {
         <div class="drawer-icon flex items-center" onclick={toggle_drawer.clone()}>
             <label for="drawer-toggle" class="rounded-lg cursor-pointer">
                 <div class="flex flex-col items-center">
-                    <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
-                    <div class="w-6 h-1 mb-1 bg-white rounded-lg"></div>
-                    <div class="w-6 h-1 bg-white rounded-lg"></div>
+                    <div class="w-6 h-1 mb-1 drawer-burger rounded-lg"></div>
+                    <div class="w-6 h-1 mb-1 drawer-burger rounded-lg"></div>
+                    <div class="w-6 h-1 drawer-burger rounded-lg"></div>
                 </div>
             </label>
 
