@@ -13,16 +13,49 @@ use crate::components::context::AppStateMsg;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
-use web_sys::window;
+use web_sys::{console, window};
 use wasm_bindgen::JsCast;
 use std::borrow::Borrow;
+use crate::requests::login_requests::use_check_authentication;
 
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
+    let effect_dispatch = dispatch.clone();
     let history = BrowserHistory::new();
 
-    // check_auth(effect_dispatch);
+    let session_dispatch = effect_dispatch.clone();
+    let session_state = state.clone();
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+            
+            if navigation_type == 1 { // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage.set_item("isAuthenticated", "false").unwrap();
+                console::log_1(&"Page was reloaded, user not authenticated, clearing session storage".into());
+            }
+    
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+    
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+    
+        || ()
+    });
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -33,6 +66,7 @@ pub fn downloads() -> Html {
     let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let loading = use_state(|| true);
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -57,6 +91,7 @@ pub fn downloads() -> Html {
 
 
     // Fetch episodes on component mount
+    let loading_ep = loading.clone();
     {
         // let episodes = episodes.clone();
         let error = error.clone();
@@ -82,11 +117,13 @@ pub fn downloads() -> Html {
                                 dispatch.reduce_mut(move |state| {
                                     state.downloaded_episodes = Some(EpisodeDownloadResponse { episodes: fetched_episodes });
                                 });
+                                loading_ep.set(false);
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
                                 web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
+                                loading_ep.set(false);
                             },
                         }
                     });
@@ -106,7 +143,7 @@ pub fn downloads() -> Html {
     // Define the function to Enter Delete Mode
     let delete_mode_enable = {
         let page_state = page_state.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             page_state.set(PageState::Delete);
         })
     };
@@ -114,7 +151,7 @@ pub fn downloads() -> Html {
     // Define the function to Exit Delete Mode
     let delete_mode_disable = {
         let page_state = page_state.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             page_state.set(PageState::Normal);
         })
     };
@@ -136,7 +173,7 @@ pub fn downloads() -> Html {
         let api_key = api_key.clone();
         let user_id = user_id.clone(); // Make sure this is cloned from a state or props where it's guaranteed to exist.
     
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             // Clone values for use inside the async block
             let dispatch_cloned = dispatch.clone();
             let page_state_cloned = page_state.clone();
@@ -183,151 +220,181 @@ pub fn downloads() -> Html {
     
     let is_delete_mode = **page_state.borrow() == PageState::Delete; // Add this line
 
+    console::log_1(&format!("loading ep value: {:?}", *loading).into());
+
     html! {
         <>
         <div class="main-container">
             <Search_nav />
-            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Downloaded Episodes"}</h1>
-            <div class="flex justify-between">
-                {if **page_state.borrow() == PageState::Normal {
-                    html! {
-                        <>
-                        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                            onclick={delete_mode_enable.clone()}>
-                            <span class="material-icons icon-space">{"check_box"}</span>
-                            <span class="text-lg">{"Select Multiple"}</span>
-                        </button>
-                        </>
+            
+                if *loading { // If loading is true, display the loading animation
+                    {
+                        html! {
+                            <div class="loading-animation">
+                                <div class="frame1"></div>
+                                <div class="frame2"></div>
+                                <div class="frame3"></div>
+                                <div class="frame4"></div>
+                                <div class="frame5"></div>
+                                <div class="frame6"></div>
+                            </div>
+                        }
                     }
                 } else {
-                    html! {
-                        <>
-                        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                            onclick={delete_mode_disable.clone()}>
-                            <span class="material-icons icon-space">{"cancel"}</span>
-                            <span class="text-lg">{"Cancel"}</span>
-                        </button>
-                        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                            onclick={delete_selected_episodes.clone()}>
-                            <span class="material-icons icon-space">{"delete"}</span>
-                            <span class="text-lg">{"Delete"}</span>
-                        </button>
-                        </>
+                    {
+                        html! {
+                            <div>
+                                <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Downloaded Episodes"}</h1>
+                                <div class="flex justify-between">
+                                    {
+                                        if **page_state.borrow() == PageState::Normal {
+                                            html! {
+                                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                    onclick={delete_mode_enable.clone()}>
+                                                    <span class="material-icons icon-space">{"check_box"}</span>
+                                                    <span class="text-lg">{"Select Multiple"}</span>
+                                                </button>
+                                            }
+                                        } else {
+                                            html! {
+                                                <>
+                                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                    onclick={delete_mode_disable.clone()}>
+                                                    <span class="material-icons icon-space">{"cancel"}</span>
+                                                    <span class="text-lg">{"Cancel"}</span>
+                                                </button>
+                                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                    onclick={delete_selected_episodes.clone()}>
+                                                    <span class="material-icons icon-space">{"delete"}</span>
+                                                    <span class="text-lg">{"Delete"}</span>
+                                                </button>
+                                                </>
+                                            }
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
                     }
-                }}
-            </div>
-            {
-                if let Some(download_eps) = state.downloaded_episodes.clone() {
-                    web_sys::console::log_1(&format!("Episode History in state: {:?}", download_eps).into()); // Log queued episodes in state
-                    if download_eps.episodes.is_empty() {
-                        // Render "No Queued Episodes Found" if episodes list is empty
-                        empty_message(
-                            "No Episode Downloads Found",
-                            "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
-                        )
-                    } else {
-                        download_eps.episodes.into_iter().map(|episode| {
+                    
+                    {
+                    if let Some(download_eps) = state.downloaded_episodes.clone() {
+                        let int_download_eps = download_eps.clone();
                             let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
                             let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                             let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
                             let history_clone = history.clone();
-                            let id_string = &episode.EpisodeID.to_string();
-    
-                            let is_expanded = state.expanded_descriptions.contains(id_string);
-    
-                            let dispatch = dispatch.clone();
-    
-                            let episode_url_clone = episode.EpisodeURL.clone();
-                            let episode_title_clone = episode.EpisodeTitle.clone();
-                            let episode_artwork_clone = episode.EpisodeArtwork.clone();
-                            let episode_duration_clone = episode.EpisodeDuration.clone();
-                            let episode_id_clone = episode.EpisodeID.clone();
-                            let episode_listened_clone = episode.ListenDuration.clone();
 
-                            let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
-
-                            let (description, _is_truncated) = if is_expanded {
-                                (sanitized_description, false)
+                            if int_download_eps.episodes.is_empty() {
+                                // Render "No Recent Episodes Found" if episodes list is empty
+                                empty_message(
+                                    "No Downloaded Episodes Found",
+                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
+                                )
                             } else {
-                                truncate_description(sanitized_description, 300)
-                            };
-    
-                            let toggle_expanded = {
-                                let search_dispatch_clone = dispatch.clone();
-                                let state_clone = state.clone();
-                                let episode_guid = episode.EpisodeID.clone();
-    
-                                Callback::from(move |_: MouseEvent| {
-                                    let guid_clone = episode_guid.to_string().clone();
-                                    let search_dispatch_call = search_dispatch_clone.clone();
-    
-                                    if state_clone.expanded_descriptions.contains(&guid_clone) {
-                                        search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                                    } else {
-                                        search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                                    }
-                                })
-                            };
+                                int_download_eps.episodes.into_iter().map(|episode| {
 
-                            let episode_url_for_closure = episode_url_clone.clone();
-                            let episode_title_for_closure = episode_title_clone.clone();
-                            let episode_artwork_for_closure = episode_artwork_clone.clone();
-                            let episode_duration_for_closure = episode_duration_clone.clone();
-                            let listener_duration_for_closure = episode_listened_clone.clone();
-                            let episode_id_for_closure = episode_id_clone.clone();
-                            let user_id_play = user_id.clone();
-                            let server_name_play = server_name.clone();
-                            let api_key_play = api_key.clone();
-                            let audio_dispatch = audio_dispatch.clone();
+                                let id_string = &episode.EpisodeID.to_string();
+        
+                                let is_expanded = state.expanded_descriptions.contains(id_string);
+        
+                                let dispatch = dispatch.clone();
+        
+                                let episode_url_clone = episode.EpisodeURL.clone();
+                                let episode_title_clone = episode.EpisodeTitle.clone();
+                                let episode_artwork_clone = episode.EpisodeArtwork.clone();
+                                let episode_duration_clone = episode.EpisodeDuration.clone();
+                                let episode_id_clone = episode.EpisodeID.clone();
+                                let episode_listened_clone = episode.ListenDuration.clone();
 
-                            let on_play_click = on_play_click(
-                                episode_url_for_closure.clone(),
-                                episode_title_for_closure.clone(),
-                                episode_artwork_for_closure.clone(),
-                                episode_duration_for_closure.clone(),
-                                episode_id_for_closure.clone(),
-                                listener_duration_for_closure.clone(),
-                                api_key_play.unwrap().unwrap(),
-                                user_id_play.unwrap(),
-                                server_name_play.unwrap(),
-                                audio_dispatch.clone(),
-                                audio_state.clone(),
-                            );
+                                let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
 
-                            let on_shownotes_click = on_shownotes_click(
-                                history_clone.clone(),
-                                dispatch.clone(),
-                                episode_id_for_closure.clone(),
-                            );
+                                let (description, _is_truncated) = if is_expanded {
+                                    (sanitized_description, false)
+                                } else {
+                                    truncate_description(sanitized_description, 300)
+                                };
+        
+                                let toggle_expanded = {
+                                    let search_dispatch_clone = dispatch.clone();
+                                    let state_clone = state.clone();
+                                    let episode_guid = episode.EpisodeID.clone();
+        
+                                    Callback::from(move |_: MouseEvent| {
+                                        let guid_clone = episode_guid.to_string().clone();
+                                        let search_dispatch_call = search_dispatch_clone.clone();
+        
+                                        if state_clone.expanded_descriptions.contains(&guid_clone) {
+                                            search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
+                                        } else {
+                                            search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
+                                        }
+                                    })
+                                };
 
-                            let format_release = format!("Released on: {}", &episode.EpisodePubDate);
-                            let on_checkbox_change_cloned = on_checkbox_change.clone();
+                                let episode_url_for_closure = episode_url_clone.clone();
+                                let episode_title_for_closure = episode_title_clone.clone();
+                                let episode_artwork_for_closure = episode_artwork_clone.clone();
+                                let episode_duration_for_closure = episode_duration_clone.clone();
+                                let listener_duration_for_closure = episode_listened_clone.clone();
+                                let episode_id_for_closure = episode_id_clone.clone();
+                                let user_id_play = user_id.clone();
+                                let server_name_play = server_name.clone();
+                                let api_key_play = api_key.clone();
+                                let audio_dispatch = audio_dispatch.clone();
+                                let is_local = Option::from(true);
+                                
+                                let on_play_click = on_play_click(
+                                    episode_url_for_closure.clone(),
+                                    episode_title_for_closure.clone(),
+                                    episode_artwork_for_closure.clone(),
+                                    episode_duration_for_closure.clone(),
+                                    episode_id_for_closure.clone(),
+                                    listener_duration_for_closure.clone(),
+                                    api_key_play.unwrap().unwrap(),
+                                    user_id_play.unwrap(),
+                                    server_name_play.unwrap(),
+                                    audio_dispatch.clone(),
+                                    audio_state.clone(),
+                                    is_local,
+                                );
 
-                            let item = episode_item(
-                                Box::new(episode),
-                                description.clone(),
-                                is_expanded,
-                                &format_release,
-                                on_play_click,
-                                on_shownotes_click,
-                                toggle_expanded,
-                                episode_duration_clone,
-                                episode_listened_clone,
-                                "downloads",
-                                on_checkbox_change_cloned, // Add this line
-                                is_delete_mode, // Add this line
-                            );
+                                let on_shownotes_click = on_shownotes_click(
+                                    history_clone.clone(),
+                                    dispatch.clone(),
+                                    episode_id_for_closure.clone(),
+                                );
 
-                            item
-                        }).collect::<Html>()
+                                let format_release = format!("Released on: {}", &episode.EpisodePubDate);
+                                let on_checkbox_change_cloned = on_checkbox_change.clone();
+
+                                let item = episode_item(
+                                    Box::new(episode),
+                                    description.clone(),
+                                    is_expanded,
+                                    &format_release,
+                                    on_play_click,
+                                    on_shownotes_click,
+                                    toggle_expanded,
+                                    episode_duration_clone,
+                                    episode_listened_clone,
+                                    "downloads",
+                                    on_checkbox_change_cloned, // Add this line
+                                    is_delete_mode, // Add this line
+                                );
+
+                                item
+                            }).collect::<Html>()
+                            }
+                        
+
+                        } else {
+                            empty_message(
+                                "No Episode Downloads Found",
+                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
+                            )
                         }
-
-                } else {
-                    empty_message(
-                        "No Episode Downloads Found",
-                        "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
-                    )
-                }
+                    }
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
@@ -348,3 +415,4 @@ pub fn downloads() -> Html {
         </>
     }
 }
+

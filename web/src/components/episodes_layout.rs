@@ -12,6 +12,7 @@ use crate::requests::pod_req::{call_add_podcast, PodcastValues, call_check_podca
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::Properties;
+use crate::requests::login_requests::use_check_authentication;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
 
 fn add_icon() -> Html {
@@ -108,9 +109,6 @@ impl Reducer<UIState> for UIStateMsg {
 
 #[function_component(EpisodeLayout)]
 pub fn episode_layout() -> Html {
-    // let dispatch = Dispatch::<AppState>::global();
-    // // let (state, _dispatch) = use_store::<AppState>();
-    // let state: Rc<AppState> = dispatch.get();
     let is_added = use_state(|| false);
     let (state, _dispatch) = use_store::<UIState>();
     let (search_state, _search_dispatch) = use_store::<AppState>();
@@ -121,6 +119,38 @@ pub fn episode_layout() -> Html {
     let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let api_key = search_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = search_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+    let session_dispatch = _search_dispatch.clone();
+    let session_state = search_state.clone();
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+            
+            if navigation_type == 1 { // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage.set_item("isAuthenticated", "false").unwrap();
+            }
+    
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+    
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+    
+        || ()
+    });
 
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
@@ -455,6 +485,7 @@ pub fn episode_layout() -> Html {
                                     server_name_play.unwrap(),
                                     dispatch.clone(),
                                     state.clone(),
+                                    None,
                                 );
 
 

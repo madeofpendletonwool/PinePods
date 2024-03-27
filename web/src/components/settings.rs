@@ -9,6 +9,7 @@ use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
+use crate::requests::login_requests::use_check_authentication;
 // use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]
@@ -103,7 +104,37 @@ pub fn settings() -> Html {
     let active_tab = use_state(|| "user");
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
-    // check_auth(auth_dispatch);
+    let session_dispatch = _post_dispatch.clone();
+    let session_state = _post_state.clone();
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+            
+            if navigation_type == 1 { // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage.set_item("isAuthenticated", "false").unwrap();
+            }
+    
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+    
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+    
+        || ()
+    });
 
     {
         let ui_dispatch = audio_dispatch.clone();

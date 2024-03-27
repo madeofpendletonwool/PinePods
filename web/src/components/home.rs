@@ -61,26 +61,6 @@ pub fn home() -> Html {
         || ()
     });
     
-    
-    
-    
-    // use_effect_with(
-    //     (),
-    //     move |_| {
-    //         let effect_dispatch_clone = effect_dispatch.clone();
-
-    //         spawn_local(async move {
-    //             let window = window().expect("no global `window` exists");
-    //             let location = window.location();
-    //             let current_route = location.href().expect("should be able to get href");
-    //             console::log_1(&current_route.clone().into());
-    //             console::log_1(&"Checking authentication... Inside Check_auth".into());
-    //             use_check_authentication(effect_dispatch_clone, &current_route);
-    //         });
-
-    //         || ()
-    //     }
-    // );
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -250,6 +230,7 @@ pub fn home() -> Html {
                                     server_name_play.unwrap(),
                                     audio_dispatch.clone(),
                                     audio_state.clone(),
+                                    None,
                                 );
 
                                 let on_shownotes_click = on_shownotes_click(

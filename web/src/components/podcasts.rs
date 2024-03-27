@@ -12,6 +12,7 @@ use web_sys::console;
 use crate::components::context::{AppState, UIState};
 use yew_router::history::BrowserHistory;
 use crate::components::click_events::create_on_title_click;
+use crate::requests::login_requests::use_check_authentication;
 
 enum AppStateMsg {
     // ... other messages ...
@@ -53,6 +54,38 @@ pub fn podcasts() -> Html {
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let podcast_feed_return = state.podcast_feed_return.clone();
+
+    let session_dispatch = dispatch.clone();
+    let session_state = state.clone();
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+            
+            if navigation_type == 1 { // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage.set_item("isAuthenticated", "false").unwrap();
+            }
+    
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+    
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+    
+        || ()
+    });
 
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());

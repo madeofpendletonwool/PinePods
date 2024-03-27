@@ -843,6 +843,22 @@ def check_downloaded(cnx, user_id, episode_id):
         if cursor:
             cursor.close()
 
+def get_download_location(cnx, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        # Check if the episode has been downloaded by the user
+        query = "SELECT DownloadedLocation FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()  # Assuming one entry per episode per user
+
+        if result:
+            return result[0]  # Returns the DownloadedLocation directly
+        return None
+
+    finally:
+        cursor.close()
+
+
 
 def download_episode_list(database_type, cnx, user_id):
     if database_type == "postgresql":

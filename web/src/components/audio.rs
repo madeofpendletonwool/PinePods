@@ -148,8 +148,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             // Use the local_current_seconds here
                             // let listen_duration = (*local_current_seconds); // Dereference and get the value
                             let listen_duration = audio_element.current_time();
-                            console::log_1(&format!("Listen duration in effect: {:?}", listen_duration).into());
-    
+
                             let request_data = RecordListenDurationRequest {
                                 episode_id: episode_id.unwrap().clone(),
                                 user_id: user_id.unwrap().clone(),
@@ -273,6 +272,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             server_name.clone().unwrap(),
                                             audio_dispatch.clone(),
                                             audio_state.clone(),
+                                            None,
                                         ).emit(MouseEvent::new("click").unwrap());
                                     } else {
                                         audio_dispatch.reduce_mut(|state| {
@@ -490,6 +490,7 @@ pub fn on_play_click(
     server_name: String,
     audio_dispatch: Dispatch<UIState>,
     _audio_state: Rc<UIState>,
+    is_local: Option<bool>,
 ) -> Callback<MouseEvent> {
 
     Callback::from(move |_: MouseEvent| {
@@ -621,13 +622,22 @@ pub fn on_play_click(
                 }
             }
         });
-
-
+        let src = String::new();
+        let src = if let Some(local) = is_local {
+            // Construct the URL for streaming from the local server
+            let src = format!("{}/api/data/stream/{}?api_key={}&user_id={}", server_name, episode_id, api_key, user_id);
+            console::log_1(&format!("Local URL: {:?}", src.clone()).into());
+            src
+        } else {
+            // Use the provided URL for streaming
+            let src = episode_url_for_wasm.clone();
+            src
+        };
 
         audio_dispatch.reduce_mut(move |audio_state| {
             audio_state.audio_playing = Some(true);
             audio_state.currently_playing = Some(AudioPlayerProps {
-                src: episode_url_for_wasm.clone(),
+                src: src.clone(),
                 title: episode_title_for_wasm.clone(),
                 artwork_url: episode_artwork_for_wasm.clone(),
                 duration: episode_duration_for_wasm.clone().to_string(),
@@ -635,7 +645,7 @@ pub fn on_play_click(
                 duration_sec: formatted_duration,
                 start_pos_sec: listen_duration_for_closure.unwrap_or(0) as f64, 
             });
-            audio_state.set_audio_source(episode_url_for_wasm.to_string());
+            audio_state.set_audio_source(src.to_string());
             if let Some(audio) = &audio_state.audio_element {
                 audio.set_current_time(listen_duration_for_closure.unwrap_or(0) as f64);
                 let _ = audio.play();

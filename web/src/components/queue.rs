@@ -16,6 +16,7 @@ use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
+use crate::requests::login_requests::use_check_authentication;
 
 #[function_component(Queue)]
 pub fn queue() -> Html {
@@ -29,6 +30,40 @@ pub fn queue() -> Html {
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
+
+    let session_dispatch = _post_dispatch.clone();
+    let session_state = post_state.clone();
+    let loading = use_state(|| true);
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+            
+            if navigation_type == 1 { // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage.set_item("isAuthenticated", "false").unwrap();
+            }
+    
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+    
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+    
+        || ()
+    });
+
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -53,6 +88,7 @@ pub fn queue() -> Html {
 
 
     // Fetch episodes on component mount
+    let loading_ep = loading.clone();
     {
         // let episodes = episodes.clone();
         let error = error.clone();
@@ -77,11 +113,13 @@ pub fn queue() -> Html {
                                 dispatch.reduce_mut(move |state| {
                                     state.queued_episodes = Some(QueuedEpisodesResponse { episodes: fetched_episodes });
                                 });
+                                loading_ep.set(false);
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
                                 web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
+                                loading_ep.set(false);
                             },
                         }
                     });
@@ -95,18 +133,40 @@ pub fn queue() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
-            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Queue"}</h1>
-            {
-                if let Some(queued_eps) = state.queued_episodes.clone() {
-                    web_sys::console::log_1(&format!("Queued episodes in state: {:?}", queued_eps).into()); // Log queued episodes in state
-                    if queued_eps.episodes.is_empty() {
-                        // Render "No Queued Episodes Found" if episodes list is empty
-                        empty_message(
-                            "No Queued Episodes Found",
-                            "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
-                        )
-                    } else {
-                        queued_eps.episodes.into_iter().map(|episode| {
+            
+                if *loading { // If loading is true, display the loading animation
+                    {
+                        html! {
+                            <div class="loading-animation">
+                                <div class="frame1"></div>
+                                <div class="frame2"></div>
+                                <div class="frame3"></div>
+                                <div class="frame4"></div>
+                                <div class="frame5"></div>
+                                <div class="frame6"></div>
+                            </div>
+                        }
+                    }
+                } else {
+                    {                           
+                        html! {
+                            <div>
+                            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Queue"}</h1>
+                            </div>
+                        }
+                    }
+                    
+                    {
+                        if let Some(queued_eps) = state.queued_episodes.clone() {
+                            web_sys::console::log_1(&format!("Queued episodes in state: {:?}", queued_eps).into()); // Log queued episodes in state
+                            if queued_eps.episodes.is_empty() {
+                                // Render "No Queued Episodes Found" if episodes list is empty
+                                empty_message(
+                                    "No Queued Episodes Found",
+                                    "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
+                                )
+                            } else {
+                                queued_eps.episodes.into_iter().map(|episode| {
                             let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
                             let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                             let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -173,6 +233,7 @@ pub fn queue() -> Html {
                                 server_name_play.unwrap(),
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
+                                None,
                             );
 
                             let on_shownotes_click = on_shownotes_click(
@@ -201,11 +262,12 @@ pub fn queue() -> Html {
                         }).collect::<Html>()
                         }
 
-                } else {
-                    empty_message(
-                        "No Queued Episodes Found - State is None",
-                        "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
-                    )
+                    } else {
+                        empty_message(
+                            "No Queued Episodes Found - State is None",
+                            "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
+                        )
+                    }
                 }
             }
         {

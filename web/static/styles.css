@@ -1192,15 +1192,16 @@ button.item-container-action-button.item-container-action-button {
     0%, 100% { opacity: 0; }
     50% { opacity: 1; }
 }
-
 .loading-animation {
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: start; /* Align items to the start of the container */
     width: 100%; /* Full width of the container */
     height: 100vh; /* Full height of the viewport */
     position: relative; /* Necessary for absolute positioning of children */
+    padding-top: 6vh; /* Adjust this value as needed to move the animation down from the top */
 }
+
 
 .loading-animation div {
     position: absolute; /* Align images directly on top of each other */

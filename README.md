@@ -345,16 +345,14 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Episode Releases are showing now time. Rather than actual release in app (Bug with Parsing)
 - [x] Consistent Styling Throughout
 - [x] Setup All Themes
-
-- [ ] Handle situation where there's no audio in a feed
+- [x] Downloads page playing streamed episodes. Should stream from server files
+- [x] Loading icon in the center of screen while episodes load in (Done on home - Further test)
 
 - [ ] Initial Screen loading as we pull in context
 
-- [ ] Downloads page playing streamed episodes. Should stream from server files
+- [ ] Podcasts show episode images sometimes on podcasts page for some reason
 
-- [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes)
-
-- [ ] Loading icon in the center of screen while episodes load in (Done on home - Further test)
+- [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes) <- It's close. F5 on page other than home always redirects to home yet
 
 - [ ] Nextcloud Subscription Timestamps
 
@@ -376,6 +374,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ### After Rust Revamp
 
+- [ ] Handle situation where there's no audio in a feed
 - [ ] Additional Downloads Page organization - Organize by Podcast
 - [ ] Better episode performance when a large number of episodes on screen
 - [ ] Login with Github integration and cloud logins (OAuth)

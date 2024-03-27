@@ -2,7 +2,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
     security, BackgroundTasks
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.responses import PlainTextResponse, JSONResponse, Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 import smtplib
@@ -809,6 +809,15 @@ def download_podcast_fun(episode_id: int, user_id: int):
 
 def test_download_podcast_fun(episode_id: int, user_id: int):
     print(f"Downloading podcast {episode_id} for user {user_id}")
+    cnx = create_database_connection()
+    try:
+        database_functions.functions.download_podcast(cnx, episode_id, user_id)
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
+
 
 class DeletePodcastData(BaseModel):
     episode_id: int
@@ -2522,6 +2531,35 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only bump the queue for yourself!")
+    
+@app.get("/api/data/stream/{episode_id}")
+async def stream_episode(
+    episode_id: int, 
+    cnx=Depends(get_database_connection),
+    api_key: str = Query(..., alias='api_key'),  # Change here
+    user_id: int = Query(..., alias='user_id')   # Change here
+):
+    print(f"Episode ID: {episode_id}")
+    print(f"API Key: {api_key}")
+    print(f"User ID: {user_id}")
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    print("About to start the episode stream")
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        file_path = database_functions.functions.get_download_location(cnx, episode_id, user_id)
+        if file_path:
+            return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
+        else:
+            raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
+    else:
+        raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
 
 
 class BackupUser(BaseModel):
