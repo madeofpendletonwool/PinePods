@@ -13,6 +13,7 @@ use crate::components::context::{AppState, UIState};
 use yew_router::history::BrowserHistory;
 use crate::components::click_events::create_on_title_click;
 use crate::requests::login_requests::use_check_authentication;
+use crate::components::episodes_layout::SafeHtml;
 
 enum AppStateMsg {
     // ... other messages ...
@@ -260,7 +261,7 @@ pub fn podcasts() -> Html {
                                                 html! {
                                                     <div class="item_container-text episode-description-container">
                                                         <div>
-                                                            <p> {podcast_description_clone} </p>
+                                                            <SafeHtml html={podcast_description_clone} />
                                                         </div>
                                                     </div>
                                                 }

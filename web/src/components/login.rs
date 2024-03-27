@@ -17,6 +17,8 @@ use crate::components::episodes_layout::UIStateMsg;
 use chrono_tz::{TZ_VARIANTS, Tz};
 use rand::Rng;
 
+
+
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
     format!("{:x}", md5::compute(email.to_lowercase()))
@@ -113,6 +115,11 @@ pub fn login() -> Html {
             if let Some(window) = web_sys::window() {
                 if let Ok(local_storage) = window.local_storage() {
                     if let Some(storage) = local_storage {
+                        if let Ok(Some(stored_theme)) = storage.get_item("selected_theme") {
+                            // Set the theme using your existing theme change function
+                            crate::components::setting_components::theme_options::changeTheme(&stored_theme);
+                        }
+
                         if let Ok(Some(user_state)) = storage.get_item("userState") {
                             let app_state_result = AppState::deserialize(&user_state);
 
@@ -176,6 +183,14 @@ pub fn login() -> Html {
                                                                                 Ok(theme) => {
                                                                                     console::log_1(&format!("theme test: {:?}", &theme).into());
                                                                                     crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                                                    if let Some(window) = web_sys::window() {
+                                                                                        if let Ok(Some(local_storage)) = window.local_storage() {
+                                                                                            match local_storage.set_item("selected_theme", &theme) {
+                                                                                                Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                                                                                                Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                                                                                            }
+                                                                                        }
+                                                                                    }
                                                                                 }
                                                                                 Err(e) => {
                                                                                     console::log_1(&format!("Error getting theme: {:?}", e).into());
@@ -329,6 +344,15 @@ pub fn login() -> Html {
                                                         Ok(theme) => {
                                                             console::log_1(&format!("theme test: {:?}", &theme).into());
                                                             crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                            // Update the local storage with the new theme
+                                                            if let Some(window) = web_sys::window() {
+                                                                if let Ok(Some(local_storage)) = window.local_storage() {
+                                                                    match local_storage.set_item("selected_theme", &theme) {
+                                                                        Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                                                                        Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                         Err(e) => {
                                                             console::log_1(&format!("Error getting theme: {:?}", e).into());
@@ -1287,6 +1311,14 @@ pub fn login() -> Html {
                                                         Ok(theme) => {
                                                             console::log_1(&format!("theme test: {:?}", &theme).into());
                                                             crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                            if let Some(window) = web_sys::window() {
+                                                                if let Ok(Some(local_storage)) = window.local_storage() {
+                                                                    match local_storage.set_item("selected_theme", &theme) {
+                                                                        Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                                                                        Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                         Err(e) => {
                                                             console::log_1(&format!("Error getting theme: {:?}", e).into());
@@ -1585,6 +1617,14 @@ pub fn login() -> Html {
                                     Ok(theme) => {
                                         console::log_1(&format!("theme test: {:?}", &theme).into());
                                         crate::components::setting_components::theme_options::changeTheme(&theme);
+                                        if let Some(window) = web_sys::window() {
+                                            if let Ok(Some(local_storage)) = window.local_storage() {
+                                                match local_storage.set_item("selected_theme", &theme) {
+                                                    Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                                                    Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                                                }
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         console::log_1(&format!("Error getting theme: {:?}", e).into());

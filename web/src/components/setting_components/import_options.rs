@@ -7,24 +7,25 @@ use web_sys::{console, FileReader, HtmlInputElement};
 use wasm_bindgen::closure::Closure;
 use crate::components::gen_funcs::parse_opml;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
-use crate::requests::search_pods::{call_parse_podcast_url, PodcastFeedResult};
+use crate::requests::search_pods::{call_parse_podcast_channel_info, PodcastInfo};
 
 
 // use wasm_bindgen::JsValue;
 // use crate::requests::setting_reqs::{call_backup_user};
-fn transform_feed_result_to_values(feed_result: PodcastFeedResult, podcast_to_add: &PodcastToAdd, user_id: i32) -> PodcastValues {
-    let first_episode = feed_result.episodes.get(0);
-
+fn transform_feed_result_to_values(feed_result: PodcastInfo, podcast_to_add: &PodcastToAdd, user_id: i32) -> PodcastValues {
     let pod_title = podcast_to_add.title.clone();
     let pod_feed_url = podcast_to_add.xml_url.clone();
 
+
     // Simplified: Using first episode details or default values
-    let pod_artwork = first_episode.and_then(|ep| ep.artwork.clone()).unwrap_or_default();
-    let pod_author = first_episode.map_or_else(|| "Unknown Author".to_string(), |ep| ep.authors.join(", "));
-    let pod_description = first_episode.and_then(|ep| ep.description.clone()).unwrap_or("No description available".to_string());
-    let pod_website = first_episode.and_then(|ep| ep.links.first().cloned()).unwrap_or_default();
-    let pod_explicit = false; // Simplified assumption
-    let pod_episode_count = feed_result.episodes.len() as i32;
+    let pod_artwork = feed_result.artwork_url.unwrap_or_default();
+    console::log_1(&pod_artwork.clone().into());
+    let pod_author = feed_result.author.clone();
+    let pod_description = feed_result.description.clone();
+    let pod_website = feed_result.website;
+    let pod_explicit = feed_result.explicit;
+    let pod_episode_count = feed_result.episode_count;
+
 
     // Placeholder for categories, as an example
     let categories = HashMap::new();
@@ -53,7 +54,7 @@ pub struct PodcastToAdd {
 async fn add_podcasts(server_name: &str, api_key: &Option<String>, user_id: i32, podcasts: Vec<PodcastToAdd>) {
     for podcast in podcasts.into_iter() {
         // Parse podcast URL to get feed details
-        match call_parse_podcast_url(&podcast.xml_url).await {
+        match call_parse_podcast_channel_info(&podcast.xml_url).await {
             Ok(feed_result) => {
                 let add_podcast = PodcastToAdd {
                     title: podcast.title.clone(),

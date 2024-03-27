@@ -135,6 +135,52 @@ pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResu
     Ok(feed_result)
 }
 
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct PodcastInfo {
+    pub title: String,
+    pub description: String,
+    pub artwork_url: Option<String>,
+    pub author: String,
+    pub website: String,
+    pub categories: Vec<String>,
+    pub explicit: bool,
+    pub episode_count: i32,
+}
+
+pub async fn call_parse_podcast_channel_info(podcast_url: &str) -> Result<PodcastInfo, Error> {
+    let response_text = Request::get(podcast_url).send().await?.text().await?;
+    let channel = Channel::read_from(response_text.as_bytes())?;
+
+    let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
+        .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
+    let podcast_title = channel.title().to_string();
+    let podcast_description = channel.description().to_string();
+    let podcast_authors = channel.itunes_ext().and_then(|ext| ext.author()).map(|a| a.to_string()).unwrap_or_default();
+    let podcast_website = channel.link().to_string();
+    let podcast_categories = channel.categories().iter().map(|c| c.name().to_string()).collect::<Vec<_>>();
+    let podcast_explicit = channel.itunes_ext().map_or(false, |ext| ext.explicit().map(|e| e.eq("yes") || e.eq("true")).unwrap_or_default());
+
+    let podcast_episode_count = channel.items().len() as i32;
+
+    
+    // Note: Add other podcast-level details as needed.
+
+    let podcast_info = PodcastInfo {
+        title: podcast_title,
+        description: podcast_description,
+        artwork_url: podcast_artwork_url,
+        author: podcast_authors,
+        website: podcast_website,
+        categories: podcast_categories,
+        explicit: podcast_explicit,
+        episode_count: podcast_episode_count,
+        // Include other fields as necessary.
+    };
+
+    Ok(podcast_info)
+}
+
+
 // In Databases
 
 #[derive(Serialize, Deserialize, Debug)]

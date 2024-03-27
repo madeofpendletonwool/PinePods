@@ -6,6 +6,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use crate::requests::setting_reqs::{call_set_theme, SetThemeRequest};
+use web_sys::console;
 
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {
@@ -31,6 +32,14 @@ pub fn theme() -> Html {
             let theme = (*selected_theme).to_string();
             web_sys::console::log_1(&format!("Submitting theme: {}", theme).into());
             changeTheme(&theme);
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(local_storage)) = window.local_storage() {
+                    match local_storage.set_item("selected_theme", &theme) {
+                        Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                        Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                    }
+                }
+            }
             log_css_variables();
 
             // Optionally, store in local storage
