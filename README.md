@@ -350,10 +350,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Podcasts show episode images sometimes on podcasts page for some reason (This was because it used the first episode in the feed for the import. Not anymore)
 - [x] Initial Screen loading as we pull in context - It swaps a lot quicker now. Theme stores itself in local storage
 - [x] Run Podcast Descriptions on Podcasts page through html parsing
-
-- [ ] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes) <- It's close. F5 on page other than home always redirects to home yet
-
-- [ ] Nextcloud Subscription Timestamps
+- [x] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes) <- Fixed, F5 now returns you to the page you were previously on
+- [x] Nextcloud Subscription Timestamps
 
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout

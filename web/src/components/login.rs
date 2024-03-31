@@ -171,7 +171,8 @@ pub fn login() -> Html {
                                                                         // Retrieve the originally requested route, if any
                                                                         let session_storage = window.session_storage().unwrap().unwrap();
                                                                         session_storage.set_item("isAuthenticated", "true").unwrap();
-                                                                        let requested_route = storage.get_item("requested_route").unwrap_or(None);
+                                                                        let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
+                                                                        console::log_1(&format!("Setting to route {:?}", &requested_route).into());
                                                                         console::log_1(&format!("isAuthenticated is now true").into());
                                                                         // Get Theme
                                                                         let theme_api = api_key.clone();
@@ -213,6 +214,7 @@ pub fn login() -> Html {
                                                                                 }
                                                                             }
                                                                         });
+                                                                        console::log_1(&format!("Route: {:?}", &requested_route).into());   
                                                                         let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
                                                                         history.push(&redirect_route); // Redirect to the requested or home page
                                                                         // console::log_1(&format!("Server: {:?}", server_name).into());

@@ -244,15 +244,16 @@ pub async fn login_new_server(server_name: String, username: String, password: S
     }
 }
 
-pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, _current_route: &str) {
+pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_route: &str) {
     let window = web_sys::window().expect("no global `window` exists");
     let session_storage = window.session_storage().unwrap().unwrap();
     let is_authenticated = session_storage.get_item("isAuthenticated").unwrap_or(None);
-
+    session_storage.set_item("requested_route", &current_route).unwrap();
     // If not authenticated or no information, redirect to login
     if is_authenticated != Some("true".to_string()) {
         session_storage.set_item("isAuthenticated", "false").unwrap();
         let history = BrowserHistory::new();
+        // let last_known_route = session_storage.get_item("requested_route").unwrap_or(Some(current_route.to_string())).unwrap_or_default();
         history.push("/");
     } else {
         // Already authenticated, continue as normal

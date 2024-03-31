@@ -2550,7 +2550,9 @@ def check_episode_exists(cnx, user_id, episode_title, episode_url):
     return result[0] == 1
 
 
-def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token):
+def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token, login_name):
+    print("Adding gPodder settings")
+    print(f"User ID: {user_id}, gPodder URL: {gpodder_url}, gPodder Token: {gpodder_token}, Login Name: {login_name}")
     the_key = get_encryption_key(cnx)
 
     cursor = cnx.cursor()
@@ -2569,8 +2571,8 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
         decoded_token = None
 
     cursor.execute(
-        "UPDATE Users SET GpodderUrl = %s, GpodderToken = %s WHERE UserID = %s",
-        (gpodder_url, decoded_token, user_id)
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s WHERE UserID = %s",
+        (gpodder_url, login_name, decoded_token, user_id)
     )
     # Check if the update was successful
     if cursor.rowcount == 0:
@@ -2594,6 +2596,7 @@ def get_gpodder_settings(database_type, cnx, user_id):
 
     cnx.commit()  # Commit changes to the database
     cursor.close()
+    return result
 
 
 def remove_gpodder_settings(database_type, cnx, user_id):
@@ -2633,7 +2636,7 @@ def get_nextcloud_users(database_type, cnx):
     cursor = cnx.cursor()
 
     # Query to select users with set Nextcloud gPodder URLs and Tokens
-    query = "SELECT UserID, GpodderUrl, GpodderToken FROM Users WHERE GpodderUrl <> '' AND GpodderToken <> ''"
+    query = "SELECT UserID, GpodderUrl, GpodderToken, GpodderLoginName FROM Users WHERE GpodderUrl <> '' AND GpodderToken <> '' AND GpodderLoginName <> ''"
     cursor.execute(query)
 
     # Fetch all matching records
@@ -2646,8 +2649,9 @@ def current_timestamp():
     # Return the current time in ISO 8601 format
     return datetime.utcnow().isoformat() + 'Z'  # Adding 'Z' indicates Zulu time, which is UTC
 
-def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token):
+def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login):
     from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
     # Fetch encryption key
     encryption_key = get_encryption_key(cnx)
     encryption_key_bytes = base64.b64decode(encryption_key)
@@ -2661,14 +2665,14 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
     else:
         gpodder_token = None
 
+    # Prepare for Basic Auth
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
     # Now, use the decrypted token in your API request
     print(f"Decrypted gPodder token: {gpodder_token}")
-    response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions",
-                            headers={"Authorization": f"Bearer {gpodder_token}"})
+    response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions", auth=auth)
+    response.raise_for_status()  # This will raise an exception for HTTP errors
     print(f"Response status: {response.status_code}, Content: {response.text}")
-    if response.status_code != 200:
-        print("Error fetching Nextcloud subscriptions")
-        return
 
     nextcloud_podcasts = response.json().get("add", [])
     print(f"Nextcloud podcasts: {nextcloud_podcasts}")
@@ -2754,13 +2758,12 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
             response = requests.post(
                 f"{gpodder_url}/index.php/apps/gpoddersync/episode_action/create",
                 json=update_actions,
-                headers={"Authorization": f"Bearer {gpodder_token}"}
+                auth=HTTPBasicAuth(gpodder_login, gpodder_token)  # Use Basic Auth here
             )
             response.raise_for_status()  # Check for HTTP errors
             print(f"Update episode times response: {response.status_code}")
         except RequestException as e:
             print(f"Error updating episode times in Nextcloud: {e}")
-
 
 # database_functions.py
 

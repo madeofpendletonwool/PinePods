@@ -207,16 +207,17 @@ pub struct PodcastResponse {
 pub struct Podcast {
     pub PodcastID: i32,
     pub PodcastName: String,
-    pub ArtworkURL: String,
-    pub Description: String,
+    pub ArtworkURL: Option<String>,
+    pub Description: Option<String>,
     pub EpisodeCount: i32,
-    pub WebsiteURL: String,
+    pub WebsiteURL: Option<String>,
     pub FeedURL: String,
-    pub Author: String,
-    pub Categories: String, // Assuming categories are key-value pairs
+    pub Author: Option<String>,
+    pub Categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
     #[serde(deserialize_with = "bool_from_int")]
     pub Explicit: bool,
 }
+
 
 pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {
     let url = format!("{}/api/data/return_pods/{}", server_name, user_id);

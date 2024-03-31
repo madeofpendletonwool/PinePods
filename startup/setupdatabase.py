@@ -61,6 +61,7 @@ try:
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin TINYINT(1) DEFAULT 0,
             GpodderUrl VARCHAR(255) DEFAULT '',
+            GpodderLoginName TEXT DEFAULT '',
             GpodderToken TEXT DEFAULT ''
         )
     """)

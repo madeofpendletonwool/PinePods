@@ -2442,7 +2442,7 @@ async def poll_for_auth_completion_background(data: NextcloudAuthRequest, databa
             logging.info(f"Adding Nextcloud settings for user {data.user_id}")
             logging.info(f"Database Type: {database_type}, Connection: {cnx}, User ID: {data.user_id}")
             logging.info(f"Nextcloud URL: {data.nextcloud_url}, Token: {data.token}")
-            result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, str(data.nextcloud_url), str(data.token))
+            result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, str(data.nextcloud_url), credentials["appPassword"], credentials["loginName"])
             if not result:
                 logging.error("User not found")
         else:
@@ -2487,15 +2487,15 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
         else:
             cnx.close()
 
-    for user_id, gpodder_url, gpodder_token in users:
-        background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token)
+    for user_id, gpodder_url, gpodder_token, gpodder_login in users:
+        background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
 
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
 
-def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token):
+def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login):
     cnx = create_database_connection()
     try:
-        database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token)
+        database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login)
     finally:
         if database_type == "postgresql":
             connection_pool.putconn(cnx)

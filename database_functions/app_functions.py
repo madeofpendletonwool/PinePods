@@ -63,7 +63,7 @@ def sync_with_nextcloud(nextcloud_url, nextcloud_token):
     print("Starting Nextcloud Sync")
 
     headers = {
-        "Authorization": f"Bearer {access_token}",
+        "Authorization": f"Bearer {nextcloud_token}",
         "Content-Type": "application/json"
     }
 
@@ -75,6 +75,7 @@ def sync_with_nextcloud(nextcloud_url, nextcloud_token):
 
 
 def sync_subscriptions(nextcloud_url, headers, user_id):
+    import requests
     # Implement fetching and updating subscriptions
     # Example GET request to fetch subscriptions
     response = requests.get(f"{nextcloud_url}/index.php/apps/gpoddersync/subscriptions", headers=headers)
@@ -83,6 +84,7 @@ def sync_subscriptions(nextcloud_url, headers, user_id):
 
 
 def sync_subscription_change(nextcloud_url, headers, add, remove):
+    import requests
     payload = {
         "add": add,
         "remove": remove
@@ -99,44 +101,51 @@ def sync_episode_actions(nextcloud_url, headers):
 
 def get_podcast_values(feed_url, user_id):
     import feedparser
+    import json
     # Parse the feed
     d = feedparser.parse(feed_url)
 
-    # Extract needed values
-    pod_title = d.feed.title if hasattr(d.feed, 'title') else None
+    # Initialize podcast_values as a dictionary
+    podcast_values = {
+        'pod_title': d.feed.title if hasattr(d.feed, 'title') else None,
+        'pod_artwork': d.feed.image.href if hasattr(d.feed, 'image') and hasattr(d.feed.image, 'href') else None,
+        'pod_author': d.feed.author if hasattr(d.feed, 'author') else None,
+        'categories': [],
+        'pod_description': d.feed.description if hasattr(d.feed, 'description') else None,
+        'pod_episode_count': len(d.entries),
+        'pod_feed_url': feed_url,
+        'pod_website': d.feed.link if hasattr(d.feed, 'link') else None,
+        'pod_explicit': False,
+        'user_id': user_id
+    }
 
-    # For artwork, checking both generic and iTunes-specific
-    pod_artwork = d.feed.image.href if hasattr(d.feed, 'image') and hasattr(d.feed.image, 'href') else None
-    if not pod_artwork and hasattr(d.feed, 'itunes_image'):
-        pod_artwork = d.feed.itunes_image['href']
+    if not podcast_values['pod_artwork'] and hasattr(d.feed, 'itunes_image'):
+        podcast_values['pod_artwork'] = d.feed.itunes_image['href']
 
-    # For author, checking both generic and iTunes-specific
-    pod_author = d.feed.author if hasattr(d.feed, 'author') else None
-    if not pod_author and hasattr(d.feed, 'itunes_author'):
-        pod_author = d.feed.itunes_author
+    if not podcast_values['pod_author'] and hasattr(d.feed, 'itunes_author'):
+        podcast_values['pod_author'] = d.feed.itunes_author
 
     # Extracting categories, primarily from iTunes
-    pod_categories = []
     if hasattr(d.feed, 'itunes_category'):
         for cat in d.feed.itunes_category:
-            pod_categories.append(cat['text'])
+            podcast_values['categories'].append(cat['text'])
             if 'itunes_category' in cat:
                 for subcat in cat['itunes_category']:
-                    pod_categories.append(subcat['text'])
-    categories = json.dumps(pod_categories)
+                    podcast_values['categories'].append(subcat['text'])
 
-    # Description can be either generic or from iTunes
-    pod_description = d.feed.description if hasattr(d.feed, 'description') else None
-    if not pod_description and hasattr(d.feed, 'itunes_summary'):
-        pod_description = d.feed.itunes_summary
+    # Now, check if categories list is empty after attempting to populate it
+    if not podcast_values['categories']:  
+        podcast_values['categories'] = ""  # Set to empty string if no categories found
+    else:
+        categories_dict = {str(i): cat for i, cat in enumerate(podcast_values['categories'], start=1)}
+        podcast_values['categories'] = json.dumps(categories_dict)  # Serialize populated categories dict
 
-    pod_episode_count = len(d.entries)
-    pod_feed_url = feed_url  # since you passed it as an argument
-    pod_website = d.feed.link if hasattr(d.feed, 'link') else None
 
-    podcast_values = (
-        pod_title, pod_artwork, pod_author, categories, pod_description, pod_episode_count, pod_feed_url,
-        pod_website, user_id  # using the passed user_id directly
-    )
+    if not podcast_values['pod_description'] and hasattr(d.feed, 'itunes_summary'):
+        podcast_values['pod_description'] = d.feed.itunes_summary
+
+    # Check for explicit content
+    if hasattr(d.feed, 'itunes_explicit'):
+        podcast_values['pod_explicit'] = d.feed.itunes_explicit == 'yes'
 
     return podcast_values

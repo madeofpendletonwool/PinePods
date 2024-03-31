@@ -242,14 +242,15 @@ pub fn podcasts() -> Html {
                                 &history,
                                 podcast.PodcastName.clone(),
                                 podcast.FeedURL.clone(),
-                                podcast.Description.clone(),
-                                podcast.Author.clone(),
-                                podcast.ArtworkURL.clone(),
+                                podcast.Description.clone().unwrap_or_else(|| String::from("No Description Provided")),
+                                podcast.Author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                                podcast.ArtworkURL.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                                 podcast.Explicit.clone(),
                                 podcast.EpisodeCount.clone(),
                                 Some(categories),
-                                podcast.WebsiteURL.clone(),
+                                podcast.WebsiteURL.clone().unwrap_or_else(|| String::from("No Website Provided")),
                             );
+                            
     
                             html! {
                                 <div>
@@ -261,7 +262,7 @@ pub fn podcasts() -> Html {
                                                 html! {
                                                     <div class="item_container-text episode-description-container">
                                                         <div>
-                                                            <SafeHtml html={podcast_description_clone} />
+                                                            <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                                         </div>
                                                     </div>
                                                 }
