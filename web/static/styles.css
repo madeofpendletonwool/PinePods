@@ -34,6 +34,10 @@ body {
     padding: 0 20px;
 }
 
+.login-link {
+    color: var(--link-color); /* Default link color */
+}
+
 .item_container-text.episode-description-container a {
     color: var(--link-color); /* Replace #yourColorCode with the color you want */
     text-decoration: none; /* Example property, adjust as needed */
@@ -425,7 +429,7 @@ body {
     width: 60%;;
     padding: 10px 20px; /* Padding for breathing space */
     font-size: 0.9em; /* Adjust font size for time display */
-    color: #fff; /* Text color */
+    color: var(--prog-bar-color); /* Text color */
     margin: 10px 0; /* Vertical margin */
 }
 
@@ -439,7 +443,7 @@ body {
     -webkit-appearance: none; /* Override default appearance */
     width: 100%; /* Full width */
     height: 4px; /* Height of the scrub bar */
-    background: #444; /* Background of the scrub bar */
+    background-color: var(--prog-bar-color);
     cursor: pointer; /* Pointer cursor on hover */
     border-radius: 2px; /* Slightly rounded corners */
 }
@@ -466,15 +470,64 @@ body {
 .audio-player .top-section .scrub-bar input[type="range"]::-webkit-slider-runnable-track {
     width: 100%;
     height: 4px;
-    background: #888; /* Background of the track */
+    background-color: var(--prog-bar-color);
+    background: linear-gradient(to right, var(--link-color) 0%, var(--link-color) 50%, var(--prog-bar-color) 50%); /* Adjust 50% to the current value dynamically if possible */
     border-radius: 2px;
 }
 
 .audio-player .top-section .scrub-bar input[type="range"]::-moz-range-track {
     width: 100%;
     height: 4px;
-    background: #888;
+    background-color: var(--prog-bar-color);
+    background: var(--prog-bar-color);
     border-radius: 2px;
+}
+
+.lower-scrub input[type="range"].flex-grow {
+    -webkit-appearance: none; /* Necessary to remove default styling in WebKit browsers */
+    width: 100%;
+    height: 5px; /* Adjust the height of the slider track */
+    background: var(--prog-bar-color, #ddd); /* Default background color */
+    cursor: pointer;
+    outline: none;
+}
+
+/* Track styles for WebKit browsers */
+.lower-scrub input[type="range"].flex-grow::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 5px;
+    cursor: pointer;
+    animate: 0.2s;
+    background: linear-gradient(to right, var(--link-color, #000) 50%, var(--prog-bar-color, #ddd) 50%);
+}
+
+/* Since Firefox does not support styling the filled part directly, 
+   we only set the overall track appearance */
+.lower-scrub input[type="range"].flex-grow::-moz-range-track {
+    width: 100%;
+    height: 5px;
+    cursor: pointer;
+    background: var(--prog-bar-color, #ddd);
+}
+
+.search-bar-input {
+    background-color: var(--container-background);
+    color: var(--text-color);
+}
+
+.search-input::placeholder {
+    color: var(--text-color);
+}
+
+.search-page-button {
+    background-color: var(--button-color);
+    color: var(--button-text-color);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.search-page-button:hover {
+    background-color: var(--hover-color);
 }
 
 
@@ -652,6 +705,18 @@ body {
 .link {
     color: var(--link-color);
     text-decoration: none;
+}
+
+.modal-container {
+    background-color: var(--secondary-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
+
+}
+
+.mfa-code-box {
+    background-color: var(--bonus-color); /* Replace with your desired color */
+    color: var(--text-color); /* Replace with your desired color */
 }
 
 .item-container {

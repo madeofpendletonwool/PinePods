@@ -370,6 +370,12 @@ pub struct QueuePodcastRequest {
     pub user_id: i32,
 }
 
+// Define a struct to match the response JSON structure
+#[derive(Deserialize, Debug)]
+struct QueueResponse {
+    data: String,
+}
+
 pub async fn call_queue_episode(
     server_name: &String, 
     api_key: &Option<String>, 
@@ -377,7 +383,6 @@ pub async fn call_queue_episode(
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/queue_pod", server_name);
 
-    // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
@@ -390,15 +395,17 @@ pub async fn call_queue_episode(
         .await?;
 
     if response.ok() {
-        // Read the success message from the response body as text
-        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode queued successfully"));
-        Ok(success_message)
+        // Deserialize the JSON response into QueueResponse
+        let response_body: QueueResponse = response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        // Extract and return the data string
+        Ok(response_body.data)
     } else {
-        // Read the error response body as text to include in the error
         let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
         Err(anyhow::Error::msg(format!("Failed to queue episode: {} - {}", response.status_text(), error_text)))
     }
 }
+
+
 
 pub async fn call_remove_queued_episode(
     server_name: &String, 
@@ -553,6 +560,11 @@ pub struct SavePodcastRequest {
     pub user_id: i32,
 }
 
+#[derive(Deserialize, Debug)]
+struct SaveResponse {
+    detail: String,
+}
+
 pub async fn call_save_episode(
     server_name: &String, 
     api_key: &Option<String>, 
@@ -573,9 +585,10 @@ pub async fn call_save_episode(
         .await?;
 
     if response.ok() {
-        // Read the success message from the response body as text
-        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode saved successfully"));
-        Ok(success_message)
+        // Deserialize the JSON response into SaveResponse
+        let response_body: SaveResponse = response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        // Extract and return the detail string
+        Ok(response_body.detail)
     } else {
         // Read the error response body as text to include in the error
         let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
@@ -771,6 +784,11 @@ pub struct DownloadEpisodeRequest {
     pub user_id: i32,
 }
 
+#[derive(Deserialize, Debug)]
+struct DownloadResponse {
+    detail: String,
+}
+
 pub async fn call_download_episode (
     server_name: &String, 
     api_key: &Option<String>, 
@@ -790,10 +808,11 @@ pub async fn call_download_episode (
         .send()
         .await?;
 
-    if response.ok() {
-        // Read the success message from the response body as text
-        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode downloaded successfully"));
-        Ok(success_message)
+        if response.ok() {
+            // Deserialize the JSON response into DownloadResponse
+            let response_body: DownloadResponse = response.json().await.map_err(|e| anyhow::Error::new(e))?;
+            // Extract and return the detail string
+            Ok(response_body.detail)
     } else {
         // Read the error response body as text to include in the error
         let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));

@@ -161,8 +161,8 @@ pub fn mfa_options() -> Html {
     let qr_code_svg = (*mfa_code).clone();
     let setup_mfa_modal = html! {
         <div id="setup-mfa-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
                     <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
                         <button onclick={close_modal.clone()} class="self-end text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
@@ -170,10 +170,10 @@ pub fn mfa_options() -> Html {
                             </svg>
                             <span class="sr-only">{"Close modal"}</span>
                         </button>
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                        <h3 class="text-xl font-semibold">
                             {"Setup MFA"}
                         </h3>
-                        <p class="text-m font-semibold text-gray-900 dark:text-white">
+                        <p class="item_container-text text-m font-semibold">
                             {"Either scan the QR code with your authenticator app or enter the code manually. Then enter the code from your authenticator app to verify."}
                         </p>
                         <div class="mt-4 self-center bg-white rounded-lg overflow-hidden p-4 shadow-lg">
@@ -181,18 +181,18 @@ pub fn mfa_options() -> Html {
                         </div>
                         // More HTML as needed
 
-                        <div class="mt-4 bg-gray-100 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
+                        <div class="mfa-code-box mt-4 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
                             {(*mfa_secret).clone()}
                         </div>
                         <div>
-                            <label for="fullname" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Verify Code"}</label>
+                            <label for="fullname" class="block mb-2 mt-2 text-sm font-semibold font-medium">{"Verify Code:"}</label>
                             <input oninput={on_code_change} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                         </div>
-                        <div class="flex justify-between">
-                            <button onclick={verify_code.clone()} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                        <div class="flex justify-between space-x-4">
+                            <button onclick={verify_code.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                                 {"Verify"}
                             </button>
-                            <button onclick={close_modal.clone()} class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                            <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                                 {"Close"}
                             </button>
                         </div>

@@ -352,6 +352,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Run Podcast Descriptions on Podcasts page through html parsing
 - [x] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes) <- Fixed, F5 now returns you to the page you were previously on
 - [x] Nextcloud Subscription Timestamps
+- [x] Verify Users only see what they have access to
+
+- [ ] Do not delete theme context on logout
 
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout
@@ -360,8 +363,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Update All Depends
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Test Edgecases and ensure errors can't happen throughout
-
-- [ ] Verify Users only see what they have access to
 
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
 - [ ] Client release with Tauri (Compiles and runs. Feature testing needed)

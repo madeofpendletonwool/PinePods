@@ -1082,29 +1082,29 @@ pub fn login() -> Html {
         }
         
             <div class="flex justify-center items-center h-screen">
-                <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg bg-gray-600">
+                <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
                     <div class="flex justify-center items-center">
                         <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                     </div>
-                    <h1 class="text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                    <p class="text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                    <h1 class="item_container-text text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
+                    <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
                     <input
                         type="text"
                         placeholder="Username"
-                        class="p-2 border border-gray-300 rounded"
+                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                         oninput={on_login_username_change}
                     />
                     <input
                         type="password"
                         placeholder="Password"
-                        class="p-2 border border-gray-300 rounded"
+                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                         oninput={on_login_password_change}
                     />
                     // Forgot Password and Create New User buttons
                     <div class="flex justify-between">
                         <button
                             onclick={on_forgot_password}
-                            class="text-sm text-blue-500 hover:text-blue-700"
+                            class="login-link text-sm"
                         >
                             {"Forgot Password?"}
                         </button>
@@ -1119,7 +1119,7 @@ pub fn login() -> Html {
                                 html! {
                                     <button
                                         onclick={on_create_new_user.clone()}
-                                        class="text-sm text-blue-500 hover:text-blue-700"
+                                        class="text-sm login-link"
                                     >
                                         {"Create New User"}
                                     </button>
@@ -1131,7 +1131,7 @@ pub fn login() -> Html {
                     </div>
                     <button
                         onclick={on_submit_click}
-                        class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                        class="p-2 download-button rounded"
                     >
                         {"Login"}
                     </button>
@@ -1711,34 +1711,34 @@ pub fn login() -> Html {
             }
         }
         <div class="flex justify-center items-center h-screen">
-            <div class="flex flex-col space-y-4 w-full max-w-xs p-8 border border-gray-300 rounded-lg shadow-lg bg-gray-600">
+            <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
                 <div class="flex justify-center items-center">
                     <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                 </div>
-                <h1 class="text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                <p class="text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                <h1 class="item_container-text text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
+                <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
                 <input
                     type="text"
                     placeholder="Server Name"
-                    class="p-2 border border-gray-300 rounded"
+                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                     oninput={on_server_name_change}
                     onkeypress={handle_key_press.clone()}
                 />
                 <input
                     type="text"
                     placeholder="Username"
-                    class="p-2 border border-gray-300 rounded"
+                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                     oninput={on_username_change}
                     onkeypress={handle_key_press.clone()}
                 />
                 <input
                     type="password"
                     placeholder="Password"
-                    class="p-2 border border-gray-300 rounded"
+                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                     oninput={on_password_change}
                     onkeypress={handle_key_press.clone()}
                 />
-                <button onclick={on_submit_click} class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                <button onclick={on_submit_click} class="p-2 download-button rounded">
                     {"Login"}
                 </button>
             </div>

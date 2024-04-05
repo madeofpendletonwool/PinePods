@@ -4,7 +4,7 @@ use wasm_bindgen::JsCast;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
-use web_sys::{window, HtmlInputElement, MouseEvent};
+use web_sys::{console, window, HtmlInputElement, MouseEvent};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -365,6 +365,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("Episode added to Queue!")));
                 match call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
                     Ok(success_message) => {
+                        console::log_1(&format!("{}", success_message).into());
                         queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                     },
                     Err(e) => {

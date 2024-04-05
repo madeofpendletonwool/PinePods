@@ -988,3 +988,33 @@ pub async fn call_get_nextcloud_server(
         )))
     }
 }
+
+
+#[derive(Deserialize, Debug)]
+pub struct AdminCheckResponse {
+    pub is_admin: bool,
+}
+
+pub async fn call_user_admin_check(
+    server_name: &String,
+    api_key: &String,
+    user_id: i32
+) -> Result<AdminCheckResponse, anyhow::Error> {
+    let url = format!("{}/api/data/user_admin_check/{}", server_name, user_id);
+    let api_key_ref = api_key.as_str();
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<AdminCheckResponse>().await?;
+        Ok(response_body)
+    } else {
+        console::log_1(&format!("Error checking admin status: {}", response.status_text()).into());
+        Err(anyhow::Error::msg(format!("Error checking admin status. Is the server reachable? Server Response: {}", response.status_text())))
+    }
+}
+

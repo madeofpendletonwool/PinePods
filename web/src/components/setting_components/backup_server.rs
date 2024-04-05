@@ -65,7 +65,7 @@ pub fn backup_server() -> Html {
                     let input: web_sys::HtmlInputElement = e.target_unchecked_into();
                     database_password.set(input.value());
                 })} 
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="mYDBp@ss!" />
+                class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="mYDBp@ss!" />
                 <button onclick={on_download_click} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                 {"Authenticate"}
                 </button>

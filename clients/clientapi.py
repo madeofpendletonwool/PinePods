@@ -2043,7 +2043,7 @@ async def setup_timezone_info(data: TimeZoneInfo, cnx=Depends(get_database_conne
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
 
-        if TimeZoneInfo.user_id != user_id_from_api_key:
+        if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
 

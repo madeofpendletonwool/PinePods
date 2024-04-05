@@ -2434,7 +2434,7 @@ def queue_pod(database_type, cnx, episode_id, user_id):
         print("Error queueing Podcast Episode:", e)
         return None
 
-    return {"detail": "Podcast Episode queued successfully."}
+    return "Podcast Episode queued successfully."
 
 def check_queued(database_type, cnx, episode_id, user_id):
     if database_type == "postgresql":

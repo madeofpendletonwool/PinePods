@@ -391,7 +391,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     <button onclick={title_click.clone()} class="retract-button">
                         <span class="material-icons">{"expand_more"}</span>
                     </button>
-                    <img src={audio_props.artwork_url.clone()} />
+                    <img onclick={title_click.clone()} src={audio_props.artwork_url.clone()} />
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
                     <div class="scrub-bar">

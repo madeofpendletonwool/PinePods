@@ -10,6 +10,7 @@ use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
 use crate::requests::login_requests::use_check_authentication;
+use crate::requests::setting_reqs::call_user_admin_check;
 // use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]
@@ -107,6 +108,10 @@ pub fn settings() -> Html {
     let session_dispatch = _post_dispatch.clone();
     let session_state = _post_state.clone();
 
+    let api_key = _post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let user_id = _post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = _post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
         if session_state.reload_occured.unwrap_or(false) {
@@ -135,6 +140,29 @@ pub fn settings() -> Html {
     
         || ()
     });
+
+    let is_admin = use_state(|| false);
+    let audio_admin = audio_dispatch.clone();
+
+{
+    let is_admin = is_admin.clone();
+
+    use_effect_with((), move |_| {
+        wasm_bindgen_futures::spawn_local(async move {
+            match call_user_admin_check(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap()).await {
+                Ok(response) => {
+                    is_admin.set(response.is_admin);
+                }
+                Err(e) => {
+                    audio_admin.reduce_mut(|state| state.error_message = Some(format!("Failed to check admin status: {:?}", e)));
+                    // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
+                }
+            }
+        });
+
+        || ()
+    });
+}
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -177,7 +205,16 @@ pub fn settings() -> Html {
             <h1 class="item_container-text text-2xl font-bold mb-3">{ "Settings" }</h1>
             <div class="item_container-text tabs flex flex-wrap text-sm font-medium text-center border-b border-gray-200">
                 <Tab is_active={*active_tab == "user"} class="me-2" label={"User Settings".to_string()} onclick={on_user_tab_click.clone()} />
-                <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
+                // <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
+                {
+                    if *is_admin {
+                        html! {
+                            <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
             </div>
             <div class="tab-content setting-box p-1 shadow rounded-lg">
             {
