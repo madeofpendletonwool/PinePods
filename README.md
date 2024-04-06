@@ -314,8 +314,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
+- [x] Make validations work correctly on login user create
+
 ### Pre-Rust Revamp Release
-- [ ] Make validations work correctly on login user create
 - [ ] Make no or wrong pass display error in server Restore and Backup
 - [ ] Improve Import Experience
 

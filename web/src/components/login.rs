@@ -53,10 +53,6 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let email_error = use_state(|| "".to_string());
-    let password_error = use_state(|| "".to_string());
-    let username_error = use_state(|| "".to_string());
-    let fullname_error = use_state(|| "".to_string());
     let info_message = _state.info_message.clone();
     // Define the initial state
     let page_state = use_state(|| PageState::Default);
@@ -469,7 +465,33 @@ pub fn login() -> Html {
         Callback::from(move |e: InputEvent| {
             new_password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
         })
-    };    
+    }; 
+
+    #[derive(Clone, PartialEq)]
+    enum full_name_error_notice {
+        Hidden,
+        Shown,
+    }
+    enum email_error_notice {
+        Hidden,
+        Shown,
+    }
+    enum password_error_notice {
+        Hidden,
+        Shown,
+    }
+    enum username_error_notice {
+        Hidden,
+        Shown,
+    }
+
+    //Define States for error message
+    let full_name_error = use_state(|| full_name_error_notice::Hidden);
+    let email_error = use_state(|| email_error_notice::Hidden);
+    let password_error = use_state(|| password_error_notice::Hidden);
+    let username_error = use_state(|| username_error_notice::Hidden);
+
+
 
     let on_create_submit = {
         let page_state = page_state.clone();
@@ -477,6 +499,9 @@ pub fn login() -> Html {
         let new_username = new_username.clone().to_string();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
+        let username_error = username_error.clone();
+        let password_error = password_error.clone();
+        let email_error = email_error.clone();
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
@@ -490,77 +515,28 @@ pub fn login() -> Html {
             let fullname = fullname.clone();
             let email = email.clone();
             let page_state = page_state.clone();
-            #[derive(Clone, PartialEq)]
-            enum FullNameErrorNotice {
-                Hidden,
-                Shown,
-            }
-            
-            impl ToString for FullNameErrorNotice {
-                fn to_string(&self) -> String {
-                    match self {
-                        FullNameErrorNotice::Hidden => "Hidden".to_string(),
-                        FullNameErrorNotice::Shown => "Shown".to_string(),
-                    }
-                }
-            }
-            enum EmailErrorNotice {
-                Hidden,
-                Shown,
-            }
 
-            impl ToString for EmailErrorNotice {
-                fn to_string(&self) -> String {
-                    match self {
-                        EmailErrorNotice::Hidden => "Hidden".to_string(),
-                        EmailErrorNotice::Shown => "Shown".to_string(),
-                    }
-                }
-            }
-
-            enum PasswordErrorNotice {
-                Hidden,
-                Shown,
-            }
-
-            impl ToString for PasswordErrorNotice {
-                fn to_string(&self) -> String {
-                    match self {
-                        PasswordErrorNotice::Hidden => "Hidden".to_string(),
-                        PasswordErrorNotice::Shown => "Shown".to_string(),
-                    }
-                }
-            }
-
-            enum UsernameErrorNotice {
-                Hidden,
-                Shown,
-            }
-
-            impl ToString for UsernameErrorNotice {
-                fn to_string(&self) -> String {
-                    match self {
-                        UsernameErrorNotice::Hidden => "Hidden".to_string(),
-                        UsernameErrorNotice::Shown => "Shown".to_string(),
-                    }
-                }
-            }
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
-            page_state.set(PageState::Default);
             // Hash the password and generate a salt
             let errors = validate_user_input(&new_username, &new_password, &email);
 
             if errors.contains(&ValidationError::UsernameTooShort) {
-                username_error.set(UsernameErrorNotice::Shown.to_string());
+                username_error.set(username_error_notice::Shown);
+            } else {
+                username_error.set(username_error_notice::Hidden);
             }
             
             if errors.contains(&ValidationError::PasswordTooShort) {
-                password_error.set(PasswordErrorNotice::Shown.to_string());
+                password_error.set(password_error_notice::Shown);
+            } else {
+                password_error.set(password_error_notice::Hidden);
             }
             
             if errors.contains(&ValidationError::InvalidEmail) {
-                email_error.set(EmailErrorNotice::Shown.to_string());
+                email_error.set(email_error_notice::Shown);
+            } else {
+                email_error.set(email_error_notice::Hidden);
             }
             if errors.is_empty() {
                 match encode_password(&new_password) {
@@ -580,6 +556,7 @@ pub fn login() -> Html {
                                     if success {
                                         console::log_1(&"User added successfully".into());
                                         page_state.set(PageState::Default);
+                                        dispatch.reduce_mut(|state| state.info_message = Option::from(format!("You can now login!")));
                                     } else {
                                         console::log_1(&"Error adding user".into());
                                         page_state.set(PageState::Default);
@@ -600,51 +577,6 @@ pub fn login() -> Html {
                     }
                 }
             }
-            // match validate_user_input(&new_username, &new_password, &email) {
-            //     Ok(_) => {
-            //         match encode_password(&new_password) {
-            //             Ok(hash_pw) => {
-            //                             // Set the state
-            //                 let add_user_request = Some(AddUserRequest {
-            //                     fullname,
-            //                     username: new_username,
-            //                     email,
-            //                     hash_pw,
-            //                 });
-
-            //                 // let add_user_request = add_user_request.clone();
-            //                 wasm_bindgen_futures::spawn_local(async move {
-            //                     match call_add_login_user(server_name, &add_user_request).await {
-            //                         Ok(success) => {
-            //                             if success {
-            //                                 console::log_1(&"User added successfully".into());
-            //                                 page_state.set(PageState::Default);
-            //                             } else {
-            //                                 console::log_1(&"Error adding user".into());
-            //                                 page_state.set(PageState::Default);
-            //                                 dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
-
-            //                             }
-            //                         }
-            //                         Err(e) => {
-            //                             console::log_1(&format!("Error: {}", e).into());
-            //                             page_state.set(PageState::Default);
-            //                             dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
-            //                         }
-            //                     }
-            //                 });
-            //             },
-            //             Err(e) => {
-            //                 // Handle the error here
-            //                 dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Password Encoding Failed {:?}", e)));
-            //             }
-            //         }
-            //     },
-            //     Err(e) => {
-            //         dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Invalid User Input {:?}", e)));
-            //         return;
-            //     }
-            // }
 
 
         })
@@ -652,10 +584,10 @@ pub fn login() -> Html {
     // Define the modal components
     let create_user_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
                             {"Create New User"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
@@ -668,22 +600,40 @@ pub fn login() -> Html {
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
-                                <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <label for="username" class="block mb-2 text-sm font-medium">{"Username"}</label>
+                                <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                {
+                                    match *username_error {
+                                        username_error_notice::Hidden => html! {},
+                                        username_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{"Username must be at least 4 characters long"}</p>},
+                                    }
+                                }
                             </div>
                             <div>
-                                <label for="password" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Password"}</label>
-                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <label for="fullname" class="block mb-2 text-sm font-medium">{"Full Name"}</label>
+                                <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                             </div>
                             <div>
-                                <label for="fullname" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Full Name"}</label>
-                                <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <label for="email" class="block mb-2 text-sm font-medium">{"Email"}</label>
+                                <input oninput={on_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                {
+                                    match *email_error {
+                                        email_error_notice::Hidden => html! {},
+                                        email_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{"Invalid email address"}</p>},
+                                    }
+                                }
                             </div>
                             <div>
-                                <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
-                                <input oninput={on_email_change} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <label for="password" class="block mb-2 text-sm font-medium">{"Password"}</label>
+                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                {
+                                    match *password_error {
+                                        password_error_notice::Hidden => html! {},
+                                        password_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{"Password must be at least 6 characters long"}</p>},
+                                    }
+                                }
                             </div>
-                            <button type="submit" onclick={on_create_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <button type="submit" onclick={on_create_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
@@ -756,10 +706,10 @@ pub fn login() -> Html {
 
     let forgot_password_modal = html! {
         <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
                             {"Forgot Password"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
@@ -771,18 +721,18 @@ pub fn login() -> Html {
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            <p class="text-m font-semibold">
                             {"Please enter your username and email to reset your password."}
                             </p>
                             <div>
                                 <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
-                                <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                             </div>
                             <div>
-                                <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Email"}</label>
-                                <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                <label for="email" class="block mb-2 text-sm font-medium">{"Email"}</label>
+                                <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                             </div>
-                            <button onclick={on_reset_submit} type="submit" class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <button onclick={on_reset_submit} type="submit" class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
@@ -856,11 +806,11 @@ pub fn login() -> Html {
 
     let enter_code_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-                            {"MFA Login"}
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
+                            {"Password Reset"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
@@ -871,12 +821,12 @@ pub fn login() -> Html {
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            <p class="text-m font-semibold">
                             {"An email has been sent to your email address. Please enter a new password and the code contained within the email to reset your password."}
                             </p>
-                            <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter Password Reset Code" />
-                            <input oninput={on_reset_password_change} type="text" id="reset_password" name="reset_password" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter your new password" />
-                            <button type="submit" onclick={on_reset_code_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Enter Password Reset Code" />
+                            <input oninput={on_reset_password_change} type="text" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Enter your new password" />
+                            <button type="submit" onclick={on_reset_code_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
@@ -1007,10 +957,10 @@ pub fn login() -> Html {
 
     let time_zone_setup_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
                             {"Time Zone Setup"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
@@ -1022,25 +972,25 @@ pub fn login() -> Html {
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            <p class="text-m font-semibold">
                             {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
                             </p>
                             <div>
-                                <label for="hour_format">{"Hour Format"}</label>
-                                <select id="hour_format" name="hour_format" oninput={on_time_pref_change}>
+                                <label for="hour_format" style="margin-right: 10px;">{"Hour Format:"}</label>
+                                <select id="hour_format" name="hour_format" class="email-select border p-2 rounded" oninput={on_time_pref_change}>
                                     <option value="12">{"12 Hour"}</option>
                                     <option value="24">{"24 Hour"}</option>
                                 </select>
                             </div>
                             <div>
-                                <label for="time_zone">{"Time Zone"}</label>
-                                <select id="time_zone" name="time_zone" oninput={on_tz_change}>
+                                <label for="time_zone" style="margin-right: 10px;">{"Time Zone:"}</label>
+                                <select id="time_zone" name="time_zone" class="email-select border p-2 rounded" oninput={on_tz_change}>
                                     { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
                                 </select>
                             </div>
                             <div>
-                            <label for="date_format">{"Date Format"}</label>
-                            <select id="date_format" name="date_format" oninput={on_df_change}>
+                            <label for="date_format" style="margin-right: 10px;">{"Date Format:"}</label>
+                            <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
                                 <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
                                 <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
                                 <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
@@ -1051,7 +1001,7 @@ pub fn login() -> Html {
                                 <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
                             </select>
                         </div>
-                            <button type="submit" onclick={on_time_zone_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
@@ -1633,10 +1583,10 @@ pub fn login() -> Html {
 
     let time_zone_setup_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                        <h3 class="text-xl font-semibold">
                             {"Time Zone Setup"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
@@ -1648,36 +1598,36 @@ pub fn login() -> Html {
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold text-gray-900 dark:text-white">
+                            <p class="text-m font-semibold">
                             {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
                             </p>
                             <div>
-                                <label for="hour_format">{"Hour Format"}</label>
-                                <select id="hour_format" name="hour_format" oninput={on_time_pref_change}>
+                                <label for="hour_format" style="margin-right: 10px;">{"Hour Format:"}</label>
+                                <select id="hour_format" name="hour_format" class="email-select border p-2 rounded" oninput={on_time_pref_change}>
                                     <option value="12">{"12 Hour"}</option>
                                     <option value="24">{"24 Hour"}</option>
                                 </select>
                             </div>
                             <div>
-                                <label for="time_zone">{"Time Zone"}</label>
-                                <select id="time_zone" name="time_zone" oninput={on_tz_change}>
+                                <label for="time_zone" style="margin-right: 10px;">{"Time Zone:"}</label>
+                                <select id="time_zone" name="time_zone" class="email-select border p-2 rounded" oninput={on_tz_change}>
                                     { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
                                 </select>
                             </div>
                             <div>
-                                <label for="date_format">{"Date Format"}</label>
-                                <select id="date_format" name="date_format" oninput={on_df_change}>
-                                    <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
-                                    <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
-                                    <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
-                                    <option value="JUL">{"JUL (YY/DDD)"}</option>
-                                    <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
-                                    <option value="USA">{"USA (MM/DD/YYYY)"}</option>
-                                    <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
-                                    <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
-                                </select>
-                            </div>
-                            <button type="submit" onclick={on_time_zone_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <label for="date_format" style="margin-right: 10px;">{"Date Format:"}</label>
+                            <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
+                                <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
+                                <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
+                                <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
+                                <option value="JUL">{"JUL (YY/DDD)"}</option>
+                                <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
+                                <option value="USA">{"USA (MM/DD/YYYY)"}</option>
+                                <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
+                                <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                            </select>
+                        </div>
+                            <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
                         </form>
                     </div>
                 </div>
@@ -1786,7 +1736,7 @@ pub fn login() -> Html {
                 <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
                         <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-                            {"Time Zone Setup"}
+                            {"MFA Login"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
