@@ -655,7 +655,9 @@ pub async fn call_delete_api_key(
     if response.ok() {
         response.json::<DeleteAPIKeyResponse>().await.map_err(anyhow::Error::msg)
     } else {
-        Err(anyhow::Error::msg("Error creating API key"))
+        // If the response is not ok(), read the response body to extract the error message
+        let error_message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(anyhow::Error::msg(format!("Error deleting API key: {}", error_message)))
     }
 }
 

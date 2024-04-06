@@ -268,6 +268,7 @@ pub fn email_settings() -> Html {
         let audio_dispatch_call = audio_dispatch.clone();
         
         Callback::from(move |_: MouseEvent| {
+            let audio_state = audio_state.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone().unwrap_or_default(); // Ensure server_name has a default value if it's an Option
             let audio_dispatch_call = audio_dispatch_call.clone();
@@ -288,6 +289,8 @@ pub fn email_settings() -> Html {
                     Err(e) => {
                         console::log_1(&format!("Error: {}", e).into());
                         audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error: {}", e)));
+                        let error_state = audio_state.error_message.clone();
+                        console::log_1(&format!("test error: {}", error_state.unwrap()).into());
                         // Handle the error, e.g., by updating a state with the error message
                     }
                 }

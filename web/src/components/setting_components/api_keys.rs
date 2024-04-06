@@ -1,6 +1,6 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use web_sys::console;
 use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIRequest};
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -9,12 +9,17 @@ use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call
 pub fn api_keys() -> Html {
 
     let (state, _dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let api_infos = use_state(|| Vec::new());
     let new_api_key = use_state(|| String::new());
     let selected_api_key_id: UseStateHandle<Option<i32>> = use_state(|| None);
+    let _error_message = audio_state.error_message.clone();
+    let _info_message = audio_state.info_message.clone();
+    let audio_dispatch_effect = audio_dispatch.clone();
+    let audio_dispatch_call = audio_dispatch.clone();
     // Define the type of user in the Vec
     // let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 
@@ -23,6 +28,8 @@ pub fn api_keys() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
+
+
 
         use_effect_with((api_key, server_name), move |(api_key, server_name)| {
             let api_infos = api_infos.clone();
@@ -38,6 +45,7 @@ pub fn api_keys() -> Html {
                             },
                             Err(e) => {
                                 console::log_1(&format!("Error getting API info: {}", e).into());
+                                audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting API Info: {}", e)));
                             }
                         }
                     }
@@ -77,6 +85,7 @@ pub fn api_keys() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         Callback::from(move |_| {
+            let audio_dispatch = audio_dispatch.clone();
             let api_key = api_key.clone();
             let user_id = request_state.user_details.as_ref().map(|ud| ud.UserID.clone());
             let server_name = server_name.clone();
@@ -88,7 +97,10 @@ pub fn api_keys() -> Html {
                         new_api_key.set(response.api_key);
                         page_state.set(PageState::Shown); // Move to the edit page state
                     },
-                    Err(e) => console::log_1(&e.to_string().into()),
+                    Err(e) => {
+                        console::log_1(&e.to_string().into());
+                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(e.to_string()));
+                    },
                 }
             });
         })
@@ -103,6 +115,7 @@ pub fn api_keys() -> Html {
         // Assume you have user_id and api_key from context or props
         let user_id = 1; // Example user_id
         Callback::from(move |_| {
+            let audio_dispatch = audio_dispatch_call.clone();
             let api_key = api_key.clone();
             // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
             let server_name = server_name.clone();
@@ -119,7 +132,10 @@ pub fn api_keys() -> Html {
                         console::log_1(&"API key deleted successfully".into());
                         // Update UI accordingly, e.g., remove the deleted API key from the list
                     },
-                    Err(e) => console::log_1(&format!("Error deleting API key: {:?}", e).into()),
+                    Err(e) => {
+                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error Deleting API Key: {}", e)));
+                        console::log_1(&format!("Error deleting API key: {:?}", e).into());
+                    },
                 }
                 page_state.set(PageState::Hidden); // Hide modal after deletion
             });

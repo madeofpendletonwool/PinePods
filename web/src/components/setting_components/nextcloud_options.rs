@@ -2,10 +2,10 @@ use serde::Deserialize;
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
-use crate::requests::setting_reqs::{NextcloudAuthRequest, call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server};
+use crate::{components::audio, requests::setting_reqs::{call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudAuthRequest}};
 use wasm_bindgen_futures::JsFuture;
 use yewdux::use_store;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use serde_wasm_bindgen;
 use serde::Serialize;
 // use wasm_timer;
@@ -74,12 +74,15 @@ async fn initiate_nextcloud_login(server_url: &str) -> Result<NextcloudLoginResp
 #[function_component(NextcloudOptions)]
 pub fn nextcloud_options() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let server_url = use_state(|| String::new());
     let auth_status = use_state(|| String::new());
     let nextcloud_url = use_state(|| String::new()); // State to hold the Nextcloud server URL
+    let _error_message = audio_state.error_message.clone();
+    let _info_message = audio_state.info_message.clone();
 
     // Handler for server URL input change
     let on_server_url_change = {
@@ -121,11 +124,13 @@ pub fn nextcloud_options() -> Html {
     let on_authenticate_click = {
         let server_url = server_url.clone();
         let server_url_initiate = server_url.clone();
+        // let audio_dispatch = audio_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
         Callback::from(move |_| {
+            let audio_dispatch = audio_dispatch.clone();
             console::log_1(&"Authenticate button clicked.".into());
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone();
@@ -169,17 +174,22 @@ pub fn nextcloud_options() -> Html {
                                         // let _ = wasm_timer::Delay::new(delay).await;
                                     }
                             },
-                                Err(e) => log::error!("Error calling add_nextcloud_server: {:?}", e),
+                                Err(e) => {
+                                    log::error!("Error calling add_nextcloud_server: {:?}", e);
+                                    audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error calling add_nextcloud_server: {}", e).to_string()));
+                                },
                             }
                         }
                         Err(e) => {
                             log::error!("Failed to initiate Nextcloud login: {:?}", e);
+                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
                             auth_status.set("Failed to initiate Nextcloud login. Please check the server URL.".to_string());
                         }
                     }
                 });
             } else {
                 auth_status.set("Please enter a Nextcloud server URL.".to_string());
+                audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Please enter a Nextcloud Server URL".to_string()));
             }
         })
     };

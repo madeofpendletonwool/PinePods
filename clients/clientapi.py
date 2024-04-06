@@ -1589,6 +1589,17 @@ async def api_delete_api_key(payload: DeleteAPIKeyHeaders, cnx=Depends(get_datab
         if payload.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access or remove other users api-keys.")
+    # Check if the API key to be deleted is the same as the one used in the current request
+    if database_functions.functions.is_same_api_key(cnx, payload.api_id, api_key):
+        raise HTTPException(status_code=403,
+                            detail="You cannot delete the API key that is currently in use.")
+
+    # Check if the API key belongs to the guest user (user_id 1)
+    if database_functions.functions.belongs_to_guest_user(cnx, payload.api_id):
+        raise HTTPException(status_code=403,
+                            detail="Cannot delete guest user api.")
+
+    # Proceed with deletion if the checks pass
     database_functions.functions.delete_api(cnx, payload.api_id)
     return {"detail": "API key deleted."}
 

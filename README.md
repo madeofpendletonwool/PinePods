@@ -315,50 +315,12 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ## ToDo (Listed in order they will be implemented)
 
 ### Pre-Rust Revamp Release
-- [x] Make Timestamps with with Auto Resume
-- [x] Nextcloud Subscriptions
-- [x] Finalize User Stats recording and display
-- [x] MFA Logins
-- [x] User Settings
-- [x] Ensure Queue Functions after episode End
-- [x] Auto Update Button interactions based on current page. (EX. When on saved page - Save button should be Remove from Saved rather than Save)
-- [x] Refresh of podcasts needs to be async (Currently that process stops the server dead)
-- [x] Make the Queue functional and verify auto removals and adds
-- [x] Downloads Page
-- [x] Backup Server
-- [x] Allow for episodes to be played without being added
-- [x] Fix images on some podcasts that don't appear. Likely a fallback issue
-- [x] Issues occur server side when adding podcast without itunes_duration 
-(pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
-- [x] Click Episode Title to Open into Episode Screen
-- [x] Duration Not showing when podcast played from episode layout screen
-- [x] Episodes not appearing in history (Issue due to recent episode in db check)
-- [x] Panic being caused when searching podcasts sometimes (due to an empty value) <- Silly Categories being empty
-- [x] Auto close queue, download, save context menu when clicking an option or clicking away from it 
-- [x] Added login screen random image selection. For some nice styling 
-- [x] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page 
-- [x] Show Currently Connected Nextcloud Server in settings
-- [x] Allow Setting and removing user admin status in settings
-- [x] Show released time of episodes - use function call_get_time_info in pod_reqs (Additional date format display implemented along with AM/PM time based on user pref)
-- [x] Require Re-Login if API Key that's saved doesn't work
-- [x] Episodes directly get the wrong images sometimes. This likely has to do with the way the database is parsing the podcasts as they refresh and pull in. (Should be fixed. Need to allow feeds to load in some episodes to know for sure)
-- [x] Episode Releases are showing now time. Rather than actual release in app (Bug with Parsing)
-- [x] Consistent Styling Throughout
-- [x] Setup All Themes
-- [x] Downloads page playing streamed episodes. Should stream from server files
-- [x] Loading icon in the center of screen while episodes load in (Done on home - Further test)
-- [x] Podcasts show episode images sometimes on podcasts page for some reason (This was because it used the first episode in the feed for the import. Not anymore)
-- [x] Initial Screen loading as we pull in context - It swaps a lot quicker now. Theme stores itself in local storage
-- [x] Run Podcast Descriptions on Podcasts page through html parsing
-- [x] Fix all auth Problems with redirecting and episodes loading (Solution Found, implementing on all routes) <- Fixed, F5 now returns you to the page you were previously on
-- [x] Nextcloud Subscription Timestamps
-- [x] Verify Users only see what they have access to
-
-- [ ] Do not delete theme context on logout
+- [ ] Make validations work correctly on login user create
+- [ ] Make no or wrong pass display error in server Restore and Backup
+- [ ] Improve Import Experience
 
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout
-- [ ] Restore Server - Should be done (doublecheck)
 
 - [ ] Update All Depends
 - [ ] Fix all CORs Issues - Verify behind Reverse Proxy
@@ -375,6 +337,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Handle situation where there's no audio in a feed
 - [ ] Additional Downloads Page organization - Organize by Podcast
 - [ ] Better episode performance when a large number of episodes on screen
+- [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth)
 - [ ] Guest User
 - [ ] Installable PWA

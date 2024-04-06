@@ -4,7 +4,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
-use crate::requests::login_requests::{ TimeZoneInfo, call_first_login_done, call_setup_timezone_info, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password, call_get_time_info, call_verify_key};
+use crate::requests::login_requests::{TimeZoneInfo, call_first_login_done, call_setup_timezone_info, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password, call_get_time_info, call_verify_key};
 use crate::components::context::{AppState, UIState};
 // use crate::setting_components::theme_options;
 // use yewdux::prelude::*;
@@ -12,7 +12,7 @@ use md5;
 use yewdux::prelude::*;
 use crate::requests::login_requests::{AddUserRequest, call_add_login_user};
 use crate::requests::setting_reqs::call_get_theme;
-use crate::components::gen_funcs::{encode_password, validate_user_input};
+use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
 use crate::components::episodes_layout::UIStateMsg;
 use chrono_tz::{TZ_VARIANTS, Tz};
 use rand::Rng;
@@ -53,6 +53,10 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
+    let email_error = use_state(|| "".to_string());
+    let password_error = use_state(|| "".to_string());
+    let username_error = use_state(|| "".to_string());
+    let fullname_error = use_state(|| "".to_string());
     let info_message = _state.info_message.clone();
     // Define the initial state
     let page_state = use_state(|| PageState::Default);
@@ -486,55 +490,161 @@ pub fn login() -> Html {
             let fullname = fullname.clone();
             let email = email.clone();
             let page_state = page_state.clone();
+            #[derive(Clone, PartialEq)]
+            enum FullNameErrorNotice {
+                Hidden,
+                Shown,
+            }
+            
+            impl ToString for FullNameErrorNotice {
+                fn to_string(&self) -> String {
+                    match self {
+                        FullNameErrorNotice::Hidden => "Hidden".to_string(),
+                        FullNameErrorNotice::Shown => "Shown".to_string(),
+                    }
+                }
+            }
+            enum EmailErrorNotice {
+                Hidden,
+                Shown,
+            }
+
+            impl ToString for EmailErrorNotice {
+                fn to_string(&self) -> String {
+                    match self {
+                        EmailErrorNotice::Hidden => "Hidden".to_string(),
+                        EmailErrorNotice::Shown => "Shown".to_string(),
+                    }
+                }
+            }
+
+            enum PasswordErrorNotice {
+                Hidden,
+                Shown,
+            }
+
+            impl ToString for PasswordErrorNotice {
+                fn to_string(&self) -> String {
+                    match self {
+                        PasswordErrorNotice::Hidden => "Hidden".to_string(),
+                        PasswordErrorNotice::Shown => "Shown".to_string(),
+                    }
+                }
+            }
+
+            enum UsernameErrorNotice {
+                Hidden,
+                Shown,
+            }
+
+            impl ToString for UsernameErrorNotice {
+                fn to_string(&self) -> String {
+                    match self {
+                        UsernameErrorNotice::Hidden => "Hidden".to_string(),
+                        UsernameErrorNotice::Shown => "Shown".to_string(),
+                    }
+                }
+            }
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
             page_state.set(PageState::Default);
             // Hash the password and generate a salt
-            match validate_user_input(&new_username, &new_password, &email) {
-                Ok(_) => {
-                    match encode_password(&new_password) {
-                        Ok(hash_pw) => {
-                                        // Set the state
-                            let add_user_request = Some(AddUserRequest {
-                                fullname,
-                                username: new_username,
-                                email,
-                                hash_pw,
-                            });
+            let errors = validate_user_input(&new_username, &new_password, &email);
 
-                            // let add_user_request = add_user_request.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match call_add_login_user(server_name, &add_user_request).await {
-                                    Ok(success) => {
-                                        if success {
-                                            console::log_1(&"User added successfully".into());
-                                            page_state.set(PageState::Default);
-                                        } else {
-                                            console::log_1(&"Error adding user".into());
-                                            page_state.set(PageState::Default);
-                                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
-
-                                        }
-                                    }
-                                    Err(e) => {
-                                        console::log_1(&format!("Error: {}", e).into());
+            if errors.contains(&ValidationError::UsernameTooShort) {
+                username_error.set(UsernameErrorNotice::Shown.to_string());
+            }
+            
+            if errors.contains(&ValidationError::PasswordTooShort) {
+                password_error.set(PasswordErrorNotice::Shown.to_string());
+            }
+            
+            if errors.contains(&ValidationError::InvalidEmail) {
+                email_error.set(EmailErrorNotice::Shown.to_string());
+            }
+            if errors.is_empty() {
+                match encode_password(&new_password) {
+                    Ok(hash_pw) => {
+                        let user_settings = AddUserRequest {
+                            fullname: fullname.clone(),
+                            username: new_username.clone(),
+                            email: email.clone(),
+                            hash_pw: hash_pw.clone(),
+                        };
+                        let add_user_request = Some(user_settings);
+            
+                        // let add_user_request = add_user_request.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_add_login_user(server_name, &add_user_request).await {
+                                Ok(success) => {
+                                    if success {
+                                        console::log_1(&"User added successfully".into());
                                         page_state.set(PageState::Default);
-                                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
+                                    } else {
+                                        console::log_1(&"Error adding user".into());
+                                        page_state.set(PageState::Default);
+                                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
+
                                     }
                                 }
-                            });
-                        },
-                        Err(e) => {
-                            // Handle the error here
-                            dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Password Encoding Failed {:?}", e)));
-                        }
+                                Err(e) => {
+                                    console::log_1(&format!("Error: {}", e).into());
+                                    page_state.set(PageState::Default);
+                                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
+                                }
+                            }
+                        });
+                    },
+                    Err(e) => {
+                        console::log_1(&"User added successfully".into());
                     }
-                },
-                Err(e) => {
-                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Invalid User Input {:?}", e)));
-                    return;
                 }
             }
+            // match validate_user_input(&new_username, &new_password, &email) {
+            //     Ok(_) => {
+            //         match encode_password(&new_password) {
+            //             Ok(hash_pw) => {
+            //                             // Set the state
+            //                 let add_user_request = Some(AddUserRequest {
+            //                     fullname,
+            //                     username: new_username,
+            //                     email,
+            //                     hash_pw,
+            //                 });
+
+            //                 // let add_user_request = add_user_request.clone();
+            //                 wasm_bindgen_futures::spawn_local(async move {
+            //                     match call_add_login_user(server_name, &add_user_request).await {
+            //                         Ok(success) => {
+            //                             if success {
+            //                                 console::log_1(&"User added successfully".into());
+            //                                 page_state.set(PageState::Default);
+            //                             } else {
+            //                                 console::log_1(&"Error adding user".into());
+            //                                 page_state.set(PageState::Default);
+            //                                 dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
+
+            //                             }
+            //                         }
+            //                         Err(e) => {
+            //                             console::log_1(&format!("Error: {}", e).into());
+            //                             page_state.set(PageState::Default);
+            //                             dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
+            //                         }
+            //                     }
+            //                 });
+            //             },
+            //             Err(e) => {
+            //                 // Handle the error here
+            //                 dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Password Encoding Failed {:?}", e)));
+            //             }
+            //         }
+            //     },
+            //     Err(e) => {
+            //         dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Invalid User Input {:?}", e)));
+            //         return;
+            //     }
+            // }
 
 
         })
@@ -1767,12 +1877,22 @@ pub fn login() -> Html {
 pub fn logout() -> Html {
     let history = BrowserHistory::new();
 
-    // Clear local and session storage
+    // Clear local and session storage except for 'user_theme'
     let window = web_sys::window().expect("no global `window` exists");
     let local_storage = window.local_storage().expect("localStorage not enabled").expect("localStorage is null");
     let session_storage = window.session_storage().expect("sessionStorage not enabled").expect("sessionStorage is null");
+
+    // Save 'user_theme' value
+    let selected_theme = local_storage.get_item("selected_theme").expect("failed to get 'selected_theme'");
+
+    // Clear storages
     local_storage.clear().expect("failed to clear localStorage");
     session_storage.clear().expect("failed to clear sessionStorage");
+
+    // Restore 'user_theme' value
+    if let Some(theme) = selected_theme {
+        local_storage.set_item("selected_theme", &theme).expect("failed to set 'selected_theme'");
+    }
 
     // Redirect to root path
     history.push("/");

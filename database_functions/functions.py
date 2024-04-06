@@ -1289,6 +1289,26 @@ def create_api_key(cnx, user_id):
 
     return api_key
 
+def is_same_api_key(cnx, api_id, api_key):
+    cursor = cnx.cursor()
+    query = "SELECT APIKey FROM APIKeys WHERE APIKeyID = %s"
+    cursor.execute(query, (api_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    if result and result[0] == api_key:
+        return True
+    return False
+
+def belongs_to_guest_user(cnx, api_id):
+    cursor = cnx.cursor()
+    query = "SELECT UserID FROM APIKeys WHERE APIKeyID = %s"
+    cursor.execute(query, (api_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    # Check if the result exists and if the UserID is 1 (guest user)
+    return result and result[0] == 1
+
+
 
 def delete_api(cnx, api_id):
     cursor = cnx.cursor()

@@ -136,23 +136,65 @@ pub fn encode_password(password: &str) -> Result<String, argon2::password_hash::
     Ok(password_hash)
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ValidationError {
+    UsernameTooShort,
+    PasswordTooShort,
+    InvalidEmail,
+}
 
-pub fn validate_user_input(username: &str, password: &str, email: &str) -> Result<(), String> {
+pub fn validate_user_input(username: &str, password: &str, email: &str) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+
     if username.len() < 4 {
-        return Err("Username must be at least 4 characters long".to_string());
+        errors.push(ValidationError::UsernameTooShort);
     }
 
     if password.len() < 6 {
-        return Err("Password must be at least 6 characters long".to_string());
+        errors.push(ValidationError::PasswordTooShort);
     }
 
     let email_regex = regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap();
     if !email_regex.is_match(email) {
-        return Err("Email is not in a valid format".to_string());
+        errors.push(ValidationError::InvalidEmail);
     }
 
-    Ok(())
+    errors
 }
+
+pub fn validate_username(username: &str) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+
+    if username.len() < 4 {
+        errors.push(ValidationError::UsernameTooShort);
+    }
+
+    errors
+}
+
+pub fn validate_password(password: &str) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+
+    if password.len() < 6 {
+        errors.push(ValidationError::PasswordTooShort);
+    }
+
+
+    errors
+}
+
+pub fn validate_email(email: &str) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+
+    let email_regex = regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap();
+    if !email_regex.is_match(email) {
+        errors.push(ValidationError::InvalidEmail);
+    }
+
+
+    errors
+}
+
 
 pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
     let parser = DomParser::new().unwrap();
