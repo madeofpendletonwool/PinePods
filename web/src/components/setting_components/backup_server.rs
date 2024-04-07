@@ -3,13 +3,15 @@ use wasm_bindgen::JsCast;
 use web_sys::{window, Blob, Url, BlobPropertyBag};
 use wasm_bindgen::JsValue;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::audio;
+use crate::components::context::{UIState, AppState};
 use crate::requests::setting_reqs::{call_backup_server};
 
 #[function_component(BackupServer)]
 pub fn backup_server() -> Html {
     let database_password = use_state(|| "".to_string());
     let (state, _dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let blob_property_bag = BlobPropertyBag::new();
@@ -19,9 +21,20 @@ pub fn backup_server() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let blob_property_bag = blob_property_bag.clone();
-
+        let audio_dispatch_call = audio_dispatch.clone();
         Callback::from(move |_| {
-            let db_pass = database_password.clone();
+            let audio_dispatch_call = audio_dispatch_call.clone();
+            let db_pass = (*database_password).trim().to_string();
+            if db_pass.is_empty() {
+                // Directly set the error message state if the password is empty
+                audio_dispatch_call.reduce_mut(|audio_state| {
+                    web_sys::console::log_1(&"Database password cannot be empty.".into());
+                    audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Database password cannot be empty.".to_string()));
+
+                });
+                // Optionally, return early or perform other actions
+                return;
+            }
             let api_key = api_key.clone().unwrap_or_default();
             let server_name = server_name.clone().unwrap_or_default();
             let bloberty_bag = blob_property_bag.clone();
@@ -48,6 +61,7 @@ pub fn backup_server() -> Html {
                     },
                     Err(e) => {
                         web_sys::console::log_1(&format!("Error backing up server: {:?}", e).into());
+                        audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error backing up server - Maybe wrong password?: {}", e).to_string()));
                     }
                 }
             });

@@ -133,13 +133,15 @@ pub fn nextcloud_options() -> Html {
             let audio_dispatch = audio_dispatch.clone();
             console::log_1(&"Authenticate button clicked.".into());
             let auth_status = auth_status.clone();
-            let server = (*server_url_initiate).clone();
+            let server = (*server_url_initiate).clone().trim().to_string();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
 
+            console::log_1(&format!("Server URL: {}", server).into());
 
-            if !server.is_empty() {
+
+            if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
                     match initiate_nextcloud_login(&server).await {
                         Ok(login_data) => {

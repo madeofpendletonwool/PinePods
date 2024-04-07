@@ -51,6 +51,14 @@ pub struct PodcastToAdd {
     xml_url: String,
 }
 
+#[derive(Clone, Debug)]
+struct PodcastToImport {
+    title: String,
+    xml_url: String,
+    selected: bool,
+}
+
+
 async fn add_podcasts(server_name: &str, api_key: &Option<String>, user_id: i32, podcasts: Vec<PodcastToAdd>) {
     for podcast in podcasts.into_iter() {
         // Parse podcast URL to get feed details
@@ -84,91 +92,67 @@ pub fn import_options() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let import_pods = use_state(|| Vec::new());
     let show_verification = use_state(|| false);
+    let server_name_click = server_name.clone();
 
-
-    // let onclick = {
-    //     let import_pods = import_pods.clone();
-    //     Callback::from(move |e: Event| {
-    //         let import_pods = import_pods.clone();
-    //         let input: HtmlInputElement = e.target_unchecked_into();
-    //         if let Some(file_list) = input.files() {
-    //             if let Some(file) = file_list.get(0) {
-    //                 let reader = FileReader::new().unwrap();
-
-    //                 // Create a closure for handling the file load event
-    //                 let onload_closure = Closure::wrap(Box::new(move |event: web_sys::ProgressEvent| {
-    //                     let reader: FileReader = event.target().unwrap().dyn_into().unwrap();
-    //                     if reader.ready_state() == FileReader::DONE {
-    //                         // Since `result` returns a `JsValue`, directly attempt to convert it to a string
-    //                         if let Some(text) = reader.result().unwrap().as_string() {
-    //                             // Parse the OPML content directly from the file reader result
-    //                             let import_data = parse_opml(&text);
-    //                             // Set the parsed podcasts directly
-    //                             import_pods.set(import_data);
-    //                         }
-    //                     }
-    //                 }) as Box<dyn FnMut(_)>);
-
-    //                 reader.set_onload(Some(onload_closure.as_ref().unchecked_ref()));
-    //                 reader.read_as_text(&file).unwrap();
-
-    //                 // Forget the closure to keep it alive
-    //                 onload_closure.forget();
-    //             }
-    //         }
-    //     })
-    // };
     let onclick = {
         let import_pods = import_pods.clone();
         let show_verification = show_verification.clone();
+        let server_name = server_name_click.clone();
         Callback::from(move |e: Event| {
-            let import_pods = import_pods.clone();
+            // let server_name = server_name.clone();
             let show_verification = show_verification.clone();
-            let input: HtmlInputElement = e.target_unchecked_into();
-            if let Some(file_list) = input.files() {
-                if let Some(file) = file_list.get(0) {
+            let import_pods = import_pods.clone();
+            let file_list = e.target_unchecked_into::<HtmlInputElement>().files();
+            if let Some(files) = file_list {
+                if let Some(file) = files.get(0) {
                     let reader = FileReader::new().unwrap();
-                    let reader_clone = reader.clone();
-                    let onload_closure = Closure::wrap(Box::new(move |_event: ProgressEvent| {
-                        let text = reader_clone.result().unwrap().as_string().unwrap();
-                        let import_data = parse_opml(&text);
-                        import_pods.set(import_data);
-                        show_verification.set(true); // Show the verification prompt
+                    let onload = Closure::wrap(Box::new(move |e: ProgressEvent| {
+                        let reader: FileReader = e.target().unwrap().dyn_into().unwrap();
+                        if let Ok(text) = reader.result() {
+                            let text = text.as_string().unwrap();
+                            let import_data: Vec<PodcastToImport> = parse_opml(&text)
+                                .into_iter()
+                                .map(|(title, xml_url)| PodcastToImport { title, xml_url, selected: true })
+                                .collect();
+                            import_pods.set(import_data);
+                            show_verification.set(true);
+                        }
                     }) as Box<dyn FnMut(_)>);
-
-                    reader.set_onload(Some(onload_closure.as_ref().unchecked_ref()));
+                    reader.set_onload(Some(onload.as_ref().unchecked_ref()));
                     reader.read_as_text(&file).unwrap();
-                    onload_closure.forget();
+                    onload.forget(); // This is necessary to avoid the closure being cleaned up
                 }
             }
         })
     };
-
+    
+    let server_name_confirm = server_name.clone();
     let on_confirm = {
         let import_pods = import_pods.clone();
-        let server_name = server_name.clone();
+        let server_name = server_name_confirm.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         Callback::from(move |_| {
+            _dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            // Filter for selected podcasts
             let server_name = server_name.clone();
             let api_key = api_key.clone();
-            let user_id = user_id.clone();
-            let podcasts_tuples = (*import_pods).clone();
-            console::log_1(&"Button clicked1".into());
-
-            // Transform Vec<(String, String)> into Vec<PodcastToAdd>
-            let podcasts: Vec<PodcastToAdd> = podcasts_tuples.into_iter().map(|(title, xml_url)| PodcastToAdd { title, xml_url }).collect();
-            let podcasts_log = podcasts.clone();
-            // Ensure to adjust your `add_podcasts` function call to be async or handle it appropriately
+            let selected_podcasts: Vec<PodcastToAdd> = (*import_pods)
+                .iter()
+                .filter(|podcast| podcast.selected)
+                .map(|podcast| PodcastToAdd { title: podcast.title.clone(), xml_url: podcast.xml_url.clone() })
+                .collect();
+    
             wasm_bindgen_futures::spawn_local(async move {
+                // Your existing logic to add podcasts
                 if let (Some(server_name), Some(api_key), Some(user_id)) = (server_name.as_ref(), api_key.as_ref(), user_id) {
-                    add_podcasts(server_name, &Some(api_key.clone().unwrap()), user_id, podcasts.clone()).await;
+                    add_podcasts(server_name, &Some(api_key.clone().unwrap()), user_id, selected_podcasts.clone()).await;
                 }
             });
-
-            log::info!("Adding podcasts: {:?}", podcasts_log);
+            _dispatch.reduce_mut(|state| state.is_loading = Some(false));
         })
     };
+    
 
     html! {
         <div class="p-4">
@@ -178,25 +162,46 @@ pub fn import_options() -> Html {
             <label class="input-button-label" for="fileInput">{ "Choose File" }</label>
             <input id="fileInput" class="input-button" type="file" accept=".opml" onchange={onclick} />
             // Optionally display the content of the OPML file for debugging
-
-            if *show_verification {
-                <div>
-                    <p class="item_container-text">{"These podcasts were found, are you sure you want to add them?"}</p>
-                    <button class="settings-button" onclick={on_confirm}>{"Yes, add them"}</button>
-                </div>
-            }
-            <div class="podcasts-list">
-                {
-                    for (*import_pods).iter().map(|(title, url)| {
-                        html! {
-                            <div class="podcast">
-                                <p class="item_container-text">{format!("Title: {}", title)}</p>
-                                <p class="item_container-text">{format!("URL: {}", url)}</p>
+            {
+                if *show_verification {
+                    html! {
+                        <div class="import-box">
+                            <div>
+                                <p class="item_container-text">
+                                    {"The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. Be patient!"}
+                                </p>
+                                <button class="settings-button" onclick={on_confirm}>{"Add them!"}</button>
                             </div>
-                        }
-                    })
+                            {
+                                for (*import_pods).iter().enumerate().map(|(index, podcast)| {
+                                    let import_pods_clone = import_pods.clone();
+                                    let toggle_selection = {
+                                        let import_pods = import_pods.clone();
+                                        Callback::from(move |_| {
+                                            let mut new_import_pods = (*import_pods).clone();
+                                            new_import_pods[index].selected = !new_import_pods[index].selected;
+                                            import_pods.set(new_import_pods);
+                                        })
+                                    };
+                                
+                                    html! {
+                                        <div class="podcast import-list">
+                                            <label onclick={toggle_selection}>
+                                                <input type="checkbox" checked={podcast.selected} />
+                                                <span class="item_container-text">{format!("{} - {}", podcast.title, podcast.xml_url)}</span>
+                                            </label>
+                                        </div>
+                                    }
+                                })                                
+                                
+                            }
+                        </div>
+                    }
+                } else {
+                    html! {}
                 }
-            </div>
+            }
         </div>
+        
     }
 }

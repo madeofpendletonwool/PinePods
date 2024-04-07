@@ -102,32 +102,6 @@ pub fn sanitize_html_with_blank_target(description: &str) -> String {
     // Clean the input HTML with the specified builder
     builder.clean(description).to_string()
 }
-// pub fn sanitize_html(description: &str) -> String {
-//     let sanitized_html = clean(description);
-// }
-
-// pub fn check_auth(effect_dispatch: Dispatch<AppState>) {
-//     console::log_1(&"Checking authentication... Pre use_effect".into());
-//     use_effect_with(
-//         (),
-//         move |_| {
-//             let effect_dispatch_clone = effect_dispatch.clone();
-
-//             spawn_local(async move {
-//                 let window = window().expect("no global `window` exists");
-//                 let location = window.location();
-//                 let current_route = location.href().expect("should be able to get href");
-//                 console::log_1(&current_route.clone().into());
-//                 console::log_1(&"Checking authentication... Inside Check_auth".into());
-//                 use_check_authentication(effect_dispatch_clone, &current_route);
-//             });
-
-//             || ()
-//         }
-//     );
-// }
-
-
 
 pub fn encode_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);

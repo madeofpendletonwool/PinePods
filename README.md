@@ -315,11 +315,12 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 ## ToDo (Listed in order they will be implemented)
 
 - [x] Make validations work correctly on login user create
+- [x] Make no or wrong pass display error in server Restore and Backup
+- [x] Improve Import Experience
 
 ### Pre-Rust Revamp Release
-- [ ] Make no or wrong pass display error in server Restore and Backup
-- [ ] Improve Import Experience
 
+- [ ] Loading animations where if makes sense
 - [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout
 

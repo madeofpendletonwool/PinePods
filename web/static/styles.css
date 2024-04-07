@@ -702,6 +702,22 @@ body {
     background-color: var(--hover-color);
 }
 
+.import-box {
+    background-color: var(--container-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
+    padding: 20px;
+    border-radius: 3px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+
+}
+
+.import-list {
+    display: flex;
+    align-items: center; /* Aligns items vertically in the center */
+    gap: 8px;
+}
+
 .link {
     color: var(--link-color);
     text-decoration: none;
@@ -1039,6 +1055,12 @@ button.item-container-action-button.item-container-action-button {
     background-color: var(--button-color);
     border-color: var(--border-color);
     margin-bottom: 10px;
+    margin-top: 10px;
+    display: inline-block;
+    padding: 5px 10px; /* Adjust as needed */
+    cursor: pointer;
+    border-radius: 5px; /* Adjust as needed */
+    border: 1px solid var(--button-border-color);
 }
 
 .settings-button:hover {
