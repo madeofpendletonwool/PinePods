@@ -1,8 +1,7 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use yew::platform::spawn_local;
-use web_sys::console;
 use crate::requests::setting_reqs::{call_guest_status, call_enable_disable_guest};
 use std::borrow::Borrow;
 
@@ -10,11 +9,13 @@ use std::borrow::Borrow;
 #[function_component(GuestSettings)]
 pub fn guest_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
     let guest_status = use_state(|| false);
+    let audio_dispatch_effect = audio_dispatch.clone();
 
     {
         let guest_status = guest_status.clone();
@@ -29,7 +30,10 @@ pub fn guest_settings() -> Html {
                         Ok(guest_status_response) => {
                             guest_status.set(guest_status_response);
                         },
-                        Err(e) => console::log_1(&format!("Error getting guest status: {}", e).into()),
+                        Err(e) => {
+                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting guest status: {}", e)));
+                        },
+
                     }
                 }
             };
@@ -49,6 +53,7 @@ pub fn guest_settings() -> Html {
 
             <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" disabled={**loading.borrow()} checked={**guest_status.borrow()} class="sr-only peer" onclick={Callback::from(move |_| {
+                let audio_dispatch = audio_dispatch.clone();
                 let api_key = api_key.clone();
                 let server_name = server_name.clone();
                 let guest_status = html_guest.clone();
@@ -62,7 +67,10 @@ pub fn guest_settings() -> Html {
                                 let current_status = guest_status.borrow().clone();
                                 guest_status.set(!*current_status);
                             },
-                            Err(e) => console::log_1(&format!("Error enabling/disabling guest access: {}", e).into()),
+
+                            Err(e) => {
+                                audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling guest access: {}", e)));
+                            },
                         }
                     }
                     loading.set(false);

@@ -58,6 +58,12 @@ impl Reducer<AppState> for AppStateMsg {
 }
 
 
+#[derive(Default, PartialEq, Clone, Store)]
+pub struct ExpandedDescriptions {
+    pub expanded_descriptions: HashSet<String>,
+}
+
+
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct AppState {
@@ -107,7 +113,7 @@ pub struct SettingsState {
     pub active_tab: Option<String>,
 }
 
-#[derive(Default, Clone, PartialEq, Store)]
+#[derive(Default, Clone, PartialEq, Store, Debug)]
 pub struct UIState {
     pub audio_playing: Option<bool>,
     pub currently_playing: Option<AudioPlayerProps>,
@@ -135,16 +141,13 @@ impl UIState {
         self.current_time_formatted = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
     }
     pub fn toggle_playback(&mut self) {
-        web_sys::console::log_1(&format!("Current playing state: {:?}", self.audio_playing).into());
         if let Some(audio) = &self.audio_element {
             if self.audio_playing.unwrap_or(false) {
                 let _ = audio.pause();
                 self.audio_playing = Some(false);
-                web_sys::console::log_1(&"Paused audio".into());
             } else {
                 let _ = audio.play();
                 self.audio_playing = Some(true);
-                web_sys::console::log_1(&"Playing audio".into());
             }
         }
     }

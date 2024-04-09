@@ -1,17 +1,16 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use yew::platform::spawn_local;
-use web_sys::console;
 use crate::components::episodes_layout::SafeHtml;
 use crate::requests::setting_reqs::{call_mfa_settings, call_generate_mfa_secret, call_verify_temp_mfa};
 use std::borrow::Borrow;
-use wasm_bindgen::JsValue;
 
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -22,6 +21,7 @@ pub fn mfa_options() -> Html {
     let effect_user_id = user_id.clone();
     let effect_api_key = api_key.clone();
     let effect_server_name = server_name.clone();
+    let audio_dispatch_effect = audio_dispatch.clone();
     {
         let mfa_status = mfa_status.clone();
         use_effect_with((effect_api_key.clone(), effect_server_name.clone()), move |(_api_key, _server_name)| {
@@ -36,7 +36,9 @@ pub fn mfa_options() -> Html {
                         Ok(mfa_settings_response) => {
                             mfa_status.set(mfa_settings_response);
                         },
-                        Err(e) => console::log_1(&format!("Error getting MFA status: {}", e).into()),
+                        Err(e) => {
+                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting MFA status: {}", e)));
+                        },
                     }
                 }
             };
@@ -102,7 +104,6 @@ pub fn mfa_options() -> Html {
         })
     };
     
-    let verify_mfa_code = mfa_code.clone();
     // Define the function to close the modal
     let verify_code = {
         let page_state = page_state.clone();
@@ -116,33 +117,24 @@ pub fn mfa_options() -> Html {
             let user_id = user_id.clone();
             let server_name = server_name.clone();
             let page_state = page_state.clone();
-            let mfa_code = verify_mfa_code.clone();
             let code = code.clone();
+            let audio_dispatch = audio_dispatch.clone();
 
-            console::log_1(&"Verifying code".into());
-            console::log_1(&"test".into());
+
             wasm_bindgen_futures::spawn_local(async move {
-                console::log_1(&"Verifying code".into());
-                console::log_1(&"test".into());
-                console::log_1(&JsValue::from_str(&(*mfa_code).clone()));
-                console::log_1(&server_name.clone().unwrap().into());
-                console::log_1(&api_key.clone().unwrap().unwrap().into());
-                console::log_1(&user_id.clone().unwrap().into());
-                console::log_1(&"below is the code".into());
-                console::log_1(&(*code).clone().into());
+
                 match call_verify_temp_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*code).clone()).await {
                     Ok(response) => {
                         if response.verified {
-                            console::log_1(&"MFA code verified successfully".into());
                             // Handle successful verification, e.g., updating UI state or navigating
                             page_state.set(PageState::Hidden); // Example: hiding MFA prompt
                         } else {
-                            console::log_1(&"MFA code verification failed".into());
+                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("MFA code verification failed".to_string()));
                             // Handle failed verification, e.g., showing an error message
                         }
                     },
                     Err(e) => {
-                        console::log_1(&format!("Failed to verify MFA code: {}", e).into());
+                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Failed to verify MFA code: {}", e)));
                         // Handle error appropriately, e.g., showing an error message
                     },
                 }

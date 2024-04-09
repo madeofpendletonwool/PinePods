@@ -13,7 +13,7 @@ use crate::components::context::AppStateMsg;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
-use web_sys::{console, window};
+use web_sys::window;
 use wasm_bindgen::JsCast;
 use std::borrow::Borrow;
 use crate::requests::login_requests::use_check_authentication;
@@ -40,7 +40,6 @@ pub fn downloads() -> Html {
             if navigation_type == 1 { // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
                 session_storage.set_item("isAuthenticated", "false").unwrap();
-                console::log_1(&"Page was reloaded, user not authenticated, clearing session storage".into());
             }
     
             // Always check authentication status
@@ -113,7 +112,6 @@ pub fn downloads() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_episode_downloads(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
-                                web_sys::console::log_1(&format!("Fetched episodes: {:?}", fetched_episodes).into()); // Log fetched episodes
                                 dispatch.reduce_mut(move |state| {
                                     state.downloaded_episodes = Some(EpisodeDownloadResponse { episodes: fetched_episodes });
                                 });
@@ -121,7 +119,6 @@ pub fn downloads() -> Html {
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
-                                web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false);
                             },
@@ -219,8 +216,6 @@ pub fn downloads() -> Html {
     };
     
     let is_delete_mode = **page_state.borrow() == PageState::Delete; // Add this line
-
-    console::log_1(&format!("loading ep value: {:?}", *loading).into());
 
     html! {
         <>

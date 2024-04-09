@@ -8,7 +8,6 @@ use yewdux::Dispatch;
 // Add imports for your context modules
 use crate::components::context::{AppState};
 use anyhow::{Error, Context};
-use web_sys::console;
 
 #[derive(Serialize)]
 pub struct LoginRequest {
@@ -143,8 +142,6 @@ pub async fn call_get_user_details(server_name: &str, api_key: &str, user_id: &i
 
     if response.ok() {
         let body_str = response.text().await?;
-        let body_c = body_str.clone();
-        console::log_1(&body_c.into()); // Print the response body
 
         let user_data: crate::requests::login_requests::GetUserDetails = serde_json::from_str(&body_str)?;
         Ok(user_data)
@@ -257,7 +254,7 @@ pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_ro
         history.push("/");
     } else {
         // Already authenticated, continue as normal
-        console::log_1(&"User is authenticated, continuing to requested page".into());
+        // console::log_1(&"User is authenticated, continuing to requested page".into());
     }
 }
 
@@ -293,7 +290,6 @@ pub async fn call_add_login_user(server_name: String, add_user: &Option<AddUserR
     if response.ok() {
         Ok(true)
     } else {
-        console::log_1(&format!("Error adding user: {}", response.status_text()).into());
         Err(Error::msg(format!("Error adding user: {}", response.status_text())))
     }
 }
@@ -317,7 +313,6 @@ pub async fn call_first_login_done(server_name: String, api_key: String, user_id
         let response_body = response.json::<FirstLoginResponse>().await?;
         Ok(response_body.FirstLogin) // Use the struct field to get the boolean value
     } else {
-        console::log_1(&format!("Error checking first login status: {}", response.status_text()).into());
         Err(Error::msg(format!("Error checking first login status: {}", response.status_text())))
     }
 }
@@ -513,13 +508,11 @@ pub async fn call_reset_password_create_code(server_name: String, create_code: &
         let error_response: Result<ErrorResponse, _> = response.json().await;
         match error_response {
             Ok(err) => {
-                console::log_1(&format!("Error creating reset code: {}", err.detail).into());
                 Err(Error::msg(err.detail))
             },
             Err(_) => {
                 // If parsing the detailed error fails, fall back to the status text
                 let status_text = response.status_text();
-                console::log_1(&format!("Error creating reset code: {}", status_text).into());
                 Err(Error::msg(format!("Error creating reset code: {}", status_text)))
             }
         }
@@ -554,7 +547,6 @@ pub async fn call_verify_and_reset_password(server_name: String, verify_and_rese
         let response_body = response.json::<ForgotResetPasswordResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error creating reset code: {}", response.status_text()).into());
         Err(Error::msg(format!("Error creating reset code: {}", response.status_text())))
     }
 

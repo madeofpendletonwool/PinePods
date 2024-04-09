@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use yew::{Callback, function_component, Html, html, TargetCast, use_effect, use_effect_with, use_node_ref};
 use yew::prelude::*;
-use web_sys::{console, Event, MouseEvent, window};
+use web_sys::{Event, MouseEvent, window};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -170,7 +170,6 @@ pub fn episode_layout() -> Html {
                 let podcast = podcast.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     let added = call_check_podcast(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id, podcast.clone().unwrap().podcast_title.as_str(), podcast.clone().unwrap().podcast_url.as_str()).await.unwrap_or_default().exists;
-                    console::log_1(&format!("{} added: {}", podcast.clone().unwrap().podcast_title, added).into());
                     is_added.set(added);
                 });
                 || ()
@@ -268,7 +267,6 @@ pub fn episode_layout() -> Html {
             let pod_title = pod_title_og.clone();
             let pod_feed_url = pod_feed_url_og.clone();
             let user_id = user_id_og.clone();
-            web_sys::console::log_1(&"Remove Clicked".to_string().into());
             let podcast_values = RemovePodcastValuesName {
                 podcast_name: pod_title,
                 podcast_url: pod_feed_url,
@@ -284,16 +282,13 @@ pub fn episode_layout() -> Html {
                 match call_remove_podcasts_name(&server_name_wasm.unwrap(), &api_key_wasm, &pod_values_clone).await {
                     Ok(success) => {
                         if success {
-                            console::log_1(&"Podcast successfully removed".into());
                             dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
                             is_added_inner.set(false);
                         } else {
-                            console::log_1(&"Failed to remove podcast".into());
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
                         }
                     },
                     Err(e) => {
-                        console::log_1(&format!("Error removing podcast: {:?}", e).into());
                         dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
                     }
                 }
@@ -314,7 +309,6 @@ pub fn episode_layout() -> Html {
                 let pod_website = pod_website_og.clone();
                 let pod_explicit = pod_explicit_og.clone();
                 let user_id = user_id_og.clone();
-                web_sys::console::log_1(&"Add Clicked".to_string().into());
                 let podcast_values = PodcastValues {
                     pod_title,
                     pod_artwork,
@@ -341,16 +335,13 @@ pub fn episode_layout() -> Html {
                     match call_add_podcast(&server_name_wasm.unwrap(), &api_key_wasm, user_id_wasm, &pod_values_clone).await {
                         Ok(success) => {
                             if success {
-                                console::log_1(&"Podcast successfully added".into());
                                 dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
                                 is_added_inner.set(true);
                             } else {
-                                console::log_1(&"Failed to add podcast".into());
                                 dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
                             }
                         },
                         Err(e) => {
-                            console::log_1(&format!("Error adding podcast: {:?}", e).into());
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
                         }
                     }
@@ -367,8 +358,6 @@ pub fn episode_layout() -> Html {
     
     let button_class = if *is_added { "bg-red-500" } else { "bg-blue-500" };
     
-    // console::log_1(&format!("button text here: {}", button_text).into());
-
     html! {
         <div class="main-container">
             <Search_nav />

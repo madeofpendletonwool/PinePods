@@ -2,7 +2,6 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use yew::platform::spawn_local;
-use web_sys::console;
 use crate::requests::setting_reqs::{call_get_email_settings, EmailSettingsResponse, SendEmailSettings, call_save_email_settings, call_send_test_email, call_send_email, TestEmailSettings};
 use std::ops::Deref;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -18,14 +17,14 @@ pub fn email_settings() -> Html {
     let _error_message = audio_state.error_message.clone();
     let _info_message = audio_state.info_message.clone();
     let auth_required = use_state(|| false);
-    web_sys::console::log_1(&"testlog".into());
 
     let toggle_auth_required = {
         let auth_required = auth_required.clone();
         Callback::from(move |_| auth_required.set(!*auth_required))
     };
         // Define the type of user in the Vec
-        let email_values: UseStateHandle<EmailSettingsResponse> = use_state(EmailSettingsResponse::default);
+    let email_values: UseStateHandle<EmailSettingsResponse> = use_state(EmailSettingsResponse::default);
+    let audio_dispatch_effect = audio_dispatch.clone();
 
     {
         let email_values = email_values.clone();
@@ -40,7 +39,9 @@ pub fn email_settings() -> Html {
                         Ok(email_info) => {
                             email_values.set(email_info);
                         },
-                        Err(e) => console::log_1(&format!("Error getting user info: {}", e).into()),
+                        Err(e) => {
+                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting user info: {}", e)));
+                        },
                     }
                 }
             };
@@ -95,7 +96,6 @@ pub fn email_settings() -> Html {
         let send_mode_ref = send_mode_ref.clone();
         Callback::from(move |e: InputEvent| {
             let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
-            console::log_1(&format!("Send mode changed to: {}", value).into());
             send_mode_ref.set(value);
         })
     };
@@ -219,7 +219,6 @@ pub fn email_settings() -> Html {
         let auth_required = auth_required.clone();
         let page_state = page_state_edit.clone();
         Callback::from(move |_: MouseEvent| {
-            console::log_1(&"Button clicked".into());
             let audio_dispatch_call = audio_send_test.clone();
             let server_name = server_name.clone();
             let server_name_ref = server_name_ref.clone().deref().to_string();
@@ -252,7 +251,6 @@ pub fn email_settings() -> Html {
                         page_state.set(PageState::Shown);
                     },
                     Err(e) => {
-                        console::log_1(&format!("Error: {}", e).into());
                         audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error: {}", e)));
                         // Handle the error, e.g., by showing an error message to the user
                     }
@@ -268,7 +266,6 @@ pub fn email_settings() -> Html {
         let audio_dispatch_call = audio_dispatch.clone();
         
         Callback::from(move |_: MouseEvent| {
-            let audio_state = audio_state.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone().unwrap_or_default(); // Ensure server_name has a default value if it's an Option
             let audio_dispatch_call = audio_dispatch_call.clone();
@@ -283,14 +280,10 @@ pub fn email_settings() -> Html {
                 match call_send_email(server_name, api_key.unwrap_or_default().unwrap(), email_settings).await {
                     Ok(_) => {
                         audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Email sent successfully!".to_string()));
-                        console::log_1(&"Email sent successfully!".into());
                         // Optionally, use dispatch_callback to update a global state or trigger other app-wide effects
                     },
                     Err(e) => {
-                        console::log_1(&format!("Error: {}", e).into());
                         audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error: {}", e)));
-                        let error_state = audio_state.error_message.clone();
-                        console::log_1(&format!("test error: {}", error_state.unwrap()).into());
                         // Handle the error, e.g., by updating a state with the error message
                     }
                 }

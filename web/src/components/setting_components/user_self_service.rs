@@ -1,6 +1,6 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use yew::platform::spawn_local;
 use web_sys::console;
 use crate::requests::setting_reqs::{call_self_service_status, call_enable_disable_self_service};
@@ -9,6 +9,7 @@ use std::borrow::Borrow;
 #[function_component(SelfServiceSettings)]
 pub fn self_service_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -50,6 +51,7 @@ pub fn self_service_settings() -> Html {
                     let api_key = api_key.clone();
                     let server_name = server_name.clone();
                     let self_service_status = html_self_service.clone();
+                    let audio_dispatch = audio_dispatch.clone();
                     let loading = loading.clone();
                     let future = async move {
                         loading.set(true);
@@ -60,7 +62,9 @@ pub fn self_service_settings() -> Html {
                                     let current_status = self_service_status.borrow().clone();
                                     self_service_status.set(!*current_status);
                                 },
-                                Err(e) => console::log_1(&format!("Error enabling/disabling self service: {}", e).into()),
+                                Err(e) => {
+                                    audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", e)));
+                                },
                             }
                         }
                         loading.set(false);

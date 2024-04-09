@@ -317,19 +317,21 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Make validations work correctly on login user create
 - [x] Make no or wrong pass display error in server Restore and Backup
 - [x] Improve Import Experience
+- [x] Update All Depends
+- [x] Loading animations where if makes sense
+- [x] Verify Funtional Mobile Version (Functional - Will be made better with time)
 
 ### Pre-Rust Revamp Release
 
-- [ ] Loading animations where if makes sense
-- [ ] Verify Funtional Mobile Version
 - [ ] Verify All Button Interaction throughout
-
-- [ ] Update All Depends
-- [ ] Fix all CORs Issues - Verify behind Reverse Proxy
 - [ ] Test Edgecases and ensure errors can't happen throughout
 
+- [ ] Fix all CORs Issues - Verify behind Reverse Proxy
+
 - [ ] Cleanup prints on server and client end. Make debugging functionality work again
-- [ ] Client release with Tauri (Compiles and runs. Feature testing needed)
+- [ ] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio)
+
+- [ ] Automation - client auto release and compile - auto compile and push to docker hub
 
 - [ ] Revamp Readme
 - [ ] Revamp Documentation
@@ -355,9 +357,9 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
 - [ ] Retain Previously Used Theme for Login Screens
 - [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
-- [ ] Snap Client
+- [ ] Nix Package
+- [ ] Helm Chart for server deployment
 - [ ] Mobile Apps
-  - [ ] Sign in retention for mobile editions
   - [ ] Android App
   - [ ] IOS App
   - [ ] Packaging and automation

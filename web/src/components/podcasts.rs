@@ -28,7 +28,6 @@ impl Reducer<AppState> for AppStateMsg {
             // ... other cases ...
             AppStateMsg::RemovePodcast(podcast_id) => {
                 if let Some(podcasts) = &mut state_mut.podcast_feed_return {
-                    web_sys::console::log_1(&format!("podcast pod pre-change: {:?}", &podcasts.pods).into());
                     podcasts.pods = Some(
                         podcasts.pods
                             .as_ref()
@@ -38,7 +37,6 @@ impl Reducer<AppState> for AppStateMsg {
                             .cloned()
                             .collect()
                     );
-                    web_sys::console::log_1(&format!("podcast pod state: {:?}", &podcasts.pods).into());
                 }
             }
         }
@@ -51,7 +49,6 @@ impl Reducer<AppState> for AppStateMsg {
 pub fn podcasts() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (_audio_state, _audio_dispatch) = use_store::<UIState>();
-    console::log_1(&format!("User Context in podcasts: {:?}", &state.user_details).into());
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let podcast_feed_return = state.podcast_feed_return.clone();
@@ -98,30 +95,14 @@ pub fn podcasts() -> Html {
         let server_name = server_name.clone();
         // let episodes = episodes.clone();
 
-        console::log_1(&"Test log on podcasts".to_string().into());
-        if let Some(api_key) = &api_key {
-            console::log_1(&format!("API Key: {:?}", api_key).into());
-        }
-        if let Some(user_id) = user_id {
-            console::log_1(&format!("User ID: {}", user_id).into());
-        }
-        if let Some(server_name) = &server_name {
-            console::log_1(&format!("Server Name: {}", server_name).into());
-        }
-
         let server_name_effect = server_name.clone();
         let user_id_effect = user_id.clone();
         let api_key_effect = api_key.clone();
         let effect_dispatch = dispatch.clone();
 
-        console::log_1(&format!("server_name: {:?}", &server_name_effect).into());
-        console::log_1(&format!("user_id: {:?}", &user_id_effect).into());
-        console::log_1(&format!("api_key: {:?}", &api_key_effect).into());
-
         use_effect_with(
             (api_key_effect, user_id_effect, server_name_effect),
             move |_| {
-                console::log_1(&format!("User effect running: {:?}", &server_name).into());
                 // let episodes_clone = episodes.clone();
                 // let error_clone = error.clone();
 
@@ -212,19 +193,16 @@ pub fn podcasts() -> Html {
                                                     Ok(success) => {
                                                         if success {
                                                             dispatch_clone.apply(AppStateMsg::RemovePodcast(podcast_id));
-                                                            console::log_1(&"Podcast successfully removed".into());
                                                             dispatch_clone.reduce_mut(|state| {
                                                                 state.info_message = Some("Podcast successfully removed".to_string())
                                                             });
                                                         } else {
-                                                            console::log_1(&"Failed to remove podcast".into());
                                                             dispatch_clone.reduce_mut(|state| {
                                                                 state.error_message = Some("Failed to remove podcast".to_string())
                                                             });
                                                         }
                                                     },
                                                     Err(e) => {
-                                                        console::log_1(&format!("Error removing podcast: {:?}", e).into());
                                                         dispatch_clone.reduce_mut(|state| {
                                                             state.error_message = Some(format!("Error removing podcast: {:?}", e))
                                                         });

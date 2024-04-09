@@ -1,19 +1,20 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use yew::platform::spawn_local;
-use web_sys::console;
 use crate::requests::setting_reqs::{call_download_status, call_enable_disable_downloads};
 use std::borrow::Borrow;
 
 #[function_component(DownloadSettings)]
 pub fn download_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
     let download_status = use_state(|| false);
+    let audio_dispatch_effect = audio_dispatch.clone();
 
     {
         let download_status = download_status.clone();
@@ -28,7 +29,11 @@ pub fn download_settings() -> Html {
                         Ok(download_status_response) => {
                             download_status.set(download_status_response);
                         },
-                        Err(e) => console::log_1(&format!("Error getting download status: {}", e).into()),
+                        Err(e) => {
+                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting download status: {}", e)));
+
+
+                        },
                     }
                 }
             };
@@ -49,6 +54,7 @@ pub fn download_settings() -> Html {
                 let api_key = api_key.clone();
                 let server_name = server_name.clone();
                 let download_status = html_download.clone();
+                let audio_dispatch = audio_dispatch.clone();
                 let loading = loading.clone();
                 let future = async move {
                     loading.set(true);
@@ -59,7 +65,10 @@ pub fn download_settings() -> Html {
                                 let current_status = download_status.borrow().clone();
                                 download_status.set(!*current_status);
                             },
-                            Err(e) => console::log_1(&format!("Error enabling/disabling downloads: {}", e).into()),
+                            Err(e) => {
+                                audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling downloads: {}", e)));
+
+                            },
                         }
                     }
                     loading.set(false);

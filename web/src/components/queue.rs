@@ -109,7 +109,6 @@ pub fn queue() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_queued_episodes(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
-                                web_sys::console::log_1(&format!("Fetched episodes: {:?}", fetched_episodes).into()); // Log fetched episodes
                                 dispatch.reduce_mut(move |state| {
                                     state.queued_episodes = Some(QueuedEpisodesResponse { episodes: fetched_episodes });
                                 });
@@ -117,7 +116,6 @@ pub fn queue() -> Html {
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
-                                web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false);
                             },
@@ -158,7 +156,6 @@ pub fn queue() -> Html {
                     
                     {
                         if let Some(queued_eps) = state.queued_episodes.clone() {
-                            web_sys::console::log_1(&format!("Queued episodes in state: {:?}", queued_eps).into()); // Log queued episodes in state
                             if queued_eps.episodes.is_empty() {
                                 // Render "No Queued Episodes Found" if episodes list is empty
                                 empty_message(

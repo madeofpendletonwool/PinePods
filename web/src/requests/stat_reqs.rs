@@ -1,7 +1,6 @@
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::Deserialize;
-use web_sys::console;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
@@ -26,20 +25,15 @@ pub async fn call_get_stats(server_name: String, api_key: Option<String>, user_i
         return Err(anyhow::Error::msg(format!("Failed to get stats: {}", response.status_text())));
     }
 
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
-
     // First, capture the response text for diagnostic purposes
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
 
     // Try to deserialize the response text
     match serde_json::from_str::<UserStats>(&response_text) {
         Ok(response_body) => {
-            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
             Ok(response_body)
         }
-        Err(e) => {
-            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+        Err(_e) => {
             Err(anyhow::Error::msg("Failed to deserialize response"))
         }
     }

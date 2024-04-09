@@ -1,7 +1,7 @@
 use web_sys::{Element, HtmlSelectElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::{context::{AppState, UIState}};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
@@ -11,6 +11,7 @@ use web_sys::console;
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     // Use state to manage the selected theme
     let selected_theme = use_state(|| "Light".to_string());
     // let selected_theme = state.selected_theme.as_ref();
@@ -29,13 +30,15 @@ pub fn theme() -> Html {
         let selected_theme = selected_theme.clone();
         let state = state.clone();
         Callback::from(move |_| {
+            let audio_dispatch = audio_dispatch.clone();
             let theme = (*selected_theme).to_string();
-            web_sys::console::log_1(&format!("Submitting theme: {}", theme).into());
             changeTheme(&theme);
             if let Some(window) = web_sys::window() {
                 if let Ok(Some(local_storage)) = window.local_storage() {
                     match local_storage.set_item("selected_theme", &theme) {
-                        Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                        Ok(_) => {
+                            console::log_1(&format!("Theme updated in local storage").into());
+                        },
                         Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
                     }
                 }
@@ -58,9 +61,11 @@ pub fn theme() -> Html {
 
             spawn_local(async move {
                 if let Ok(_) = call_set_theme(&server_name, &Some(api_key), &request).await {
-                    web_sys::console::log_1(&"Theme updated successfully".into());
+                    audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Theme Settings Updated!".to_string()));
+
                 } else {
-                    web_sys::console::log_1(&"Error updating theme".into());
+                    audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Error Updating Theme".to_string()));
+
                 }
             });
         })
@@ -392,11 +397,9 @@ pub fn log_css_variables() {
         "--hover-color",
     ];
 
-    web_sys::console::log_1(&"Current CSS Variable Values:".into());
     for var_name in variable_names {
-        let value = computed_style
+        let _value = computed_style
             .get_property_value(var_name)
             .expect("should get property value");
-        web_sys::console::log_2(&var_name.into(), &value.into());
     }
 }

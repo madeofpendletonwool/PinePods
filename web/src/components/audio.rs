@@ -4,7 +4,7 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use web_sys::{console, window, HtmlAudioElement, HtmlInputElement};
+use web_sys::{window, HtmlAudioElement, HtmlInputElement};
 use std::string::String;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
@@ -157,11 +157,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     
                             // Perform the API call to record the listen duration
                             match call_record_listen_duration(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), request_data).await {
-                                Ok(response) => {
-                                    web_sys::console::log_1(&format!("Listen duration recorded: {:?}", response).into());
+                                Ok(_response) => {
                                 },
-                                Err(e) => {
-                                    web_sys::console::log_1(&format!("Failed to record listen duration: {:?}", e).into());
+                                Err(_e) => {
                                 }
                             }
                         }
@@ -197,17 +195,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // Spawn a new async task for the API call
                     wasm_bindgen_futures::spawn_local(async move {
                         match call_increment_listen_time(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap()).await {
-                            Ok(response) => {
-                                web_sys::console::log_1(&format!("Listen time incremented: {:?}", response).into());
+                            Ok(_response) => {
                             },
-                            Err(e) => {
-                                web_sys::console::log_1(&format!("Failed to increment listen time: {:?}", e).into());
+                            Err(_e) => {
                             }
                         }
                     });
                 } else {
                     // Optionally log that the audio is not playing and thus listen time was not incremented
-                    web_sys::console::log_1(&"Audio is not playing, listen time not incremented".into());
                 }
             });
 
@@ -253,10 +248,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     let remove_result = call_remove_queued_episode(&server_name.clone().unwrap(), &api_key.clone().unwrap(), &request).await;
                                     match remove_result {
                                         Ok(_) => {
-                                            web_sys::console::log_1(&"Successfully removed episode from queue".into());
+                                            // web_sys::console::log_1(&"Successfully removed episode from queue".into());
                                         },
-                                        Err(e) => {
-                                            web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
+                                        Err(_e) => {
+                                            // web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
                                         }
                                     }
                                     if let Some(next_episode) = episodes.iter().find(|ep| ep.QueuePosition == Some(current_queue_position + 1)) {
@@ -281,8 +276,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     }
                                 }
                             },
-                            Err(e) => {
-                                web_sys::console::log_1(&format!("Failed to fetch queued episodes: {:?}", e).into());
+                            Err(_e) => {
+                                // web_sys::console::log_1(&format!("Failed to fetch queued episodes: {:?}", e).into());
                             }
                         }
                     });
@@ -303,7 +298,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     // Toggle playback
     let toggle_playback = {
         let dispatch = _audio_dispatch.clone();
-        web_sys::console::log_1(&format!("Current playing state: {:?}", &audio_state.audio_playing).into());
         Callback::from(move |_| {
             dispatch.reduce_mut(UIState::toggle_playback);
         })
@@ -518,13 +512,11 @@ pub fn on_play_click(
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
-        web_sys::console::log_1(&format!("duration: {}", &episode_duration_for_closure).into());
         let audio_dispatch = audio_dispatch.clone();
     
         let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
         let episode_pos: f32 = 0.0;
         let episode_id = episode_id_for_closure.clone();
-        web_sys::console::log_1(&"Adding hisotry".to_string().into());
         
         let call_ep_url = episode_url_for_closure.clone();
         let check_server_name = server_name.clone();
@@ -546,13 +538,10 @@ pub fn on_play_click(
                 &episode_title.clone(),
                 &episode_url.clone()
             ).await.unwrap_or(false); // Default to false if the call fails
-            console::log_1(&format!("Episode exists: {:?}", episode_exists).into());
             app_dispatch.reduce_mut(move |global_state| {
                 global_state.episode_in_db = Some(episode_exists);
             });
-            console::log_1(&format!("Episode exists - Now running hsitory add: {:?}", episode_exists).into());
             if episode_exists {
-                console::log_1(&"Episode exists - History ran".to_string().into());
                 let history_server_name = check_server_name.clone();
                 let history_api_key = check_api_key.clone();
 
@@ -569,10 +558,10 @@ pub fn on_play_click(
                 );
                 match add_history_future.await {
                     Ok(_) => {
-                        web_sys::console::log_1(&"Successfully added history".into());
+                        // web_sys::console::log_1(&"Successfully added history".into());
                     },
-                    Err(e) => {
-                        web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
+                    Err(_e) => {
+                        // web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
                     }
                 }
 
@@ -594,10 +583,10 @@ pub fn on_play_click(
                 );
                 match add_queue_future.await {
                     Ok(_) => {
-                        web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                        // web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
                     },
-                    Err(e) => {
-                        web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+                    Err(_e) => {
+                        // web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
                     }
                 }
             }
@@ -615,18 +604,16 @@ pub fn on_play_click(
             );
             match add_history_future.await {
                 Ok(_) => {
-                    web_sys::console::log_1(&"Successfully incremented playcount".into());
+                    // web_sys::console::log_1(&"Successfully incremented playcount".into());
                 },
-                Err(e) => {
-                    web_sys::console::log_1(&format!("Failed to increment: {:?}", e).into());
+                Err(_e) => {
+                    // web_sys::console::log_1(&format!("Failed to increment: {:?}", e).into());
                 }
             }
         });
-        let src = String::new();
-        let src = if let Some(local) = is_local {
+        let src = if let Some(_local) = is_local {
             // Construct the URL for streaming from the local server
             let src = format!("{}/api/data/stream/{}?api_key={}&user_id={}", server_name, episode_id, api_key, user_id);
-            console::log_1(&format!("Local URL: {:?}", src.clone()).into());
             src
         } else {
             // Use the provided URL for streaming

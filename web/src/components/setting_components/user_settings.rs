@@ -6,7 +6,7 @@ use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
 use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, call_set_isadmin};
-use crate::components::gen_funcs::{ValidationError, encode_password, validate_email, validate_password, validate_username};
+use crate::components::gen_funcs::{ValidationError, encode_password, validate_email, validate_username};
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
@@ -27,25 +27,18 @@ pub fn user_settings() -> Html {
     let selected_user_id = use_state(|| None);
     let _error_message = audio_state.error_message.clone();
     let _info_message = audio_state.info_message.clone();
-    let email_error = use_state(|| "".to_string());
-    let password_error = use_state(|| "".to_string());
-    let username_error = use_state(|| "".to_string());
-    let fullname_error = use_state(|| "".to_string());
+    let error_message_container = use_state(|| "".to_string());
     let admin_edit_status = use_state(|| 0);
     let update_trigger = use_state(|| false);
 
-    web_sys::console::log_1(&"testlog".into());
     // Define the type of user in the Vec
     let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
-
-    let user_dispatch = audio_dispatch.clone();
 
     {
         let users = users.clone();
         let update_trigger_effect = update_trigger.clone();
-        use_effect_with((api_key.clone(), server_name.clone(), *update_trigger_effect), move |(api_key, server_name, update_trigger_effect)| {
+        use_effect_with((api_key.clone(), server_name.clone(), *update_trigger_effect), move |(api_key, server_name, _update_trigger_effect)| {
             let users = users.clone();
-            let update_trigger = update_trigger_effect.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let future = async move {
@@ -76,30 +69,32 @@ pub fn user_settings() -> Html {
         Shown,
         Edit,
     }
-
-    #[derive(Clone, PartialEq)]
-    enum full_name_error_notice {
-        Hidden,
-        Shown,
-    }
+    #[allow(non_camel_case_types)]
     enum email_error_notice {
         Hidden,
         Shown,
     }
+    #[allow(non_camel_case_types)]
     enum password_error_notice {
         Hidden,
         Shown,
     }
+    #[allow(non_camel_case_types)]
     enum username_error_notice {
+        Hidden,
+        Shown,
+    }
+    #[allow(non_camel_case_types)]
+    enum error_container_state {
         Hidden,
         Shown,
     }
 
     //Define States for error message
-    let full_name_error = use_state(|| full_name_error_notice::Hidden);
     let email_error = use_state(|| email_error_notice::Hidden);
     let password_error = use_state(|| password_error_notice::Hidden);
     let username_error = use_state(|| username_error_notice::Hidden);
+    let error_container = use_state(|| error_container_state::Hidden);
 
     // Define the initial state
     let page_state = use_state(|| PageState::Hidden);
@@ -155,7 +150,8 @@ pub fn user_settings() -> Html {
             admin_status.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().checked());
         })
     };
-    let create_dispatch = audio_dispatch.clone();
+    let error_container_create = error_container.clone();
+    let error_message_container_create = error_message_container.clone();
     let on_create_submit = {
         let page_state = page_state.clone();
         let server_name = server_name.clone();
@@ -164,12 +160,13 @@ pub fn user_settings() -> Html {
         let new_username = new_username.clone().to_string();
         let email = email.clone().to_string();
         let new_password = new_password.clone();
-        let audio_dispatch_call = audio_dispatch.clone();
         let username_error = username_error.clone();
         let password_error = password_error.clone();
         let email_error = email_error.clone();
         let on_update_trigger = update_trigger.clone();
         Callback::from(move |e: MouseEvent| {
+            let error_container = error_container_create.clone();
+            let error_message_container = error_message_container_create.clone();
             let update_trigger = on_update_trigger.clone();
             let call_server = server_name.clone();
             let call_api = api_key.clone();
@@ -215,20 +212,25 @@ pub fn user_settings() -> Html {
                             if let Some(add_user_request_value) = add_user_request {
                                 match call_add_user(call_server.unwrap(), call_api.unwrap().unwrap(), &add_user_request_value).await {
                                     Ok(_success) => {
-                                        console::log_1(&"User added successfully".into());
                                         on_update_trigger.set(!*update_trigger);
                                     },
                                     Err(e) => {
                                         console::log_1(&format!("Error adding user: {}", e).into());
+                                        error_container.set(error_container_state::Shown);
+                                        error_message_container.set("Error adding user".to_string());
                                     },
                                 }
                             } else {
                                 console::log_1(&format!("Error adding user").into());
+                                error_container.set(error_container_state::Shown);
+                                error_message_container.set("Error adding user".to_string());
                             }
                         });
                     },
                     Err(e) => {
                         console::log_1(&format!("Error adding user: {}", e).into());
+                        error_container.set(error_container_state::Shown);
+                        error_message_container.set("Error adding user".to_string());
                     }
                 }
             }
@@ -300,7 +302,6 @@ pub fn user_settings() -> Html {
         let selected_user_id = selected_user_id.clone();
         let page_state = page_state.clone();
         move |select_user_id: i32, is_admin: i32| {
-            console::log_1(&format!("Selected user ID: {:?}, admin status {}", select_user_id, is_admin).into());
             // admin_edit_status.set(is_admin);
             Callback::from(move |_| {
                 if select_user_id == 1 {
@@ -314,7 +315,8 @@ pub fn user_settings() -> Html {
         }
     };
     
-
+    let error_message_container_edit = error_message_container.clone();
+    let error_container_edit = error_container.clone();
     let on_edit_submit = {
         let fullname = fullname.clone().to_string();
         let page_state = page_state.clone();
@@ -330,6 +332,8 @@ pub fn user_settings() -> Html {
         let password_error_edit = password_error.clone();
         let on_update_trigger = update_trigger.clone();
         Callback::from(move |e: MouseEvent| {
+            let error_container = error_container_edit.clone();
+            let error_message_container = error_message_container_edit.clone();
             // let update_trigger = on_update_trigger.clone();
             let username_error = username_error_edit.clone();
             let email_error = email_error_edit.clone();
@@ -360,12 +364,11 @@ pub fn user_settings() -> Html {
             let update_trigger_email = on_update_trigger.clone();
             let update_trigger_true = on_update_trigger.clone();
             let update_trigger_false = on_update_trigger.clone();
-
+            let error_container_name = error_container.clone();
+            let error_message_container_name= error_message_container.clone();
             if !fullname.is_empty() {
                 wasm_bindgen_futures::spawn_local({
                     let update_trigger_in_check = update_trigger_name.clone();
-
-                    let username_error = username_error.clone();
                     let server_name_cloned = server_name.clone();
                     let api_key_cloned = api_key.clone();
                     let name_cloned = fullname.clone();
@@ -378,10 +381,12 @@ pub fn user_settings() -> Html {
                                     page_state_name.set(PageState::Hidden);
                                     match call_set_fullname(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), name_cloned).await {
                                         Ok(_) => {
-                                            console::log_1(&"Name updated successfully".into());
                                             update_trigger_in_check.set(!*update_trigger_in_check);
                                         },
-                                        Err(e) => fullname_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error updating name: {}", e).to_string())),
+                                        Err(e) => {
+                                            error_container_name.set(error_container_state::Shown);
+                                            error_message_container_name.set(format!("Error updating name: {}", e).to_string());
+                                        },
                                     }
                                 } else {
                                     fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("User ID not available for name update.".to_string()));
@@ -395,7 +400,8 @@ pub fn user_settings() -> Html {
                     }
                 });
             }
-
+            let error_container_user = error_container.clone();
+            let error_message_container_user = error_message_container.clone();
             if !new_username.is_empty() {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
@@ -417,15 +423,18 @@ pub fn user_settings() -> Html {
                                         page_state_user.set(PageState::Hidden);
                                         match call_set_username(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), user_cloned).await {
                                             Ok(_) => {
-                                                console::log_1(&"username updated successfully".into());
                                                 update_trigger_in_check.set(!*update_trigger_in_check);
                                             },
-                                            Err(e) => dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error updating username: {:?}", e).to_string())),
+                                            Err(_e) => {
+                                                error_container_user.set(error_container_state::Shown);
+                                                error_message_container_user.set("Error updating username. Usernames must be at least 4 characters long.".to_string());
+                                            },
                                         }
                                     }
 
                                 } else {
-                                    dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("User ID not available for username update.".to_string()));
+                                    dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("API key not available for username update.".to_string()));
+
                                 }
                             } else {
                                 dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("API key not available for username update.".to_string()));
@@ -436,7 +445,8 @@ pub fn user_settings() -> Html {
                     }
                 });
             }
-
+            let error_container_email = error_container.clone();
+            let error_message_container_email = error_message_container.clone();
             if !email.is_empty() {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
@@ -457,10 +467,12 @@ pub fn user_settings() -> Html {
                                         page_state_email.set(PageState::Hidden);
                                         match call_set_email(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), email_cloned).await {
                                             Ok(_) => {
-                                                console::log_1(&"Email updated successfully".into());
                                                 update_trigger_in_check.set(!*update_trigger_in_check);
                                             },
-                                            Err(e) => console::log_1(&format!("Error updating email: {:?}", e).into()),
+                                            Err(_e) => {
+                                                error_container_email.set(error_container_state::Shown);
+                                                error_message_container_email.set(format!("Error updating email. The formatting didn't look quite right").to_string());
+                                            },
                                         }
                                     }
 
@@ -477,7 +489,8 @@ pub fn user_settings() -> Html {
                 });
             }
             
-            
+            let error_container_pass = error_container.clone();
+            let error_message_container_pass = error_message_container.clone();
             
             if !new_password.is_empty() {
                 wasm_bindgen_futures::spawn_local({
@@ -501,10 +514,12 @@ pub fn user_settings() -> Html {
                                                 page_state_pass.set(PageState::Hidden);
                                                 match call_set_password(server_name_unwrapped, api_key_unwrapped.clone(), user_id, hash_pw).await {
                                                     Ok(_) => {
-                                                        console::log_1(&"Password updated successfully".into());
                                                         update_trigger_in_check.set(!*update_trigger_in_check);
                                                     },
-                                                    Err(e) => console::log_1(&format!("Error updating password: {:?}", e).into()),
+                                                    Err(_e) => {
+                                                        error_container_pass.set(error_container_state::Shown);
+                                                        error_message_container_pass.set(format!("Error updating password. Passwords must be at least 6 characters long.").to_string());
+                                                    },
                                                 }
                                             }
 
@@ -525,7 +540,8 @@ pub fn user_settings() -> Html {
                     }
                 });
             }
-
+            let error_container_admin = error_container.clone();
+            let error_message_container_admin = error_message_container.clone();
             if *admin_status == true {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
@@ -544,10 +560,13 @@ pub fn user_settings() -> Html {
                                     // page_state_true.set(PageState::Hidden);
                                     match call_set_isadmin(server_name_unwrapped, api_key_unwrapped.clone(), user_id, *admin_status_cloned).await {
                                         Ok(_) => {
-                                            console::log_1(&"Admin status updated successfully".into());
                                             update_trigger_in_check.set(!*update_trigger_in_check);
                                         },
-                                        Err(e) => console::log_1(&format!("Error updating admin status: {:?}", e).into()),
+                                        Err(e) => {
+                                            error_container_admin.set(error_container_state::Shown);
+                                            error_message_container_admin.set(format!("Error updating admin status: {:?}", e).to_string());
+                                        },
+
                                     }
                                 } else {
                                     console::log_1(&"User ID not available for admin status update.".into());
@@ -576,7 +595,8 @@ pub fn user_settings() -> Html {
                                     match call_check_admin(server_name_unwrapped.clone(), api_key_unwrapped.clone(), user_id).await {
                                         Ok(final_admin) => {
                                             if final_admin.final_admin == true {
-                                                console::log_1(&"Unable to remove admin status from final administrator".into());
+                                                error_container.set(error_container_state::Shown);
+                                                error_message_container.set(format!("Unable to remove admin status from final administrator").to_string());
                                             } else {
                                                 if *admin_edit_status_false == 1 {
                                                     page_state_false.set(PageState::Hidden);
@@ -584,10 +604,13 @@ pub fn user_settings() -> Html {
                                                 // page_state_false.set(PageState::Hidden);
                                                 match call_set_isadmin(server_name_unwrapped, api_key_unwrapped.clone(), user_id, *admin_status_cloned).await {
                                                     Ok(_) => {
-                                                        console::log_1(&"Admin status updated successfully".into());
                                                         update_trigger_in_check.set(!*update_trigger_in_check);
                                                     },
-                                                    Err(e) => console::log_1(&format!("Error updating admin status: {:?}", e).into()),
+                                                    Err(e) => {
+                                                        error_container.set(error_container_state::Shown);
+                                                        error_message_container.set(format!("Error updating admin status: {:?}", e).to_string());
+                                                    },
+
                                                 }
                                             }
                                         },
@@ -695,6 +718,12 @@ pub fn user_settings() -> Html {
                 </button>
             </div>
             <div class="relative overflow-x-auto">
+                {
+                    match *error_container {
+                        error_container_state::Hidden => html! {},
+                        error_container_state::Shown => html! {<p class="text-red-500 text-xs italic">{&*error_message_container}</p>},
+                    }
+                }
                 <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
                     <thead class="text-xs uppercase table-header">
                         <tr>

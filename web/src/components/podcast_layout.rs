@@ -1,11 +1,9 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 use serde::{Deserialize, Serialize};
-use web_sys::{console, MouseEvent};
+use web_sys::MouseEvent;
 use yew::{Callback, function_component, Html, html};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-use yewdux::Dispatch;
 use yewdux::use_store;
 use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
@@ -143,7 +141,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 let podcast = podcast.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     let added = call_check_podcast(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id, &podcast.title, &podcast.url).await.unwrap_or_default().exists;
-                    console::log_1(&format!("{} added: {}", podcast.title, added).into());
                     is_added.set(added);
                     let mut new_set = (*added_podcasts).clone();
                     if added {
@@ -222,7 +219,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             });
                         },
                         Err(e) => {
-                            console::log_1(&format!("Error removing podcast: {:?}", e).into());
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!("Error removing podcast: {:?}", e));
                             });
@@ -275,7 +271,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             });
                         },
                         Err(e) => {
-                            console::log_1(&format!("Error adding podcast: {:?}", e).into());
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!("Error adding podcast: {:?}", e));
                             });
@@ -302,14 +297,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let is_added = added_podcasts.contains(&podcast.url);
     let button_text = if is_added { "delete" } else { "add" };
     let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
-    console::log_1(&format!("Is added: {}", button_text.clone()).into());
-    console::log_1(&format!("Is added: {}", button_class.clone()).into());
     
     let on_title_click = {
         let dispatch = dispatch.clone();
         let history = history.clone(); // Clone history for use inside the closure
 
         Callback::from(move |e: MouseEvent| {
+            dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let podcast_title = podcast_title_clone.clone();
             let podcast_url = podcast_url_clone.clone();
             let podcast_description = podcast_description_clone.clone();
@@ -340,10 +334,11 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             state.podcast_feed_results = Some(podcast_feed_results);
                             state.clicked_podcast_info = Some(podcast_values);
                         });
+                        dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         history.push("/episode_layout"); // Navigate to episode_layout
                     },
-                    Err(e) => {
-                        web_sys::console::log_1(&format!("Error: {}", e).into());
+                    Err(_e) => {
+                        // web_sys::console::log_1(&format!("Error: {}", e).into());
                     }
                 }
             });

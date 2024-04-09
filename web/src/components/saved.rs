@@ -68,7 +68,6 @@ pub fn saved() -> Html {
     let _toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
         Callback::from(move |_: MouseEvent| {
-            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
             dropdown_open.set(!*dropdown_open);
         })
     };
@@ -118,7 +117,6 @@ pub fn saved() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_saved_episodes(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
-                                web_sys::console::log_1(&format!("Fetched episodes: {:?}", fetched_episodes).into()); // Log fetched episodes
                                 dispatch.reduce_mut(move |state| {
                                     state.saved_episodes = Some(SavedEpisodesResponse { episodes: fetched_episodes });
                                 });
@@ -126,7 +124,6 @@ pub fn saved() -> Html {
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
-                                web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false);
                             },
@@ -169,7 +166,6 @@ pub fn saved() -> Html {
                             
                 {
                     if let Some(saved_eps) = state.saved_episodes.clone() {
-                        web_sys::console::log_1(&format!("Saved episodes in state: {:?}", saved_eps).into()); // Log queued episodes in state
                         if saved_eps.episodes.is_empty() {
                             // Render "No Queued Episodes Found" if episodes list is empty
                             empty_message(

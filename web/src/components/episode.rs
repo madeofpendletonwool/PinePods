@@ -111,14 +111,11 @@ pub fn epsiode() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_episode_metadata(&server_name, api_key, &episode_request).await {
                             Ok(fetched_episode) => {
-                                web_sys::console::log_1(&format!("Fetched episode: {:?}", fetched_episode).into()); // Log fetched episode
                                 dispatch.reduce_mut(move |state| {
                                     state.fetched_episode = Some(EpisodeMetadataResponse { episode: fetched_episode });
                                 });
-                                // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
-                                web_sys::console::log_1(&format!("Error fetching episode: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
                             },
                         }
@@ -134,9 +131,7 @@ pub fn epsiode() -> Html {
         <div class="main-container">
             <Search_nav />
             {
-                if let Some(episode) = state.fetched_episode.clone() {
-                    web_sys::console::log_1(&format!("Fetched episode: {:?}", episode).into()); // Log fetched episode
-    
+                if let Some(episode) = state.fetched_episode.clone() {    
                     let episode_url_clone = episode.episode.EpisodeURL.clone();
                     let episode_title_clone = episode.episode.EpisodeTitle.clone();
                     let episode_artwork_clone = episode.episode.EpisodeArtwork.clone();

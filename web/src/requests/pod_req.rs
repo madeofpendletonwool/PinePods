@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
-use web_sys::console;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
     where
@@ -34,8 +33,6 @@ pub struct RecentEps {
 pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Episode>, anyhow::Error> {
     let url = format!("{}/api/data/return_episodes/{}", server_name, user_id);
 
-    console::log_1(&format!("URL: {}", url).into());
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
@@ -46,21 +43,16 @@ pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>,
     if !response.ok() {
         return Err(anyhow::Error::msg(format!("Failed to fetch episodes: {}", response.status_text())));
     }
-
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     
     // First, capture the response text for diagnostic purposes
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
 
     // Try to deserialize the response text
     match serde_json::from_str::<RecentEps>(&response_text) {
         Ok(response_body) => {
-            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
             Ok(response_body.episodes.unwrap_or_else(Vec::new))
         }
-        Err(e) => {
-            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+        Err(_e) => {
             Err(anyhow::Error::msg("Failed to deserialize response"))
         }
     }
@@ -106,7 +98,6 @@ pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, _user
         let response_body = response.json::<PodcastStatusResponse>().await?;
         Ok(response_body.success)
     } else {
-        console::log_1(&format!("Error adding podcast: {}", response.status_text()).into());
         Err(Error::msg(format!("Error adding podcast: {}", response.status_text())))
     }
 }
@@ -119,8 +110,6 @@ pub struct RemovePodcastValues {
 
 pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>, remove_podcast: &RemovePodcastValues) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast_id", server_name);
-
-    console::log_1(&format!("URL: {}", url).into());
 
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -136,19 +125,16 @@ pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>
         .await?;
 
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    console::log_1(&format!("Response Text: {}", response_text).into());
 
 
     if response.ok() {
         match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(parse_error) => {
-                console::log_1(&format!("Error parsing response: {:?}", parse_error).into());
+            Err(_parse_error) => {
                 Err(anyhow::Error::msg("Failed to parse response"))
             }
         }
     } else {
-        console::log_1(&format!("Error removing podcast: {}", response.status_text()).into());
         Err(anyhow::Error::msg(format!("Error removing podcast: {}", response.status_text())))
     }
 }
@@ -163,7 +149,6 @@ pub struct RemovePodcastValuesName {
 pub async fn call_remove_podcasts_name(server_name: &String, api_key: &Option<String>, remove_podcast: &RemovePodcastValuesName) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast", server_name);
 
-    console::log_1(&format!("URL: {}", url).into());
 
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -179,19 +164,15 @@ pub async fn call_remove_podcasts_name(server_name: &String, api_key: &Option<St
         .await?;
 
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    console::log_1(&format!("Response Text: {}", response_text).into());
-
 
     if response.ok() {
         match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(parse_error) => {
-                console::log_1(&format!("Error parsing response: {:?}", parse_error).into());
+            Err(_parse_error) => {
                 Err(anyhow::Error::msg("Failed to parse response"))
             }
         }
     } else {
-        console::log_1(&format!("Error removing podcast: {}", response.status_text()).into());
         Err(anyhow::Error::msg(format!("Error removing podcast: {}", response.status_text())))
     }
 }
@@ -222,8 +203,6 @@ pub struct Podcast {
 pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {
     let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
 
-    console::log_1(&format!("URL: {}", url).into());
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
@@ -235,20 +214,15 @@ pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, u
         return Err(anyhow::Error::msg(format!("Failed to fetch podcasts: {}", response.status_text())));
     }
 
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     
     // First, capture the response text for diagnostic purposes
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    console::log_1(&format!("HTTP Response Body: {}", response_text).into());
-
     // Try to deserialize the response text
     match serde_json::from_str::<PodcastResponse>(&response_text) {
         Ok(response_body) => {
-            console::log_1(&format!("Deserialized Response Body: {:?}", response_body).into());
             Ok(response_body.pods.unwrap_or_else(Vec::new))
         }
-        Err(e) => {
-            console::log_1(&format!("Deserialization Error: {:?}", e).into());
+        Err(_e) => {
             Err(anyhow::Error::msg("Failed to deserialize response"))
         }
     }
@@ -472,8 +446,6 @@ pub async fn call_get_queued_episodes(
     // Append the user_id as a query parameter
     let url = format!("{}/api/data/get_queued_episodes?user_id={}", server_name, user_id);
 
-    console::log_1(&format!("URL: {}", url).into());
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
@@ -485,11 +457,8 @@ pub async fn call_get_queued_episodes(
     if !response.ok() {
         return Err(anyhow::Error::msg(format!("Failed to fetch queued episodes: {}", response.status_text())));
     }
-
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     let response_text = response.text().await?;
 
-    console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: DataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
@@ -531,8 +500,6 @@ pub async fn call_get_saved_episodes(
     // Append the user_id as a query parameter
     let url = format!("{}/api/data/saved_episode_list/{}", server_name, user_id);
 
-    console::log_1(&format!("URL: {}", url).into());
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
@@ -545,10 +512,8 @@ pub async fn call_get_saved_episodes(
         return Err(anyhow::Error::msg(format!("Failed to fetch saved episodes: {}", response.status_text())));
     }
 
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     let response_text = response.text().await?;
 
-    console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.saved_episodes)
@@ -660,7 +625,6 @@ pub async fn call_get_user_history(
     // Append the user_id as a query parameter
     let url = format!("{}/api/data/user_history/{}", server_name, user_id);
 
-    console::log_1(&format!("URL: {}", url).into());
 
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -674,10 +638,8 @@ pub async fn call_get_user_history(
         return Err(anyhow::Error::msg(format!("Failed to fetch history: {}", response.status_text())));
     }
 
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     let response_text = response.text().await?;
 
-    console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: HistoryDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
@@ -754,7 +716,6 @@ pub async fn call_get_episode_downloads(
     let url = format!("{}/api/data/download_episode_list?user_id={}", server_name, user_id);
 
 
-    console::log_1(&format!("URL: {}", url).into());
 
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -768,13 +729,10 @@ pub async fn call_get_episode_downloads(
         return Err(anyhow::Error::msg(format!("Failed to episode downloads: {}", response.status_text())));
     }
 
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     let response_text = response.text().await?;
 
-    console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
     
     let response_data: DownloadDataResponse = serde_json::from_str(&response_text)?;
-    console::log_1(&format!("Downloaded Episodes: {:?}", response_data.episodes.clone()).into());
     Ok(response_data.episodes)
 }
 
@@ -885,8 +843,6 @@ pub async fn call_get_episode_metadata(
 ) -> Result<EpisodeInfo, anyhow::Error> {
     let url = format!("{}/api/data/get_episode_metadata", server_name);
 
-    console::log_1(&format!("URL: {}", url).into());
-
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
     
     let request_body = serde_json::to_string(episode_request).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
@@ -902,10 +858,7 @@ pub async fn call_get_episode_metadata(
         return Err(anyhow::Error::msg(format!("Failed to episode downloads: {}", response.status_text())));
     }
 
-    console::log_1(&format!("HTTP Response Status: {}", response.status()).into());
     let response_text = response.text().await?;
-
-    console::log_1(&format!("HTTP Response Body: {}", &response_text).into());
 
     let response_data: EpisodeMetadataResponse = serde_json::from_str(&response_text)
         .map_err(|e| anyhow::Error::msg(format!("Deserialization Error: {}", e)))?;

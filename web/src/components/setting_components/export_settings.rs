@@ -1,7 +1,7 @@
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UIState};
 use web_sys::{window, Blob, Url, BlobPropertyBag};
 use wasm_bindgen::JsValue;
 use crate::requests::setting_reqs::{call_backup_user};
@@ -9,6 +9,7 @@ use crate::requests::setting_reqs::{call_backup_user};
 #[function_component(ExportOptions)]
 pub fn export_options() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -19,6 +20,7 @@ pub fn export_options() -> Html {
     let onclick = {
         let blob_property_bag = blob_property_bag.clone();
         Callback::from(move |_| {
+            let audio_dispatch = audio_dispatch.clone();
             let bloberty_bag = blob_property_bag.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone();
@@ -46,7 +48,7 @@ pub fn export_options() -> Html {
                         }
                     }
                     Err(e) => {
-                        web_sys::console::log_1(&format!("Error exporting OPML: {:?}", e).into());
+                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error exporting OPML: {}", e)));
                     }
                 }
             });

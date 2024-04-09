@@ -2,7 +2,7 @@ use serde::Deserialize;
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
-use crate::{components::audio, requests::setting_reqs::{call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudAuthRequest}};
+use crate::{requests::setting_reqs::{call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudAuthRequest}};
 use wasm_bindgen_futures::JsFuture;
 use yewdux::use_store;
 use crate::components::context::{AppState, UIState};
@@ -25,7 +25,6 @@ pub struct Poll {
 }
 
 async fn initiate_nextcloud_login(server_url: &str) -> Result<NextcloudLoginResponse, anyhow::Error> {
-    console::log_1(&"Initiating Nextcloud login...".into());
     let login_endpoint = format!("{}/index.php/login/v2", server_url);
     let window = web_sys::window().expect("no global `window` exists");
     let request = Request::new_with_str_and_init(&login_endpoint, RequestInit::new().method("POST").mode(RequestMode::Cors))
@@ -39,8 +38,6 @@ async fn initiate_nextcloud_login(server_url: &str) -> Result<NextcloudLoginResp
                 console::log_1(&"Response status is 200...".into());
                 match JsFuture::from(response.json().unwrap()).await {
                     Ok(json_result) => {
-                        console::log_1(&format!("JSON response: {:?}", json_result).into());
-                        console::log_1(&"Successfully parsed JSON response...".into());
                         console::log_1(&"Before login response".into());
                         match serde_wasm_bindgen::from_value::<NextcloudLoginResponse>(json_result) {
                             Ok(login_data) => {
@@ -131,14 +128,12 @@ pub fn nextcloud_options() -> Html {
         let auth_status = auth_status.clone();
         Callback::from(move |_| {
             let audio_dispatch = audio_dispatch.clone();
-            console::log_1(&"Authenticate button clicked.".into());
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
 
-            console::log_1(&format!("Server URL: {}", server).into());
 
 
             if !server.trim().is_empty() {
@@ -157,11 +152,11 @@ pub fn nextcloud_options() -> Html {
                                     log::info!("pinepods server now polling nextcloud");
                                     // Start polling the check_gpodder_settings endpoint
                                     loop {
-                                        console::log_1(&"Checking gPodder settings...".into());
                                         match call_check_nextcloud_server(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.clone().unwrap()).await {
                                             Ok(response) => {
                                                 if response.data {
                                                     log::info!("gPodder settings have been set up");
+                                                    audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
                                                     break;
                                                 } else {
                                                     log::info!("gPodder settings are not yet set up, continuing to poll...");

@@ -60,7 +60,6 @@ pub fn history() -> Html {
     let _toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
         Callback::from(move |_: MouseEvent| {
-            web_sys::console::log_1(&format!("Dropdown toggled: {}", !*dropdown_open).into()); // Log for debugging
             dropdown_open.set(!*dropdown_open);
         })
     };
@@ -89,15 +88,12 @@ pub fn history() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_user_history(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
-                                web_sys::console::log_1(&format!("Fetched episodes: {:?}", fetched_episodes).into()); // Log fetched episodes
                                 dispatch.reduce_mut(move |state| {
                                     state.episode_history = Some(HistoryDataResponse { data: fetched_episodes });
                                 });
                                 loading_ep.set(false);
-                                // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             },
                             Err(e) => {
-                                web_sys::console::log_1(&format!("Error fetching episodes: {:?}", e).into()); // Log error
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false);
                             },
@@ -141,7 +137,6 @@ pub fn history() -> Html {
                             
 
                             if let Some(history_eps) = state.episode_history.clone() {
-                                web_sys::console::log_1(&format!("Episode History in state: {:?}", history_eps).into());
                                 if history_eps.data.is_empty() {
                                     empty_message(
                                         "No Episode History Found",

@@ -24,6 +24,7 @@ pub fn create_on_title_click(
     let history = history.clone();
     Callback::from(move |e: MouseEvent| {
         e.prevent_default(); // Prevent default anchor behavior
+        dispatch.reduce_mut(|state| state.is_loading = Some(true));
         let podcast_url_call = podcast_url.clone();
         let podcast_values = ClickedFeedURL {
             podcast_title: podcast_title.clone(),
@@ -47,10 +48,11 @@ pub fn create_on_title_click(
                         state.podcast_feed_results = Some(podcast_feed_results);
                         state.clicked_podcast_info = Some(podcast_values);
                     });
+                    dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     history.push("/episode_layout"); // Navigate to episode_layout
                 },
-                Err(e) => {
-                    web_sys::console::log_1(&format!("Error: {}", e).into());
+                Err(_e) => {
+                    // web_sys::console::log_1(&format!("Error: {}", e).into());
                 }
             }
         });

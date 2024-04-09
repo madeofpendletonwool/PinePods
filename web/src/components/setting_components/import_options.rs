@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use yewdux::prelude::*;
-use crate::components::context::AppState;
-use web_sys::{console, FileReader, HtmlInputElement};
+use crate::components::context::{UIState, AppState};
+use web_sys::{FileReader, HtmlInputElement};
 use wasm_bindgen::closure::Closure;
 use crate::components::gen_funcs::parse_opml;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
@@ -19,7 +19,6 @@ fn transform_feed_result_to_values(feed_result: PodcastInfo, podcast_to_add: &Po
 
     // Simplified: Using first episode details or default values
     let pod_artwork = feed_result.artwork_url.unwrap_or_default();
-    console::log_1(&pod_artwork.clone().into());
     let pod_author = feed_result.author.clone();
     let pod_description = feed_result.description.clone();
     let pod_website = feed_result.website;
@@ -92,12 +91,12 @@ pub fn import_options() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let import_pods = use_state(|| Vec::new());
     let show_verification = use_state(|| false);
-    let server_name_click = server_name.clone();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
+
 
     let onclick = {
         let import_pods = import_pods.clone();
         let show_verification = show_verification.clone();
-        let server_name = server_name_click.clone();
         Callback::from(move |e: Event| {
             // let server_name = server_name.clone();
             let show_verification = show_verification.clone();
@@ -127,16 +126,19 @@ pub fn import_options() -> Html {
     };
     
     let server_name_confirm = server_name.clone();
+    let dispatch_wasm = _dispatch.clone();
     let on_confirm = {
         let import_pods = import_pods.clone();
         let server_name = server_name_confirm.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         Callback::from(move |_| {
-            _dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            dispatch_wasm.reduce_mut(|state| state.is_loading = Some(true));
             // Filter for selected podcasts
             let server_name = server_name.clone();
             let api_key = api_key.clone();
+            let dispatch_wasm = dispatch_wasm.clone();
+            let audio_dispatch = audio_dispatch.clone();
             let selected_podcasts: Vec<PodcastToAdd> = (*import_pods)
                 .iter()
                 .filter(|podcast| podcast.selected)
@@ -148,8 +150,10 @@ pub fn import_options() -> Html {
                 if let (Some(server_name), Some(api_key), Some(user_id)) = (server_name.as_ref(), api_key.as_ref(), user_id) {
                     add_podcasts(server_name, &Some(api_key.clone().unwrap()), user_id, selected_podcasts.clone()).await;
                 }
+                dispatch_wasm.reduce_mut(|state| state.is_loading = Some(false));
+                audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Selected Podcasts Added!".to_string()));
+
             });
-            _dispatch.reduce_mut(|state| state.is_loading = Some(false));
         })
     };
     
@@ -168,13 +172,12 @@ pub fn import_options() -> Html {
                         <div class="import-box">
                             <div>
                                 <p class="item_container-text">
-                                    {"The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. Be patient!"}
+                                    {"The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. The loading animation will disappear once all complete. Be patient!"}
                                 </p>
                                 <button class="settings-button" onclick={on_confirm}>{"Add them!"}</button>
                             </div>
                             {
                                 for (*import_pods).iter().enumerate().map(|(index, podcast)| {
-                                    let import_pods_clone = import_pods.clone();
                                     let toggle_selection = {
                                         let import_pods = import_pods.clone();
                                         Callback::from(move |_| {

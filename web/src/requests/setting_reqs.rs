@@ -1,9 +1,7 @@
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
-use web_sys::console;
 use std::collections::HashMap;
-use serde_json::to_string;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetThemeResponse {
@@ -23,7 +21,6 @@ pub async fn call_get_theme(server_name: String, api_key: String, user_id: &i32)
         let response_body = response.json::<GetThemeResponse>().await?;
         Ok(response_body.theme)
     } else {
-        console::log_1(&format!("Error getting theme: {}", response.status_text()).into());
         Err(Error::msg(format!("Error getting theme. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
@@ -57,7 +54,6 @@ pub async fn call_set_theme(server_name: &Option<String>, api_key: &Option<Strin
         let response_body = response.json::<SetThemeResponse>().await?;
         Ok(response_body.message == "Success")
     } else {
-        console::log_1(&format!("Error updating theme: {}", response.status_text()).into());
         Err(Error::msg(format!("Error updating theme: {}", response.status_text())))
     }
 }
@@ -90,12 +86,9 @@ pub async fn call_get_user_info(server_name: String, api_key: String) -> Result<
 
     if response.ok() {
         let response_text = response.text().await?;
-        console::log_1(&format!("Response body: {}", response_text).into());
-        console::log_1(&"Button clicked1".into());
         let users: Vec<SettingsUser> = serde_json::from_str(&response_text)?;
         Ok(users)
     } else {
-        console::log_1(&format!("Error getting user info: {}", response.status_text()).into());
         Err(Error::msg(format!("Error getting user info. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
@@ -117,15 +110,11 @@ pub struct AddUserResponse {
 pub async fn call_add_user(server_name: String, api_key: String, add_user: &AddSettingsUserRequest) -> Result<bool, Error> {
     let server = server_name.clone();
     let url = format!("{}/api/data/add_user", server);
-    console::log_1(&format!("Request URL: {}", url.clone()).into());
-    console::log_1(&format!("API Key: {}", api_key.clone()).into());
-
 
     // let add_user_req = add_user.as_ref().unwrap();
 
     // Serialize `add_user` into JSON
     let json_body = serde_json::to_string(&add_user)?;
-    console::log_1(&format!("Request Body: {}", json_body.clone()).into());
 
     let response = Request::post(&url)
         .header("Api-Key", &api_key)
@@ -138,7 +127,6 @@ pub async fn call_add_user(server_name: String, api_key: String, add_user: &AddS
         let response_body = response.json::<AddUserResponse>().await?;
         Ok(response_body.detail == "Success")
     } else {
-        console::log_1(&format!("Error adding user: {}", response.status_text()).into());
         Err(Error::msg(format!("Error adding user: {}", response.status_text())))
     }
 }
@@ -467,17 +455,6 @@ pub async fn call_send_test_email(
     let url = format!("{}/api/data/send_test_email", server_name);
     let body = serde_json::to_string(&email_settings)?;
 
-    // Serialize and log the email settings
-    match to_string(&body) {
-        Ok(serialized_body) => {
-            console::log_1(&format!("Sending test email with settings: {}", serialized_body).into());
-        },
-        Err(e) => {
-            console::log_1(&format!("Error serializing email settings: {}", e).into());
-        }
-    }
-
-
     let response = Request::post(&url)
         .header("Api-Key", &api_key)
         .header("Content-Type", "application/json")
@@ -771,7 +748,6 @@ pub async fn call_generate_mfa_secret(server_name: String, api_key: String, user
         let response_body = response.json::<GenerateMFAResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error generating MFA secret: {}", response.status_text()).into());
         Err(anyhow::Error::msg(format!("Error generating MFA secret. Server Response: {}", response.status_text())))
     }
 }
@@ -833,7 +809,6 @@ pub async fn call_mfa_settings(server_name: String, api_key: String, user_id: i3
         let response_body = response.json::<GetMFAResponse>().await?;
         Ok(response_body.mfa_enabled)
     } else {
-        console::log_1(&format!("Error getting MFA status: {}", response.status_text()).into());
         Err(Error::msg(format!("Error getting MFA status. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
@@ -855,10 +830,6 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
     let body = SaveMFASecretRequest { user_id, mfa_secret };
     let json_body = serde_json::to_string(&body)?;
 
-    // Log the request body for debugging
-    console::log_1(&format!("Saving MFA Secret, Request Body: {:?}", &body).into());
-
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
@@ -870,7 +841,6 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
         let response_body = response.json::<SaveMFASecretResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error saving MFA secret: {}", response.status_text()).into());
         Err(Error::msg(format!("Error saving MFA secret. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
@@ -908,7 +878,6 @@ pub async fn call_add_nextcloud_server(
         let response_body = response.json::<NextcloudAuthResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error saving Nextcloud Server Info: {}", response.status_text()).into());
         Err(Error::msg(format!("Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
@@ -937,7 +906,6 @@ pub async fn call_check_nextcloud_server(
         let response_body = response.json::<NextcloudCheckResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error pulling Nextcloud Server Info: {}", response.status_text()).into());
         Err(Error::msg(format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }
@@ -960,30 +928,24 @@ pub async fn call_get_nextcloud_server(
         .send()
         .await?;
 
-    console::log_1(&format!("Request URL: {}", url).into());
-
     if response.ok() {
         match response.json::<NextcloudGetResponse>().await {
             Ok(response_body) => {
                 // Check if the data array is not empty and does not contain just empty strings
                 if !response_body.data.is_empty() && !response_body.data.iter().all(|s| s.trim().is_empty()) {
                     let gpodder_url = response_body.data.get(0).cloned().unwrap_or_default(); 
-                    console::log_1(&format!("Gpodder URL: {}", gpodder_url).into());
                     Ok(gpodder_url)
                 } else {
-                    console::log_1(&"Not currently syncing with Nextcloud server".into());
                     // Instead of returning an error, return a specific message indicating no sync
                     Ok(String::from("Not currently syncing with Nextcloud server"))
                 }
             },
             Err(e) => {
-                console::log_1(&format!("Failed to deserialize response: {:?}", e).into());
                 Err(anyhow::Error::new(e))
             },
         }
     } else {
         let error_text = response.text().await.unwrap_or_default();
-        console::log_1(&format!("Error pulling Nextcloud Server Info: {}, {}", response.status_text(), error_text).into());
         Err(anyhow::Error::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}, {}", response.status_text(), error_text),
@@ -1015,7 +977,6 @@ pub async fn call_user_admin_check(
         let response_body = response.json::<AdminCheckResponse>().await?;
         Ok(response_body)
     } else {
-        console::log_1(&format!("Error checking admin status: {}", response.status_text()).into());
         Err(anyhow::Error::msg(format!("Error checking admin status. Is the server reachable? Server Response: {}", response.status_text())))
     }
 }

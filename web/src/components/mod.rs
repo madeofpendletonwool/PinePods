@@ -14,6 +14,7 @@ pub(crate) mod home;
 
 pub(crate) mod context;
 pub(crate) mod gen_components;
+pub(crate) mod desc_impl;
 pub(crate) mod search_new;
 pub(crate) mod podcast_layout;
 pub(crate) mod episodes_layout;

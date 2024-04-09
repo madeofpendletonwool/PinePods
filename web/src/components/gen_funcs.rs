@@ -146,6 +146,7 @@ pub fn validate_username(username: &str) -> Vec<ValidationError> {
     errors
 }
 
+#[allow(dead_code)]
 pub fn validate_password(password: &str) -> Vec<ValidationError> {
     let mut errors = Vec::new();
 

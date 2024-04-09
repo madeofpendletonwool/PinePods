@@ -70,7 +70,6 @@ pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Opti
 
     if response.ok() {
         let response_text = response.text().await.map_err(|err| anyhow::Error::new(err))?;
-        web_sys::console::log_1(&format!("Raw Response: {}", response_text).into());
 
         let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
         Ok(search_results)

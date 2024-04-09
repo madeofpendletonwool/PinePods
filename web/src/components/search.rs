@@ -103,9 +103,6 @@ pub fn search(_props: &SearchProps) -> Html {
         if let Some(form) = input_ref_clone1.cast::<HtmlElement>() {
             form.class_list().add_1("move-to-top").unwrap();
         }
-        web_sys::console::log_1(&format!("server_name_submit: {:?}", server_name_submit).into());
-        web_sys::console::log_1(&format!("api_key_submit: {:?}", api_key_submit).into());
-        web_sys::console::log_1(&format!("user_id_submit: {:?}", user_id_submit).into());
 
         // Clone the necessary variables
         let server_name_submit = server_name_submit.clone();
@@ -113,16 +110,14 @@ pub fn search(_props: &SearchProps) -> Html {
         let user_id_submit = user_id_submit.clone();
         // let search_results = search_results_clone.clone();
         let mut search_request = None;
-        web_sys::console::log_1(&"Before some statement".into());
         if let Some(input_element) = input_ref_clone2.cast::<HtmlInputElement>() {
             let search_term = input_element.value();
-            web_sys::console::log_1(&"Inside some".into());
             search_request = Some(SearchRequest {
                 search_term,
                 user_id: user_id_submit.unwrap(), // replace with the actual user id
             });
         } else {
-            web_sys::console::log_1(&"input_ref_clone2 is not an HtmlInputElement".into());
+            // web_sys::console::log_1(&"input_ref_clone2 is not an HtmlInputElement".into());
         }
         let future_dispatch = search_dispatch.clone();
         let future = async move {
@@ -131,9 +126,6 @@ pub fn search(_props: &SearchProps) -> Html {
                 container.class_list().add_1("shrink-input").unwrap();
             }
             if let Some(search_request) = search_request {
-                web_sys::console::log_1(&format!("server_name: {:?}", server_name_submit).into());
-                web_sys::console::log_1(&format!("api_key: {:?}", api_key_submit).into());
-                web_sys::console::log_1(&format!("search_request: {:?}", search_request).into());
                 let dispatch = future_dispatch.clone();
                 match call_search_database(&server_name_submit.unwrap(), &api_key_submit.flatten(), &search_request).await {
                     Ok(results) => {

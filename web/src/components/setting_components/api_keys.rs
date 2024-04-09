@@ -1,7 +1,6 @@
 use yew::prelude::*;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use web_sys::console;
 use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIRequest};
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
@@ -44,7 +43,6 @@ pub fn api_keys() -> Html {
                                 api_infos.set(response.api_info);
                             },
                             Err(e) => {
-                                console::log_1(&format!("Error getting API info: {}", e).into());
                                 audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting API Info: {}", e)));
                             }
                         }
@@ -98,7 +96,6 @@ pub fn api_keys() -> Html {
                         page_state.set(PageState::Shown); // Move to the edit page state
                     },
                     Err(e) => {
-                        console::log_1(&e.to_string().into());
                         audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(e.to_string()));
                     },
                 }
@@ -129,12 +126,11 @@ pub fn api_keys() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match call_delete_api_key(&server_name.unwrap(), delete_body, &api_key.unwrap().unwrap()).await {
                     Ok(_) => {
-                        console::log_1(&"API key deleted successfully".into());
+                        audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from(format!("API key deleted successfully")));
                         // Update UI accordingly, e.g., remove the deleted API key from the list
                     },
                     Err(e) => {
                         audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error Deleting API Key: {}", e)));
-                        console::log_1(&format!("Error deleting API key: {:?}", e).into());
                     },
                 }
                 page_state.set(PageState::Hidden); // Hide modal after deletion

@@ -5,16 +5,17 @@ use super::gen_components::{Search_nav, empty_message, episode_item, on_shownote
 use crate::requests::pod_req;
 use yewdux::prelude::*;
 use yew_router::history::BrowserHistory;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, UIState, ExpandedDescriptions};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, format_datetime, parse_date, DateFormat};
-use crate::requests::pod_req::RecentEps;
+use crate::requests::pod_req::{RecentEps};
+use crate::requests::pod_req::{Episode as EpisodeData}; 
 use crate::components::audio::on_play_click;
-use crate::components::episodes_layout::AppStateMsg;
+use crate::components::desc_impl::AppStateMsg;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use wasm_bindgen::closure::Closure;
-use web_sys::{console, window};
+use web_sys::window;
 use wasm_bindgen::JsCast;
 use crate::requests::login_requests::use_check_authentication;
 
@@ -23,10 +24,6 @@ use crate::requests::login_requests::use_check_authentication;
 pub fn home() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let effect_dispatch = dispatch.clone();
-    let history = BrowserHistory::new();
-
-    console::log_1(&format!("About to run check auth").into());
-    // check_auth(effect_dispatch);
 
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
@@ -44,7 +41,6 @@ pub fn home() -> Html {
             if navigation_type == 1 { // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
                 session_storage.set_item("isAuthenticated", "false").unwrap();
-                console::log_1(&"Page was reloaded, user not authenticated, clearing session storage".into());
             }
     
             // Always check authentication status
@@ -68,7 +64,7 @@ pub fn home() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let loading = use_state(|| true);
-    web_sys::console::log_1(&"testlog".into());
+    
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -96,8 +92,6 @@ pub fn home() -> Html {
     let loading_ep = loading.clone();
     {
         // let episodes = episodes.clone();
-        console::log_1(&format!("loading ep value: {:?}", loading_ep).into());
-
         let error = error.clone();
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -134,8 +128,6 @@ pub fn home() -> Html {
         );
     }
 
-    console::log_1(&format!("loading ep value: {:?}", *loading).into());
-
     html! {
         <>
         <div class="main-container">
@@ -156,10 +148,6 @@ pub fn home() -> Html {
                     if let Some(recent_eps) = state.server_feed_results.clone() {
                         let int_recent_eps = recent_eps.clone();
                         if let Some(episodes) = int_recent_eps.episodes {
-                            let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-                            let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-                            let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-                            let history_clone = history.clone();
                     
                             if episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty
@@ -168,114 +156,13 @@ pub fn home() -> Html {
                                     "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
                                 )
                             } else {
-                            episodes.into_iter().map(|episode| {
-                                let id_string = &episode.EpisodeID.to_string();
-        
-                                let is_expanded = state.expanded_descriptions.contains(id_string);
-        
-                                let dispatch = dispatch.clone();
-        
-                                let episode_url_clone = episode.EpisodeURL.clone();
-                                let episode_title_clone = episode.EpisodeTitle.clone();
-                                let episode_artwork_clone = episode.EpisodeArtwork.clone();
-                                let episode_duration_clone = episode.EpisodeDuration.clone();
-                                let episode_id_clone = episode.EpisodeID.clone();
-                                let episode_listened_clone = episode.ListenDuration.clone();
-
-                                let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
-
-                                let (description, _is_truncated) = if is_expanded {
-                                    (sanitized_description, false)
-                                } else {
-                                    truncate_description(sanitized_description, 300)
-                                };
-        
-                                let toggle_expanded = {
-                                    let search_dispatch_clone = dispatch.clone();
-                                    let state_clone = state.clone();
-                                    let episode_guid = episode.EpisodeID.clone();
-        
-                                    Callback::from(move |_: MouseEvent| {
-                                        let guid_clone = episode_guid.to_string().clone();
-                                        let search_dispatch_call = search_dispatch_clone.clone();
-        
-                                        if state_clone.expanded_descriptions.contains(&guid_clone) {
-                                            search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                                        } else {
-                                            search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                                        }
-                                    })
-                                };
-
-                                let episode_url_for_closure = episode_url_clone.clone();
-                                let episode_title_for_closure = episode_title_clone.clone();
-                                let episode_artwork_for_closure = episode_artwork_clone.clone();
-                                let episode_duration_for_closure = episode_duration_clone.clone();
-                                let listener_duration_for_closure = episode_listened_clone.clone();
-                                let episode_id_for_closure = episode_id_clone.clone();
-                                let user_id_play = user_id.clone();
-                                let server_name_play = server_name.clone();
-                                let api_key_play = api_key.clone();
-                                let audio_dispatch = audio_dispatch.clone();
-
-                                let on_play_click = on_play_click(
-                                    episode_url_for_closure.clone(),
-                                    episode_title_for_closure.clone(),
-                                    episode_artwork_for_closure.clone(),
-                                    episode_duration_for_closure.clone(),
-                                    episode_id_for_closure.clone(),
-                                    listener_duration_for_closure.clone(),
-                                    api_key_play.unwrap().unwrap(),
-                                    user_id_play.unwrap(),
-                                    server_name_play.unwrap(),
-                                    audio_dispatch.clone(),
-                                    audio_state.clone(),
-                                    None,
-                                );
-
-                                let on_shownotes_click = on_shownotes_click(
-                                    history_clone.clone(),
-                                    dispatch.clone(),
-                                    episode_id_for_closure.clone(),
-                                );
-    
-                                // let format_release = format!("Released on: {}", &episode.EpisodePubDate);
-                                console::log_1(&format!("Episode pub date: {}", &episode.EpisodePubDate).into());
-                                console::log_1(&format!("User timezone: {:?}", &state.user_tz).into());
-                                console::log_1(&format!("User date format: {:?}", &state.date_format).into());
-                                let date_format = match state.date_format.as_deref() {
-                                    Some("MDY") => DateFormat::MDY,
-                                    Some("DMY") => DateFormat::DMY,
-                                    Some("YMD") => DateFormat::YMD,
-                                    Some("JUL") => DateFormat::JUL,
-                                    Some("ISO") => DateFormat::ISO,
-                                    Some("USA") => DateFormat::USA,
-                                    Some("EUR") => DateFormat::EUR,
-                                    Some("JIS") => DateFormat::JIS,
-                                    _ => DateFormat::ISO, // default to ISO if the format is not recognized
-                                };
-                                
-                                let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
-                                // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
-                                let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
-                                console::log_1(&format!("Formatted release: {}", &format_release).into());
-                                let item = episode_item(
-                                    Box::new(episode),
-                                    description.clone(),
-                                    is_expanded,
-                                    &format_release,
-                                    on_play_click,
-                                    on_shownotes_click,
-                                    toggle_expanded,
-                                    episode_duration_clone,
-                                    episode_listened_clone,
-                                    "home",
-                                    Callback::from(|_| {}), 
-                                    false,
-                                );
-
-                                item
-                            }).collect::<Html>()
+                                episodes.into_iter().map(|episode| {
+                                    html! {
+                                        <Episode
+                                            episode={episode.clone()}
+                                        />
+                                    }
+                                }).collect::<Html>()
                             }
                         } else {
                             empty_message(
@@ -309,4 +196,126 @@ pub fn home() -> Html {
         <App_drawer />
         </>
     }
+}
+
+
+#[derive(Properties, PartialEq, Clone)]
+pub struct EpisodeProps {
+    pub episode: EpisodeData, // Assuming EpisodeData contains all episode details
+    // Add callbacks for play and shownotes if they can't be internally handled
+}
+
+#[function_component(Episode)]
+pub fn episode(props: &EpisodeProps) -> Html {
+    let (state, dispatch) = use_store::<AppState>();
+    // let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let id_string = &props.episode.EpisodeID.to_string();
+    let history = BrowserHistory::new();
+    let history_clone = history.clone();
+        
+    let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
+
+    let dispatch = dispatch.clone();
+
+    let episode_url_clone = props.episode.EpisodeURL.clone();
+    let episode_title_clone = props.episode.EpisodeTitle.clone();
+    let episode_artwork_clone = props.episode.EpisodeArtwork.clone();
+    let episode_duration_clone = props.episode.EpisodeDuration.clone();
+    let episode_id_clone = props.episode.EpisodeID.clone();
+    let episode_listened_clone = props.episode.ListenDuration.clone();
+
+    let sanitized_description = sanitize_html_with_blank_target(&props.episode.EpisodeDescription.clone());
+
+    let (description, _is_truncated) = if desc_expanded {
+        (sanitized_description, false)
+    } else {
+        truncate_description(sanitized_description, 300)
+    };
+
+    let toggle_expanded = {
+        let desc_dispatch = desc_dispatch.clone();
+        let desc_state = desc_state.clone();
+        // let state_clone = state.clone();
+        let episode_guid = props.episode.EpisodeID.clone();
+
+        Callback::from(move |_: MouseEvent| {
+            let guid_clone = episode_guid.to_string().clone();
+            let desc_dispatch = desc_dispatch.clone();
+
+            if desc_state.expanded_descriptions.contains(&guid_clone) {
+                desc_dispatch.apply(AppStateMsg::CollapseEpisode(guid_clone));
+            } else {
+                desc_dispatch.apply(AppStateMsg::ExpandEpisode(guid_clone));
+            }
+        })
+    };
+
+    let episode_url_for_closure = episode_url_clone.clone();
+    let episode_title_for_closure = episode_title_clone.clone();
+    let episode_artwork_for_closure = episode_artwork_clone.clone();
+    let episode_duration_for_closure = episode_duration_clone.clone();
+    let listener_duration_for_closure = episode_listened_clone.clone();
+    let episode_id_for_closure = episode_id_clone.clone();
+    let user_id_play = user_id.clone();
+    let server_name_play = server_name.clone();
+    let api_key_play = api_key.clone();
+    let audio_dispatch = audio_dispatch.clone();
+
+    let on_play_click = on_play_click(
+        episode_url_for_closure.clone(),
+        episode_title_for_closure.clone(),
+        episode_artwork_for_closure.clone(),
+        episode_duration_for_closure.clone(),
+        episode_id_for_closure.clone(),
+        listener_duration_for_closure.clone(),
+        api_key_play.unwrap().unwrap(),
+        user_id_play.unwrap(),
+        server_name_play.unwrap(),
+        audio_dispatch.clone(),
+        audio_state.clone(),
+        None,
+    );
+
+    let on_shownotes_click = on_shownotes_click(
+        history_clone.clone(),
+        dispatch.clone(),
+        episode_id_for_closure.clone(),
+    );
+
+    let date_format = match state.date_format.as_deref() {
+        Some("MDY") => DateFormat::MDY,
+        Some("DMY") => DateFormat::DMY,
+        Some("YMD") => DateFormat::YMD,
+        Some("JUL") => DateFormat::JUL,
+        Some("ISO") => DateFormat::ISO,
+        Some("USA") => DateFormat::USA,
+        Some("EUR") => DateFormat::EUR,
+        Some("JIS") => DateFormat::JIS,
+        _ => DateFormat::ISO, // default to ISO if the format is not recognized
+    };
+    
+    let datetime = parse_date(&props.episode.EpisodePubDate, &state.user_tz);
+    // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
+    let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+    let item = episode_item(
+        Box::new(props.episode.clone()),
+        description.clone(),
+        desc_expanded,
+        &format_release,
+        on_play_click,
+        on_shownotes_click,
+        toggle_expanded,
+        episode_duration_clone,
+        episode_listened_clone,
+        "home",
+        Callback::from(|_| {}), 
+        false,
+    );
+
+    item
 }

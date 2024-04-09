@@ -3,7 +3,6 @@ use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
 use crate::requests::stat_reqs;
-use web_sys::console;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::audio::AudioPlayer;
@@ -17,22 +16,6 @@ pub fn user_stats() -> Html {
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
     let user_stats = stat_state.stats.as_ref();
 
-    // use_effect_with(
-    //     (),
-    //     move |_| {
-    //         let effect_dispatch_clone = effect_dispatch.clone();
-
-    //         wasm_bindgen_futures::spawn_local(async move {
-    //             let window = web_sys::window().expect("no global `window` exists");
-    //             let location = window.location();
-    //             let current_route = location.href().expect("should be able to get href");
-    //             use_check_authentication(effect_dispatch_clone, &current_route);
-    //         });
-
-    //         || ()
-    //     }
-    // );
-
     // let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
@@ -44,28 +27,8 @@ pub fn user_stats() -> Html {
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-        console::log_1(&"Test log on home".to_string().into());
-        if let Some(api_key) = &api_key {
-            console::log_1(&format!("API Key: {:?}", api_key).into());
-        }
-        if let Some(user_id) = user_id {
-            console::log_1(&format!("User ID: {}", user_id).into());
-        }
-        if let Some(server_name) = &server_name {
-            console::log_1(&format!("Server Name: {}", server_name).into());
-        }
-
-        console::log_1(&format!("apikey: {:?}", &api_key).into());
-        console::log_1(&format!("userid: {:?}", &user_id).into());
-        console::log_1(&format!("servername: {:?}", &server_name).into());
 
         let server_name_effect = server_name.clone();
-        let user_id_effect = user_id.clone();
-        let api_key_effect = api_key.clone();
-
-        console::log_1(&format!("server_name: {:?}", &server_name_effect).into());
-        console::log_1(&format!("user_id: {:?}", &user_id_effect).into());
-        console::log_1(&format!("api_key: {:?}", &api_key_effect).into());
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
