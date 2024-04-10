@@ -320,15 +320,14 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Update All Depends
 - [x] Loading animations where if makes sense
 - [x] Verify Funtional Mobile Version (Functional - Will be made better with time)
+- [x] Cleanup prints on server and client end. Make debugging functionality work again
+- [x] Fix all CORs Issues - Verify behind Reverse Proxy (Seems to all work great with no issues)
 
 ### Pre-Rust Revamp Release
 
 - [ ] Verify All Button Interaction throughout
 - [ ] Test Edgecases and ensure errors can't happen throughout
 
-- [ ] Fix all CORs Issues - Verify behind Reverse Proxy
-
-- [ ] Cleanup prints on server and client end. Make debugging functionality work again
 - [ ] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio)
 
 - [ ] Automation - client auto release and compile - auto compile and push to docker hub

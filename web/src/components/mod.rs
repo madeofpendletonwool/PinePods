@@ -1,5 +1,4 @@
 // In components/mod.rs
-pub mod login;
 pub(crate) mod app_drawer;
 pub mod misc_func;
 pub(crate) mod saved;
@@ -23,5 +22,10 @@ mod audio;
 mod click_events;
 pub mod gen_funcs;
 pub(crate) mod episode;
-
 pub mod setting_components;
+
+#[cfg(feature = "server_build")]
+pub mod login;
+
+#[cfg(not(feature = "server_build"))]
+pub mod login_tauri;

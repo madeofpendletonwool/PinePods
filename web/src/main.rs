@@ -3,9 +3,9 @@ mod components;
 mod requests;
 
 use components::routes::Route;
-use components::login::Login;
-use components::login::ChangeServer;
-use components::login::LogOut;
+// use components::login::Login;
+// use components::login::ChangeServer;
+// use components::login::LogOut;
 use components::downloads::Downloads;
 use components::history::PodHistory;
 use components::queue::Queue;
@@ -19,6 +19,21 @@ use components::podcast_layout::PodLayout;
 use components::episodes_layout::EpisodeLayout;
 use components::podcasts::Podcasts;
 use components::episode::Episode;
+
+#[cfg(feature = "server_build")]
+use {
+    components::login::Login,
+    components::login::ChangeServer,
+    components::login::LogOut,
+};
+
+#[cfg(not(feature = "server_build"))]
+use {
+    components::login_tauri::Login,
+    components::login_tauri::ChangeServer,
+    components::login_tauri::LogOut,
+};
+
 
 // Yew Imports
 use yew_router::prelude::*;

@@ -59,10 +59,10 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 600,
+        "height": 1000,
         "resizable": true,
         "title": "Pinepods",
-        "width": 800
+        "width": 1200
       }
     ]
   }

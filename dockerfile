@@ -14,7 +14,7 @@ COPY . /app
 WORKDIR /app/web
 
 # Build the Yew application in release mode
-RUN trunk build --release
+RUN trunk build --features server_build --release
 
 # Final stage for setting up runtime environment
 FROM alpine:3.19
