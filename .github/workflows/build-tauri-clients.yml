@@ -78,6 +78,10 @@ jobs:
         run: |
           cargo install --locked trunk 
 
+      - name: Install Tauri
+        run : |
+          cargo install tauri-cli --locked
+
       - name: Build | Compile
         run: |
           cd web/src-tauri
