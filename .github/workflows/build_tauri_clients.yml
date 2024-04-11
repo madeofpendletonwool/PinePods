@@ -20,18 +20,31 @@ jobs:
     # Set an environment variable based on the OS
     env:
       DEPENDS_SETUP: ${{ matrix.os == 'ubuntu-latest' && 'true' || 'false' }}
-      ARTIFACT_NAME1: ${{ 
-        matrix.os == 'ubuntu-latest' && 'deb/pinepods_0.5.0_amd64.deb' || 
-        matrix.os == 'windows-latest' && 'exe/pinepods_0.5.0_amd64.exe' || 
-        matrix.os == 'macOS-latest' && 'dmg/pinepods_0.5.0_amd64.dmg' 
-      }}
-      ARTIFACT_NAME2: ${{ 
-        matrix.os == 'ubuntu-latest' && 'appimage/pinepods_0.5.0_amd64.AppImage' || 
-        matrix.os == 'windows-latest' && 'msi/pinepods_0.5.0_amd64.msi' || 
-        matrix.os == 'macOS-latest' && 'app/pinepods_0.5.0_amd64.app' 
-      }}
+      # ARTIFACT_NAME1: ${{ 
+      #   matrix.os == 'ubuntu-latest' && 'deb/pinepods_0.5.0_amd64.deb' || 
+      #   matrix.os == 'windows-latest' && 'exe/pinepods_0.5.0_amd64.exe' || 
+      #   matrix.os == 'macOS-latest' && 'dmg/pinepods_0.5.0_amd64.dmg' 
+      # }}
+      # ARTIFACT_NAME2: ${{ 
+      #   matrix.os == 'ubuntu-latest' && 'appimage/pinepods_0.5.0_amd64.AppImage' || 
+      #   matrix.os == 'windows-latest' && 'msi/pinepods_0.5.0_amd64.msi' || 
+      #   matrix.os == 'macOS-latest' && 'app/pinepods_0.5.0_amd64.app' 
+      # }}
 
     steps:
+      - name: Set environment variables
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            echo "ARTIFACT_NAME1=deb/pinepods_0.5.0_amd64.deb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=appimage/pinepods_0.5.0_amd64.AppImage" >> $GITHUB_ENV
+          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "ARTIFACT_NAME1=exe/pinepods_0.5.0_amd64.exe" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/pinepods_0.5.0_amd64.msi" >> $GITHUB_ENV
+          elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
+            echo "ARTIFACT_NAME1=dmg/pinepods_0.5.0_amd64.dmg" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=app/pinepods_0.5.0_amd64.app" >> $GITHUB_ENV
+          fi
+
       - name: Setup | Checkout
         uses: actions/checkout@v2
 
