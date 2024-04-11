@@ -48,11 +48,8 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v2
 
-      - name: Setup Rust
-        uses: ATiltedTree/setup-rust@v1.0.5
-        with:
-          rust-version: stable
-
+      - uses: dtolnay/rust-toolchain@stable
+      
       - name: Depends install
         if: ${{ env.DEPENDS_SETUP == 'true' }}
         run: |
