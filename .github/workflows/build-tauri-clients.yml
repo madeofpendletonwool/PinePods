@@ -44,12 +44,25 @@ jobs:
             echo "ARTIFACT_NAME1=dmg/pinepods_0.5.0_amd64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=app/pinepods_0.5.0_amd64.app" >> $GITHUB_ENV
           fi
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Set environment variables (Windows)
+        run: |
+          if ("${{ matrix.os }}" -eq "windows-latest") {
+            echo "ARTIFACT_NAME1=exe/pinepods_0.5.0_amd64.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/pinepods_0.5.0_amd64.msi" >> $Env:GITHUB_ENV
+          }
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Setup | Checkout
         uses: actions/checkout@v2
 
       - uses: dtolnay/rust-toolchain@stable
-      
+        with:
+          targets: wasm32-unknown-unknown
+
       - name: Depends install
         if: ${{ env.DEPENDS_SETUP == 'true' }}
         run: |
