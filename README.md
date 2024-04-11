@@ -322,13 +322,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Verify Funtional Mobile Version (Functional - Will be made better with time)
 - [x] Cleanup prints on server and client end. Make debugging functionality work again
 - [x] Fix all CORs Issues - Verify behind Reverse Proxy (Seems to all work great with no issues)
+- [x] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio) <- Audo tested and working. Everything seems to be totally fine.
+
 
 ### Pre-Rust Revamp Release
 
 - [ ] Verify All Button Interaction throughout
 - [ ] Test Edgecases and ensure errors can't happen throughout
-
-- [ ] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio)
 
 - [ ] Automation - client auto release and compile - auto compile and push to docker hub
 
