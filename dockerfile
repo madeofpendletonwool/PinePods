@@ -7,7 +7,13 @@ RUN apk update && apk upgrade && \
 
 # Install wasm target and build tools
 RUN rustup target add wasm32-unknown-unknown && \
-    cargo install trunk wasm-bindgen-cli
+    cargo install wasm-bindgen-cli
+
+RUN apk update && apk upgrade
+
+RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
+
+RUN apk add trunk@testing
 
 # Add your application files to the builder stage
 COPY . /app
