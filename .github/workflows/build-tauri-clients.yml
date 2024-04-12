@@ -63,6 +63,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - uses: cargo-bins/cargo-binstall@main
+
       - name: Depends install
         if: ${{ env.DEPENDS_SETUP == 'true' }}
         run: |
@@ -76,7 +78,7 @@ jobs:
 
       - name: Install Trunk
         run: |
-          cargo install --locked trunk 
+          cargo binstall trunk 
 
       - name: Install Tauri
         run : |
@@ -86,6 +88,8 @@ jobs:
         run: |
           cd web/src-tauri
           cargo tauri build
+          pwd
+          cd /home/runner/work/PinePods/PinePods
           ls -la web/src-tauri/release/bundle
         shell: bash
         if: ${{ matrix.os != 'windows-latest' }}
