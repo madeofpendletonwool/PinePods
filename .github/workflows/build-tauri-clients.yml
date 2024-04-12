@@ -82,11 +82,21 @@ jobs:
         run : |
           cargo install tauri-cli --locked
 
-      - name: Build | Compile
+      - name: Build | Compile (UNIX)
         run: |
           cd web/src-tauri
           cargo tauri build
-          ls -la /web/src-tauri/release/bundle
+          ls -la web/src-tauri/release/bundle
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Build | Compile (Windows)
+        run: |
+          cd web/src-tauri
+          cargo tauri build
+          ls -la web/src-tauri/release/bundle
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Archive build 1
         uses: actions/upload-artifact@v3
