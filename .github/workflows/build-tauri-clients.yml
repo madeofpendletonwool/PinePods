@@ -38,8 +38,8 @@ jobs:
             echo "ARTIFACT_NAME1=deb/pinepods_0.5.0_amd64.deb" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=appimage/pinepods_0.5.0_amd64.AppImage" >> $GITHUB_ENV
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "ARTIFACT_NAME1=exe/pinepods_0.5.0_amd64.exe" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/pinepods_0.5.0_amd64.msi" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.0_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.0_x64_en-US.msi" >> $Env:GITHUB_ENV
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
             echo "ARTIFACT_NAME1=dmg/pinepods_0.5.0_amd64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=app/pinepods_0.5.0_amd64.app" >> $GITHUB_ENV
@@ -50,8 +50,8 @@ jobs:
       - name: Set environment variables (Windows)
         run: |
           if ("${{ matrix.os }}" -eq "windows-latest") {
-            echo "ARTIFACT_NAME1=exe/pinepods_0.5.0_amd64.exe" >> $Env:GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/pinepods_0.5.0_amd64.msi" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.0_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.0_x64_en-US.msi" >> $Env:GITHUB_ENV
           }
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
@@ -98,7 +98,7 @@ jobs:
         run: |
           cd web/src-tauri
           cargo tauri build
-          ls -la target/release/bundle
+          ls target/release/bundle
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
 
