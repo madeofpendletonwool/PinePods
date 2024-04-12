@@ -106,13 +106,13 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-build
-          path: target/release/bundle/${{ env.ARTIFACT_NAME1 }}
+          path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME1 }}
 
       - name: Archive build 2
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-build
-          path: target/release/bundle/${{ env.ARTIFACT_NAME2 }}
+          path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME2 }}
             
   # release:
   #   needs: compile
