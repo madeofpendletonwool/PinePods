@@ -89,7 +89,6 @@ jobs:
           cd web/src-tauri
           cargo tauri build
           pwd
-          cd /home/runner/work/PinePods/PinePods
           ls
           ls -la target/release/bundle
         shell: bash
