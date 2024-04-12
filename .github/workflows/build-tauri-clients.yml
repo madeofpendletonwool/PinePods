@@ -78,7 +78,7 @@ jobs:
 
       - name: Install Trunk
         run: |
-          cargo binstall trunk 
+          cargo binstall trunk -y
 
       - name: Install Tauri
         run : |
