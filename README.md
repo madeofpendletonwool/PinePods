@@ -2,9 +2,6 @@
   <img width="500" height="500" src="./images/pinepods-logo.jpeg">
 </p>
 
-# WARNING - This app is currently undergoing a huge redevelopment phase. 
-#### I mention this because I notice people forking it occationally. If you're going to fork it I would reccomend forking the rebase-to-depends branch. The web version it being redeveloped in rust and yew to make it way more responsive and fast. Development is well underway for the new version and there will be a cursory version of that merged into main soon. The flet version of the app is being removed due to way too many limitations that it presents. 
-
 # PinePods :evergreen_tree:
 
 [![](https://dcbadge.vercel.app/api/server/bKzHRa4GNc)](https://discord.gg/bKzHRa4GNc)
@@ -33,11 +30,11 @@
 
 # Getting Started
 
-PinePods is a Python based app that can sync podcasts for individual accounts that relies on a central database with a web frontend and apps available on multiple platforms
+PinePods is a Rust based app that manages podcasts with multi-user support and relies on a central database with client to connect to it.
 
 ## Features
 
-Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you enjoy. It allows for searching new podcasts using The Podcast Index and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql database including user settings, podcasts and episodes. It's fully self-hosted, and I provide an option to use a hosted API or you can also get one from the podcast API and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install Pinepods on your own system.
+Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql (alternative database support is on the roadmap) database including user settings, podcasts and episodes. It's fully self-hosted, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
 
 ## Try it out! :zap:
 
@@ -45,11 +42,11 @@ I try and maintain an instance of Pinepods that's publicly accessible for testin
 
 ## Installing :runner:
 
-There's potentially a few steps to getting Pinepods fully installed as after you get your server up and running fully. You can also install the client editions of your choice. The server install of Pinepods runs a server and a browser client over a port of your choice in order to be accessible on the web. With the client installs you simply give your install a specific url to connect to the database and then sign in.
+There's potentially a few steps to getting Pinepods fully installed. After you get your server up and running fully you can also install the client editions of your choice. The server install of Pinepods runs a server and a browser client over a port of your choice in order to be accessible on the web. With the client installs you simply give the client your server url to connect to the database and then sign in.
 
 ### Server Installation :floppy_disk:
 
-First, the server. It's hightly recommended you run the server using docker compose. Here's the docker compose yaml needed.
+First, the server. It's hightly recommended you run the server using docker compose. Here's a template compose file to start with.
 
 #### Compose File
 
@@ -75,10 +72,9 @@ services:
     image: madeofpendletonwool/pinepods:latest
     ports:
     # Pinepods Main Port
-      - "8040:443"
+      - "8040:8040"
     environment:
       # Basic Server Info
-      HOSTNAME: try.pinepods.online
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       # Default Admin User Information
       USERNAME: myadminuser01
@@ -92,14 +88,12 @@ services:
       DB_USER: root
       DB_PASSWORD: myS3curepass
       DB_NAME: pypods_database
-      # Image/Audio Proxy Vars
-      PINEPODS_PORT: 443
-      PROXY_PROTOCOL: https
-      REVERSE_PROXY: "True"
-
+      # Enable or Disable Debug Mode for additional Printing
+      DEBUG_MODE: False
     volumes:
     # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
+
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
@@ -110,16 +104,12 @@ Make sure you change these variables to variables specific to yourself.
 
 ```
       MYSQL_ROOT_PASSWORD: password
-      HOSTNAME: try.pinepods.online
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       USERNAME: pinepods
       PASSWORD: password
       FULLNAME: John Pinepods
       EMAIL: john@pinepods.com
       DB_PASSWORD: password # This should match the MSQL_ROOT_PASSWORD
-      PINEPODS_PORT: 443
-      PROXY_PROTOCOL: https
-      REVERSE_PROXY: "True"
 ```
 
 Most of those are pretty obvious, but let's break a couple of them down.
@@ -128,81 +118,20 @@ Most of those are pretty obvious, but let's break a couple of them down.
 
 First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details for your default admin account. This account will have admin credentails and will be able to log in right when you start up the app. Once started you'll be able to create more users and even more admins but you need an account to kick things off on. If you don't specify credentials in the compose file it will create an account with a random password for you but I would recommend just creating one for yourself.
 
-#### Basic Info
-
-The HOSTNAME variable is simply the hostname you'll be using for the name of your pinepods server. There's an image proxy, fastapi server, and web client of pinepods that all runs over this hostname.
-
-#### Proxy Info
-
-Second, the PINEPODS_PORT, PROXY_PROTOCOL, and REVERSE_PROXY vars. Pinepods uses a proxy to route both images and audio files in order to prevent CORs issues in the app (Essentially so podcast images and audio displays correctly and securely). It runs a little internal Flask app to accomplish this. That's the Image/Audio Proxy Vars portion of the compose file. Everything all runs over the one port, so you don't need to worry about much as the application itself will then use this proxy to route media though. Just make sure you set up the PINEPODS_PORT variable to be the port you exposed, and then setup PROXY_PROTOCOL and REVERSE_PROXY based on your setup. Pinepods can oc course be run over a reverse proxy. Here's a few examples of different setups
-PINEPODS_PORT can be anything, but if you're running it through a reverse proxy it MUST be 443. You can still map it to any other port externally, but it needs to be 443 interally.
-
-**Recommended:**
-Routed through proxy, secure, with reverse proxy
-
-```
-      HOSTNAME: try.pinepods.online
-      PROXY_PORT: 443
-      PROXY_PROTOCOL: https
-      REVERSE_PROXY: "True"
-```
-
-*Note*: With reverse proxies you create a second proxy host. So for example my Pinepods instance itself runs at port 8034 at pinpods.online so my reverse proxy reflects that and I have a dns record for the domain created for pinepods.online to point to my public ip. In addition, my proxy is ran at port 8033 over domain proxy.pinepods.online. I created a seperate dns record for this pointed to my public ip.
-
-*Also Note*: If you run pinepods over reverse proxy to secure it you **must** run the proxy server over reverse proxy as well to prevent mixed content in the browser
-
-Direct to ip, insecure, and no reverse proxy
-
-```
-      HOSTNAME: 192.168.0.30
-      PINEPODS_PORT: 8033
-      PROXY_PROTOCOL: http
-      REVERSE_PROXY: "False"
-```
-
-Hostname, secure, and no reverse proxy
-
-```
-      HOSTNAME: proxy.pinepods.online
-      PINEPODS_PORT: 8033
-      PROXY_PROTOCOL: https
-      REVERSE_PROXY: "False"
-```
-
-Note: Changing REVERSE_PROXY to False adjusts what the application uses for the reverse proxy. In short, it removes the port from the url it uses for routing since the reverse proxy will add the port for you.
-
-So REVERSE_PROXY "True" - App will use
-https://proxy.pinepods.online
-
-REVERSE_PROXY "False" - App will use
-https://proxy.pinepods.online:8033
-
-#### Further note on Reverse Proxies
-
-Pinepods has a bit of additional reverse proxy setup since it runs the fastapi server, web client, and image proxy. Please see the website for additional documentation on setting that up. You simply need to add some additional locations.
-https://www.pinepods.online/docs/tutorial-extras/reverse-proxy
 
 #### Note on the Search API
 
 Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. The podcast index requires an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below.
 
 ```
-API_URL: 'https://api.pinepods.online/api/search'
+SEARCH_API_URL: 'https://api.pinepods.online/api/search'
 ```
 
 Above is an api that I maintain. I do not guarantee 100% uptime on this api though, it should be up most of the time besides a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy. Check out the API docs for more information on doing this. Link Below -
 
 https://www.pinepods.online/docs/API/search_api
 
-####  Client API Vars
 
-The Client API server port variable tells Pinepods what port to expose the FastAPI routes on. This is needed to connect to the server with the Pinepods client/app version. The API_SERVER_PORT variable and API server port that is exposed in the compose file need to be the same.
-```
-# API Server Port - Needed for Client Connections
-  - "8032:8032"
-...
-API_SERVER_PORT: 8032
-```
 #### Start it up!
 
 Either way, once you have everything all setup and your compose file created go ahead and run your
@@ -325,14 +254,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [x] Cleanup prints on server and client end. Make debugging functionality work again
 - [x] Fix all CORs Issues - Verify behind Reverse Proxy (Seems to all work great with no issues)
 - [x] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio) <- Audo tested and working. Everything seems to be totally fine.
+- [x] Automation - client auto release and compile - auto compile and push to docker hub
 
 
 ### Pre-Rust Revamp Release
 
 - [ ] Verify All Button Interaction throughout
 - [ ] Test Edgecases and ensure errors can't happen throughout
-
-- [ ] Automation - client auto release and compile - auto compile and push to docker hub
 
 - [ ] Revamp Readme
 - [ ] Revamp Documentation
