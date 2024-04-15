@@ -44,6 +44,17 @@ Version 0.6.0
 - [x] Nextcloud Subscription Timestamps
 - [x] Verify Users only see what they have access to
 - [x] Do not delete theme context on logout
+- [x] Make validations work correctly on login user create
+- [x] Make no or wrong pass display error in server Restore and Backup
+- [x] Improve Import Experience
+- [x] Update All Depends
+- [x] Loading animations where if makes sense
+- [x] Verify Funtional Mobile Version (Functional - Will be made better with time)
+- [x] Cleanup prints on server and client end. Make debugging functionality work again
+- [x] Fix all CORs Issues - Verify behind Reverse Proxy (Seems to all work great with no issues)
+- [x] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio) <- Audo tested and working. Everything seems to be totally fine.
+- [x] Automation - client auto release and compile - auto compile and push to docker hub
+- [x] Revamp Readme
 
 Version 0.5.0
 

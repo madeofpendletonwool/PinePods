@@ -11,6 +11,7 @@ use crate::requests::pod_req;
 use web_sys::console;
 use crate::components::context::{AppState, UIState};
 use yew_router::history::BrowserHistory;
+use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::requests::login_requests::use_check_authentication;
 use crate::components::episodes_layout::SafeHtml;
@@ -48,7 +49,7 @@ impl Reducer<AppState> for AppStateMsg {
 #[function_component(Podcasts)]
 pub fn podcasts() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let (_audio_state, _audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let podcast_feed_return = state.podcast_feed_return.clone();
@@ -147,6 +148,7 @@ pub fn podcasts() -> Html {
                             // let state_ep = state.clone();
                             // let audio_state_ep = audio_state.clone();
                             let api_key_iter = api_key.clone();
+                            let server_name_iter = server_name.clone().unwrap();
                             let history = history_clone.clone();
 
                             // let id_string = &podcast.PodcastID.to_string();
@@ -217,6 +219,8 @@ pub fn podcasts() -> Html {
                                 .unwrap_or_else(|_| HashMap::new());
                             let on_title_click = create_on_title_click(
                                 dispatch.clone(),
+                                server_name_iter,
+                                api_key_iter,
                                 &history,
                                 podcast.PodcastName.clone(),
                                 podcast.FeedURL.clone(),
@@ -282,6 +286,13 @@ pub fn podcasts() -> Html {
                 }
             }
         </div>
+        {
+            if let Some(audio_props) = &audio_state.currently_playing {
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+            } else {
+                html! {}
+            }
+        }
         <App_drawer />
         </>
     }

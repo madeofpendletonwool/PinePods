@@ -43,6 +43,7 @@ serde-wasm-bindgen = "0.6.5"
 chrono-tz = "0.9.0"
 futures-util = "0.3.30"
 gloo-file = "0.3.0"
+urlencoding = "2.1.3"
 
 [features]
 default = []

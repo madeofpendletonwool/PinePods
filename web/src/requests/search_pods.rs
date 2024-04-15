@@ -93,45 +93,87 @@ pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Erro
     }
 }
 
-pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResult, Error> {
-    let response_text = Request::get(podcast_url).send().await?.text().await?;
-    let channel = Channel::read_from(response_text.as_bytes())?;
+// pub async fn call_parse_podcast_url(podcast_url: &str) -> Result<PodcastFeedResult, Error> {
+//     let response_text = Request::get(podcast_url).send().await?.text().await?;
+//     let channel = Channel::read_from(response_text.as_bytes())?;
 
-    // Fallback to podcast's main artwork if individual episode artwork is not available
-    let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
-        .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
+//     // Fallback to podcast's main artwork if individual episode artwork is not available
+//     let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
+//         .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
 
-    let episodes = channel.items().iter().map(|item| {
-        let episode_artwork_url = item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string())
-            .or_else(|| podcast_artwork_url.clone());
-        let audio_url = item.enclosure().map(|enclosure| enclosure.url().to_string());
-        let itunes_extension = item.itunes_ext();
-        let duration = itunes_extension.and_then(|ext| ext.duration()).map(|d| d.to_string());
-        let description = if let Some(encoded_content) = item.content() {
-            Option::from(encoded_content.to_string())
-        } else {
-            Option::from(item.description().unwrap_or_default().to_string())
-        };
-        Episode {
-            title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
-            description,
-            content: item.content().map(|c| c.to_string()),
-            enclosure_url: audio_url,
-            enclosure_length: item.enclosure().map(|e| e.length().to_string()),
-            pub_date: item.pub_date().map(|p| p.to_string()),
-            authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
-            links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
-            artwork: episode_artwork_url,
-            guid: item.title().map(|t| t.to_string()).unwrap_or_default(),
-            duration
-        }
-    }).collect();
+//     let episodes = channel.items().iter().map(|item| {
+//         let episode_artwork_url = item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string())
+//             .or_else(|| podcast_artwork_url.clone());
+//         let audio_url = item.enclosure().map(|enclosure| enclosure.url().to_string());
+//         let itunes_extension = item.itunes_ext();
+//         let duration = itunes_extension.and_then(|ext| ext.duration()).map(|d| d.to_string());
+//         let description = if let Some(encoded_content) = item.content() {
+//             Option::from(encoded_content.to_string())
+//         } else {
+//             Option::from(item.description().unwrap_or_default().to_string())
+//         };
+//         Episode {
+//             title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
+//             description,
+//             content: item.content().map(|c| c.to_string()),
+//             enclosure_url: audio_url,
+//             enclosure_length: item.enclosure().map(|e| e.length().to_string()),
+//             pub_date: item.pub_date().map(|p| p.to_string()),
+//             authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
+//             links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
+//             artwork: episode_artwork_url,
+//             guid: item.title().map(|t| t.to_string()).unwrap_or_default(),
+//             duration
+//         }
+//     }).collect();
 
-    let feed_result = PodcastFeedResult {
-        episodes,
-    };
+//     let feed_result = PodcastFeedResult {
+//         episodes,
+//     };
 
-    Ok(feed_result)
+//     Ok(feed_result)
+// }
+
+pub async fn call_parse_podcast_url(server_name: String, api_key: &Option<String>, podcast_url: &str) -> Result<PodcastFeedResult, Error> {
+    let encoded_podcast_url = urlencoding::encode(podcast_url);
+    let endpoint = format!("{}/api/data/fetch_podcast_feed?podcast_feed={}", server_name, encoded_podcast_url);
+    
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request = Request::get(&endpoint)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if request.ok() {
+        let response_text = request.text().await?;
+        let channel = Channel::read_from(response_text.as_bytes())?;
+
+        let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
+            .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
+
+        let episodes = channel.items().iter().map(|item| {
+            Episode {
+                title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
+                description: Option::from(item.description().unwrap_or_default().to_string()),
+                content: item.content().map(|c| c.to_string()),
+                enclosure_url: item.enclosure().map(|enclosure| enclosure.url().to_string()),
+                enclosure_length: item.enclosure().map(|e| e.length().to_string()),
+                pub_date: item.pub_date().map(|p| p.to_string()),
+                authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
+                links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
+                artwork: item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string())
+                    .or_else(|| podcast_artwork_url.clone()),
+                guid: item.guid().map(|g| g.value().to_string()).unwrap_or_default(),
+                duration: item.itunes_ext().and_then(|ext| ext.duration()).map(|d| d.to_string())
+            }
+        }).collect();
+
+        Ok(PodcastFeedResult { episodes })
+    } else {
+        Err(anyhow::Error::msg(format!("Failed to fetch podcast feed: HTTP {}", request.status())))
+    }
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]

@@ -7,7 +7,8 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::use_store;
 use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
-use crate::components::context::{AppState};
+use crate::components::context::{AppState, UIState};
+use crate::components::audio::AudioPlayer;
 use crate::requests::search_pods::{call_parse_podcast_url, Podcast};
 use crate::requests::pod_req::{call_check_podcast, call_add_podcast, call_remove_podcasts_name, RemovePodcastValuesName, PodcastValues};
 use std::collections::HashSet;
@@ -33,6 +34,8 @@ pub fn pod_layout() -> Html {
     // let dispatch = Dispatch::<AppState>::global();
     // let state: Rc<AppState> = dispatch.get();
     let (state, dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
+
     let search_results = state.search_results.clone();    
 
     let session_dispatch = dispatch.clone();
@@ -68,36 +71,45 @@ pub fn pod_layout() -> Html {
     });
 
     html! {
-    <div class="main-container">
-        <Search_nav />
-        <h1 class="item_container-text text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
-        {
-            if let Some(results) = search_results {
+        <>
+            <div class="main-container">
+                <Search_nav />
+                <h1 class="item_container-text text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
                 {
-                    html! {
-                        <div>
-                            { for results.feeds.iter().map(|podcast| {
-                                html! {
-                                    <PodcastItem podcast={podcast.clone()} />
-                                }
-                            }) }
-                        </div>
+                    if let Some(results) = search_results {
+                        {
+                            html! {
+                                <div>
+                                    { for results.feeds.iter().map(|podcast| {
+                                        html! {
+                                            <PodcastItem podcast={podcast.clone()} />
+                                        }
+                                    }) }
+                                </div>
+                            }
+                        }            
+                    } else {
+                        html! {
+                            <>
+                                <div class="empty-episodes-container">
+                                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                                    <h1>{ "No Podcast Search Results Found" }</h1>
+                                    <p>{"Try searching again with a different set of keywords."}</p>
+                                </div>
+                            </>
+                        }
                     }
-                }            
-            } else {
-                html! {
-                    <>
-                        <div class="empty-episodes-container">
-                            <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                            <h1>{ "No Podcast Search Results Found" }</h1>
-                            <p>{"Try searching again with a different set of keywords."}</p>
-                        </div>
-                    </>
+                }
+                <App_drawer />
+            </div>
+            {
+                if let Some(audio_props) = &audio_state.currently_playing {
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                } else {
+                    html! {}
                 }
             }
-        }
-        <App_drawer />
-    </div>
+        </>
     }
 }
 
@@ -118,6 +130,9 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let history = BrowserHistory::new();
     let history_clone = history.clone();
+    // let api_key_feed = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    // let server_name_feed = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
 
         // Use a Set to track added podcast URLs for efficiency
     let added_podcasts = use_state(|| HashSet::new());
@@ -126,12 +141,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let effect_user_id = user_id.unwrap().clone();
     let effect_api_key = api_key.clone();
     let added_clone = added_podcasts.clone();
+    let server_name_mount = server_name.clone();
+    // let api_key_mount = api_key.clone();
     {
         let is_added = is_added.clone();
         let podcast = podcast.clone();
         let user_id = effect_user_id.clone();
         let api_key = effect_api_key.clone();
-        let server_name = server_name.clone();
+        let server_name = server_name_mount.clone();
         let added_podcasts = added_clone.clone(); // Clone this for use in the effect
 
         use_effect_with(
@@ -304,6 +321,8 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
         Callback::from(move |e: MouseEvent| {
             dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            let server_name_click = server_name.clone();
+            let api_key_click = api_key.clone();
             let podcast_title = podcast_title_clone.clone();
             let podcast_url = podcast_url_clone.clone();
             let podcast_description = podcast_description_clone.clone();
@@ -328,7 +347,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let dispatch = dispatch.clone();
             let history = history.clone(); // Clone again for use inside async block
             wasm_bindgen_futures::spawn_local(async move {
-                match call_parse_podcast_url(&podcast_url).await {
+                match call_parse_podcast_url(server_name_click.unwrap(), &api_key_click.unwrap(), &podcast_url).await {
                     Ok(podcast_feed_results) => {
                         dispatch.reduce_mut(move |state| {
                             state.podcast_feed_results = Some(podcast_feed_results);

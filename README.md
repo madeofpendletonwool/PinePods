@@ -134,13 +134,13 @@ https://www.pinepods.online/docs/API/search_api
 
 #### Start it up!
 
-Either way, once you have everything all setup and your compose file created go ahead and run your
+Either way, once you have everything all setup and your compose file created go ahead and run
 
 ```
 sudo docker-compose up
 ```
 
-command on the main pinepods app to pull the container images and get started. Once fully started up you'll be able to access pinepods on the url you configured and you'll be able to start connecting clients as well once you get an API from the settings area in the web app. Check out the Tutorials on the documentation site for more information on how to do basic things.
+To pull the container images and get started. Once fully started up you'll be able to access pinepods at the port you configured and you'll be able to start connecting clients as well. Check out the Tutorials on the documentation site for more information on how to do basic things.
 
 https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
@@ -150,33 +150,15 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-Grab the pinepods.tar file from the newest release. 
-
-Extract, and then within the extracted folder you'll find an install.sh file. This file simply drops the icon file, and binary in place then installs a .desktop file so your computer will pick up on the app. Ensure the install file has executable permission
+Grab the latest linux release. There's both an app image and a deb. Use the appimage of course if you aren't using a debian based distro. Change the permissions if using the appimage version to allow it to run.
 
 ```
-cd /pinepods/folder/location
-chmod +x ./install.sh
+sudo chmod +x pinepods.appimage
 ```
 
-Then run
-```
-./install.sh
-```
+^ The name will vary slightly based on the name so be sure you change it or it won't work.
 
-From there, you should be able to search your computer for pinepods and find the client installed as long as your desktop environment supports .desktop files. Otherwise, you can also just run the 'pinepods' file from within the folder directory.
-
-Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
-
-Your server name is where the api server port comes in. 
-```
-    # API Server Port - Needed for Client Connections
-      - "8032:8032"
-```
-
-So in my case running on my local computer I could enter http://localhost:8032
-
-If you create a reverse proxy to that port you might enter https://api.mysite.com
+Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
 ### Windows Client Install :computer:
 
@@ -184,23 +166,15 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-Grab the Pinepods-Windows.zip file from the newest release. 
+There's a exe and msi windows install file. 
 
-Simply extract, and then run.
+The exe will actually start an install window and allow you to properly install the program to your computer. 
 
+The msi will simply run a portable version of the app.
 
+Either one does the same thing ultimately and will work just fine. 
 
-Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
-
-Your server name is where the api server port comes in. 
-```
-    # API Server Port - Needed for Client Connections
-      - "8032:8032"
-```
-
-So in my case running on my local computer I could enter http://localhost:8032
-
-If you create a reverse proxy to that port you might enter https://api.mysite.com
+Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
 ### Mac Client Install :computer:
 
@@ -208,31 +182,21 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-Grab the Pinepods-Mac.zip file from the newest release. 
+There's a dmg and pinepods_mac file. 
 
 Simply extract, and then go into Contents/MacOS. From there you can run the app.
 
-You can also place the pinepods app right into your application folder on your mac. Just drag 'pinepods' right in. 
+The dmg file will prompt you to install the Pinepods client into your applications fileter while the _mac file will just run a portable version of the app. 
 
-Once started you'll need to connect to your server and provide an api key. You can create an api key from the web version of the app. Go to settings and then scroll to the bottom. You'll see where you can generate a new key. Copy that, and put it in the api key textfield. 
-
-Your server name is where the api server port comes in. 
-```
-    # API Server Port - Needed for Client Connections
-      - "8032:8032"
-```
-
-So in my case running on my local computer I could enter http://localhost:8032
-
-If you create a reverse proxy to that port you might enter https://api.mysite.com
+Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
 ### Android Install :iphone:
 
-Coming Soon
+Coming Soon - The web app works great for phones. Otherwise, if you sync using Nextcloud you can use the AntennaPods app and your podcasts will sync between Antennapod and Pinepods.
 
 ### ios Install :iphone:
 
-Coming Soon
+Coming Soon - The web app works great for phones.
 
 ## Pinepods Firewood
 
@@ -240,29 +204,21 @@ A CLI only client that can be used to remotely share your podcasts to is in the 
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For a temporary solution for phones you can access the web version from them. The server is run from docker and connects to the clients on all platforms.
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For Android you can use AntennaPod and sync podcasts between AntennaPod and Pinepods using the Nextcloud sync App. 
+
+[Nextcloud Podcast Sync App](https://apps.nextcloud.com/apps/gpoddersync)
+
+[AntennaPod F-Droid AppListing](https://f-droid.org/en/packages/de.danoeh.antennapod/)
 
 
 ## ToDo (Listed in order they will be implemented)
 
-- [x] Make validations work correctly on login user create
-- [x] Make no or wrong pass display error in server Restore and Backup
-- [x] Improve Import Experience
-- [x] Update All Depends
-- [x] Loading animations where if makes sense
-- [x] Verify Funtional Mobile Version (Functional - Will be made better with time)
-- [x] Cleanup prints on server and client end. Make debugging functionality work again
-- [x] Fix all CORs Issues - Verify behind Reverse Proxy (Seems to all work great with no issues)
-- [x] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio) <- Audo tested and working. Everything seems to be totally fine.
-- [x] Automation - client auto release and compile - auto compile and push to docker hub
-
 
 ### Pre-Rust Revamp Release
 
+- [ ] Cors errors when browsing certain podcast results
 - [ ] Verify All Button Interaction throughout
 - [ ] Test Edgecases and ensure errors can't happen throughout
-
-- [ ] Revamp Readme
 - [ ] Revamp Documentation
 
 ### After Rust Revamp

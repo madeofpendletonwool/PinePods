@@ -549,6 +549,21 @@ async def api_podcast_id(data: PodcastData, cnx=Depends(get_database_connection)
         raise HTTPException(status_code=403,
                             detail="You can only return pocast ids of your own podcasts!")
 
+class PodcastFeedData(BaseModel):
+    podcast_feed: str
+
+@app.get("/api/data/fetch_podcast_feed")
+async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
+    
+    # Fetch the podcast feed data using httpx
+    async with httpx.AsyncClient() as client:
+        response = await client.get(podcast_feed)
+        response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
+        return Response(content=response.content, media_type="application/xml")
 
 
 @app.post("/api/data/check_episode_playback")
