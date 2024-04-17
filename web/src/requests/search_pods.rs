@@ -3,19 +3,24 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use anyhow::Error;
 use rss::Channel;
+use wasm_bindgen::JsValue;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
     pub episodes: Vec<Episode>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-pub struct PodcastSearchResult {
-    pub(crate) status: String,
-    pub(crate) feeds: Vec<Podcast>,
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+pub struct PodcastIndexSearchResult {
+    pub status: Option<String>, // for PodcastIndex
+    pub resultCount: Option<i32>, // for iTunes
+    pub feeds: Option<Vec<Podcast>>, // for PodcastIndex
+    pub results: Option<Vec<ITunesPodcast>>, // for iTunes
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+
+
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 #[allow(non_snake_case)]
 pub struct Podcast {
     pub(crate) id: i64,
@@ -38,7 +43,16 @@ pub struct Podcast {
     pub(crate) episodeCount: i32,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+pub struct ITunesPodcast {
+    pub wrapperType: String,
+    pub kind: String,
+    pub collectionId: i64,
+    pub trackId: i64,
+    // add other fields as needed
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Episode {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -53,13 +67,13 @@ pub struct Episode {
     pub duration: Option<String>
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct PodcastFeedResult {
     // ... other fields ...
     pub(crate) episodes: Vec<Episode>,
 }
 
-pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Option<String>, search_index: &str) -> Result<PodcastSearchResult, anyhow::Error> {
+pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Option<String>, search_index: &str) -> Result<(), anyhow::Error> {
     let url = if let Some(api_url) = search_api_url {
         format!("{}?query={}&index={}", api_url, podcast_value, search_index)
     } else {
@@ -71,12 +85,23 @@ pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Opti
     if response.ok() {
         let response_text = response.text().await.map_err(|err| anyhow::Error::new(err))?;
 
-        let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
-        Ok(search_results)
+        if search_index.to_lowercase() == "itunes" {
+            let search_results: ITunesSearchResult = serde_json::from_str(&response_text)?;
+            // Handle iTunes results
+            println!("iTunes results processed");
+        } else {
+            let search_results: PodcastIndexSearchResult = serde_json::from_str(&response_text)?;
+            // Handle podcast index results
+            println!("Podcast Index results processed");
+        }
+
+        Ok(())
     } else {
-        Err(anyhow::Error::msg(format!("Failed to fetch podcast info: {}", response.status_text())))
+        let status_text = response.status_text();
+        Err(anyhow::Error::msg(format!("Failed to fetch podcast info: {}", status_text)))
     }
 }
+
 
 pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Error> {
     let url = search_api_url.as_ref().ok_or_else(|| Error::msg("API URL is missing"))?;

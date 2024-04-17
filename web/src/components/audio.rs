@@ -38,11 +38,35 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let episode_in_db = audio_state.episode_in_db.unwrap_or_default();
+    let progress: UseStateHandle<f64> = use_state(|| 0.0);
     let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
         classes!("artwork", "playing")
     } else {
         classes!("artwork")
     };
+
+    // let prog_bar_state = audio_state.clone();
+    // let update_progress = {
+    //     let progress = progress.clone();
+    //     let audio_state = audio_state.clone();
+    //     Callback::from(move |_| {
+    //         let current_time = prog_bar_state.current_time_seconds;
+    //         let duration = prog_bar_state.duration;
+    //         if duration > 0.0 {
+    //             let progress_val = (current_time as f64 / duration as f64) * 100.0;
+    //             progress.set(Some(progress_val));
+    //         }
+    //     })
+    // };
+    
+    // // Assume `update_time` updates the `audio_state.current_time_seconds`
+    // let update_time = {
+    //     let progress = progress.clone();
+    //     Callback::from(move |e: Event| {
+    //         // Logic to update the current time based on range input
+    //         update_progress.emit(());
+    //     })
+    // };
 
     let container_ref = use_node_ref();
 
@@ -103,21 +127,33 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let state_clone = audio_state.clone();
     use_effect_with((), {
         let audio_dispatch = _audio_dispatch.clone();
+        let progress = progress.clone(); // Clone for the interval closure
         move |_| {
             let interval_handle = Interval::new(1000, move || {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
+                    let duration = audio_element.duration(); // Assuming you can get the duration from the audio_element
                     
                     let hours = (time_in_seconds / 3600.0).floor() as i32;
                     let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
                     let seconds = (time_in_seconds % 60.0).floor() as i32;
                     let formatted_time = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-    
+
+                    // Calculate progress as a percentage
+                    let progress_percentage = if duration > 0.0 {
+                        (time_in_seconds / duration * 100.0)
+                    } else {
+                        0.0
+                    };
+
                     audio_dispatch.reduce_mut(move |state_clone| {
                         // Update the global state with the current time
                         state_clone.current_time_seconds = time_in_seconds;
                         state_clone.current_time_formatted = formatted_time;
                     });
+
+                    progress.set(progress_percentage);
+
                 }
             });
     
@@ -304,11 +340,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     };
 
     // Update current time and duration
-// // Keep the existing use_state for the formatted time
-//     let current_time_formatted = use_state(|| "00:00:00".to_string());
-//
-// // Add a new state for the current time in seconds
-//     let current_time_seconds = use_state(|| 0.0);
+    // // Keep the existing use_state for the formatted time
+    //     let current_time_formatted = use_state(|| "00:00:00".to_string());
+    //
+    // // Add a new state for the current time in seconds
+    //     let current_time_seconds = use_state(|| 0.0);
 
     let update_time = {
         let audio_dispatch = _audio_dispatch.clone();
@@ -378,6 +414,22 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 }
             })
         };
+
+        // let progress: f64 = 0.0; // Assuming 'progress' is defined here as an example
+        let track_width_px: f64 = 300.0; // Explicitly typing the variable
+        let pixel_offset: f64 = 60.0; // Explicitly typing the variable
+        let offset_percentage: f64 = (pixel_offset / track_width_px) * 100.0; // This will also be f64
+        
+        let progress_style = {
+            let progress_percentage: f64 = *progress; // Ensure this variable is typed as f64
+            let start: f64 = (progress_percentage - offset_percentage).max(0.0); // Using max on f64
+            let end: f64 = (progress_percentage + offset_percentage).min(100.0); // Using min on f64
+            format!(
+                "background: linear-gradient(to right, #007BFF {}%, #E9ECEF {}%);",
+                start, end
+            )
+        };
+        
         let audio_bar_class = classes!("audio-player", "border", "border-solid", "border-color", "fixed", "bottom-0", "z-50", "w-full", if audio_state.is_expanded { "expanded" } else { "" });
         html! {
             <div class={audio_bar_class} ref={container_ref.clone()}>
@@ -395,7 +447,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             min="0.0"
                             max={audio_props.duration_sec.to_string().clone()}
                             value={audio_state.current_time_seconds.to_string()}
-                            oninput={update_time.clone()} />
+                            oninput={update_time.clone()}
+                            style={progress_style}
+                        />
                         <span>{formatted_duration.clone()}</span>
                     </div>
 
@@ -452,14 +506,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </button>
                     <div class="flex-grow flex items-center sm:block hidden">
                         <div class="flex items-center flex-nowrap">
-                            <span class="px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
                             <input type="range"
                                 class="flex-grow h-1 cursor-pointer"
                                 min="0.0"
                                 max={audio_props.duration_sec.to_string().clone()}
                                 value={audio_state.current_time_seconds.to_string()}
                                 oninput={update_time.clone()} />
-                            <span class="px-2">{formatted_duration}</span>
+                            <span class="time-display px-2">{formatted_duration}</span>
                         </div>
                     </div>
                 </div>

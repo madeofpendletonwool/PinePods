@@ -429,7 +429,7 @@ body {
     width: 60%;;
     padding: 10px 20px; /* Padding for breathing space */
     font-size: 0.9em; /* Adjust font size for time display */
-    color: var(--prog-bar-color); /* Text color */
+    /* color: var(--prog-bar-color); Text color */
     margin: 10px 0; /* Vertical margin */
 }
 
@@ -443,7 +443,7 @@ body {
     -webkit-appearance: none; /* Override default appearance */
     width: 100%; /* Full width */
     height: 4px; /* Height of the scrub bar */
-    background-color: var(--prog-bar-color);
+    /* background-color: var(--prog-bar-color); */
     cursor: pointer; /* Pointer cursor on hover */
     border-radius: 2px; /* Slightly rounded corners */
 }
@@ -470,16 +470,16 @@ body {
 .audio-player .top-section .scrub-bar input[type="range"]::-webkit-slider-runnable-track {
     width: 100%;
     height: 4px;
-    background-color: var(--prog-bar-color);
-    background: linear-gradient(to right, var(--link-color) 0%, var(--link-color) 50%, var(--prog-bar-color) 50%); /* Adjust 50% to the current value dynamically if possible */
+    /* background-color: var(--prog-bar-color); */
+    /* background: linear-gradient(to right, var(--link-color) 0%, var(--link-color) 50%, var(--prog-bar-color) 50%); Adjust 50% to the current value dynamically if possible */
     border-radius: 2px;
 }
 
 .audio-player .top-section .scrub-bar input[type="range"]::-moz-range-track {
     width: 100%;
     height: 4px;
-    background-color: var(--prog-bar-color);
-    background: var(--prog-bar-color);
+    /* background-color: var(--prog-bar-color); */
+    /* background: var(--prog-bar-color); */
     border-radius: 2px;
 }
 
@@ -487,7 +487,7 @@ body {
     -webkit-appearance: none; /* Necessary to remove default styling in WebKit browsers */
     width: 100%;
     height: 5px; /* Adjust the height of the slider track */
-    background: var(--prog-bar-color, #ddd); /* Default background color */
+    /* background: var(--prog-bar-color, #ddd); Default background color */
     cursor: pointer;
     outline: none;
 }
@@ -1273,6 +1273,12 @@ button.item-container-action-button.item-container-action-button {
 
 .cursor-pointer:hover {
     cursor: pointer;
+}
+
+.time-display {
+    display: inline-block;
+    width: 80px; /* Adjust this width based on the maximum expected length of the time strings */
+    text-align: center;
 }
 
 @keyframes frameAnimation {

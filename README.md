@@ -213,10 +213,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
+- [x] Cors errors when browsing certain podcast results
+- [x] Perfect the scrubbing (Mostly good to go at this point. The only potential issue is the coloring. Another pass on colors will be done after the first beta release.)
+
 
 ### Pre-Rust Revamp Release
 
-- [ ] Cors errors when browsing certain podcast results
+- [ ] Itunes
 - [ ] Verify All Button Interaction throughout
 - [ ] Test Edgecases and ensure errors can't happen throughout
 - [ ] Revamp Documentation

@@ -1,10 +1,11 @@
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use crate::requests::search_pods::{call_get_podcast_info, test_connection};
-use web_sys::{window, HtmlInputElement, MouseEvent};
+use web_sys::{console, window, HtmlInputElement, MouseEvent};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -82,26 +83,43 @@ pub fn search_bar() -> Html {
             let search_value = podcast_value_clone.clone();
             let search_index = search_index_clone.clone();
             let dispatch = dispatch.clone();
+            // Assuming `search_index` is a String
+            let search_index_test = search_index.clone(); // Example assignment
+
+            // Convert the Rust String to JsValue
+            let js_value = JsValue::from_str(&*search_index_test);
+
+            // Use the converted JsValue with `web_sys::console::log_1`
+            web_sys::console::log_1(&js_value);
+            // web_sys::console::log_1((*search_index).clone());
 
             wasm_bindgen_futures::spawn_local(async move {
                 dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let cloned_api_url = &api_url.clone();
                 match test_connection(&cloned_api_url.clone().unwrap()).await {
                     Ok(_) => {
+                        let js_value = JsValue::from_str("running call");
+                        console::log_1(&js_value);
                         match call_get_podcast_info(&search_value, &api_url.unwrap(), &search_index).await {
                             Ok(search_results) => {
+                                let js_value = JsValue::from_str("pulled response");
+                                console::log_1(&js_value);
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
                                 });
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/pod_layout"); // Use the route path
                             },
-                            Err(_) => {
+                            Err(e) => {
+                                let js_value = JsValue::from_str(&format!("Error getting data connection: {}", e));
+                                console::log_1(&js_value);
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
                         }
                     },
-                    Err(_) => {
+                    Err(e) => {
+                        let error = JsValue::from_str(&format!("Error testing connection: {}", e));
+                        console::log_1(&error); // Log the error from test_connection
                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
