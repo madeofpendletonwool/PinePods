@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use anyhow::Error;
 use rss::Channel;
 use wasm_bindgen::JsValue;
+use chrono::{DateTime, Utc, TimeZone};
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -11,11 +12,90 @@ pub struct RecentEps {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
-pub struct PodcastIndexSearchResult {
+pub struct PodcastSearchResult {
     pub status: Option<String>, // for PodcastIndex
     pub resultCount: Option<i32>, // for iTunes
     pub feeds: Option<Vec<Podcast>>, // for PodcastIndex
     pub results: Option<Vec<ITunesPodcast>>, // for iTunes
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+pub struct UnifiedPodcast {
+    pub(crate) id: i64,
+    pub(crate) title: String,
+    pub(crate) url: String,
+    #[allow(non_snake_case)]
+    pub(crate) originalUrl: String,
+    pub(crate) link: String,
+    pub(crate) description: String,
+    pub(crate) author: String,
+    #[allow(non_snake_case)]
+    pub(crate) ownerName: String,
+    pub(crate) image: String,
+    pub(crate) artwork: String,
+    #[allow(non_snake_case)]
+    pub(crate) lastUpdateTime: i64,
+    pub(crate) categories: Option<HashMap<String, String>>,
+    pub(crate) explicit: bool,
+    #[allow(non_snake_case)]
+    pub(crate) episodeCount: i32,
+}
+
+// Implement conversions from Podcast and ITunesPodcast to UnifiedPodcast
+impl From<Podcast> for UnifiedPodcast {
+    fn from(podcast: Podcast) -> Self {
+        UnifiedPodcast {
+            id: podcast.id,
+            title: podcast.title,
+            url: podcast.url,
+            originalUrl: podcast.originalUrl,
+            author: podcast.author,
+            ownerName: podcast.ownerName,
+            description: podcast.description,
+            image: podcast.image, // Assuming artwork is the image you want to use
+            link: podcast.link,
+            artwork: podcast.artwork,
+            lastUpdateTime: podcast.lastUpdateTime,
+            categories: podcast.categories,
+            explicit: podcast.explicit,
+            episodeCount: podcast.episodeCount,
+        }
+    }
+}
+
+impl From<ITunesPodcast> for UnifiedPodcast {
+    fn from(podcast: ITunesPodcast) -> Self {
+        let genre_map: HashMap<String, String> = podcast.genres.into_iter().enumerate()
+            .map(|(index, genre)| (index.to_string(), genre))
+            .collect();
+
+        let parsed_date = DateTime::parse_from_rfc3339(&podcast.releaseDate)
+            .map(|dt| dt.timestamp())
+            .unwrap_or(0);  // Default to 0 or choose a more sensible default
+
+
+        UnifiedPodcast {
+            id: podcast.trackId,
+            title: podcast.trackName,
+            url: podcast.feedUrl.clone(),
+            originalUrl: podcast.feedUrl,
+            author: podcast.artistName.clone(),
+            ownerName: podcast.artistName,
+            description: String::from("Descriptions not provided by iTunes"),
+            image: podcast.artworkUrl100.clone(),
+            link: podcast.collectionViewUrl,
+            artwork: podcast.artworkUrl100,
+            lastUpdateTime: parsed_date,
+            categories: Some(genre_map),
+            explicit: match podcast.collectionExplicitness.as_str() {
+                "explicit" => true,
+                "notExplicit" => false,
+                _ => false,
+            },
+            episodeCount: podcast.trackCount.unwrap_or(0),
+            // Map other fields as necessary
+        }
+    }
 }
 
 
@@ -49,6 +129,16 @@ pub struct ITunesPodcast {
     pub kind: String,
     pub collectionId: i64,
     pub trackId: i64,
+    pub(crate) artistName: String,
+    pub(crate) trackName: String,
+    pub(crate) collectionViewUrl: String,
+    pub(crate) feedUrl: String,
+    pub(crate) artworkUrl100: String,
+    pub(crate) releaseDate: String,
+    pub(crate) genres: Vec<String>,
+    pub(crate) collectionExplicitness: String,
+    pub(crate) trackCount: Option<i32>,
+
     // add other fields as needed
 }
 
@@ -73,7 +163,7 @@ pub struct PodcastFeedResult {
     pub(crate) episodes: Vec<Episode>,
 }
 
-pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Option<String>, search_index: &str) -> Result<(), anyhow::Error> {
+pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Option<String>, search_index: &str) -> Result<PodcastSearchResult, anyhow::Error> {
     let url = if let Some(api_url) = search_api_url {
         format!("{}?query={}&index={}", api_url, podcast_value, search_index)
     } else {
@@ -85,22 +175,14 @@ pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Opti
     if response.ok() {
         let response_text = response.text().await.map_err(|err| anyhow::Error::new(err))?;
 
-        if search_index.to_lowercase() == "itunes" {
-            let search_results: ITunesSearchResult = serde_json::from_str(&response_text)?;
-            // Handle iTunes results
-            println!("iTunes results processed");
-        } else {
-            let search_results: PodcastIndexSearchResult = serde_json::from_str(&response_text)?;
-            // Handle podcast index results
-            println!("Podcast Index results processed");
-        }
-
-        Ok(())
+        let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
+        // web_sys::console::log_1(search_results.clone());
+        Ok(search_results)
     } else {
-        let status_text = response.status_text();
-        Err(anyhow::Error::msg(format!("Failed to fetch podcast info: {}", status_text)))
+        Err(anyhow::Error::msg(format!("Failed to fetch podcast info: {}", response.status_text())))
     }
 }
+
 
 
 pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Error> {

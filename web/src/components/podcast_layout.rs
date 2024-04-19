@@ -9,7 +9,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
-use crate::requests::search_pods::{call_parse_podcast_url, Podcast};
+use crate::requests::search_pods::{call_parse_podcast_url, Podcast, UnifiedPodcast};
 use crate::requests::pod_req::{call_check_podcast, call_add_podcast, call_remove_podcasts_name, RemovePodcastValuesName, PodcastValues};
 use std::collections::HashSet;
 use crate::requests::login_requests::use_check_authentication;
@@ -77,17 +77,30 @@ pub fn pod_layout() -> Html {
                 <h1 class="item_container-text text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
                 {
                     if let Some(results) = search_results {
-                        {
+                        let podcasts = results.feeds.as_ref().map_or_else(
+                            || results.results.as_ref().map(|r| r.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>()),
+                            |f| Some(f.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>())
+                        );
+                
+                        if let Some(podcasts) = podcasts {
                             html! {
                                 <div>
-                                    { for results.feeds.iter().map(|podcast| {
-                                        html! {
-                                            <PodcastItem podcast={podcast.clone()} />
-                                        }
-                                    }) }
+                                    { for podcasts.iter().map(|podcast| html! {
+                                        <PodcastItem podcast={podcast.clone()} />
+                                    })}
                                 </div>
                             }
-                        }            
+                        } else {
+                            html! {
+                                <>
+                                    <div class="empty-episodes-container">
+                                        <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                                        <h1>{ "No Podcast Search Results Found" }</h1>
+                                        <p>{"Try searching again with a different set of keywords."}</p>
+                                    </div>
+                                </>
+                            }
+                        }
                     } else {
                         html! {
                             <>
@@ -115,7 +128,7 @@ pub fn pod_layout() -> Html {
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct PodcastProps {
-    pub podcast: Podcast, // Assuming Podcast is a struct that holds podcast details
+    pub podcast: UnifiedPodcast, // Assuming Podcast is a struct that holds podcast details
 }
 
 // Assuming you have a PodcastItem component
