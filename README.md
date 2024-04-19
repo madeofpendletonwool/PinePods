@@ -213,13 +213,8 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo (Listed in order they will be implemented)
 
-- [x] Cors errors when browsing certain podcast results
-- [x] Perfect the scrubbing (Mostly good to go at this point. The only potential issue is the coloring. Another pass on colors will be done after the first beta release.)
-
-
 ### Pre-Rust Revamp Release
 
-- [ ] Itunes
 - [ ] Verify All Button Interaction throughout
 - [ ] Test Edgecases and ensure errors can't happen throughout
 - [ ] Revamp Documentation
@@ -231,6 +226,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Better episode performance when a large number of episodes on screen
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth)
+- [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
 - [ ] Jump to clicked timestamp

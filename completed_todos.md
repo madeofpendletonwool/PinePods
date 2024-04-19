@@ -55,6 +55,9 @@ Version 0.6.0
 - [x] Client release with Tauri (Compiles and runs. Feature testing needed - Mainly Audio) <- Audo tested and working. Everything seems to be totally fine.
 - [x] Automation - client auto release and compile - auto compile and push to docker hub
 - [x] Revamp Readme
+- [x] Cors errors when browsing certain podcast results
+- [x] Perfect the scrubbing (Mostly good to go at this point. The only potential issue is the coloring. Another pass on colors will be done after the first beta release.)
+- [x] Itunes
 
 Version 0.5.0
 
