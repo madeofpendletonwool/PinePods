@@ -1,0 +1,1313 @@
+/* static/styles.css */
+:root {
+    --button-color: #8B949E; /* Default button color */
+    --background-color: #242424; /* Default background color */
+    --text-color: #F5F5F5;
+    --button-color: #8B949E;
+    --container-button-color: transparent;
+    --button-text-color: #F5F5F5;
+    --text-secondary-color: #F5F5F5;
+    --accent-color: #4a535e;
+    --prog-bar-color: #4a535e;
+    --error-color: red;
+    --bonus-color: black;
+    --border-color: black;
+    --secondary-background: #2c3032;
+    --standout-color: #304BFF;
+    --hover-color: #304BFF;
+    --link-color: #6590fd;
+    --container-background: #2c3032;
+    --transparent-background: rgba(63, 57, 90, 0.089);
+    --alert-color: #880101;
+    --warning-color: #ffcc00;
+    --success-color: #00cc00;
+}
+
+body {
+    background-color: var(--background-color); /* Default background color */
+    /* Other global styles */
+}
+
+.main-container {
+    max-width: 1200px; /* Set the maximum width you desire */
+    margin: 0 auto; /* This centers the div */
+    padding: 0 20px;
+}
+
+.login-link {
+    color: var(--link-color); /* Default link color */
+}
+
+.item_container-text.episode-description-container a {
+    color: var(--link-color); /* Replace #yourColorCode with the color you want */
+    text-decoration: none; /* Example property, adjust as needed */
+}
+
+.item_container-text.episode-description-container a:hover {
+    color: var(--hover-color); /* Replace #hoverColorCode with the color you want for hover state */
+    text-decoration: underline; /* Example property, adjust as needed */
+}
+
+
+
+#login-page {
+    background-image: url('./assets/backgrounds/2.jpg');
+    background-repeat: no-repeat;
+    background-attachment: fixed;  
+    background-size: cover;
+}
+
+.search-page-container {
+    max-width: 1200px; /* Set the maximum width you desire */
+    margin: 0 auto; /* This centers the div */
+    padding: 0 40px;
+}
+
+.drawer-hr {
+    border-color: var(--text-color);
+}
+
+.drawer-burger {
+    background-color: var(--text-color);
+}
+
+.drawer-button {
+    background-color: var(--button-color);
+    color: var(--accent-color); /* Assuming you want white text */
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    /* Other button styles */
+}
+
+.drawer-icon {
+    z-index: 1100; /* Higher than the search bar's z-index */
+    position: fixed;
+    top: 13px;
+    left: 10px;
+    padding: 4px;
+    color: var(--text-color);
+    /* Other styles as needed */
+}
+
+.drawer-background {
+    background-color: var(--secondary-background);
+    position: fixed;
+    /* Other background styles */
+}
+
+.drawer-text a {
+    color: var(--text-color);
+}
+.drawer-text {
+    color: var(--text-color);
+}
+
+
+/*body.no-scroll {*/
+/*    overflow: hidden; !* Prevents scrolling when drawer is open *!*/
+/*}*/
+
+.error-snackbar {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background-color: var(--error-color);
+    color: var(--text-color);
+    padding: 12px 24px;
+    border-radius: 4px;
+    z-index: 1000; /* Ensure it's above other elements */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.info-snackbar {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background-color: var(--standout-color);
+    color: var(--text-color);
+    padding: 12px 24px;
+    border-radius: 4px;
+    z-index: 1000; /* Ensure it's above other elements */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.empty-episodes-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    text-align: center;
+}
+
+.episodes-container {
+    padding-top: 80px; /* Adjust the value to the height of your search bar */
+}
+
+
+.center-text {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.logo {
+    max-width: 100px; /* Adjust size as needed */
+    margin-bottom: 20px;
+}
+
+.search-bar-container {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+    padding: 10px 20px;
+    background-color: var(--secondary-background); /* Adjust the color as needed */
+    position: fixed; /* Fix the position relative to the viewport */
+    top: 0; /* Align to the top of the viewport */
+    left: 0; /* Align to the left of the viewport */
+    right: 0; /* Ensure it extends to the right of the viewport */
+    z-index: 1000; /* Make sure it stays on top of other content */
+}
+
+/* styles.css */
+
+.search-input, .search-btn {
+    box-sizing: border-box;
+    line-height: normal;
+}
+
+.search-input {
+    padding: 5px 10px;
+    margin-right: 10px;
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    border-color: var(--border-color);
+    border-radius: 4px;
+    color: var(--text-color);
+}
+
+.search-input:focus {
+    border-color: var(--hover-color);
+    ring-color: var(--link-color);
+}
+
+.search-input::placeholder {
+    color: var(--text-secondary-color);
+}
+
+.search-source {
+    padding: 5px 10px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.search-btn {
+    background-color: transparent;
+    color: var(--text-color);
+    border-radius: 4px;
+    border-color: var(--border-color);
+    cursor: pointer;
+}
+
+.search-btn:hover {
+    background-color: var(--hover-color);
+}
+
+.search-button:focus {
+    outline-color: var(--hover-color);
+    ring-color: var(--link-color);
+}
+
+.search-drop {
+    background-color: var(--accent-color);
+    padding-bottom: 20px;
+    background-color: var(--transparent-background);
+    backdrop-filter: blur(10px);
+}
+
+.search-drop-button {
+    color: var(--text-color);
+}
+
+.search-drop-button:hover {
+    color: var(--text-color);
+    background-color: transparent;
+    border-color: var(--border-color);
+}
+
+.search-drop-button.active {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+}
+
+/* Add this to your CSS */
+.relative.inline-flex {
+    display: flex;
+    align-items: center;
+}
+
+/* styles.css */
+
+.shorter-input {
+    max-width: 88%; /* Adjust this value to your liking */
+    margin-bottom: 1px; /* Adjust this value to create space between the input and the button */
+}
+
+.no-margin {
+    margin-top: 0 !important;
+}
+
+.no-padding {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.audio-player {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 60px; /* Initial height */
+    background-color: var(--secondary-background);
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+    z-index: 1000; /* Ensure it's on top */
+    
+    /* Animate the height */
+    transition: height 0.5s ease-in-out;
+}
+
+.audio-player .line-content {
+    display: flex;
+    justify-content: space-between;
+    opacity: 1;
+    visibility: visible;
+}
+
+.audio-player.expanded .line-content {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.audio-player .top-section {
+    opacity: 0;
+    visibility: hidden;
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+.audio-player.expanded .top-section {
+    opacity: 1;
+    visibility: visible;
+}
+
+.audio-player .line-content .left-group,
+.audio-player .line-content .right-group {
+    display: flex;
+    align-items: center;
+}
+.audio-player .line-content .title {
+    margin-right: 10px;
+}
+
+/* .audio-player .line-content,
+.audio-player .line-content .right-group {
+    width: 100%;
+} */
+
+.audio-player .line-content .ml-auto {
+    display: flex;
+    align-items: center;
+}
+
+.audio-player .line-content .right-group {
+    justify-content: flex-end;
+    padding-right: 25px;
+}
+
+.audio-player.expanded {
+    height: 100vh; /* Full viewport height when expanded */
+    bottom: 0; /* Keep at bottom */
+    align-items: center;
+    justify-content: space-between;
+}
+
+.audio-player-line {
+    /* Add these properties here */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+
+.audio-player .top-section,
+.audio-player .line-content {
+    transition: opacity 0.5s linear;
+    position: absolute;
+    width: 100%;
+}
+
+.audio-player .top-section .retract-button {
+    position: absolute;
+    top: 70px; /* Adjust as needed */
+    left: 7px; /* Adjust as needed */
+    border: none; /* Remove the border */
+    background: none; /* Remove the background */
+    padding: 0; /* Remove the padding */
+    cursor: pointer; /* Cursor as pointer */
+    font-size: 48px;
+}
+
+.audio-player .top-section .retract-button {
+    font-size: 48px; /* Adjust as needed */
+}
+
+.audio-player .top-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+.audio-player.expanded .line-content,
+.audio-player.expanded .top-section {
+    transition: visibility 0s 0.5s, opacity 0.5s linear;
+}
+
+.audio-full-button {
+    margin-top: 15px;
+}
+
+
+.audio-player button {
+    background-color: var(--button-color); /* Button background color */
+    color: white; /* Button text color */
+    padding: 10px 15px; /* Padding inside the button */
+    margin-right: 20px; /* Margin to the right */
+    cursor: pointer; /* Cursor as pointer */
+    border-radius: 5px; /* Rounded corners */
+}
+
+.audio-player .line-content .title {
+    text-align: left; /* Align text to the left */
+    color: var(--text-color);
+    display: -webkit-box; /* Necessary for line clamping */
+    -webkit-line-clamp: 2; /* Limit to 2 lines */
+    -webkit-box-orient: vertical; /* Necessary for line clamping */
+    overflow: hidden; /* Hide text exceeding the line limit */
+    flex-basis: 90%; /* Adjust as needed */
+}
+
+.audio-player .top-section .title {
+    font-size: 2em; /* Make the title larger */
+    text-align: center;
+    margin: 20px 0; /* Add some vertical space around the title */
+}
+
+.audio-player .top-section .scrub-bar {
+    display: flex; /* Align elements in a row */
+    align-items: center; /* Center align vertically */
+    justify-content: space-between; /* Space out the elements */
+    width: 60%;;
+    padding: 10px 20px; /* Padding for breathing space */
+    font-size: 0.9em; /* Adjust font size for time display */
+    /* color: var(--prog-bar-color); Text color */
+    margin: 10px 0; /* Vertical margin */
+}
+
+.audio-player .top-section .scrub-bar span {
+    flex-shrink: 0; /* Prevent shrinking */
+    margin-right: 10px; /* Space before scrub bar */
+    margin-left: 10px; /* Space after scrub bar */
+}
+
+.audio-player .top-section .scrub-bar input[type="range"] {
+    -webkit-appearance: none; /* Override default appearance */
+    width: 100%; /* Full width */
+    height: 4px; /* Height of the scrub bar */
+    /* background-color: var(--prog-bar-color); */
+    cursor: pointer; /* Pointer cursor on hover */
+    border-radius: 2px; /* Slightly rounded corners */
+}
+
+/* Styles for the thumb (slider) */
+.audio-player .top-section .scrub-bar input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 15px; /* Width of the thumb */
+    height: 15px; /* Height of the thumb */
+    background: #1db954; /* Background color */
+    border-radius: 50%; /* Circular thumb */
+    cursor: pointer;
+}
+
+.audio-player .top-section .scrub-bar input[type="range"]::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    background: #1db954;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* Style for the track (progress) */
+.audio-player .top-section .scrub-bar input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    /* background-color: var(--prog-bar-color); */
+    /* background: linear-gradient(to right, var(--link-color) 0%, var(--link-color) 50%, var(--prog-bar-color) 50%); Adjust 50% to the current value dynamically if possible */
+    border-radius: 2px;
+}
+
+.audio-player .top-section .scrub-bar input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 4px;
+    /* background-color: var(--prog-bar-color); */
+    /* background: var(--prog-bar-color); */
+    border-radius: 2px;
+}
+
+.lower-scrub input[type="range"].flex-grow {
+    -webkit-appearance: none; /* Necessary to remove default styling in WebKit browsers */
+    width: 100%;
+    height: 5px; /* Adjust the height of the slider track */
+    /* background: var(--prog-bar-color, #ddd); Default background color */
+    cursor: pointer;
+    outline: none;
+}
+
+/* Track styles for WebKit browsers */
+.lower-scrub input[type="range"].flex-grow::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 5px;
+    cursor: pointer;
+    animate: 0.2s;
+    background: linear-gradient(to right, var(--link-color, #000) 50%, var(--prog-bar-color, #ddd) 50%);
+}
+
+/* Since Firefox does not support styling the filled part directly, 
+   we only set the overall track appearance */
+.lower-scrub input[type="range"].flex-grow::-moz-range-track {
+    width: 100%;
+    height: 5px;
+    cursor: pointer;
+    background: var(--prog-bar-color, #ddd);
+}
+
+.search-bar-input {
+    background-color: var(--container-background);
+    color: var(--text-color);
+}
+
+.search-input::placeholder {
+    color: var(--text-color);
+}
+
+.search-page-button {
+    background-color: var(--button-color);
+    color: var(--button-text-color);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.search-page-button:hover {
+    background-color: var(--hover-color);
+}
+
+
+.audio-player span {
+    text-align: left; /* Align text to the left */
+    color: var(--text-color);
+}
+
+.audio-player .top-section img {
+    max-width: 100%; /* Ensure the image doesn't exceed its container */
+    height: auto; /* Maintain aspect ratio */
+    border-radius: 0; /* Remove the rounded effect */
+}
+
+/* Small screens */
+@media (max-width: 600px) {
+    .audio-player .top-section img {
+        width: 50vw; /* 50% of the viewport width */
+    }
+}
+
+/* Medium screens */
+@media (min-width: 601px) and (max-width: 1024px) {
+    .audio-player .top-section img {
+        width: 40vw; /* 40% of the viewport width */
+    }
+}
+
+/* Large screens */
+@media (min-width: 1025px) {
+    .audio-player .top-section img {
+        width: 30vw; /* 30% of the viewport width */
+    }
+}
+
+
+.audio-player .artwork {
+    width: 40px; /* Adjust as needed */
+    height: 40px; /* Adjust as needed */
+    border-radius: 50%; /* Make the image a circle */
+    object-fit: cover; /* Resize the image to cover the element */
+    margin-right: 10px; /* Add some space to the right of the image */
+}
+
+.artwork.playing {
+    animation: spin 3s linear infinite;
+  }
+
+
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.episode-description-container a {
+    color: blue; /* or any color you prefer */
+    text-decoration: underline;
+}
+
+.page_header {
+    color: var(--text-color);
+}
+
+.page-paragraphs {
+    color: var(--text-color);
+}
+
+.page-subtitles {
+    color: var(--text-color);
+    font-size: 1.9rem;
+}
+
+.header-text {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: var(--text-color);
+}
+
+.item-header {
+    display: flex;
+    align-items: center; /* Ensure items are centered vertically */
+    background-color: var(--bonus-color);
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.item-header-cover {
+    flex-shrink: 0; /* Prevent the image from shrinking */
+    flex-basis: 25%; /* Set a base width */
+    min-width: 150px; /* Prevent the image from becoming too small */
+    object-fit: cover;
+    border-radius: 5px;
+    margin-right: 20px;
+    height: auto; /* Adjust height automatically */
+}
+
+.header-add-button-container {
+    display: flex; /* Use flexbox to center the button */
+    justify-content: center; /* Center button horizontally */
+    width: 100%; /* Take the full width of its parent */
+    padding: 10px 0; /* Optional: Add some vertical padding */
+    width: 150px; /* Fixed width for the button */
+}
+
+.header-add-button {
+    display: flex; /* Use flexbox to center the button */
+    justify-content: center; /* Center button horizontally */
+    width: 100%; /* Take the full width of its parent */
+    padding: 10px 0; /* Optional: Add some vertical padding */
+    width: 150px; /* Fixed width for the button */
+}
+
+.item-header-info {
+    flex-grow: 1;
+}
+
+.item-header-title {
+    font-size: 1.5em; /* Larger title size */
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
+
+.item-header-description {
+    color: var(--text-color);
+    line-height: 1.4;
+    margin-bottom: 15px;
+}
+
+.item-header-button {
+    color: var(--text-color);
+    background-color: var(--button-color);
+    margin: 15px;
+}
+
+.large-card-button {
+    color: var(--text-color);
+    background-color: var(--button-color);
+    margin: 15px;
+}
+
+.large-card-button:hover {
+    background-color: var(--hover-color);
+}
+
+.large-card-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 4px var(--border-color);
+}
+
+.category-box {
+    display: inline-block;
+    background-color: var(--accent-color);
+    color: var(--bonus-color);
+    padding: 5px 10px;
+    margin: 5px;
+    border-radius: 4px; /* Slightly rounded corners */
+    font-size: 0.8em;
+}
+
+.download-button {
+    color: var(--button-text-color);
+    background-color: var(--button-color);
+    border-color: var(--border-color);
+    margin-bottom: 10px;
+}
+
+.download-button:hover {
+    background-color: var(--hover-color);
+}
+
+.import-box {
+    background-color: var(--container-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
+    padding: 20px;
+    border-radius: 3px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+
+}
+
+.import-list {
+    display: flex;
+    align-items: center; /* Aligns items vertically in the center */
+    gap: 8px;
+}
+
+.link {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.modal-container {
+    background-color: var(--secondary-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
+
+}
+
+.mfa-code-box {
+    background-color: var(--bonus-color); /* Replace with your desired color */
+    color: var(--text-color); /* Replace with your desired color */
+}
+
+.item-container {
+    background-color: var(--container-background);
+    border-color: var(--border-color);
+    display: flex;
+    justify-content: space-between;
+}
+
+.button-container {
+    display: flex;
+    justify-content: center; /* Centers button horizontally */
+    align-items: center;     /* Centers button vertically */
+}
+
+
+
+
+.item-container img {
+    max-width: 200px; /* Adjust this value as needed */
+    max-height: 200px; /* Adjust this value as needed */
+    object-fit: cover; /* This will ensure the image covers the area without stretching */
+    align-self: center;
+}
+
+.item_container-text {
+    color: var(--text-color);
+}
+
+.item-container-text-link {
+    color: var(--standout-color);
+    /*background-color: var(--accent-color);*/
+    cursor: pointer;
+}
+
+.item-container-button {
+    color: var(--text-secondary-color);
+    background-color: var(--container-button-color);
+    border-color: var(--text-secondary-color);
+}
+
+.item-container-button.selector-button:hover {
+    background-color: var(--hover-color); /* Replace #your-hover-color with your desired color */
+}
+
+.item-container-alert-button {
+    color: var(--text-color);
+    background-color: var(--alert-color);
+    border: 1px solid var(--border-color);
+    border-radius: 5px; /* Adjust as needed */
+    padding: 10px 20px; /* Adjust as needed */
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+button.item-container-action-button.item-container-action-button {
+    background-color: var(--alert-color);
+}
+
+.text-button {
+    border-color: var(--standout-color);
+}
+
+.border-color {
+    border-color: var(--border-color);
+}
+
+.spinner-border.custom-spinner-color {
+    /*background-color: var(--standout-color); !* Specify only for the spinner *!*/
+}
+
+.material-icons {
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    /* Adjust the size if necessary */
+}
+.material-standard-color {
+    color: var(--text-color);
+}
+.material-bonus-color {
+    color: var(--text-secondary-color);
+
+}
+.large-material-icons {
+    width: 40px;
+    height: 40px;
+    font-size: 36px !important; /* Or whatever size you prefer */
+}
+
+
+.icon-space {
+    transform: translateY(4px);
+    margin-right: 10px;
+}
+
+.icon-size {
+    transform: translateY(3px);
+    margin-right: 10px;
+}
+
+.align-avatar {
+    display: flex;
+    align-items: center;
+}
+
+.stats-card {
+    background-color: var(--secondary-background);
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+    border-color: var(--border-color);
+}
+
+.stats-label {
+    font-size: 1rem;
+    color: var(--text-color);
+    margin-bottom: 0.5rem;
+}
+
+.stats-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-secondary-color);
+}
+
+.large-card {
+    background-color: var(--secondary-background);
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-color: var(--border-color);
+}
+
+.large-card-image {
+    max-width: 50%;
+    height: auto;
+    border-radius: 0.5rem;
+}
+
+.large-card-content {
+    margin-top: 1rem;
+    text-align: center; /* Center the content */
+}
+
+.large-card-link {
+    display: block;
+    color: #3182ce;
+    text-decoration: none;
+    margin: 0.5rem 0;
+}
+
+.large-card-paragraph {
+    margin-top: 1rem;
+    text-align: center; /* Center the paragraph text */
+}
+
+.search-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    padding-top: 120px;
+}
+
+.search-container.shrink-input {
+    height: auto;
+    display: block;
+    align-items: initial;
+    padding-top: 120px;
+}
+
+.search-page-input {
+    width: 50%;
+    transition: all 1s ease-in-out;
+    position: absolute;
+    top: 40%; /* Start from the center of the screen */
+    left: 50%; /* Start from the center of the screen */
+    transform: translate(-50%, -50%); /* Move up and left by half of its own width and height */
+    z-index: 1; /* Ensure it's on top */
+}
+
+.search-page-input.move-to-top {
+    top: 25px; /* Move to the top of the screen */
+    left: 50%; /* Move to the left of the screen */
+    transform: translate(-50%, 0); /* Keep the element at the top */
+}
+
+.episode-time-badge {
+    color: var(--text-color); /* Dark gray text */
+    font-size: 0.875rem; /* Larger text */
+    display: inline-flex; /* Keeps elements in line but allows for internal flex properties */
+    align-items: center; /* Aligns children vertically in the center */
+}
+
+
+.time-icon {
+    /* Customize your SVG icon here if needed */
+}
+
+.tab.active {
+    background-color: var(--secondary-background); /* Light gray background */
+    color: var(--text-color); /* Darker text color */
+    border-bottom-color: transparent; /* Hide bottom border */
+}
+
+/* Example background colors */
+.bg-custom-light {
+    background-color: var(--secondary-background); /* Adjust the color as needed */
+}
+
+.bg-custom-dark {
+    background-color: var(--background-color); /* Adjust the color as needed */
+}
+
+.setting-box {
+    background-color: var(--accent-color);
+    border-color: var(--border-color);
+    color: var(--text-color);
+    border-width: 1px;
+}
+
+/* Specific targeting for first and last accordion item */
+#accordion-collapse > :first-child > button {
+    border-top-left-radius: 0.75rem; /* 12px */
+    border-top-right-radius: 0.75rem; /* 12px */
+}
+
+#accordion-collapse > :last-child > button {
+    border-bottom-left-radius: 0.75rem; /* 12px */
+    border-bottom-right-radius: 0.75rem; /* 12px */
+}
+
+/* Background color for accordion content */
+.accordion-content {
+    background-color: var(--secondary-background); /* Example color, adjust as needed */
+    color: --var(--text-color);
+}
+
+/* Hover background color for accordion header */
+.accordion-header:hover {
+    background-color: var(--hover-color); /* Example color, adjust as needed */
+    color: var(--text-color);
+}
+
+/* Styles for the select dropdown */
+.theme-select-dropdown {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+.theme-select-dropdown:hover {
+    border-color: var(--dropdown-hover-border-color);
+}
+
+.theme-select-dropdown:focus {
+    outline-color: var(--dropdown-focus-outline-color);
+    box-shadow: 0 0 0 3px var(--dropdown-focus-shadow-color);
+}
+
+/* Styles for the dropdown arrow */
+.theme-dropdown-arrow {
+    color: var(--text-color);
+}
+
+/* Styles for the submit button */
+.theme-submit-button {
+    background-color: var(--transparent-background);
+    color: var(--text-color);
+}
+
+.theme-submit-button:hover {
+    background-color: var(--hover-color);
+}
+
+.theme-submit-button:focus {
+    outline-color: var(--button-focus-outline-color);
+    box-shadow: 0 0 0 3px var(--button-focus-shadow-color);
+}
+
+.email-input {
+    background-color: var(--background-color); /* Change to your desired background color */
+    color: var(--button-text-color); /* Change to your desired text color */
+    border: 1px solid var(--border-color); /* You can change this as needed */
+    padding: 8px; /* Adjust padding as needed */
+    border-radius: 4px; /* Rounded corners */
+}
+
+.email-input::placeholder { /* Chrome, Firefox, Opera, Safari 10.1+ */
+    color: var(--accent-color); /* Change to your desired placeholder text color */
+    opacity: 1; /* Firefox */
+}
+
+.email-input:-ms-input-placeholder { /* Internet Explorer 10-11 */
+    color: var(--accent-color);
+}
+
+.email-input::-ms-input-placeholder { /* Microsoft Edge */
+    color: var(--accent-color);
+}
+
+.email-select {
+    background-color: var(--background-color); /* Change to your desired background color */
+    color: var(--text-color); /* Change to your desired text color */
+    border: 1px solid var(--border-color); /* You can change this as needed */
+    padding: 8px; /* Adjust padding as needed */
+    border-radius: 4px; /* Rounded corners */
+}
+
+
+.settings-button {
+    color: var(--button-text-color);
+    background-color: var(--button-color);
+    border-color: var(--border-color);
+    margin-bottom: 10px;
+    margin-top: 10px;
+    display: inline-block;
+    padding: 5px 10px; /* Adjust as needed */
+    cursor: pointer;
+    border-radius: 5px; /* Adjust as needed */
+    border: 1px solid var(--button-border-color);
+}
+
+.settings-button:hover {
+    background-color: var(--hover-color);
+}
+
+.input-button {
+    display: none; /* Hide the default file input */
+}
+
+.input-button-label {
+    display: inline-block;
+    padding: 10px 20px; /* Adjust as needed */
+    background-color: var(--button-color);
+    color: var(--button-text-color);
+    cursor: pointer;
+    border-radius: 5px; /* Adjust as needed */
+    border: 1px solid var(--button-border-color);
+}
+
+.input-button-label:hover {
+    background-color: var(--hover-color);
+}
+
+.dropdown-content-class {
+    top: 100%; /* Position just below the button */
+    right: 0;   /* Align with the left edge of the button */
+    background-color: var(--background-color);
+    border-color: var(--border-color);
+    /* ... other styles ... */
+}
+
+.search-dropdown-content-class {
+    top: 100%; /* Position just below the button */
+    left: 0;   /* Align with the left edge of the button */
+    background-color: var(--background-color);
+    border-color: var(--border-color);
+    /* ... other styles ... */
+}
+
+.dropdown-container {
+    background-color: var(--background-color);
+    /* Remove the background-color property */
+}
+
+.dropdown-button {
+    cursor: pointer;
+    background-color: var(--button-color);
+    color: var(--text-color);
+}
+
+.dropdown-button:hover {
+    background-color: var(--hover-color); /* Add your hover color here */
+}
+
+.dropdown-button:hover {
+    background-color: var(--hover-color); /* Change background color on hover */
+}
+
+.dropdown-option {
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #eee; /* Border for each option */
+    transition: background-color 0.3s;
+    /* Remove the background-color property */
+    color: var(--text-color);
+}
+
+.dropdown-option:hover {
+    background-color: var(--hover-color); /* Add your hover color here */
+}
+
+.dropdown-option:last-child {
+    border-bottom: none; /* Remove border for the last option */
+}
+
+.dropdown-option:hover {
+    background-color: var(--hover-color); /* Change background color on hover */
+}
+
+.table-header {
+    text-transform: uppercase;
+    background-color: var(--bonus-color); /* Light gray background for table header */
+    color: var(--text-color);
+}
+
+.table-row {
+    background-color: var(--secondary-background);
+    color: var(--text-color); /* Regular font color */
+    cursor: pointer; /* Change cursor to pointer */
+}
+
+.table-row:hover {
+    background-color: var(--secondary-background); /* Slightly darker background on hover */
+}
+
+.episode-top-info {
+    display: flex;
+    align-items: start;
+    margin-bottom: 20px;
+}
+
+.episode-artwork {
+    /* Adjust to scale with page size */
+    max-width: 30%;
+    height: auto;
+    object-fit: cover;
+    padding-right: 10px;
+}
+.episode-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.podcast-title {
+    /* Larger font size for podcast title */
+    font-size: 1.75rem; /* Adjust as needed */
+    color: var(--text-color);
+    font-weight: bold; /* Make the title bold */
+    margin-bottom: 0.5rem; /* Add some space below the title */
+}
+
+.episode-title {
+    font-size: 1.5rem; /* Adjust as needed */
+    color: var(--text-color);
+    font-weight: bold; /* Make the title bold */
+    margin-bottom: 0.5rem; /* Add some space below the title */
+}
+
+.episode-duration, .episode-release-date {
+    /* Style for duration and release date */
+    font-size: 1.0rem; /* Adjust as needed */
+    color: var(--text-color);
+    font-style: italic; /* Make the text italic */
+}
+
+.episode-action-buttons {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+}
+
+.episode-action-buttons button {
+    background-color: transparent;
+    color: var(--text-color);
+    padding: 2.5px 6px;
+    font-size: 1.0rem;
+    font-weight: 500; /* Equivalent to font-medium */
+    line-height: normal;
+    transition: color 0.15s ease-in-out;
+}
+
+.episode-action-buttons button:hover {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+}
+
+.episode-action-buttons button:focus {
+    color: var(--text-color);
+    outline: none;
+}
+
+.episode-action-buttons button:active {
+    color: var(--text-color);
+}
+
+
+.episode-description {
+    padding-left: 25px;
+    /* Other styles as needed */
+}
+
+
+.qr-code-container {
+    /* Center content */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    /* White background */
+    background-color: white;
+
+    /* Rounded corners */
+    border-radius: 8px;
+
+    /* Optional: Set a specific size for the QR code container if necessary */
+    width: auto;
+    height: auto;
+
+    /* Add some padding around the QR code for better aesthetics */
+    padding: 10px;
+
+    /* Drop shadow for depth (optional) */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.progress-bar-container {
+    height: 10px; /* Or whatever height you prefer */
+    background-color: var(--prog-bar-color); /* Background of the unfulfilled part */
+    width: 100%; /* Or adjust to fit your layout */
+    border-radius: 5px; /* Optional, for rounded corners */
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: var(--link-color); /* Or any color you prefer */
+    border-radius: 5px; /* Match container's border-radius */
+    transition: width 0.5s ease-in-out; /* Smooth transition for changes, optional */
+}
+
+.cursor-pointer:hover {
+    cursor: pointer;
+}
+
+.time-display {
+    display: inline-block;
+    width: 80px; /* Adjust this width based on the maximum expected length of the time strings */
+    text-align: center;
+}
+
+@keyframes frameAnimation {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
+.loading-animation {
+    display: flex;
+    justify-content: center;
+    align-items: start; /* Align items to the start of the container */
+    width: 100%; /* Full width of the container */
+    height: 100vh; /* Full height of the viewport */
+    position: relative; /* Necessary for absolute positioning of children */
+    padding-top: 6vh; /* Adjust this value as needed to move the animation down from the top */
+}
+
+
+.loading-animation div {
+    position: absolute; /* Align images directly on top of each other */
+    width: 500px; /* Set width */
+    height: 500px; /* Set height */
+    background-size: cover;
+    animation: frameAnimation 3s infinite; /* Total animation duration adjusted to 3 seconds */
+}
+
+/* Apply negative delays here */
+.loading-animation .frame1 { background-image: url('./assets/images/og-same.png'); animation-delay: -4.5s; }
+.loading-animation .frame2 { background-image: url('./assets/images/low5.png'); animation-delay: -4s; }
+.loading-animation .frame3 { background-image: url('./assets/images/low4.png'); animation-delay: -3.5s; }
+.loading-animation .frame4 { background-image: url('./assets/images/low3.png'); animation-delay: -3s; }
+.loading-animation .frame5 { background-image: url('./assets/images/low2.png'); animation-delay: -2.5s; }
+.loading-animation .frame6 { background-image: url('./assets/images/low1.png'); animation-delay: -2s; }

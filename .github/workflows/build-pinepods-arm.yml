@@ -1,8 +1,6 @@
 name: Publish Pinepods Arm Image to DockerHub
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 env:

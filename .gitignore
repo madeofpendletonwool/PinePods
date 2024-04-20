@@ -81,3 +81,8 @@ clients/mac-app/pinepods.spec
 .idea/misc.xml
 .idea/misc.xml
 .idea/PyPods.iml
+
+# Web Removals
+web/target/*
+web/.idea/*
+web/Cargo.lock

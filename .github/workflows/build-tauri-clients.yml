@@ -38,20 +38,32 @@ jobs:
             echo "ARTIFACT_NAME1=deb/pinepods_0.5.0_amd64.deb" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=appimage/pinepods_0.5.0_amd64.AppImage" >> $GITHUB_ENV
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "ARTIFACT_NAME1=exe/pinepods_0.5.0_amd64.exe" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/pinepods_0.5.0_amd64.msi" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.0_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.0_x64_en-US.msi" >> $Env:GITHUB_ENV
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
-            echo "ARTIFACT_NAME1=dmg/pinepods_0.5.0_amd64.dmg" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=app/pinepods_0.5.0_amd64.app" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=dmg/Pinepods_0.5.0_x64.dmg" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=macos/Pinepods.app" >> $GITHUB_ENV
           fi
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Set environment variables (Windows)
+        run: |
+          if ("${{ matrix.os }}" -eq "windows-latest") {
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.0_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.0_x64_en-US.msi" >> $Env:GITHUB_ENV
+          }
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Setup | Checkout
         uses: actions/checkout@v2
 
-      - name: Setup Rust
-        uses: ATiltedTree/setup-rust@v1.0.5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          rust-version: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: cargo-bins/cargo-binstall@main
 
       - name: Depends install
         if: ${{ env.DEPENDS_SETUP == 'true' }}
@@ -66,25 +78,41 @@ jobs:
 
       - name: Install Trunk
         run: |
-          cargo install --locked trunk 
+          cargo binstall trunk -y
 
-      - name: Build | Compile
+      - name: Install Tauri
+        run : |
+          cargo install tauri-cli --locked
+
+      - name: Build | Compile (UNIX)
         run: |
           cd web/src-tauri
           cargo tauri build
-          ls -la /web/src-tauri/release/bundle
+          pwd
+          ls
+          ls -la target/release/bundle
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Build | Compile (Windows)
+        run: |
+          cd web/src-tauri
+          cargo tauri build
+          ls target/release/bundle
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Archive build 1
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-build
-          path: web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME1 }}
+          path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME1 }}
 
       - name: Archive build 2
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-build
-          path: web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME2 }}
+          path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME2 }}
             
   # release:
   #   needs: compile

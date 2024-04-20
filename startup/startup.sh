@@ -23,6 +23,12 @@ if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "EMAIL: $EMAIL"
   echo "PASSWORD: $PASSWORD"
 fi
+echo "Database Information:"
+echo "DB_USER: $DB_USER"
+echo "DB_PASSWORD: $DB_PASSWORD"
+echo "DB_HOST: $DB_HOST"
+echo "DB_NAME: $DB_NAME"
+echo "DB_PORT: $DB_PORT"
 
 cat << "EOF"
          A
@@ -63,11 +69,16 @@ if [[ $DB_TYPE == "postgresql" ]]; then
 else
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
+echo "Database setup complete"
 # Periodic refresh
-echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh" | crontab -
+echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1" | crontab -
+echo "Cron job added"
 # Fix permissions on exim email server folders
+mkdir -p /var/log/exim4
+mkdir -p /var/spool/exim4
 chown -R Debian-exim:Debian-exim /var/log/exim4
 chown -R Debian-exim:Debian-exim /var/spool/exim4
+echo "Exim permissions fixed"
 # Start all services with supervisord
 echo $DEBUG_MODE
 if [[ $DEBUG_MODE == "true" ]]; then

@@ -60,7 +60,6 @@ def call_get_user(url, headers):
         return {"status": "error", "message": str(e)}
 
 
-
 def call_check_saved_session(url, headers, session_value):
     response = requests.get(url + f"/check_saved_session/{session_value}", headers=headers)
     if response.status_code == 200:
@@ -174,6 +173,7 @@ def call_return_episodes(url, headers, user_id):
         print("Error details:", response.text)
         return None
 
+
 def call_podcast_episodes(url, headers, user_id, podcast_id):
     data = {
         "user_id": str(user_id),
@@ -190,6 +190,7 @@ def call_podcast_episodes(url, headers, user_id, podcast_id):
         print("Error fetching episodes:", response.status_code)
         print("Error details:", response.text)
         return None
+
 
 def call_get_podcast_id(url, headers, user_id, podcast_feed):
     data = {
@@ -1076,3 +1077,51 @@ def call_import_podcasts(url, headers, user_id, podcasts):
     }
     response = requests.post(url + "/import_podcasts", headers=headers, json=data)
     return response.json()
+
+
+def call_check_gpodder_access(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+    try:
+        response = requests.get(url + "/check_gpodder_settings", headers=headers, json=data)
+        return response.json()
+    except Exception as err:
+        return {"success": False, "error_message": f"Other error occurred: {err}"}
+
+
+def call_check_user_gpodder_status(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+    response = requests.post(url + "/gpodder_status", headers=headers, json=data)
+    return response.json()
+
+
+def call_add_gpodder_settings(url, headers, user_id, gpodder_url, gpodder_token):
+
+    data = {
+        "user_id": user_id,
+        "gpodder_url": gpodder_url,
+        "gpodder_token": gpodder_token
+    }
+
+    response = requests.post(url + "/add_gpodder_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving gpodder settings:", response.status_code)
+        print("Response body:", response.json())
+
+
+def call_remove_gpodder_settings(url, headers, user_id):
+    data = {
+        "user_id": user_id
+    }
+
+    response = requests.post(url + "/remove_gpodder_settings", headers=headers, json=data)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error saving gpodder settings:", response.status_code)
+        print("Response body:", response.json())

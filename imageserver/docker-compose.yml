@@ -1,9 +1,0 @@
-version: '3'
-services:
-  icecast2:
-    image: pltnk/icecast2
-    restart: always
-    ports:
-      - 8080:8080
-    volumes:
-      - /home/collinp/Documents/GitHub/PyPods/imageserver/icecast.xml:/etc/icecast2/icecast.xml

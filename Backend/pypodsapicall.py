@@ -4,12 +4,14 @@ import json
 import requests
 import time
 from flask import Flask, request
+from flask_cors import CORS
 import os
 
 api_key = os.environ.get('API_KEY')
 api_secret = os.environ.get('API_SECRET')
 
 app = Flask(__name__)
+CORS(app)
 
 # setup some basic vars for the search api. 
 # for more information, see https://api.podcastindex.org/developer_docs
