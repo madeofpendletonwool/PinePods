@@ -30,11 +30,13 @@
 
 # Getting Started
 
-PinePods is a Rust based app that manages podcasts with multi-user support and relies on a central database with client to connect to it.
+PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. It works on mobile devices and can also sync with a Nextcloud server so you can use external apps Like Antennapod as well!
+
+For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/)
 
 ## Features
 
-Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql (alternative database support is on the roadmap) database including user settings, podcasts and episodes. It's fully self-hosted, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql (alternative database support is on the roadmap) database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
 
 ## Try it out! :zap:
 
@@ -212,14 +214,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 
 ## ToDo (Listed in order they will be implemented)
-
-### Pre-Rust Revamp Release
-
-- [ ] Verify All Button Interaction throughout
-- [ ] Test Edgecases and ensure errors can't happen throughout
-- [ ] Revamp Documentation
-
-### After Rust Revamp
 
 - [ ] Handle situation where there's no audio in a feed
 - [ ] Additional Downloads Page organization - Organize by Podcast

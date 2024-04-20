@@ -58,6 +58,7 @@ Version 0.6.0
 - [x] Cors errors when browsing certain podcast results
 - [x] Perfect the scrubbing (Mostly good to go at this point. The only potential issue is the coloring. Another pass on colors will be done after the first beta release.)
 - [x] Itunes
+- [x] Revamp Documentation
 
 Version 0.5.0
 
