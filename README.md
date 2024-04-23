@@ -213,41 +213,47 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 [AntennaPod F-Droid AppListing](https://f-droid.org/en/packages/de.danoeh.antennapod/)
 
 
-## ToDo (Listed in order they will be implemented)
+## ToDo
 
 - [ ] Handle situation where there's no audio in a feed
 - [ ] Additional Downloads Page organization - Organize by Podcast
-- [ ] Better episode performance when a large number of episodes on screen
+- [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
-- [ ] Login with Github integration and cloud logins (OAuth)
+- [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy. 
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
-- [ ] Implement Postgresql as option for database backend
-- [ ] Client sharing. Search network for other clients and play to them Lightweight client
+- [ ] Implement Postgresql as option for database backend (Potentially other databases)
+- [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
+- [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
+- [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
 - [ ] How-to guides on doing things in the app
-- [ ] Stream podcasts to other devices running pinepods over local network
-- [ ] *Pinepods Firewood*. A light client used as a remote streaming device. No GUI
+- [ ] *Pinepods Firewood*. A light, terminal based client used as a remote streaming device or to just listen to podcasts in your terminal! No GUI
 - [ ] Add highlight to indicate which page you're on
 - [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
-- [ ] Retain Previously Used Theme for Login Screens
-- [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
-- [ ] Nix Package
-- [ ] Helm Chart for server deployment
-- [ ] Mobile Apps
-  - [ ] Android App
-  - [ ] IOS App
-  - [ ] Packaging and automation
-
-### Future Nice-to-haves
+- [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
+- [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts. 
+- [ ] Build a 'to listen' area in the app. The idea here is to provide users with a constantly rotating feed of episodes. Should be new episodes plus filter in some unlistened old episodes that they haven't heard from podcasts they have previously listened to a lot of. 
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
 - [ ] Sharing System
+
+### Clients to support
+
+- [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
+- [ ] Nix Package
+- [ ] Helm Chart for kubernetes deployment
+- [ ] Mobile Apps
+  - [ ] Android App
+    - [ ] Android Auto support
+  - [ ] IOS App
+  - [ ] Packaging and automation
+
 
 ## Screenshots :camera:
 
