@@ -2306,11 +2306,46 @@ async def check_episode_in_db(user_id: int, episode_title: str = Query(...), epi
     episode_exists = database_functions.functions.check_episode_exists(cnx, user_id, episode_title, episode_url)
     return {"episode_in_db": episode_exists}
 
+class LoginInitiateData(BaseModel):
+    user_id: int
+    nextcloud_url: str
+
+@app.post("/api/data/initiate_nextcloud_login")
+async def initiate_nextcloud_login(data: LoginInitiateData, api_key: str = Depends(get_api_key_from_header)):
+    import requests
+
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        login_url = f"{data.nextcloud_url}/index.php/login/v2"
+        try:
+            response = requests.post(login_url)
+            response.raise_for_status()  # This will raise an HTTPError for bad responses
+            return response.json()
+        except requests.HTTPError as http_err:
+            # Log the detailed error
+            detail = f"Nextcloud login failed with status code {response.status_code}: {response.text}"
+            raise HTTPException(status_code=response.status_code, detail=detail)
+        except requests.RequestException as req_err:
+            # General request exception handling (e.g., network issues)
+            raise HTTPException(status_code=500, detail=f"Failed to reach Nextcloud server: {str(req_err)}")
+    else:
+        raise HTTPException(status_code=403, detail="You are not authorized to initiate this action.")
+
+
+
 class GpodderSettings(BaseModel):
     user_id: int
     gpodder_url: str
     gpodder_token: str
-
 
 @app.post("/api/data/add_gpodder_settings")
 async def add_gpodder_settings(data: GpodderSettings, cnx=Depends(get_database_connection),
@@ -2422,6 +2457,7 @@ async def get_gpodder_settings(user_id: int, cnx=Depends(get_database_connection
     else:
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
+
 
 class NextcloudAuthRequest(BaseModel):
     user_id: int

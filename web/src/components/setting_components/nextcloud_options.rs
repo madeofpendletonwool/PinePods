@@ -2,12 +2,13 @@ use serde::Deserialize;
 use yew::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response, HtmlInputElement, console};
-use crate::{requests::setting_reqs::{call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudAuthRequest}};
+use crate::{requests::setting_reqs::{call_add_nextcloud_server, call_check_nextcloud_server, call_get_nextcloud_server, NextcloudAuthRequest, initiate_nextcloud_login, NextcloudInitiateResponse}};
 use wasm_bindgen_futures::JsFuture;
 use yewdux::use_store;
 use crate::components::context::{AppState, UIState};
 use serde_wasm_bindgen;
 use serde::Serialize;
+use wasm_bindgen::JsValue;
 // use wasm_timer;
 
 
@@ -24,48 +25,54 @@ pub struct Poll {
     pub endpoint: String,
 }
 
-async fn initiate_nextcloud_login(server_url: &str) -> Result<NextcloudLoginResponse, anyhow::Error> {
-    let login_endpoint = format!("{}/index.php/login/v2", server_url);
-    let window = web_sys::window().expect("no global `window` exists");
-    let request = Request::new_with_str_and_init(&login_endpoint, RequestInit::new().method("POST").mode(RequestMode::Cors))
-        .expect("Failed to build request.");
+// async fn initiate_nextcloud_login(server_url: &str, server_name: &str) -> Result<NextcloudLoginResponse, anyhow::Error> {
+//     let login_endpoint = format!("{}/index.php/login/v2", server_url);
+//     let window = web_sys::window().expect("no global `window` exists");
+//     let request = Request::new_with_str_and_init(&login_endpoint, RequestInit::new().method("POST").mode(RequestMode::Cors))
+//         .expect("Failed to build request.");
 
-    match JsFuture::from(window.fetch_with_request(&request)).await {
-        Ok(js_value) => {
-            console::log_1(&"Received response from server...".into());
-            let response: Response = js_value.dyn_into().unwrap();
-            if response.status() == 200 {
-                console::log_1(&"Response status is 200...".into());
-                match JsFuture::from(response.json().unwrap()).await {
-                    Ok(json_result) => {
-                        console::log_1(&"Before login response".into());
-                        match serde_wasm_bindgen::from_value::<NextcloudLoginResponse>(json_result) {
-                            Ok(login_data) => {
-                                console::log_1(&format!("Login URL: {}", &login_data.login.clone()).into());
-                                window.open_with_url(&login_data.login).expect("Failed to open login URL");
-                                Ok(login_data)
-                            },
-                            Err(_) => {
-                                console::log_1(&"Failed to deserialize JSON response...".into());
-                                Err(anyhow::Error::msg("Failed to deserialize JSON response"))
-                            },
-                        }
-                    },
-                    Err(_) => {
-                        console::log_1(&"Failed to parse JSON response...".into());
-                        Err(anyhow::Error::msg("Failed to parse JSON response"))
-                    },
-                }
-            } else {
-                console::log_1(&format!("Failed to initiate Nextcloud login, status: {}", response.status()).into());
-                Err(anyhow::Error::msg(format!("Failed to initiate Nextcloud login, status: {}", response.status())))
-            }
-        },
-        Err(_) => {
-            console::log_1(&"Failed to send authentication request...".into());
-            Err(anyhow::Error::msg("Failed to send authentication request."))
-        },
-    }
+//     match JsFuture::from(window.fetch_with_request(&request)).await {
+//         Ok(js_value) => {
+//             console::log_1(&"Received response from server...".into());
+//             let response: Response = js_value.dyn_into().unwrap();
+//             if response.status() == 200 {
+//                 console::log_1(&"Response status is 200...".into());
+//                 match JsFuture::from(response.json().unwrap()).await {
+//                     Ok(json_result) => {
+//                         console::log_1(&"Before login response".into());
+//                         match serde_wasm_bindgen::from_value::<NextcloudLoginResponse>(json_result) {
+//                             Ok(login_data) => {
+//                                 console::log_1(&format!("Login URL: {}", &login_data.login.clone()).into());
+//                                 window.open_with_url(&login_data.login).expect("Failed to open login URL");
+//                                 Ok(login_data)
+//                             },
+//                             Err(_) => {
+//                                 console::log_1(&"Failed to deserialize JSON response...".into());
+//                                 Err(anyhow::Error::msg("Failed to deserialize JSON response"))
+//                             },
+//                         }
+//                     },
+//                     Err(_) => {
+//                         console::log_1(&"Failed to parse JSON response...".into());
+//                         Err(anyhow::Error::msg("Failed to parse JSON response"))
+//                     },
+//                 }
+//             } else {
+//                 console::log_1(&format!("Failed to initiate Nextcloud login, status: {}", response.status()).into());
+//                 Err(anyhow::Error::msg(format!("Failed to initiate Nextcloud login, status: {}", response.status())))
+//             }
+//         },
+//         Err(_) => {
+//             console::log_1(&"Failed to send authentication request...".into());
+//             Err(anyhow::Error::msg("Failed to send authentication request."))
+//         },
+//     }
+// }
+
+async fn open_nextcloud_login(url: &str) -> Result<(), JsValue> {
+    let window = web_sys::window().expect("no global `window` exists");
+    window.open_with_url_and_target(url, "_blank")?;
+    Ok(())
 }
 
 #[function_component(NextcloudOptions)]
@@ -138,8 +145,12 @@ pub fn nextcloud_options() -> Html {
 
             if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
-                    match initiate_nextcloud_login(&server).await {
+                    match initiate_nextcloud_login(&server, &server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.clone().unwrap()).await {
                         Ok(login_data) => {
+                            match open_nextcloud_login(&login_data.login).await {
+                                Ok(_) => println!("Opened login URL in new tab"),
+                                Err(e) => println!("Failed to open login URL in new tab: {:?}", e),
+                            }
                             // Use login_data.poll_endpoint and login_data.token for the next steps
                             let auth_request = NextcloudAuthRequest {
                                 user_id: user_id.clone().unwrap(),
@@ -178,8 +189,7 @@ pub fn nextcloud_options() -> Html {
                             }
                         }
                         Err(e) => {
-                            log::error!("Failed to initiate Nextcloud login: {:?}", e);
-                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
+                            web_sys::console::log_1(&JsValue::from_str(&format!("Failed to initiate Nextcloud login: {:?}", e)));                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
                             auth_status.set("Failed to initiate Nextcloud login. Please check the server URL.".to_string());
                         }
                     }

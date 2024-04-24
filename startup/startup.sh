@@ -23,12 +23,6 @@ if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "EMAIL: $EMAIL"
   echo "PASSWORD: $PASSWORD"
 fi
-echo "Database Information:"
-echo "DB_USER: $DB_USER"
-echo "DB_PASSWORD: $DB_PASSWORD"
-echo "DB_HOST: $DB_HOST"
-echo "DB_NAME: $DB_NAME"
-echo "DB_PORT: $DB_PORT"
 
 cat << "EOF"
          A
@@ -59,9 +53,6 @@ mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
 
 openssl req -x509 -nodes -newkey rsa:4096 -keyout /opt/pinepods/certs/key.pem -out /opt/pinepods/certs/cert.pem -days 365 -subj "/C=US/ST=NY/L=NewYork/O=PinePods/CN=$HOSTNAME"
-echo "127.0.0.1 $HOSTNAME" >> /etc/hosts
-echo "Hosts file written and can be seen below:"
-cat /etc/hosts
 
 # Database Setup
 if [[ $DB_TYPE == "postgresql" ]]; then
@@ -72,7 +63,6 @@ fi
 echo "Database setup complete"
 # Periodic refresh
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1" | crontab -
-echo "Cron job added"
 # Fix permissions on exim email server folders
 mkdir -p /var/log/exim4
 mkdir -p /var/spool/exim4

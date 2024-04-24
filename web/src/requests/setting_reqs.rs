@@ -845,6 +845,66 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
     }
 }
 
+// #[derive(Deserialize, Debug, PartialEq, Clone)]
+// pub struct NextcloudInitiateResponse {
+//     pub(crate) token: String,
+//     pub(crate) poll_endpoint: String,
+//     pub(crate) nextcloud_url: String,
+// }
+
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct Poll {
+    pub(crate) token: String,
+    pub(crate) endpoint: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct NextcloudInitiateResponse {
+    pub(crate) poll: Poll,
+    pub(crate) login: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct LoginInitiateRequest {
+    user_id: i32,
+    nextcloud_url: String,
+}
+
+pub async fn initiate_nextcloud_login(nextcloud_url: &str, server_name: &str, api_key: &str, user_id: i32) -> Result<NextcloudInitiateResponse, Error> {
+    // Construct the URL with query parameters
+    let url = format!("{}/api/data/initiate_nextcloud_login", server_name);
+    let request_body = LoginInitiateRequest {
+        user_id,
+        nextcloud_url: nextcloud_url.to_string(),
+    };
+    let json_body = serde_json::to_string(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request body: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(json_body)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    // Get the response body as text
+    let response_body = response.text().await?;
+
+    // Log the response body for debugging
+    web_sys::console::log_1(&response_body.clone().into());
+
+    // Parse the JSON response into the NextcloudLoginResponse struct
+    if response.ok() {
+        serde_json::from_str::<NextcloudInitiateResponse>(&response_body)
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error initiating Nextcloud login: {}", response.status_text())))
+    }
+}
+
+
 #[derive(Serialize)]
 pub struct NextcloudAuthRequest {
     pub(crate) user_id: i32,
