@@ -3,8 +3,9 @@
 </p>
 
 # PinePods :evergreen_tree:
-
 [![](https://dcbadge.vercel.app/api/server/bKzHRa4GNc)](https://discord.gg/bKzHRa4GNc)
+[![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#pinepods:matrix.org)
+![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
