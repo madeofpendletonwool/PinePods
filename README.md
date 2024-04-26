@@ -3,8 +3,10 @@
 </p>
 
 # PinePods :evergreen_tree:
-
 [![](https://dcbadge.vercel.app/api/server/bKzHRa4GNc)](https://discord.gg/bKzHRa4GNc)
+[![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#pinepods:matrix.org)
+![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)
+![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
@@ -126,7 +128,7 @@ First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details 
 Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. The podcast index requires an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below.
 
 ```
-SEARCH_API_URL: 'https://api.pinepods.online/api/search'
+SEARCH_API_URL: 'https://search.pinepods.online/api/search'
 ```
 
 Above is an api that I maintain. I do not guarantee 100% uptime on this api though, it should be up most of the time besides a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy. Check out the API docs for more information on doing this. Link Below -
