@@ -6,7 +6,7 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::use_store;
 use super::app_drawer::App_drawer;
-use super::gen_components::Search_nav;
+use super::gen_components::{UseScrollToTop, Search_nav};
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::requests::search_pods::{call_parse_podcast_url, Podcast, UnifiedPodcast};
@@ -74,6 +74,7 @@ pub fn pod_layout() -> Html {
         <>
             <div class="main-container">
                 <Search_nav />
+                <UseScrollToTop />
                 <h1 class="item_container-text text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
                 {
                     if let Some(results) = search_results {

@@ -2,6 +2,15 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.6.2
+
+- [ ] Fixed issue with removal of podcasts when no longer in nextcloud subscription
+- [ ] Fixed scrolling problems where the app would sometimes start you at the bottom of the page when scrolling to different locations. 
+- [ ] Fixed issue where a very occaitional podcast is unable to open it's feed. This was due to podcast redirects. Which caused the function to not work. It will now follow a redirect.
+
+
+Version 0.6.1
+
 Version 0.6.0
 
 - [x] Complete Rust WASM Rebuild

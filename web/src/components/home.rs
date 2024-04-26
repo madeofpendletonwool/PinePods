@@ -1,7 +1,7 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
+use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click, UseScrollToTop};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
 use yew_router::history::BrowserHistory;
@@ -132,6 +132,7 @@ pub fn home() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
+            <UseScrollToTop />
             {
                 if *loading { // If loading is true, display the loading animation
                     html! {

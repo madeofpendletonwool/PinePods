@@ -560,7 +560,7 @@ async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_dat
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
     
     # Fetch the podcast feed data using httpx
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         response = await client.get(podcast_feed)
         response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
         return Response(content=response.content, media_type="application/xml")

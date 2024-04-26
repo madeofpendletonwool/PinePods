@@ -1,7 +1,7 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message};
+use super::gen_components::{Search_nav, empty_message, UseScrollToTop};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -130,6 +130,7 @@ pub fn epsiode() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
+            <UseScrollToTop />
             {
                 if let Some(episode) = state.fetched_episode.clone() {    
                     let episode_url_clone = episode.episode.EpisodeURL.clone();

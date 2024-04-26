@@ -20,6 +20,24 @@ pub struct ErrorMessageProps {
     pub error_message: UseStateHandle<Option<String>>,
 }
 
+#[function_component(UseScrollToTop)]
+pub fn use_scroll_to_top() -> Html {
+    let history = BrowserHistory::new();
+    use_effect_with((), move |_| {
+        // Create a closure that will be called on history change
+        // Create a callback to scroll to the top of the page when the route changes
+        let callback = history.listen(move || {
+            web_sys::window().unwrap().scroll_to_with_x_and_y(0.0, 0.0);
+        });
+
+        // Cleanup function: This will be executed when the component unmounts
+        // or the dependencies of the effect change.
+        move || drop(callback)
+    });
+
+    html! {}
+}
+
 
 #[function_component(ErrorMessage)]
 pub fn error_message(props: &ErrorMessageProps) -> Html {

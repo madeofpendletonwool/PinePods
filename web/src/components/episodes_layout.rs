@@ -6,7 +6,7 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::{AudioPlayer, on_play_click};
-use super::gen_components::Search_nav;
+use super::gen_components::{UseScrollToTop, Search_nav};
 use super::app_drawer::App_drawer;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues, call_check_podcast, call_remove_podcasts_name, RemovePodcastValuesName};
 use wasm_bindgen::closure::Closure;
@@ -361,6 +361,7 @@ pub fn episode_layout() -> Html {
     html! {
         <div class="main-container">
             <Search_nav />
+            <UseScrollToTop />
             <h1 class="page_header text-2xl font-bold my-4 text-center">{ "Podcast Episode Results" }</h1>
         {
             if let Some(podcast_info) = clicked_podcast_info {

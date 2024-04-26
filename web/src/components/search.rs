@@ -1,7 +1,7 @@
 use yew::{function_component, html, use_node_ref, Html, Properties, Callback, MouseEvent};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
+use super::gen_components::{UseScrollToTop, Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -151,6 +151,7 @@ pub fn search(_props: &SearchProps) -> Html {
         <>
         <div class="search-page-container">
             <Search_nav />
+            <UseScrollToTop />
             <div class="search-container" ref={container_ref.clone()}>
                 <form class="search-page-input" onsubmit={on_submit} ref={form_ref.clone()}>
                     <label for="search" class="mb-2 text-sm font-medium text-gray-900 sr-only dark:text-white">{ "Search" }</label>

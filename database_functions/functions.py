@@ -2718,7 +2718,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
 
     # Remove podcasts no longer in the subscription
     for feed_url in podcasts_to_remove:
-        cursor.execute("SELECT PodcastName FROM Podcasts WHERE FeedURL = %s", feed_url)
+        cursor.execute("SELECT PodcastName FROM Podcasts WHERE FeedURL = %s", (feed_url,))
         result = cursor.fetchone()
         remove_podcast(cnx, result, user_id)
 

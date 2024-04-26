@@ -1,7 +1,7 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
+use super::gen_components::{UseScrollToTop, Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
@@ -131,7 +131,7 @@ pub fn queue() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
-            
+            <UseScrollToTop />
                 if *loading { // If loading is true, display the loading animation
                     {
                         html! {

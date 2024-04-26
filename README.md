@@ -222,6 +222,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy. 
+- [ ] Options to delete users for admins. 
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
@@ -237,13 +238,13 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Add highlight to indicate which page you're on
 - [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
 - [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
-- [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts. 
-- [ ] Build a 'to listen' area in the app. The idea here is to provide users with a constantly rotating feed of episodes. Should be new episodes plus filter in some unlistened old episodes that they haven't heard from podcasts they have previously listened to a lot of. 
+- [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts.
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
 - [ ] Sharing System
+- [ ] Option to use login images as background throughout app.
 
 ### Clients to support
 
