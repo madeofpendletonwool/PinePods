@@ -680,6 +680,10 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == podcast_values.user_id or is_web_key:
+        # Check if user has nextcloud enabled and add to subscription list
+        if database_functions.functions.check_gpodder_settings(database_type, cnx, podcast_values.user_id):
+            gpodder_url, gpodder_token = database_functions.functions.get_gpodder_settings(database_type, cnx, podcast_values.user_id)
+            database_functions.functions.add_podcast_to_nextcloud(gpodder_url, gpodder_token, podcast_values.pod_feed_url)
         result = database_functions.functions.add_podcast(cnx, podcast_values.dict(), podcast_values.user_id)
         if result:
             return {"success": True}

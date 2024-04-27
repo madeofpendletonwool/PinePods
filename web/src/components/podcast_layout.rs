@@ -385,7 +385,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                     <div key={podcast.id.to_string()} class="item-container flex mb-4 shadow-md rounded-lg overflow-hidden">
                         <img src={podcast.image.clone()} alt={format!("Cover for {}", &podcast.title)} class="w-1/6 items-center object-cover"/>
                         <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
-                            <a onclick={on_title_click.clone()} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.title }</a>
+                            <a onclick={on_title_click.clone()} class="item_container-text text-xl font-semibold hover:underline">{ &podcast.title }</a>
                             <p class="item_container-text">{ &podcast.description }</p>
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>

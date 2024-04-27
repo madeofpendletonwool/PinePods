@@ -281,11 +281,14 @@ def remove_podcast(cnx, podcast_name, podcast_url, user_id):
 
         cnx.commit()
     except mysql.connector.Error as err:
-        print("Error: {}".format(err))
+        print("MySQL Error: {}".format(err))
+        cnx.rollback()
+    except Exception as e:
+        print("General Error in remove_podcast: {}".format(e))
         cnx.rollback()
     finally:
         cursor.close()
-        # cnx.close()
+
 
 def remove_podcast_id(cnx, podcast_id, user_id):
     cursor = cnx.cursor()
@@ -1097,13 +1100,35 @@ def record_listen_duration(cnx, episode_id, user_id, listen_duration):
     cursor.close()
     # cnx.close()
 
+# def get_local_episode_times(cnx, user_id):
+#     cursor = cnx.cursor()
+#     # Fetch all listen durations for the given user
+#     cursor.execute("SELECT EpisodeID, ListenDuration FROM UserEpisodeHistory WHERE UserID=%s", (user_id,))
+#     episode_times = [{"episode_id": row[0], "listen_duration": row[1]} for row in cursor.fetchall()]
+#     cursor.close()
+#     return episode_times
+
 def get_local_episode_times(cnx, user_id):
     cursor = cnx.cursor()
-    # Fetch all listen durations for the given user
-    cursor.execute("SELECT EpisodeID, ListenDuration FROM UserEpisodeHistory WHERE UserID=%s", (user_id,))
-    episode_times = [{"episode_id": row[0], "listen_duration": row[1]} for row in cursor.fetchall()]
+    # Correct SQL query to fetch all listen durations along with necessary URLs for the given user
+    cursor.execute("""
+    SELECT 
+        e.EpisodeURL, 
+        p.FeedURL, 
+        ueh.ListenDuration 
+    FROM UserEpisodeHistory ueh
+    JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
+    JOIN Podcasts p ON e.PodcastID = p.PodcastID
+    WHERE ueh.UserID = %s
+    """, (user_id,))  # Ensuring the user_id is passed as a tuple
+    episode_times = [{
+        "episode_url": row[0],
+        "podcast_url": row[1],
+        "listen_duration": row[2]
+    } for row in cursor.fetchall()]
     cursor.close()
     return episode_times
+
 
 
 
@@ -2666,8 +2691,43 @@ def get_nextcloud_users(database_type, cnx):
     return users
 
 def current_timestamp():
-    # Return the current time in ISO 8601 format
-    return datetime.utcnow().isoformat() + 'Z'  # Adding 'Z' indicates Zulu time, which is UTC
+    # Return the current time in ISO 8601 format, explicitly marked as UTC
+    return datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+
+def add_podcast_to_nextcloud(gpodder_url, api_key, podcast_url):
+    url = f"{gpodder_url}/index.php/apps/gpoddersync/subscription_change/create"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "add": [podcast_url],
+        "remove": []
+    }
+    response = requests.post(url, json=data, headers=headers)
+    try:
+        response.raise_for_status()
+        print(f"Podcast added to Nextcloud successfully: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Failed to add podcast to Nextcloud: {e}")
+
+def remove_podcast_from_nextcloud(gpodder_url, api_key, podcast_url):
+    url = f"{gpodder_url}/index.php/apps/gpoddersync/subscription_change/create"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "add": [],
+        "remove": [podcast_url]
+    }
+    response = requests.post(url, json=data, headers=headers)
+    try:
+        response.raise_for_status()
+        print(f"Podcast removed from Nextcloud successfully: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Failed to remove podcast from Nextcloud: {e}")
+
 
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login):
     from cryptography.fernet import Fernet
@@ -2708,6 +2768,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
 
     # Update local database
     # Add new podcasts
+    print("Adding new podcasts...")
     for feed_url in podcasts_to_add:
         podcast_values = get_podcast_values(feed_url, user_id)
         return_value = add_podcast(cnx, podcast_values, user_id)
@@ -2717,15 +2778,26 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
             print(f"error adding {feed_url}")
 
     # Remove podcasts no longer in the subscription
+    print("Removing podcasts...")
     for feed_url in podcasts_to_remove:
+        print(f"Removing {feed_url}...")
         cursor.execute("SELECT PodcastName FROM Podcasts WHERE FeedURL = %s", (feed_url,))
+
         result = cursor.fetchone()
-        remove_podcast(cnx, result, user_id)
+        print(f"Result: {result}")
+        print(f"Feed URL: {feed_url}")
+        if result:
+            podcast_name = result[0]  # Unpack the tuple to get the podcast name
+            remove_podcast(cnx, podcast_name, feed_url, user_id)
+        else:
+            print(f"No podcast found with URL: {feed_url}")
 
     cnx.commit()
     cursor.close()
 
+
     # Notify Nextcloud of changes made locally (if any)
+    print("Syncing subscription changes...")
     if podcasts_to_add or podcasts_to_remove:
         sync_subscription_change(gpodder_url, {"Authorization": f"Bearer {gpodder_token}"}, list(podcasts_to_add),
                                  list(podcasts_to_remove))
@@ -2733,6 +2805,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
     # from requests.exceptions import RequestException
 
     # Fetch episode actions from Nextcloud
+    print("Fetching episode actions from Nextcloud...")
     try:
         episode_actions_response = requests.get(
             f"{gpodder_url}/index.php/apps/gpoddersync/episode_action",
@@ -2745,6 +2818,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
         episode_actions = []
 
     # Process episode actions from Nextcloud
+    print("Processing episode actions...")
     for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
         try:
             # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
@@ -2756,6 +2830,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
             print(f"Error processing episode action {action}: {e}")
 
     # Collect local episode listen times and push to Nextcloud if necessary
+    print("Collecting local episode listen times...")
     try:
         local_episode_times = get_local_episode_times(cnx, user_id)
     except Exception as e:
