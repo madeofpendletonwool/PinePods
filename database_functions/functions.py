@@ -1076,37 +1076,37 @@ def check_usernames(cnx, username):
 
 
 def record_listen_duration(cnx, episode_id, user_id, listen_duration):
+    if listen_duration < 0:
+        logging.info(f"Skipped updating listen duration for user {user_id} and episode {episode_id} due to invalid duration: {listen_duration}")
+        return
+    
     listen_date = datetime.datetime.now()
     cursor = cnx.cursor()
 
-    # Check if UserEpisodeHistory row already exists for the given user and episode
-    cursor.execute("SELECT * FROM UserEpisodeHistory WHERE UserID=%s AND EpisodeID=%s", (user_id, episode_id))
-    existing_row = cursor.fetchone()
+    try:
+        # Check if UserEpisodeHistory row already exists for the given user and episode
+        cursor.execute("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID=%s AND EpisodeID=%s", (user_id, episode_id))
+        existing_duration = cursor.fetchone()
 
-    if existing_row:
-        # UserEpisodeHistory row already exists, update ListenDuration
-        listen_duration_data = (listen_duration, user_id, episode_id)
-        update_listen_duration = ("UPDATE UserEpisodeHistory SET ListenDuration=%s WHERE UserID=%s AND EpisodeID=%s")
-        cursor.execute(update_listen_duration, listen_duration_data)
-    else:
-        # UserEpisodeHistory row does not exist, insert new row
-        add_listen_duration = ("INSERT INTO UserEpisodeHistory "
-                               "(UserID, EpisodeID, ListenDate, ListenDuration) "
-                               "VALUES (%s, %s, %s, %s)")
-        listen_duration_data = (user_id, episode_id, listen_date, listen_duration)
-        cursor.execute(add_listen_duration, listen_duration_data)
+        if existing_duration:
+            # Update only if the new duration is greater than the existing duration
+            if listen_duration > existing_duration[0]:
+                update_listen_duration = "UPDATE UserEpisodeHistory SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND EpisodeID=%s"
+                cursor.execute(update_listen_duration, (listen_duration, listen_date, user_id, episode_id))
+                logging.info(f"Updated listen duration for user {user_id} and episode {episode_id} to {listen_duration}")
+        else:
+            # Insert new row
+            add_listen_duration = "INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration) VALUES (%s, %s, %s, %s)"
+            cursor.execute(add_listen_duration, (user_id, episode_id, listen_date, listen_duration))
+            logging.info(f"Inserted new listen duration for user {user_id} and episode {episode_id}: {listen_duration}")
 
-    cnx.commit()
-    cursor.close()
+        cnx.commit()
+    except Exception as e:
+        logging.error(f"Failed to record listen duration due to: {e}")
+        cnx.rollback()
+    finally:
+        cursor.close()
     # cnx.close()
-
-# def get_local_episode_times(cnx, user_id):
-#     cursor = cnx.cursor()
-#     # Fetch all listen durations for the given user
-#     cursor.execute("SELECT EpisodeID, ListenDuration FROM UserEpisodeHistory WHERE UserID=%s", (user_id,))
-#     episode_times = [{"episode_id": row[0], "listen_duration": row[1]} for row in cursor.fetchall()]
-#     cursor.close()
-#     return episode_times
 
 def get_local_episode_times(cnx, user_id):
     cursor = cnx.cursor()
@@ -1115,7 +1115,8 @@ def get_local_episode_times(cnx, user_id):
     SELECT 
         e.EpisodeURL, 
         p.FeedURL, 
-        ueh.ListenDuration 
+        ueh.ListenDuration,
+        e.EpisodeDuration
     FROM UserEpisodeHistory ueh
     JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
     JOIN Podcasts p ON e.PodcastID = p.PodcastID
@@ -1124,12 +1125,21 @@ def get_local_episode_times(cnx, user_id):
     episode_times = [{
         "episode_url": row[0],
         "podcast_url": row[1],
-        "listen_duration": row[2]
+        "listen_duration": row[2],
+        "episode_duration": row[3]
     } for row in cursor.fetchall()]
     cursor.close()
     return episode_times
 
 
+
+def generate_guid(episode_time):
+    import uuid
+    # Concatenate the podcast and episode URLs to form a unique string for each episode
+    unique_string = episode_time["podcast_url"] + episode_time["episode_url"]
+    # Generate a UUID based on the MD5 hash of the unique string
+    guid = uuid.uuid3(uuid.NAMESPACE_URL, unique_string)
+    return str(guid)
 
 
 def check_episode_playback(cnx, user_id, episode_title, episode_url):
@@ -2643,6 +2653,24 @@ def get_gpodder_settings(database_type, cnx, user_id):
     cursor.close()
     return result
 
+def get_nextcloud_settings(database_type, cnx, user_id):
+    cursor = cnx.cursor()
+
+    # Query to fetch gPodder settings for the specified user
+    cursor.execute(
+        "SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM Users WHERE UserID = %s",
+        (user_id,)
+    )
+
+    result = cursor.fetchone()
+    cursor.close()
+
+    # Check if gPodder settings are not empty and return them
+    if result and result[0] and result[1] and result[2]:
+        return result[0], result[1], result[2]  # Returning URL, Token, and Login Name
+    else:
+        return None, None, None  # gPodder is not set up
+
 
 def remove_gpodder_settings(database_type, cnx, user_id):
     cursor = cnx.cursor()
@@ -2690,43 +2718,78 @@ def get_nextcloud_users(database_type, cnx):
 
     return users
 
-def current_timestamp():
-    # Return the current time in ISO 8601 format, explicitly marked as UTC
-    return datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+import datetime
 
-def add_podcast_to_nextcloud(gpodder_url, api_key, podcast_url):
+def current_timestamp():
+    # Return the current time in 'YYYY-MM-DDTHH:MM:SS' format, without fractional seconds or 'Z'
+    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+
+def add_podcast_to_nextcloud(cnx, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    encryption_key = get_encryption_key(cnx)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
     url = f"{gpodder_url}/index.php/apps/gpoddersync/subscription_change/create"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
     data = {
         "add": [podcast_url],
         "remove": []
     }
-    response = requests.post(url, json=data, headers=headers)
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(url, json=data, headers=headers, auth=auth)
     try:
         response.raise_for_status()
         print(f"Podcast added to Nextcloud successfully: {response.text}")
     except requests.exceptions.HTTPError as e:
         print(f"Failed to add podcast to Nextcloud: {e}")
+        print(f"Response body: {response.text}")
 
-def remove_podcast_from_nextcloud(gpodder_url, api_key, podcast_url):
+
+def remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    encryption_key = get_encryption_key(cnx)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
     url = f"{gpodder_url}/index.php/apps/gpoddersync/subscription_change/create"
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
     headers = {
-        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     data = {
         "add": [],
         "remove": [podcast_url]
     }
-    response = requests.post(url, json=data, headers=headers)
+    response = requests.post(url, json=data, headers=headers, auth=auth)
     try:
         response.raise_for_status()
         print(f"Podcast removed from Nextcloud successfully: {response.text}")
     except requests.exceptions.HTTPError as e:
         print(f"Failed to remove podcast from Nextcloud: {e}")
+        print(f"Response body: {response.text}")
 
 
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login):
@@ -2822,10 +2885,19 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
     for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
         try:
             # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
-            if action["action"] in ["play", "update_time"] and "position" in action and "episode" in action:
-                episode_id = get_episode_id_by_url(cnx, action["episode"])
-                if episode_id:
-                    record_listen_duration(cnx, episode_id, user_id, int(action["position"]))
+            print(f"Processing action: {action}")
+            if action["action"].lower() in ["play", "update_time"]:
+                print(f"Action details - Podcast: {action['podcast']}, Episode: {action['episode']}, Position: {action.get('position')}")
+                if "position" in action and action["position"] != -1:
+                    episode_id = get_episode_id_by_url(cnx, action["episode"])
+                    if episode_id:
+                        print(f"Recording listen duration for episode ID {episode_id} with position {action['position']}")
+                        record_listen_duration(cnx, episode_id, user_id, int(action["position"]))
+                    else:
+                        print(f"No episode ID found for URL {action['episode']}")
+                else:
+                    print(f"Skipping action due to invalid position: {action}")
+
         except Exception as e:
             print(f"Error processing episode action {action}: {e}")
 
@@ -2837,25 +2909,36 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
         print(f"Error fetching local episode times: {e}")
         local_episode_times = []
 
+    UPLOAD_BULK_SIZE = 30
     # Send local episode listen times to Nextcloud
     update_actions = []
     for episode_time in local_episode_times:
         update_actions.append({
             "podcast": episode_time["podcast_url"],
             "episode": episode_time["episode_url"],
-            "action": "update_time",  # This is a hypothetical action
-            "timestamp": current_timestamp(),  # Your method to get the current timestamp
-            "position": episode_time["listen_duration"]
+            "action": "play",
+            "timestamp": current_timestamp(),
+            "position": episode_time["listen_duration"],
+            "started": 0,
+            "total": episode_time["episode_duration"],
+            "guid": generate_guid(episode_time)
         })
-
-    if update_actions:
+    print(f"Update actions: {update_actions}")
+    # Split the list of update actions into chunks
+    update_actions_chunks = [update_actions[i:i + UPLOAD_BULK_SIZE] for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)]
+    
+    from urllib.parse import urljoin
+    for chunk in update_actions_chunks:
         try:
+            url = urljoin(gpodder_url, "/index.php/apps/gpoddersync/episode_action/create")
             response = requests.post(
-                f"{gpodder_url}/index.php/apps/gpoddersync/episode_action/create",
-                json=update_actions,
-                auth=HTTPBasicAuth(gpodder_login, gpodder_token)  # Use Basic Auth here
+                url,
+                json=chunk,
+                auth=HTTPBasicAuth(gpodder_login, gpodder_token),
+                headers={"Accept": "application/json"}
             )
-            response.raise_for_status()  # Check for HTTP errors
+            if response.status_code != 200:
+                raise RequestException(f"Unexpected status code: {response.status_code}")
             print(f"Update episode times response: {response.status_code}")
         except RequestException as e:
             print(f"Error updating episode times in Nextcloud: {e}")

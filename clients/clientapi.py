@@ -682,8 +682,9 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
     if key_id == podcast_values.user_id or is_web_key:
         # Check if user has nextcloud enabled and add to subscription list
         if database_functions.functions.check_gpodder_settings(database_type, cnx, podcast_values.user_id):
-            gpodder_url, gpodder_token = database_functions.functions.get_gpodder_settings(database_type, cnx, podcast_values.user_id)
-            database_functions.functions.add_podcast_to_nextcloud(gpodder_url, gpodder_token, podcast_values.pod_feed_url)
+            gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, podcast_values.user_id)
+            print(f"Adding podcast to Nextcloud: {gpodder_url}, {gpodder_login}, {gpodder_token}, {podcast_values.pod_feed_url}")
+            database_functions.functions.add_podcast_to_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
         result = database_functions.functions.add_podcast(cnx, podcast_values.dict(), podcast_values.user_id)
         if result:
             return {"success": True}
@@ -1083,6 +1084,9 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
+    if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+        gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+        database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
     database_functions.functions.remove_podcast(cnx, data.podcast_name, data.podcast_url, data.user_id)
     return {"success": True}
 
@@ -1109,6 +1113,9 @@ async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=De
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
+    if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+        gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+        database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
     database_functions.functions.remove_podcast_id(cnx, data.podcast_id, data.user_id)
     return {"success": True}
 
