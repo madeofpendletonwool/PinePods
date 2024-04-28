@@ -232,6 +232,7 @@ pub fn podcasts() -> Html {
                                 podcast.EpisodeCount.clone(),
                                 Some(categories),
                                 podcast.WebsiteURL.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                                user_id.unwrap(),
                             );
                             
     

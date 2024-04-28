@@ -7,15 +7,19 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use yew_router::history::BrowserHistory;
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, parse_date, format_datetime, match_date_format};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
 // use crate::components::gen_funcs::check_auth;
+use crate::components::episodes_layout::UIStateMsg;
 use web_sys::HtmlInputElement;
 use web_sys::HtmlElement;
 use wasm_bindgen_futures::spawn_local;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 use async_std::task::sleep;
 use std::time::Duration;
+use web_sys::window;
 use crate::requests::login_requests::use_check_authentication;
 
 #[derive(Properties, Clone, PartialEq)]
@@ -63,7 +67,30 @@ pub fn search(_props: &SearchProps) -> Html {
     // let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let error_message = audio_state.error_message.clone();
+    let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
+
+    {
+        let ui_dispatch = audio_dispatch.clone();
+        use_effect(move || {
+            let window = window().unwrap();
+            let document = window.document().unwrap();
+
+            let closure = Closure::wrap(Box::new(move |_event: Event| {
+                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
+                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
+            }) as Box<dyn Fn(_)>);
+
+            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+
+            // Return cleanup function
+            move || {
+                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                closure.forget(); // Prevents the closure from being dropped
+            }
+        });
+    }
     // let search_results = use_state(|| Vec::new());
     // let search_results_clone = search_results.clone();
 
@@ -249,7 +276,10 @@ pub fn search(_props: &SearchProps) -> Html {
                                         episode_id_for_closure.clone(),
                                     );
 
-                                    let format_release = format!("Released on: {}", &episode.EpisodePubDate);
+                                    let date_format = match_date_format(state.date_format.as_deref());
+                                    let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
+                                    let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                                    
                                     let item = episode_item(
                                         Box::new(episode),
                                         description.clone(),
@@ -285,6 +315,12 @@ pub fn search(_props: &SearchProps) -> Html {
                 } else {
                     html! {}
                 }
+            }
+            if let Some(error) = error_message {
+                <div class="error-snackbar">{ error }</div>
+            }
+            if let Some(info) = info_message {
+                <div class="info-snackbar">{ info }</div>
             }
         </div>
         </>

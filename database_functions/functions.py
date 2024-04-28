@@ -376,28 +376,25 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
         cursor = cnx.cursor(dictionary=True)
 
     query = (
-        f"SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-        f"Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-        f"UserEpisodeHistory.ListenDuration "
-        f"FROM Episodes "
-        f"INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-        f"LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
-        f"WHERE Podcasts.PodcastID = %s "
-        f"AND Podcasts.UserID = %s "
-        f"ORDER BY Episodes.EpisodePubDate DESC")
+        "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, "
+        "Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription, "
+        "Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+        "UserEpisodeHistory.ListenDuration, CAST(Episodes.EpisodeID AS CHAR) AS guid "
+        "FROM Episodes "
+        "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+        "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
+        "WHERE Podcasts.PodcastID = %s AND Podcasts.UserID = %s "
+        "ORDER BY Episodes.EpisodePubDate DESC"
+    )
 
     cursor.execute(query, (user_id, podcast_id, user_id))
     rows = cursor.fetchall()
-
     cursor.close()
 
-    if not rows:
-        return None
-
-    return rows
+    return rows or None  # Return None or empty list if no rows found
 
 
-def get_podcast_id(database_type, cnx, user_id, podcast_feed):
+def get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_name):
     if database_type == "postgresql":
         cursor = cnx.cursor(cursor_factory=RealDictCursor)
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
@@ -406,9 +403,9 @@ def get_podcast_id(database_type, cnx, user_id, podcast_feed):
     # Adjusted query to select only the PodcastID based on FeedURL and UserID
     query = (f"SELECT PodcastID "
              f"FROM Podcasts "
-             f"WHERE FeedURL = %s AND UserID = %s")
+             f"WHERE FeedURL = %s AND PodcastName = %s AND UserID = %s")
 
-    cursor.execute(query, (podcast_feed, user_id))
+    cursor.execute(query, (podcast_feed, podcast_name, user_id))
     row = cursor.fetchone()  # Fetching only one row as we expect a single result
 
     cursor.close()

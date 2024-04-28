@@ -211,7 +211,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let pod_title_og_clone = pod_title_og.clone();
 
         Callback::from(move |_: MouseEvent| {
-            
+            dispatch.reduce_mut(|state| state.is_loading = Some(true));
             // Create a new set from the current state for modifications.
             let user_id = user_id_clone.clone();
             let api_key = api_key_clone.clone();
@@ -248,11 +248,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             dispatch.reduce_mut(|state| {
                                 state.info_message = Some("Podcast successfully removed".to_string());
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         },
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!("Error removing podcast: {:?}", e));
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 });
@@ -300,11 +302,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             dispatch.reduce_mut(|state| {
                                 state.info_message = Some("Podcast successfully added".to_string());
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         },
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!("Error adding podcast: {:?}", e));
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 });
@@ -390,7 +394,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
                         <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
-                            <button class={format!("selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>
+                            <button class={format!("item-container-button selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>
                                 <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
                                 // { button_text }
                             </button>

@@ -7,7 +7,7 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use yew_router::history::BrowserHistory;
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, parse_date, format_datetime, match_date_format};
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
 use crate::requests::login_requests::use_check_authentication;
@@ -220,7 +220,10 @@ pub fn history() -> Html {
                                             episode_id_for_closure.clone(),
                                         );
             
-                                        let format_release = format!("Released on: {}", &episode.EpisodePubDate);
+                                        let date_format = match_date_format(state.date_format.as_deref());
+                                        let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
+                                        let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                                        
                                         let item = episode_item(
                                             Box::new(episode),
                                             description.clone(),

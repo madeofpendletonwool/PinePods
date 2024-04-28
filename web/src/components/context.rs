@@ -101,6 +101,7 @@ pub struct AppState {
     pub user_tz: Option<String>,
     pub hour_preference: Option<i16>,
     pub date_format: Option<String>,
+    pub podcast_added: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

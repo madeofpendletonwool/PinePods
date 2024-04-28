@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use js_sys::encode_uri_component;
 use yew::{Callback, function_component, Html, html, TargetCast, use_effect, use_effect_with, use_node_ref};
 use yew::prelude::*;
 use web_sys::{Event, MouseEvent, window};
@@ -6,12 +7,14 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::{AudioPlayer, on_play_click};
-use super::gen_components::{UseScrollToTop, Search_nav};
+use super::gen_components::{UseScrollToTop, Search_nav, EpisodeTrait};
 use super::app_drawer::App_drawer;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues, call_check_podcast, call_remove_podcasts_name, RemovePodcastValuesName};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use yew::Properties;
+use super::gen_components::ContextButton;
+use super::gen_funcs::{parse_date, format_datetime, match_date_format};
 use crate::requests::login_requests::use_check_authentication;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
 
@@ -122,6 +125,8 @@ pub fn episode_layout() -> Html {
 
     let session_dispatch = _search_dispatch.clone();
     let session_state = search_state.clone();
+    let podcast_added = search_state.podcast_added.unwrap_or_default();
+
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -282,7 +287,7 @@ pub fn episode_layout() -> Html {
                 match call_remove_podcasts_name(&server_name_wasm.unwrap(), &api_key_wasm, &pod_values_clone).await {
                     Ok(success) => {
                         if success {
-                            dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
+                            dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully removed".to_string()));
                             is_added_inner.set(false);
                         } else {
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
@@ -435,7 +440,10 @@ pub fn episode_layout() -> Html {
                                 let user_id_play = user_id.clone();
                                 let api_key_play = api_key.clone();
 
-                                let is_expanded = search_state.expanded_descriptions.contains(&episode.guid);
+                                let is_expanded = search_state.expanded_descriptions.contains(
+                                    &episode.guid.clone().unwrap()
+                                );
+                                
 
                                 let sanitized_description = sanitize_html_with_blank_target(&episode.description.clone().unwrap_or_default());
 
@@ -445,15 +453,15 @@ pub fn episode_layout() -> Html {
                                     truncate_description(sanitized_description, 300)
                                 };
 
+                                let search_state_toggle = search_state_clone.clone();
                                 let toggle_expanded = {
                                     let search_dispatch_clone = search_dispatch.clone();
-                                    let episode_guid = episode.guid.clone();
-
+                                    let episode_guid = episode.guid.clone().unwrap();
                                     Callback::from(move |_: MouseEvent| {
                                         let guid_clone = episode_guid.clone();
                                         let search_dispatch_call = search_dispatch_clone.clone();
 
-                                        if search_state_clone.expanded_descriptions.contains(&guid_clone) {
+                                        if search_state_toggle.expanded_descriptions.contains(&guid_clone) {
                                             search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
                                         } else {
                                             search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
@@ -461,6 +469,7 @@ pub fn episode_layout() -> Html {
 
                                     })
                                 };
+
 
                                 let state = state.clone();
                                 let on_play_click = on_play_click(
@@ -478,8 +487,10 @@ pub fn episode_layout() -> Html {
                                     None,
                                 );
 
-
-                                let format_release = format!("Released on: {}", &episode.pub_date.clone().unwrap_or_default());
+                                let date_format = match_date_format(search_state_clone.date_format.as_deref());
+                                let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
+                                let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
+                                let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
                                 html! {
                                     <div class="item-container flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
                                         <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 md:w-4/12 object-cover pl-4"/>
@@ -513,6 +524,21 @@ pub fn episode_layout() -> Html {
                                             >
                                                 <span class="material-icons large-material-icons">{"play_arrow"}</span>
                                             </button>
+                                            {
+                                                if podcast_added {
+                                                    let page_type = "episode_layout".to_string();
+
+                                                    let context_button = html! {
+                                                        <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
+                                                    };
+
+
+                                                    context_button
+
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
                                         </div>
 
 

@@ -957,3 +957,38 @@ pub async fn call_increment_played(
         )))
     }
 }
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct PodcastIdResponse {
+    pub episodes: i32,
+}
+
+pub async fn call_get_podcast_id(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    podcast_feed: &str,
+    podcast_title: &str,
+) -> Result<i32, anyhow::Error> {
+    // Append the user_id, podcast_feed, and podcast_title as query parameters
+    let encoded_feed = utf8_percent_encode(podcast_feed, NON_ALPHANUMERIC).to_string();
+    let encoded_title = utf8_percent_encode(podcast_title, NON_ALPHANUMERIC).to_string();
+    let url = format!("{}/api/data/get_podcast_id?user_id={}&podcast_feed={}&podcast_title={}", server_name, user_id, encoded_feed, encoded_title);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to get podcast id: {}", response.status_text())));
+    }
+
+    let response_text = response.text().await?;
+
+    let response_data: PodcastIdResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.episodes)
+}

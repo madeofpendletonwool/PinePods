@@ -12,6 +12,7 @@ use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
 use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode, call_remove_downloaded_episode, call_remove_queued_episode, call_remove_saved_episode};
 use crate::requests::search_pods::SearchEpisode;
+use crate::requests::search_pods::Episode as SearchNewEpisode;
 use std::any::Any;
 use crate::components::gen_funcs::format_time;
 
@@ -124,6 +125,7 @@ pub fn search_bar() -> Html {
                                 console::log_1(&js_value);
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
+                                    state.podcast_added = Some(false);
                                 });
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/pod_layout"); // Use the route path
@@ -209,6 +211,11 @@ pub fn search_bar() -> Html {
         Callback::from(move |_| on_dropdown_select("podcast_index"))
     };
 
+    let search_index_display = match search_index.as_str() {
+        "podcast_index" => "Podcast Index",
+        "itunes" => "iTunes",
+        _ => "Unknown",
+    };
 
     html! {
     <div class="episodes-container w-full search-background"> // Ensure full width and set background color
@@ -221,7 +228,7 @@ pub fn search_bar() -> Html {
                     class="dropdown-button hidden md:flex md:block flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center border border-r-0 border-gray-300 dark:border-gray-700 rounded-l-lg focus:ring-4 focus:outline-none"
                     type="button"
                 >
-                    {format!("{} ", (*search_index).as_str())}
+                    {format!("{} ", search_index_display)}
                     // SVG icon
                     <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
                         <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
@@ -841,6 +848,28 @@ impl EpisodeTrait for SearchEpisode {
 
     fn get_episode_id(&self) -> i32 {
         self.EpisodeID.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for SearchNewEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.artwork.clone().unwrap()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    fn get_episode_id(&self) -> i32 {
+        self.episode_id.clone().unwrap()
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
