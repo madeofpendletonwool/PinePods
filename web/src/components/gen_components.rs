@@ -15,6 +15,7 @@ use crate::requests::search_pods::SearchEpisode;
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use std::any::Any;
 use crate::components::gen_funcs::format_time;
+use wasm_bindgen::prelude::*;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct ErrorMessageProps {
@@ -918,7 +919,9 @@ pub fn episode_item(
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
-    let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+    let formatted_listen_duration = span_duration.map(|ld| format_time
+    (ld as f64));
+    let episode_guid = episode.get_episode_id().to_string();
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
@@ -928,9 +931,20 @@ pub fn episode_item(
         }
     });
     let checkbox_ep = episode.get_episode_id();
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggleDescription(guid: &str, expanded: bool);
+    } 
+    let description_class = if is_expanded {
+        "desc-expanded".to_string()
+    } else {
+        "desc-collapsed".to_string()
+    };
     html! {
         <div>
-            <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                 {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600" 
@@ -939,11 +953,13 @@ pub fn episode_item(
                 } else {
                     html! {}
                 }}
-                <img 
-                    src={episode.get_episode_artwork()} 
-                    alt={format!("Cover for {}", episode.get_episode_title())} 
-                    class="w-2/12 md:w-4/12 object-cover pl-4"
-                />
+                <div class="flex flex-col w-auto object-cover pl-4">
+                    <img 
+                        src={episode.get_episode_artwork()} 
+                        alt={format!("Cover for {}", episode.get_episode_title())} 
+                        class="object-cover align-top-cover w-full item-container img"
+                    />
+                </div> 
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_shownotes_click}>
                         { episode.get_episode_title() }
@@ -951,8 +967,8 @@ pub fn episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item_container-text hidden md:block">
-                                <div class="item_container-text episode-description-container">
+                            <div class="item-container-text hidden md:block">
+                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>
                                 <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
@@ -986,7 +1002,7 @@ pub fn episode_item(
                         }
                     }
                 </div>
-                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
+                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8" style="align-self: center;"> // Add align-self: center; here
                     <button
                         class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                         onclick={on_play_click}

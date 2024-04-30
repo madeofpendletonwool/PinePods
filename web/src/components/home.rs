@@ -8,8 +8,8 @@ use yew_router::history::BrowserHistory;
 use crate::components::context::{AppState, UIState, ExpandedDescriptions};
 use crate::components::audio::AudioPlayer;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, format_datetime, parse_date, DateFormat};
-use crate::requests::pod_req::{RecentEps};
-use crate::requests::pod_req::{Episode as EpisodeData}; 
+use crate::requests::pod_req::RecentEps;
+use crate::requests::pod_req::Episode as EpisodeData; 
 use crate::components::audio::on_play_click;
 use crate::components::desc_impl::AppStateMsg;
 // use crate::components::gen_funcs::check_auth;
@@ -18,6 +18,8 @@ use wasm_bindgen::closure::Closure;
 use web_sys::window;
 use wasm_bindgen::JsCast;
 use crate::requests::login_requests::use_check_authentication;
+
+use wasm_bindgen::prelude::*;
 
 
 #[function_component(Home)]
@@ -232,29 +234,39 @@ pub fn episode(props: &EpisodeProps) -> Html {
 
     let sanitized_description = sanitize_html_with_blank_target(&props.episode.EpisodeDescription.clone());
 
-    let (description, _is_truncated) = if desc_expanded {
-        (sanitized_description, false)
-    } else {
-        truncate_description(sanitized_description, 300)
-    };
+    // let (description, _is_truncated) = if desc_expanded {
+    //     (sanitized_description, false)
+    // } else {
+    //     truncate_description(sanitized_description, 300)
+    // };
 
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggleDescription(guid: &str, expanded: bool);
+    }
+
+    let episode_guid = props.episode.EpisodeID.clone().to_string();
     let toggle_expanded = {
         let desc_dispatch = desc_dispatch.clone();
         let desc_state = desc_state.clone();
-        // let state_clone = state.clone();
-        let episode_guid = props.episode.EpisodeID.clone();
-
+        let episode_guid = props.episode.EpisodeID.clone().to_string();
+    
         Callback::from(move |_: MouseEvent| {
-            let guid_clone = episode_guid.to_string().clone();
-            let desc_dispatch = desc_dispatch.clone();
-
-            if desc_state.expanded_descriptions.contains(&guid_clone) {
-                desc_dispatch.apply(AppStateMsg::CollapseEpisode(guid_clone));
-            } else {
-                desc_dispatch.apply(AppStateMsg::ExpandEpisode(guid_clone));
-            }
+            let guid = episode_guid.clone();
+            desc_dispatch.reduce_mut(move |state| {
+                if state.expanded_descriptions.contains(&guid) {
+                    state.expanded_descriptions.remove(&guid); // Collapse the description
+                    toggleDescription(&guid, false); // Call JavaScript function
+                } else {
+                    state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                    toggleDescription(&guid, true); // Call JavaScript function
+                }
+            });
         })
     };
+    
+    
 
     let episode_url_for_closure = episode_url_clone.clone();
     let episode_title_for_closure = episode_title_clone.clone();
@@ -305,7 +317,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
     let item = episode_item(
         Box::new(props.episode.clone()),
-        description.clone(),
+        sanitized_description.clone(),
         desc_expanded,
         &format_release,
         on_play_click,

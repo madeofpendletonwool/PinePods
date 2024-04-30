@@ -735,11 +735,30 @@ body {
     color: var(--text-color); /* Replace with your desired color */
 }
 
+.desc-expanded {
+    max-height: none;
+    overflow: visible;
+}
+
+.desc-collapsed {
+    max-height: 50px; /* or whatever max height you determine */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+
 .item-container {
     background-color: var(--container-background);
     border-color: var(--border-color);
     display: flex;
     justify-content: space-between;
+    align-items: center; /* Add this line */
+    overflow: visible;
+}
+
+.align-top-cover {
+    align-self: flex-start;
 }
 
 .button-container {
@@ -755,7 +774,9 @@ body {
     max-width: 200px; /* Adjust this value as needed */
     max-height: 200px; /* Adjust this value as needed */
     object-fit: cover; /* This will ensure the image covers the area without stretching */
-    align-self: center;
+    align-self: flex-start;
+    margin-top: 10px;
+    border-radius: 10px;
 }
 
 .item_container-text {

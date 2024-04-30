@@ -435,7 +435,7 @@ pub fn episode_layout() -> Html {
                                         0
                                     }
                                 };
-                                let episode_id_clone = 0;
+                                let episode_id_clone = episode.episode_id.unwrap_or(0);
                                 let server_name_play = server_name.clone();
                                 let user_id_play = user_id.clone();
                                 let api_key_play = api_key.clone();
@@ -492,7 +492,7 @@ pub fn episode_layout() -> Html {
                                 let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
                                 let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
                                 html! {
-                                    <div class="item-container flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
+                                    <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
                                         <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 md:w-4/12 object-cover pl-4"/>
                                         <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                             <p class="item_container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
@@ -516,13 +516,12 @@ pub fn episode_layout() -> Html {
                                                 { format_release }
                                             </span>
                                         </div>
-                                        <div class="mr-4">
+                                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
                                             <button
-                                                class="item-container-button border-solid border selector-button font-bold rounded-full flex items-center justify-center"
-                                                style="width: 60px; height: 60px;"
+                                                class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                                 onclick={on_play_click}
                                             >
-                                                <span class="material-icons large-material-icons">{"play_arrow"}</span>
+                                                <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                                             </button>
                                             {
                                                 if podcast_added {
