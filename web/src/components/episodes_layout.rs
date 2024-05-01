@@ -15,6 +15,7 @@ use wasm_bindgen::JsCast;
 use yew::Properties;
 use super::gen_components::ContextButton;
 use super::gen_funcs::{parse_date, format_datetime, match_date_format};
+use crate::components::gen_funcs::format_time;
 use crate::requests::login_requests::use_check_authentication;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
 
@@ -380,7 +381,7 @@ pub fn episode_layout() -> Html {
                             <div class="item-header-info">
                                 <p class="header-text">{ format!("Episode Count: {}", &podcast_info.podcast_episode_count) }</p>
                                 <p class="header-text">{ format!("Authors: {}", &podcast_info.podcast_author) }</p>
-                                <p class="header-text">{ format!("Explicit: {}", &podcast_info.podcast_explicit) }</p>
+                                <p class="header-text">{ format!("Explicit: {}", if podcast_info.podcast_explicit { "Yes" } else { "No" }) }</p>
 
                                 <div>
                                     {
@@ -487,20 +488,28 @@ pub fn episode_layout() -> Html {
                                     None,
                                 );
 
+                                let description_class = if is_expanded {
+                                    "desc-expanded".to_string()
+                                } else {
+                                    "desc-collapsed".to_string()
+                                };
+
                                 let date_format = match_date_format(search_state_clone.date_format.as_deref());
                                 let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
                                 let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
                                 let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
+                                let duration = episode.duration.clone().unwrap().parse::<f64>().unwrap_or(0.0);
+                                let formatted_duration = format_time(duration);
                                 html! {
                                     <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
-                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="w-2/12 md:w-4/12 object-cover pl-4"/>
+                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="object-cover align-top-cover w-full item-container img"/>
                                         <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                             <p class="item_container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
                                             // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                             {
                                                 html! {
-                                                    <div class="item_container-text hidden md:block">
-                                                        <div class="item_container-text episode-description-container">
+                                                    <div class="item-container-text hidden md:block">
+                                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                                             <SafeHtml html={description} />
                                                         </div>
                                                         <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
@@ -515,6 +524,24 @@ pub fn episode_layout() -> Html {
                                                 </svg>
                                                 { format_release }
                                             </span>
+                                            {
+                                                // if formatted_listen_duration.is_some() {
+                                                //     html! {
+                                                //         <div class="flex items-center space-x-2">
+                                                //             <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                                //             <div class="progress-bar-container">
+                                                //                 <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                                //             </div>
+                                                //             <span class="item_container-text">{ formatted_duration }</span>
+                                                //         </div>
+                                                //     }
+                                                    
+                                                // } else {
+                                                    html! {
+                                                        <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                                                    }
+                                                // }
+                                            }
                                         </div>
                                         <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
                                             <button

@@ -11,11 +11,12 @@ Version 0.6.2
 - [x] Added Nextcloud timestamp functionality. Podcasts will now sync listen timestamps from nextcloud. Start an episode on pinepods and finish it on Antennapods!
 - [x] Added css files for material icons rather than pulling them down from Google's servers (Thanks @civilblur)
 - [x] Fixed display issue on the search bar so it correctly formats itunes and podcast index
-- [ ] Added in check on the podcast page to check if the podcast has been added. This allows the podcast to have the context button if it's added to the db
-- [ ] Readjusted the format of episodes on screen. This tightens them up a bit and allows more episodes to show at once.
+- [x] Added in check on the podcast page to check if the podcast has been added. This allows the podcast to have the context button if it's added to the db
+- [x] Readjusted the format of episodes on screen. This tightens them up and ensures they are all always consistently sized. It also allows more episodes to show at once. 
 - [x] Added loading icon when a podcast is being added. This gives some feedback to the user during a couple seconds it takes to add the feed. (Also improved the look of that button)
 - [x] Fixed date formatting issue on all pages so they format using the user's timezone preferences.
 - [x] Added notifications when saving, downloading, or queueing episode from search page.
+- [x] Improved look at the episode page. Fixed up the spacing and the buttons.
 
 
 Version 0.6.1

@@ -310,7 +310,7 @@ pub fn epsiode() -> Html {
                                 </button>
                             </div>
                             <hr class="episode-divider" />
-                            <div class="episode-description">
+                            <div class="episode-single-desc episode-description">
                             // <p>{ description }</p> 
                             <div class="item_container-text episode-description-container">
                                 <SafeHtml html={description} />
