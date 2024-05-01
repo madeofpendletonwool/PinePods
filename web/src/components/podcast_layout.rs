@@ -6,7 +6,7 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::use_store;
 use super::app_drawer::App_drawer;
-use super::gen_components::Search_nav;
+use super::gen_components::{UseScrollToTop, Search_nav};
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
 use crate::requests::search_pods::{call_parse_podcast_url, Podcast, UnifiedPodcast};
@@ -74,6 +74,7 @@ pub fn pod_layout() -> Html {
         <>
             <div class="main-container">
                 <Search_nav />
+                <UseScrollToTop />
                 <h1 class="item_container-text text-2xl font-bold my-4 center-text">{ "Podcast Search Results" }</h1>
                 {
                     if let Some(results) = search_results {
@@ -210,7 +211,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let pod_title_og_clone = pod_title_og.clone();
 
         Callback::from(move |_: MouseEvent| {
-            
+            dispatch.reduce_mut(|state| state.is_loading = Some(true));
             // Create a new set from the current state for modifications.
             let user_id = user_id_clone.clone();
             let api_key = api_key_clone.clone();
@@ -247,11 +248,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             dispatch.reduce_mut(|state| {
                                 state.info_message = Some("Podcast successfully removed".to_string());
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         },
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!("Error removing podcast: {:?}", e));
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 });
@@ -299,11 +302,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             dispatch.reduce_mut(|state| {
                                 state.info_message = Some("Podcast successfully added".to_string());
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         },
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!("Error adding podcast: {:?}", e));
                             });
+                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 });
@@ -384,12 +389,12 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                     <div key={podcast.id.to_string()} class="item-container flex mb-4 shadow-md rounded-lg overflow-hidden">
                         <img src={podcast.image.clone()} alt={format!("Cover for {}", &podcast.title)} class="w-1/6 items-center object-cover"/>
                         <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
-                            <a onclick={on_title_click.clone()} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.title }</a>
+                            <a onclick={on_title_click.clone()} class="item_container-text text-xl font-semibold hover:underline">{ &podcast.title }</a>
                             <p class="item_container-text">{ &podcast.description }</p>
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
                         <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
-                            <button class={format!("selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>
+                            <button class={format!("item-container-button selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>
                                 <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
                                 // { button_text }
                             </button>

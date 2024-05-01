@@ -1,13 +1,13 @@
 use yew::{function_component, Html, html};
 use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click};
+use super::gen_components::{UseScrollToTop, Search_nav, empty_message, episode_item, on_shownotes_click};
 use crate::requests::pod_req;
 use yewdux::prelude::*;
 use yew_router::history::BrowserHistory;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description};
+use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, parse_date, format_datetime, match_date_format};
 use crate::requests::pod_req::SavedEpisodesResponse;
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::AppStateMsg;
@@ -139,7 +139,7 @@ pub fn saved() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
-            
+            <UseScrollToTop />
                 if *loading { // If loading is true, display the loading animation
                     {
                         html! {
@@ -248,8 +248,11 @@ pub fn saved() -> Html {
                                     dispatch.clone(),
                                     episode_id_for_closure.clone(),
                                 );
+
+                                let date_format = match_date_format(state.date_format.as_deref());
+                                let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
+                                let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
     
-                                let format_release = format!("Released on: {}", &episode.EpisodePubDate);
                                 let item = episode_item(
                                     Box::new(episode),
                                     description.clone(),

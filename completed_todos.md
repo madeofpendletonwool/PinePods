@@ -2,6 +2,25 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.6.2
+
+- [x] Fixed issue with removal of podcasts when no longer in nextcloud subscription
+- [x] Fixed scrolling problems where the app would sometimes start you at the bottom of the page when scrolling to different locations. 
+- [x] Fixed issue where a very occaitional podcast is unable to open it's feed. This was due to podcast redirects. Which caused the function to not work. It will now follow a redirect. 
+- [x] Fixed an issue where podcasts would be removed after adding when nextcloud sync is active
+- [x] Added Nextcloud timestamp functionality. Podcasts will now sync listen timestamps from nextcloud. Start an episode on pinepods and finish it on Antennapods!
+- [x] Added css files for material icons rather than pulling them down from Google's servers (Thanks @civilblur)
+- [x] Fixed display issue on the search bar so it correctly formats itunes and podcast index
+- [x] Added in check on the podcast page to check if the podcast has been added. This allows the podcast to have the context button if it's added to the db
+- [x] Readjusted the format of episodes on screen. This tightens them up and ensures they are all always consistently sized. It also allows more episodes to show at once. 
+- [x] Added loading icon when a podcast is being added. This gives some feedback to the user during a couple seconds it takes to add the feed. (Also improved the look of that button)
+- [x] Fixed date formatting issue on all pages so they format using the user's timezone preferences.
+- [x] Added notifications when saving, downloading, or queueing episode from search page.
+- [x] Improved look at the episode page. Fixed up the spacing and the buttons.
+
+
+Version 0.6.1
+
 Version 0.6.0
 
 - [x] Complete Rust WASM Rebuild

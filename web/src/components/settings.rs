@@ -1,6 +1,6 @@
 use yew::prelude::*;
 use super::app_drawer::{App_drawer};
-use super::gen_components::Search_nav;
+use super::gen_components::{UseScrollToTop, Search_nav};
 use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::components::audio::AudioPlayer;
@@ -201,6 +201,7 @@ pub fn settings() -> Html {
     <>
     <div class="main-container">
         <Search_nav />
+        <UseScrollToTop />
         <div class="my-4">
             <h1 class="item_container-text text-2xl font-bold mb-3">{ "Settings" }</h1>
             <div class="item_container-text tabs flex flex-wrap text-sm font-medium text-center border-b border-gray-200">

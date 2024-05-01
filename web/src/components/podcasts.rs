@@ -5,7 +5,7 @@ use yew::{function_component, Html, html};
 use yew::prelude::*;
 use yewdux::prelude::*;
 use super::app_drawer::App_drawer;
-use crate::components::gen_components::Search_nav;
+use crate::components::gen_components::{UseScrollToTop, Search_nav};
 use crate::requests::pod_req::{PodcastResponse, RemovePodcastValues, call_remove_podcasts};
 use crate::requests::pod_req;
 use web_sys::console;
@@ -130,6 +130,7 @@ pub fn podcasts() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
+            <UseScrollToTop />
             {
                 if let Some(podcasts) = state.podcast_feed_return.clone() {
                     let int_podcasts = podcasts.clone();
@@ -231,6 +232,7 @@ pub fn podcasts() -> Html {
                                 podcast.EpisodeCount.clone(),
                                 Some(categories),
                                 podcast.WebsiteURL.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                                user_id.unwrap(),
                             );
                             
     

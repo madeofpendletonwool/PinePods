@@ -12,12 +12,32 @@ use crate::components::episodes_layout::SafeHtml;
 use yew::Callback;
 use crate::requests::pod_req::{call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest, SavedEpisode, call_remove_downloaded_episode, call_remove_queued_episode, call_remove_saved_episode};
 use crate::requests::search_pods::SearchEpisode;
+use crate::requests::search_pods::Episode as SearchNewEpisode;
 use std::any::Any;
 use crate::components::gen_funcs::format_time;
+use wasm_bindgen::prelude::*;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct ErrorMessageProps {
     pub error_message: UseStateHandle<Option<String>>,
+}
+
+#[function_component(UseScrollToTop)]
+pub fn use_scroll_to_top() -> Html {
+    let history = BrowserHistory::new();
+    use_effect_with((), move |_| {
+        // Create a closure that will be called on history change
+        // Create a callback to scroll to the top of the page when the route changes
+        let callback = history.listen(move || {
+            web_sys::window().unwrap().scroll_to_with_x_and_y(0.0, 0.0);
+        });
+
+        // Cleanup function: This will be executed when the component unmounts
+        // or the dependencies of the effect change.
+        move || drop(callback)
+    });
+
+    html! {}
 }
 
 
@@ -106,6 +126,7 @@ pub fn search_bar() -> Html {
                                 console::log_1(&js_value);
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
+                                    state.podcast_added = Some(false);
                                 });
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/pod_layout"); // Use the route path
@@ -191,6 +212,11 @@ pub fn search_bar() -> Html {
         Callback::from(move |_| on_dropdown_select("podcast_index"))
     };
 
+    let search_index_display = match search_index.as_str() {
+        "podcast_index" => "Podcast Index",
+        "itunes" => "iTunes",
+        _ => "Unknown",
+    };
 
     html! {
     <div class="episodes-container w-full search-background"> // Ensure full width and set background color
@@ -203,7 +229,7 @@ pub fn search_bar() -> Html {
                     class="dropdown-button hidden md:flex md:block flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center border border-r-0 border-gray-300 dark:border-gray-700 rounded-l-lg focus:ring-4 focus:outline-none"
                     type="button"
                 >
-                    {format!("{} ", (*search_index).as_str())}
+                    {format!("{} ", search_index_display)}
                     // SVG icon
                     <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
                         <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
@@ -833,6 +859,28 @@ impl EpisodeTrait for SearchEpisode {
         self
     }
 }
+
+impl EpisodeTrait for SearchNewEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.artwork.clone().unwrap()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    fn get_episode_id(&self) -> i32 {
+        self.episode_id.clone().unwrap()
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
     
 
     // Implement other methods
@@ -871,7 +919,9 @@ pub fn episode_item(
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
-    let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+    let formatted_listen_duration = span_duration.map(|ld| format_time
+    (ld as f64));
+    let episode_guid = episode.get_episode_id().to_string();
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
@@ -881,9 +931,20 @@ pub fn episode_item(
         }
     });
     let checkbox_ep = episode.get_episode_id();
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggleDescription(guid: &str, expanded: bool);
+    } 
+    let description_class = if is_expanded {
+        "desc-expanded".to_string()
+    } else {
+        "desc-collapsed".to_string()
+    };
     html! {
         <div>
-            <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                 {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600" 
@@ -892,11 +953,13 @@ pub fn episode_item(
                 } else {
                     html! {}
                 }}
-                <img 
-                    src={episode.get_episode_artwork()} 
-                    alt={format!("Cover for {}", episode.get_episode_title())} 
-                    class="w-2/12 md:w-4/12 object-cover pl-4"
-                />
+                <div class="flex flex-col w-auto object-cover pl-4">
+                    <img 
+                        src={episode.get_episode_artwork()} 
+                        alt={format!("Cover for {}", episode.get_episode_title())} 
+                        class="object-cover align-top-cover w-full item-container img"
+                    />
+                </div> 
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_shownotes_click}>
                         { episode.get_episode_title() }
@@ -904,8 +967,8 @@ pub fn episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item_container-text hidden md:block">
-                                <div class="item_container-text episode-description-container">
+                            <div class="item-container-text hidden md:block">
+                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>
                                 <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
@@ -939,7 +1002,7 @@ pub fn episode_item(
                         }
                     }
                 </div>
-                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
+                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8" style="align-self: center;"> // Add align-self: center; here
                     <button
                         class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                         onclick={on_play_click}

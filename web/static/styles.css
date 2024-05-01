@@ -735,11 +735,30 @@ body {
     color: var(--text-color); /* Replace with your desired color */
 }
 
+.desc-expanded {
+    max-height: none;
+    overflow: visible;
+}
+
+.desc-collapsed {
+    max-height: 50px; /* or whatever max height you determine */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+
 .item-container {
     background-color: var(--container-background);
     border-color: var(--border-color);
     display: flex;
     justify-content: space-between;
+    align-items: center; /* Add this line */
+    overflow: visible;
+}
+
+.align-top-cover {
+    align-self: flex-start;
 }
 
 .button-container {
@@ -755,7 +774,9 @@ body {
     max-width: 200px; /* Adjust this value as needed */
     max-height: 200px; /* Adjust this value as needed */
     object-fit: cover; /* This will ensure the image covers the area without stretching */
-    align-self: center;
+    align-self: flex-start;
+    margin-top: 10px;
+    border-radius: 10px;
 }
 
 .item_container-text {
@@ -1199,38 +1220,59 @@ button.item-container-action-button.item-container-action-button {
 
 .episode-action-buttons {
     display: flex;
-    justify-content: space-around;
-    margin-bottom: 20px;
+    justify-content: space-between;
 }
 
 .episode-action-buttons button {
     background-color: transparent;
     color: var(--text-color);
-    padding: 2.5px 6px;
+    padding: 2px 5px 10px 15px; /* Add padding to the bottom */
     font-size: 1.0rem;
     font-weight: 500; /* Equivalent to font-medium */
     line-height: normal;
-    transition: color 0.15s ease-in-out;
+    flex-grow: 1; /* Make buttons take up equal space */
+    text-align: center;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out; /* Add transition for background-color */
+    border-radius: 5px; /* Round the corners */
+}
+
+.episode-action-buttons .play-button {
+    position: relative;
+    top: -2px; /* Adjust this value as needed */
+}
+
+.episode-action-buttons i.material-icons {
+    position: relative;
+    top: 7px; /* Adjust this value as needed */
+    margin-right: 5px; /* Add some space to the right of the icon */
 }
 
 .episode-action-buttons button:hover {
     background-color: var(--hover-color);
     color: var(--text-color);
+    border-color: var(--hover-color); /* Change border color on hover */
 }
 
 .episode-action-buttons button:focus {
     color: var(--text-color);
     outline: none;
+    border-color: var(--focus-color); /* Change border color on focus */
 }
 
 .episode-action-buttons button:active {
     color: var(--text-color);
+    border-color: var(--active-color); /* Change border color on active */
 }
 
 
 .episode-description {
     padding-left: 25px;
     /* Other styles as needed */
+}
+
+.episode-single-desc {
+    margin-top: 12px; /* Add space above the description */
+    /* ...rest of the styles */
 }
 
 
