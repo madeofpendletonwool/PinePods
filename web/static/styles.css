@@ -762,21 +762,67 @@ body {
 }
 
 .button-container {
-    display: flex;
+    display: flex !important;
+    align-items: center !important;
     justify-content: center; /* Centers button horizontally */
-    align-items: center;     /* Centers button vertically */
+    line-height: 1;
+}
+
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    /* Styling for the button container */
+    .button-container {
+        display: flex;
+        flex-basis: 15%; /* Adjust this percentage based on your design needs */
+        flex-grow: 0;
+        flex-shrink: 0;
+        flex-direction: column;
+        align-items: center; /* Center align the buttons vertically */
+        justify-content: center; /* Center align the buttons horizontally */
+        padding: 8px;
+        gap: 8px; /* Space between buttons */
+    }
+    .button-container button {
+        width: 60px; /* Fixed width */
+        height: 60px; /* Fixed height */
+        border-radius: 30px; /* Fully rounded borders */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none; /* Remove border */
+    }
 }
 
 
 
 
+
+
+
+
 .item-container img {
-    max-width: 200px; /* Adjust this value as needed */
-    max-height: 200px; /* Adjust this value as needed */
-    object-fit: cover; /* This will ensure the image covers the area without stretching */
+    width: 100%;
+    max-width: 200px;
+    max-height: 200px;
+    object-fit: cover;
     align-self: flex-start;
     margin-top: 10px;
+    margin-bottom: 10px;
     border-radius: 10px;
+}
+
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    .item-container img {
+        max-width: 150px; /* Smaller max width for smaller screens */
+        max-height: 150px; /* Smaller max height for smaller screens */
+        width: 150px;
+        height: 150px;
+    }
+}
+
+/* Additional styles for better alignment and consistency */
+.item-container {
+    align-items: center; /* Align items vertically */
+    justify-content: center; /* Center items horizontally */
 }
 
 .item_container-text {
@@ -797,6 +843,13 @@ body {
 
 .item-container-button.selector-button:hover {
     background-color: var(--hover-color); /* Replace #your-hover-color with your desired color */
+}
+
+/* Media query for smaller screens */
+@media (max-width: 768px) {
+    .item-container-button {
+        border: none; /* Remove border on small screens */
+    }
 }
 
 .item-container-alert-button {
@@ -894,9 +947,15 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .large-card-image {
-    max-width: 50%;
     height: auto;
     border-radius: 0.5rem;
+    width: 100%;
+    max-width: 200px;
+    max-height: 200px;
+    object-fit: cover;
+    align-self: center !important;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 .large-card-content {
@@ -933,13 +992,21 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .search-page-input {
-    width: 50%;
+    width: 60%;
     transition: all 1s ease-in-out;
     position: absolute;
     top: 40%; /* Start from the center of the screen */
     left: 50%; /* Start from the center of the screen */
     transform: translate(-50%, -50%); /* Move up and left by half of its own width and height */
     z-index: 1; /* Ensure it's on top */
+}
+
+/* Styles for smaller screens */
+@media (max-width: 768px) {
+    .search-page-input {
+        width: 90%; /* Increase width to 90% of the viewport */
+
+    }
 }
 
 .search-page-input.move-to-top {

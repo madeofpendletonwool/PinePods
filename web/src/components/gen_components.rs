@@ -1002,7 +1002,7 @@ pub fn episode_item(
                         }
                     }
                 </div>
-                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8" style="align-self: center;"> // Add align-self: center; here
+                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; here
                     <button
                         class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                         onclick={on_play_click}

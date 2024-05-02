@@ -2,6 +2,16 @@
 
 This is the list of previous todos that are now completed
 
+Version 0.6.3
+
+- [] Fix appearance and layout of podcasts on podcast screen or on searching pages.
+- [] Fix mobile experience to make images consistently sized
+- [x] Fixed layout of pinepods logo on user stats screen
+- [x] Expanded the search bar on search podcasts page for small screens. It was being cut off a bit
+- [] Fixed order of history page
+- [x] Downloads page typo
+- [] Improve look of search podcast dropdown on small screens
+
 Version 0.6.2
 
 - [x] Fixed issue with removal of podcasts when no longer in nextcloud subscription

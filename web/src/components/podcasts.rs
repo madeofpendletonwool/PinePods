@@ -9,12 +9,13 @@ use crate::components::gen_components::{UseScrollToTop, Search_nav};
 use crate::requests::pod_req::{PodcastResponse, RemovePodcastValues, call_remove_podcasts};
 use crate::requests::pod_req;
 use web_sys::console;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, UIState, ExpandedDescriptions};
 use yew_router::history::BrowserHistory;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::requests::login_requests::use_check_authentication;
 use crate::components::episodes_layout::SafeHtml;
+use wasm_bindgen::prelude::*;
 
 enum AppStateMsg {
     // ... other messages ...
@@ -50,6 +51,7 @@ impl Reducer<AppState> for AppStateMsg {
 pub fn podcasts() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let podcast_feed_return = state.podcast_feed_return.clone();
@@ -232,40 +234,85 @@ pub fn podcasts() -> Html {
                                 podcast.EpisodeCount.clone(),
                                 Some(categories),
                                 podcast.WebsiteURL.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                                
                                 user_id.unwrap(),
                             );
+
+                            let id_string = &podcast.PodcastID.clone().to_string();
+                            let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
+                            #[wasm_bindgen]
+                            extern "C" {
+                                #[wasm_bindgen(js_namespace = window)]
+                                fn toggleDescription(guid: &str, expanded: bool);
+                            }
+                            let toggle_expanded = {
+                                let desc_dispatch = desc_dispatch.clone();
+                                let desc_state = desc_state.clone();
+                                let episode_guid = podcast.PodcastID.clone().to_string();
                             
-    
+                                Callback::from(move |_: MouseEvent| {
+                                    let guid = episode_guid.clone();
+                                    desc_dispatch.reduce_mut(move |state| {
+                                        if state.expanded_descriptions.contains(&guid) {
+                                            state.expanded_descriptions.remove(&guid); // Collapse the description
+                                            toggleDescription(&guid, false); // Call JavaScript function
+                                        } else {
+                                            state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                                            toggleDescription(&guid, true); // Call JavaScript function
+                                        }
+                                    });
+                                })
+                            };
+                                               
+                            let description_class = if desc_expanded {
+                                "desc-expanded".to_string()
+                            } else {
+                                "desc-collapsed".to_string()
+                            };
                             html! {
                                 <div>
-                                    <div class="item-container flex items-center mb-4 shadow-md rounded-lg overflow-hidden">
-                                        <img onclick={on_title_click.clone()} src={podcast.ArtworkURL.clone()} alt={format!("Cover for {}", &podcast.PodcastName)} class="w-2/12 object-cover"/>
-                                        <div class="flex flex-col p-4 space-y-2 w-8/12">
-                                            <a onclick={on_title_click} class="item-container-text-link text-xl font-semibold hover:underline">{ &podcast.PodcastName }</a>
+                                <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+                                        <div class="flex flex-col w-auto object-cover pl-4">
+                                            <img 
+                                                src={podcast.ArtworkURL.clone()}
+                                                onclick={on_title_click.clone()}
+                                                alt={format!("Cover for {}", podcast.PodcastName.clone())} 
+                                                class="object-cover align-top-cover w-full item-container img"
+                                            />
+                                        </div> 
+                                        <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                                            <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click}>
+                                                { &podcast.PodcastName }
+                                            </p>
+                                            <hr class="my-2 border-t hidden md:block"/>
                                             {
                                                 html! {
-                                                    <div class="item_container-text episode-description-container">
-                                                        <div>
+                                                    <div class="item-container-text hidden md:block">
+                                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                                             <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                                         </div>
+                                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
+                                                            { if desc_expanded { "See Less" } else { "See More" } }
+                                                        </a>
                                                     </div>
                                                 }
                                             }
                                             <p class="item_container-text">{ format!("Episode Count: {}", &podcast.EpisodeCount) }</p>
                                         </div>
-                                        // <button class="item-container-action-button selector-button w-1/12 mx-auto font-bold py-2 px-4 rounded">
-                                        //     <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
+                                        <button class={"item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
+                                            <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
+                                        </button>
+                                        // <button
+                                        //     class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                        //     onclick={on_remove_click}
+                                        // >
+                                        //     <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"delete"}</span>
                                         // </button>
-                                        <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
-                                            <button class={"selector-button font-bold py-2 px-4 rounded bg-red-500"} style={"min-width: 35px;"}>
-                                                <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
-                                                // { button_text }
-                                            </button>
-                                        </div>
                                     
                                     </div>
                                 </div>
                             }
+                        
                         }).collect::<Html>()
                         }
                     } else {
