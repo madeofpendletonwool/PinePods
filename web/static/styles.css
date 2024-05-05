@@ -609,7 +609,7 @@ body {
 
 .item-header {
     display: flex;
-    align-items: center; /* Ensure items are centered vertically */
+    align-items: start; /* Ensure items are centered vertically */
     background-color: var(--bonus-color);
     padding: 20px;
     margin-bottom: 20px;
@@ -652,6 +652,13 @@ body {
     font-weight: bold;
     margin-bottom: 10px;
     color: var(--text-color);
+    margin-right: 20px; /* Adds space between title and button */
+}
+
+.title-button-container {
+    display: flex;
+    align-items: center;
+    width: 100%; /* Ensures the container takes full width */
 }
 
 .item-header-description {
@@ -744,6 +751,17 @@ body {
     max-height: 50px; /* or whatever max height you determine */
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.desc-pod-collapsed {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 5; /* Limit to 3 lines initially */
+    -webkit-box-orient: vertical;
+}
+
+.desc-pod-expanded {
+    display: block;
 }
 
 

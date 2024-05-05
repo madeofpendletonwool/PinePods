@@ -31,3 +31,40 @@ window.toggleDescription = function(guid, shouldExpand) {
         console.error("Description container not found for GUID: " + guid);
     }
 }
+
+window.addEventListener('load', function() {
+    const descriptions = document.querySelectorAll('.item-header-description');
+    descriptions.forEach(desc => {
+        if (desc.scrollHeight > desc.clientHeight) {
+            const btn = desc.querySelector('.toggle-desc-btn');
+            btn.classList.remove('hidden');  // Show button if content is clipped
+        }
+    });
+});
+
+function toggle_description(guid) {
+    const selector = `#${guid.replace(/[^a-zA-Z0-9-]/g, '')}`; // Use ID selector
+    console.log("Trying to select:", selector);
+    const descContainer = document.querySelector(selector);
+
+    if (!descContainer) {
+        console.error("Description container not found for GUID: " + guid + " with selector: " + selector);
+        return;
+    }
+
+    const button = descContainer.querySelector('.toggle-desc-btn');
+    if (!button) {
+        console.error("Button not found in description container for GUID: " + guid);
+        return;
+    }
+
+    if (descContainer.classList.contains('desc-collapsed')) {
+        descContainer.classList.remove('desc-collapsed');
+        descContainer.classList.add('desc-expanded');
+        button.textContent = '';
+    } else {
+        descContainer.classList.add('desc-collapsed');
+        descContainer.classList.remove('desc-expanded');
+        button.textContent = '';
+    }
+}

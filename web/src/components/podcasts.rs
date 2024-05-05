@@ -302,12 +302,6 @@ pub fn podcasts() -> Html {
                                         <button class={"item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                             <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
                                         </button>
-                                        // <button
-                                        //     class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                        //     onclick={on_remove_click}
-                                        // >
-                                        //     <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"delete"}</span>
-                                        // </button>
                                     
                                     </div>
                                 </div>

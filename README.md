@@ -226,6 +226,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
+- [ ] Add Fyyd as searching index
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes

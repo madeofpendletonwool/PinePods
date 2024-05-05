@@ -7,12 +7,14 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::use_store;
 use super::app_drawer::App_drawer;
 use super::gen_components::{UseScrollToTop, Search_nav};
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, UIState, ExpandedDescriptions};
 use crate::components::audio::AudioPlayer;
 use crate::requests::search_pods::{call_parse_podcast_url, Podcast, UnifiedPodcast};
 use crate::requests::pod_req::{call_check_podcast, call_add_podcast, call_remove_podcasts_name, RemovePodcastValuesName, PodcastValues};
 use std::collections::HashSet;
+use crate::components::episodes_layout::SafeHtml;
 use crate::requests::login_requests::use_check_authentication;
+use wasm_bindgen::prelude::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ClickedFeedURL {
@@ -139,6 +141,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let is_added = use_state(|| false);
     let podcast = props.podcast.clone();
     let (state, dispatch) = use_store::<AppState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -382,23 +385,73 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         })
     };
 
+    let id_string = &podcast.id.clone().to_string();
+    let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggleDescription(guid: &str, expanded: bool);
+    }
+
+    let toggle_expanded = {
+        let desc_dispatch = desc_dispatch.clone();
+        let desc_state = desc_state.clone();
+        let episode_guid = podcast.id.clone().to_string();
+    
+        Callback::from(move |_: MouseEvent| {
+            let guid = episode_guid.clone();
+            desc_dispatch.reduce_mut(move |state| {
+                if state.expanded_descriptions.contains(&guid) {
+                    state.expanded_descriptions.remove(&guid); // Collapse the description
+                    toggleDescription(&guid, false); // Call JavaScript function
+                } else {
+                    state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                    toggleDescription(&guid, true); // Call JavaScript function
+                }
+            });
+        })
+    };
+    let podcast_description_clone = podcast.description.clone();
+
+    let description_class = if desc_expanded {
+        "desc-expanded".to_string()
+    } else {
+        "desc-collapsed".to_string()
+    };
+
     html! {
         <div>
             {
                 html! {
-                    <div key={podcast.id.to_string()} class="item-container flex mb-4 shadow-md rounded-lg overflow-hidden">
-                        <img src={podcast.image.clone()} alt={format!("Cover for {}", &podcast.title)} class="w-1/6 items-center object-cover"/>
+                    <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+                        <img 
+                            src={podcast.image.clone()}
+                            onclick={on_title_click.clone()}
+                            alt={format!("Cover for {}", podcast.title.clone())} 
+                            class="object-cover align-top-cover w-full item-container img"
+                        />
                         <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
-                            <a onclick={on_title_click.clone()} class="item_container-text text-xl font-semibold hover:underline">{ &podcast.title }</a>
-                            <p class="item_container-text">{ &podcast.description }</p>
+                            <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click.clone()}>
+                            { &podcast.title } </p>
+                            // <p class="item_container-text">{ &podcast.description }</p>
+                            {
+                                html! {
+                                    <div class="item-container-text hidden md:block">
+                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                            <SafeHtml html={podcast_description_clone} />
+                                        </div>
+                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
+                                            { if desc_expanded { "See Less" } else { "See More" } }
+                                        </a>
+                                    </div>
+                                }
+                            }
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
-                        <div class="button-container flex justify-center items-center w-1/4"> // Modified for better clarity
-                            <button class={format!("item-container-button selector-button font-bold py-2 px-4 rounded {}", button_class)} style={"min-width: 35px;"}>
-                                <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
-                                // { button_text }
-                            </button>
-                        </div>
+                        <button class={format!("item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full self-center mr-8 {}", button_class)} style="width: 60px; height: 60px;">
+                            <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
+                            // { button_text }
+                        </button>
                     </div>
                 }
             }
