@@ -73,15 +73,15 @@ pub fn accordion_item(AccordionItemProps { title, content, position }: &Accordio
     let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };
 
     html! {
-        <div class={format!("border border-gray-200 dark:border-gray-700 {}", border_class)}>
+        <div class={format!("border border-gray-200 dark:border-gray-700 accordion-container {}", border_class)}>
             <h2>
                 <button
-                    class={format!("flex accordion-header items-center justify-between w-full p-5 font-medium {} focus:ring-4 gap-3", button_class)}
+                    class={format!("accordion-button flex items-center justify-between w-full p-5 font-medium {} focus:ring-4 gap-3 relative", button_class)}
                     onclick={toggle}
                 >
                     <span>{ title }</span>
                     <svg
-                        class={format!("w-3 h-3 shrink-0 transition-transform duration-300 {}", arrow_rotation_class)}
+                        class={format!("w-3 h-3 shrink-0 transition-transform duration-300 accordion-arrow {}", arrow_rotation_class)}
                         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"
                     >
                         <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>
@@ -226,6 +226,7 @@ pub fn settings() -> Html {
                         <AccordionItem title="MFA Settings" content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                         <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                         <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
+                        <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                         <AccordionItem title="Connect Nextcloud Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>
                         <AccordionItem title="Api Keys" content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
                     </div>

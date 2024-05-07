@@ -299,7 +299,7 @@ pub fn podcasts() -> Html {
                                             }
                                             <p class="item_container-text">{ format!("Episode Count: {}", &podcast.EpisodeCount) }</p>
                                         </div>
-                                        <button class={"item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
+                                        <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                             <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
                                         </button>
                                     

@@ -4,13 +4,20 @@ This is the list of previous todos that are now completed
 
 Version 0.6.3
 
-- [] Fix appearance and layout of podcasts on podcast screen or on searching pages.
-- [] Fix mobile experience to make images consistently sized
+- [x] Fix appearance and layout of podcasts on podcast screen or on searching pages. (Also added additional see more type dropdowns for descriptions to make them fit better.)
+- [x] Fix mobile experience to make images consistently sized
 - [x] Fixed layout of pinepods logo on user stats screen
 - [x] Expanded the search bar on search podcasts page for small screens. It was being cut off a bit
-- [] Fixed order of history page
+- [x] Fixed order of history page
 - [x] Downloads page typo
-- [] Improve look of search podcast dropdown on small screens
+- [x] Improve look of search podcast dropdown on small screens
+- [x] Made the setting accordion hover effect only over the arrows.
+- [x] Added area in the settings to add custom podcast feeds
+- [] Created functionality so the app can handle when a feed doesn't contain an audio file
+- [] Added a Pinepods news feed that gets automatically subscribed to on fresh installs. You can easily unsubscribe from this if you don't care about it
+- [] Added option to podcast pages to allow for downloading every episode
+- [x] Added ability to access episodes for an entire podcast from the episode display screen (click the podcast name)
+- [] Fixed issue where spacebar didn't work in app when episode was playing
 
 Version 0.6.2
 

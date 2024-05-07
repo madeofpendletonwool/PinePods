@@ -334,7 +334,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
     let is_added = added_podcasts.contains(&podcast.url);
     let button_text = if is_added { "delete" } else { "add" };
-    let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
     
     let on_title_click = {
         let dispatch = dispatch.clone();
@@ -424,12 +423,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             {
                 html! {
                     <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
-                        <img 
-                            src={podcast.image.clone()}
-                            onclick={on_title_click.clone()}
-                            alt={format!("Cover for {}", podcast.title.clone())} 
-                            class="object-cover align-top-cover w-full item-container img"
-                        />
+                        <div class="flex flex-col w-auto object-cover pl-4">
+                            <img 
+                                src={podcast.image.clone()}
+                                onclick={on_title_click.clone()}
+                                alt={format!("Cover for {}", podcast.title.clone())} 
+                                class="object-cover align-top-cover w-full item-container img"
+                            />
+                        </div> 
                         <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
                             <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click.clone()}>
                             { &podcast.title } </p>
@@ -448,7 +449,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             }
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
-                        <button class={format!("item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full self-center mr-8 {}", button_class)} style="width: 60px; height: 60px;">
+                        <button class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} style="width: 60px; height: 60px;">
                             <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
                             // { button_text }
                         </button>

@@ -992,3 +992,67 @@ pub async fn call_get_podcast_id(
     let response_data: PodcastIdResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.episodes)
 }
+
+fn explicit_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let val: i32 = Deserialize::deserialize(deserializer)?;
+    Ok(val == 1) // 1 = true, 0 = false
+}
+
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct PodcastDetails {
+    #[serde(rename = "PodcastName")]
+    pub podcast_name: String,
+    #[serde(rename = "ArtworkURL")]
+    pub artwork_url: String,
+    #[serde(rename = "Author")]
+    pub author: String,
+    #[serde(rename = "Categories")]
+    pub categories: String,
+    #[serde(rename = "Description")]
+    pub description: String,
+    #[serde(rename = "EpisodeCount")]
+    pub episode_count: i32,
+    #[serde(rename = "FeedURL")]
+    pub feed_url: String,
+    #[serde(rename = "WebsiteURL")]
+    pub website_url: String,
+    #[serde(rename = "Explicit", deserialize_with = "explicit_from_int")]
+    pub explicit: bool,
+    #[serde(rename = "UserID")]
+    pub user_id: i32,
+}
+
+#[derive(Deserialize)]
+struct PodcastDetailsResponse {
+    details: PodcastDetails,
+}
+
+pub async fn call_get_podcast_details(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    podcast_id: &i32,
+) -> Result<PodcastDetails, Error> {
+    let url = format!("{}/api/data/get_podcast_details?user_id={}&podcast_id={}", server_name, user_id, podcast_id);
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: PodcastDetailsResponse = response.json().await.map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
+        Ok(response_data.details)
+    } else {
+        Err(Error::msg(format!(
+            "Error retrieving podcast details. Server response: {}",
+            response.status_text()
+        )))
+    }
+}

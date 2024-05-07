@@ -14,12 +14,13 @@ import subprocess
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from requests.exceptions import RequestException
+from fastapi import HTTPException
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
-sys.path.append('/pinepods/')
+sys.path.append('/pinepods/'),
 # Import the functions directly from app_functions.py located in the database_functions directory
-from database_functions.app_functions import sync_subscription_change, get_podcast_values
+from database_functions.app_functions import sync_subscription_change, get_podcast_values, check_valid_feed
 
 def get_web_key(cnx):
     cursor = cnx.cursor()
@@ -32,6 +33,18 @@ def get_web_key(cnx):
         return result[0]
     else:
         return None
+    
+def add_custom_podcast(database_type, cnx, feed_url, user_id):
+    # Proceed to extract and use podcast details if the feed is valid
+    podcast_values = get_podcast_values(feed_url, user_id)
+    
+    try:
+        return_value = add_podcast(cnx, podcast_values, user_id)
+        if not return_value:
+            raise Exception("Failed to add the podcast.")
+        return return_value
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def add_podcast(cnx, podcast_values, user_id):
@@ -393,6 +406,19 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
 
     return rows or None  # Return None or empty list if no rows found
 
+def get_podcast_details(database_type, cnx, user_id, podcast_id):
+    if database_type == "postgresql":
+        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)   
+    query = """
+        SELECT *
+        FROM Podcasts
+        WHERE PodcastID = %s AND UserID = %s
+    """
+    cursor.execute(query, (podcast_id, user_id))
+    details = cursor.fetchone()
+    return details
 
 def get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_name):
     if database_type == "postgresql":
@@ -737,7 +763,7 @@ def user_history(cnx, user_id):
              "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
              "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
              "WHERE UserEpisodeHistory.UserID = %s "
-             "ORDER BY UserEpisodeHistory.ListenDate")
+             "ORDER BY UserEpisodeHistory.ListenDate DESC")
 
     cursor.execute(query, (user_id,))
     # results = cursor.fetchall()
@@ -746,6 +772,8 @@ def user_history(cnx, user_id):
     cursor.close()
     # cnx.close()
     return results
+
+
 
 
 def download_podcast(cnx, episode_id, user_id):

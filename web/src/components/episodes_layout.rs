@@ -19,7 +19,8 @@ use crate::components::gen_funcs::format_time;
 use crate::requests::login_requests::use_check_authentication;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
 use wasm_bindgen::prelude::*;
-use htmlentities::decode_html_entities;
+use htmlentity::entity::decode;
+use htmlentity::entity::ICodedDataTrait;
 
 fn add_icon() -> Html {
     html! {
@@ -63,7 +64,14 @@ pub fn safe_html(props: &Props) -> Html {
 
 fn sanitize_html(html: &str) -> String {
     let cleaned_html = ammonia::clean(html);
-    decode_html_entities(&cleaned_html).to_string()
+    let decoded_data = decode(cleaned_html.as_bytes());
+    match decoded_data.to_string() {
+        Ok(decoded_html) => decoded_html,
+        Err(e) => {
+            // web_sys::console::error_1(&e.into());
+            String::from("Invalid HTML content")
+        }
+    }
 }
 
 
@@ -608,12 +616,12 @@ pub fn episode_layout() -> Html {
                                                 // }
                                             }
                                         </div>
-                                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
+                                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; heren medium and larger screens
                                             <button
                                                 class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                                 onclick={on_play_click}
                                             >
-                                                <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                            <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                                             </button>
                                             {
                                                 if podcast_added {

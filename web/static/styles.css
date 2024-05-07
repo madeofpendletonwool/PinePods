@@ -212,8 +212,7 @@ body {
 .search-btn {
     background-color: transparent;
     color: var(--text-color);
-    border-radius: 4px;
-    border-color: var(--border-color);
+    border-color: transparent; /* Set border color to transparent */
     cursor: pointer;
 }
 
@@ -231,10 +230,16 @@ body {
     padding-bottom: 20px;
     background-color: var(--transparent-background);
     backdrop-filter: blur(10px);
+    /* Add margin to the bottom to space out the elements */
+    margin-bottom: 10px;
 }
 
 .search-drop-button {
     color: var(--text-color);
+    /* Add margin to the right to space out the buttons */
+    margin-right: 10px;
+    /* Add padding to the bottom of the button */
+    padding-bottom: 10px;
 }
 
 .search-drop-button:hover {
@@ -1084,11 +1089,31 @@ button.item-container-action-button.item-container-action-button {
     color: --var(--text-color);
 }
 
-/* Hover background color for accordion header */
-.accordion-header:hover {
-    background-color: var(--hover-color); /* Example color, adjust as needed */
-    color: var(--text-color);
+/* Background color for accordion arrow */
+.accordion-arrow {
+    background-color: transparent; /* Transparent background */
+    position: relative; /* Relative position */
+    width: 24px; /* Define width */
+    height: 24px; /* Define height */
 }
+
+/* Hover background color for accordion arrow */
+/* Hover effect for the button, with a smaller circle */
+.accordion-button:hover::before {
+    content: "";
+    position: absolute;
+    top: 50%;  /* Center the circle vertically relative to the button */
+    left: 50%; /* Center the circle horizontally relative to the button */
+    transform: translate(-50%, -50%); /* Offset the centering to the exact middle */
+    left: calc(100% - 26px);
+    width: 30px; /* Smaller width, adjust based on your arrow or button size */
+    height: 30px; /* Smaller height, match width for circle */
+    background-color: var(--hover-color); /* Example color, adjust as needed */
+    border-radius: 50%; /* Rounded shape */
+    z-index: 0; /* Ensure it's visible above the button background but below text/icons */
+}
+
+
 
 /* Styles for the select dropdown */
 .theme-select-dropdown {
