@@ -11,3 +11,9 @@ echo "Refreshing now!"
 curl "http://localhost:8032/api/data/refresh_pods" -H "Api-Key: $API_KEY" >> /cron.log 2>&1
 echo "Refreshing Nextcloud Subscription now!"
 curl -X GET -H "Api-Key: $API_KEY" http://localhost:8032/api/data/refresh_nextcloud_subscriptions >> /cron.log 2>&1
+
+# Initialize application tasks
+echo "Initializing application tasks..."
+curl -X POST "http://localhost:8032/api/init/startup_tasks" \
+    -H "Content-Type: application/json" \
+    -d "{\"api_key\": \"$API_KEY\"}" >> /cron.log 2>&1

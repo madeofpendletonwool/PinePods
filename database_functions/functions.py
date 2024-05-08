@@ -15,6 +15,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from requests.exceptions import RequestException
 from fastapi import HTTPException
+from mysql.connector import ProgrammingError
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -45,6 +46,23 @@ def add_custom_podcast(database_type, cnx, feed_url, user_id):
         return return_value
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+def add_news_feed_if_not_added(database_type, cnx):
+    cursor = cnx.cursor()
+    try:
+        cursor.execute("SELECT NewsFeedSubscribed FROM AppSettings")
+        result = cursor.fetchone()
+        if result is None or result[0] == 0:
+            # The news feed has not been added before, so add it
+            feed_url = "https://news.pinepods.online/feed.xml"
+            user_id = 2
+            add_custom_podcast(database_type, cnx, feed_url, user_id)
+            # Update the AppSettings table to indicate that the news feed has been added
+            cursor.execute("UPDATE AppSettings SET NewsFeedSubscribed = 1")
+            cnx.commit()
+    except ProgrammingError:
+        # The NewsFeedSubscribed column doesn't exist in the AppSettings table, so ignore and carry on
+        pass
 
 
 def add_podcast(cnx, podcast_values, user_id):

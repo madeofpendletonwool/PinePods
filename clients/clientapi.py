@@ -2767,6 +2767,32 @@ def restore_server_fun(database_pass: str, server_restore_data: str):
     finally:
         cnx.close() 
 
+
+class InitRequest(BaseModel):
+    api_key: str
+    
+@app.post("/api/init/startup_tasks")
+async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_connection)):
+    try:
+        # Verify if the API key is valid
+        is_valid = database_functions.functions.verify_api_key(cnx, request.api_key)
+        
+        # Check if the provided API key is the web key
+        is_web_key = request.api_key == base_webkey.web_key
+
+        if not is_valid or not is_web_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")
+        
+        # Execute the startup tasks
+        database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
+        return {"status": "Startup tasks completed successfully."}
+    finally:
+        # The connection will automatically be closed by FastAPI's dependency system
+        pass
+
+
+
+
 async def async_tasks():
     # Start cleanup task
     logging.info("Starting cleanup tasks")
