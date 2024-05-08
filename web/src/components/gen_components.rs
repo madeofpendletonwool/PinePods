@@ -915,6 +915,7 @@ pub fn episode_item(
     page_type: &str,
     on_checkbox_change: Callback<i32>,
     is_delete_mode: bool, // Add this line
+    ep_url: String,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -931,6 +932,7 @@ pub fn episode_item(
         }
     });
     let checkbox_ep = episode.get_episode_id();
+    let should_show_buttons = !ep_url.is_empty();
 
     #[wasm_bindgen]
     extern "C" {
@@ -1002,15 +1004,21 @@ pub fn episode_item(
                         }
                     }
                 </div>
-                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; here
-                    <button
-                        class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                        onclick={on_play_click}
-                    >
-                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
-                    </button>
-                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
-                </div>
+                {
+                    html! {
+                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
+                            if should_show_buttons {
+                                <button
+                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    onclick={on_play_click}
+                                >
+                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                </button>
+                                <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                            }
+                        </div>
+                    }
+                }
                 
                 
                 

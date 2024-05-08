@@ -573,6 +573,8 @@ pub fn episode_layout() -> Html {
                                 let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
                                 let duration = episode.duration.clone().unwrap().parse::<f64>().unwrap_or(0.0);
                                 let formatted_duration = format_time(duration);
+                                let episode_url_for_ep_item = episode_url_clone.clone();
+                                let should_show_buttons = !episode_url_for_ep_item.is_empty();
                                 html! {
                                     <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
                                         <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="object-cover align-top-cover w-full item-container img"/>
@@ -616,29 +618,35 @@ pub fn episode_layout() -> Html {
                                                 // }
                                             }
                                         </div>
-                                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; heren medium and larger screens
-                                            <button
-                                                class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                                onclick={on_play_click}
-                                            >
-                                            <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
-                                            </button>
-                                            {
-                                                if podcast_added {
-                                                    let page_type = "episode_layout".to_string();
+                                        {
+                                            html! {
+                                                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; heren medium and larger screens
+                                                    if should_show_buttons {
+                                                        <button
+                                                            class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                                            onclick={on_play_click}
+                                                        >
+                                                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                                        </button>
+                                                        {
+                                                            if podcast_added {
+                                                                let page_type = "episode_layout".to_string();
 
-                                                    let context_button = html! {
-                                                        <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
-                                                    };
+                                                                let context_button = html! {
+                                                                    <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
+                                                                };
 
 
-                                                    context_button
+                                                                context_button
 
-                                                } else {
-                                                    html! {}
-                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                    }
+                                                </div>
                                             }
-                                        </div>
+                                        }
 
 
                                     </div>

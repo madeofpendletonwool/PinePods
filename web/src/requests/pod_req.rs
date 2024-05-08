@@ -46,7 +46,6 @@ pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>,
     
     // First, capture the response text for diagnostic purposes
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-
     // Try to deserialize the response text
     match serde_json::from_str::<RecentEps>(&response_text) {
         Ok(response_body) => {

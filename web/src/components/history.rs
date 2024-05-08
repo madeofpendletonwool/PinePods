@@ -223,7 +223,7 @@ pub fn history() -> Html {
                                         let date_format = match_date_format(state.date_format.as_deref());
                                         let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
                                         let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
-                                        
+                                        let episode_url_for_ep_item = episode_url_clone.clone();
                                         let item = episode_item(
                                             Box::new(episode),
                                             description.clone(),
@@ -237,6 +237,7 @@ pub fn history() -> Html {
                                             "history",
                                             Callback::from(|_| {}), 
                                             false,
+                                            episode_url_for_ep_item,
                                         );
 
                                         item

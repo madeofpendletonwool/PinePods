@@ -15,9 +15,9 @@ Version 0.6.3
 - [x] Added area in the settings to add custom podcast feeds
 - [x] Added a Pinepods news feed that gets automatically subscribed to on fresh installs. You can easily unsubscribe from this if you don't care about it
 - [x] Added ability to access episodes for an entire podcast from the episode display screen (click the podcast name)
+- [x] Created functionality so the app can handle when a feed doesn't contain an audio file
 - [] Added option to podcast pages to allow for downloading every episode
 - [] Fixed issue where spacebar didn't work in app when episode was playing
-- [] Created functionality so the app can handle when a feed doesn't contain an audio file
 - [] Added Postgresql support
 - [] Enhanced downloads page to better display podcasts. This improves archival experience
 - [] Added Better Download support to the client versions.

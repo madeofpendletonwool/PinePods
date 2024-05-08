@@ -1346,6 +1346,24 @@ button.item-container-action-button.item-container-action-button {
     border-radius: 5px; /* Round the corners */
 }
 
+.no-media-warning {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 12px;  /* Adjust padding to match your buttons */
+    font-weight: bold;
+    margin-bottom: 10px;  /* Bottom padding as requested */
+}
+
+.episode-action-buttons .no-media-warning {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    width: 100%;
+}
+
+
 .episode-action-buttons .play-button {
     position: relative;
     top: -2px; /* Adjust this value as needed */

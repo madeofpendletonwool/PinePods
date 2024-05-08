@@ -337,10 +337,10 @@ pub fn epsiode() -> Html {
                             });
                         })
                     };
-                    
+                    let episode_url_check = episode_url_clone;
+                    let should_show_buttons = !episode_url_check.is_empty();
                     // let format_duration = format!("Duration: {} minutes", e / 60); // Assuming duration is in seconds
                     // let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
-    
                     html! {
                         <div class="episode-layout-container">
                             <div class="episode-top-info">
@@ -353,22 +353,36 @@ pub fn epsiode() -> Html {
                                 </div>
                             </div>
                             <div class="episode-action-buttons">
-                                <button onclick={on_play_click} class="play-button">
-                                    <i class="material-icons">{ "play_arrow" }</i>
-                                    {"Play"}
-                                </button>
-                                <button onclick={on_add_to_queue} class="queue-button">
-                                    <i class="material-icons">{ "playlist_add" }</i>
-                                    {"Queue"}
-                                </button>
-                                <button onclick={on_save_episode} class="save-button">
-                                    <i class="material-icons">{ "favorite" }</i>
-                                    {"Save"}
-                                </button>
-                                <button onclick={on_download_episode} class="download-button-ep">
-                                    <i class="material-icons">{ "download" }</i>
-                                    {"Download"}
-                                </button>
+                            {
+                                if should_show_buttons {
+                                    html! {
+                                        <>
+                                        <button onclick={on_play_click} class="play-button">
+                                            <i class="material-icons">{ "play_arrow" }</i>
+                                            {"Play"}
+                                        </button>
+                                        <button onclick={on_add_to_queue} class="queue-button">
+                                            <i class="material-icons">{ "playlist_add" }</i>
+                                            {"Queue"}
+                                        </button>
+                                        <button onclick={on_save_episode} class="save-button">
+                                            <i class="material-icons">{ "favorite" }</i>
+                                            {"Save"}
+                                        </button>
+                                        <button onclick={on_download_episode} class="download-button-ep">
+                                            <i class="material-icons">{ "download" }</i>
+                                            {"Download"}
+                                        </button>
+                                        </>
+                                    }
+                                } else {
+                                    html! {
+                                        <p class="no-media-warning item_container-text play-button">
+                                            {"This item contains no media file"}
+                                        </p>
+                                    }
+                                }
+                            }
                             </div>
                             <hr class="episode-divider" />
                             <div class="episode-single-desc episode-description">
