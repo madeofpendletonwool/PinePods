@@ -126,6 +126,19 @@ pub fn settings() -> Html {
                 let session_storage = window.session_storage().unwrap().unwrap();
                 session_storage.set_item("isAuthenticated", "false").unwrap();
             }
+
+            if navigation_type == 1 { // 1 stands for reload
+                if let Some(session_storage) = window.session_storage() {
+                    if let Ok(session_storage) = session_storage {
+                        session_storage.set_item("isAuthenticated", "false").unwrap();
+                    } 
+                    else {
+                        eprintln!("Failed to access session storage");
+                }} else {
+                    eprintln!("Session storage is not supported");
+                }
+            }
+            
     
             // Always check authentication status
             let current_route = window.location().href().unwrap_or_default();
