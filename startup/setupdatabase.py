@@ -48,8 +48,8 @@ try:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Users (
             UserID INT AUTO_INCREMENT PRIMARY KEY,
-            Fullname TEXT,
-            Username TEXT UNIQUE,
+            Fullname VARCHAR(255),
+            Username VARCHAR(255),
             Email VARCHAR(255),
             Hashed_PW CHAR(255),
             IsAdmin TINYINT(1),
@@ -61,8 +61,9 @@ try:
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin TINYINT(1) DEFAULT 0,
             GpodderUrl VARCHAR(255) DEFAULT '',
-            GpodderLoginName TEXT DEFAULT '',
-            GpodderToken TEXT DEFAULT ''
+            GpodderLoginName VARCHAR(255) DEFAULT '',
+            GpodderToken VARCHAR(255) DEFAULT '',
+            UNIQUE (Username)
         )
     """)
 
