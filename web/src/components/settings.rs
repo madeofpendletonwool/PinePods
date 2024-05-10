@@ -121,11 +121,6 @@ pub fn settings() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let performance = window.performance().expect("should have performance");
             let navigation_type = performance.navigation().type_();
-            
-            if navigation_type == 1 { // 1 stands for reload
-                let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage.set_item("isAuthenticated", "false").unwrap();
-            }
 
             if navigation_type == 1 { // 1 stands for reload
                 if let Some(session_storage) = window.session_storage() {
