@@ -217,7 +217,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo
 
-- [ ] Handle situation where there's no audio in a feed
 - [ ] Additional Downloads Page organization - Organize by Podcast
 - [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI

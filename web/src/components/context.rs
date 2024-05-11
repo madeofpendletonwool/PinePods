@@ -127,6 +127,7 @@ pub struct UIState {
     pub info_message: Option<String>,
     pub is_expanded: bool,
     pub episode_in_db: Option<bool>,
+    pub playback_speed: f64,
     // pub start_pos_sec: f64,
 }
 

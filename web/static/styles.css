@@ -283,7 +283,6 @@ body {
     height: 60px; /* Initial height */
     background-color: var(--secondary-background);
     color: white;
-    padding: 10px 20px;
     display: flex;
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
     z-index: 1000; /* Ensure it's on top */
@@ -341,6 +340,94 @@ body {
     align-items: center;
 }
 
+.audio-player .line-content {
+    padding: 10px 20px;
+    box-sizing: border-box;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        visibility: hidden;
+    }
+    to {
+        opacity: 1;
+        visibility: visible;
+    }
+}
+
+.playback-speed-display {
+    position: relative; 
+    width: 100%;
+    padding: 10px 0; 
+}
+
+.speed-text {
+    position: absolute;
+    left: 215px;
+    top: 50%;
+    transform: translateY(-50%); 
+    z-index: 1;
+}
+
+.slider {
+    width: 100%; 
+    display: block; 
+    margin: auto; 
+}
+
+@media (max-width: 768px) {
+    .speed-text {
+        position: relative;
+        left: auto; 
+        top: auto;  
+        transform: none;  
+        text-align: center; 
+        display: block;
+        width: 100%;  
+        margin-bottom: 10px; 
+    }
+
+    .speed-display-container {
+        flex-direction: column-reverse; 
+        align-items: center;  
+    }
+}
+
+
+
+
+.playback-speed-display {
+    animation: fadeIn 0.3s ease-out forwards;
+    opacity: 0;
+    visibility: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        visibility: visible;
+    }
+    to {
+        opacity: 0;
+        visibility: hidden;
+    }
+}
+
+.playback-speed-display.hidden {
+    animation: fadeOut 0.3s ease-out forwards;
+}
+
+
+.playback-speed-display.visible {
+    animation-name: fadeIn; /* Only change the animation name to trigger it */
+}
+
+
+
 .audio-player .line-content .right-group {
     justify-content: flex-end;
     padding-right: 25px;
@@ -371,7 +458,7 @@ body {
 .audio-player .top-section .retract-button {
     position: absolute;
     top: 70px; /* Adjust as needed */
-    left: 7px; /* Adjust as needed */
+    left: 25px; /* Adjust as needed */
     border: none; /* Remove the border */
     background: none; /* Remove the background */
     padding: 0; /* Remove the padding */
@@ -392,19 +479,19 @@ body {
     height: 100%;
 }
 
+.audio-image-container {
+    display: flex;
+    justify-content: center;
+}
+
 .audio-player.expanded .line-content,
 .audio-player.expanded .top-section {
     transition: visibility 0s 0.5s, opacity 0.5s linear;
 }
 
-.audio-full-button {
-    margin-top: 15px;
-}
-
 
 .audio-player button {
-    background-color: var(--button-color); /* Button background color */
-    color: white; /* Button text color */
+    background-color: transparent; /* Button background color */
     padding: 10px 15px; /* Padding inside the button */
     margin-right: 20px; /* Margin to the right */
     cursor: pointer; /* Cursor as pointer */
@@ -421,6 +508,11 @@ body {
     flex-basis: 90%; /* Adjust as needed */
 }
 
+.audio-player .top-section {
+    display: flex;
+    justify-content: center;
+}
+
 .audio-player .top-section .title {
     font-size: 2em; /* Make the title larger */
     text-align: center;
@@ -428,15 +520,15 @@ body {
 }
 
 .audio-player .top-section .scrub-bar {
-    display: flex; /* Align elements in a row */
-    align-items: center; /* Center align vertically */
-    justify-content: space-between; /* Space out the elements */
-    width: 60%;;
-    padding: 10px 20px; /* Padding for breathing space */
-    font-size: 0.9em; /* Adjust font size for time display */
-    /* color: var(--prog-bar-color); Text color */
-    margin: 10px 0; /* Vertical margin */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%; /* Adjusted to take full width of its container */
+    padding: 10px 20px;
+    font-size: 0.9em;
+    margin: 10px auto; /* Adjusted to auto to center within its container */
 }
+
 
 .audio-player .top-section .scrub-bar span {
     flex-shrink: 0; /* Prevent shrinking */
@@ -815,12 +907,33 @@ body {
     }
 }
 
+.episode-button-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center; /* Centers button horizontally */
+    line-height: 1;
+}
 
-
-
-
-
-
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    /* Styling for the button container */
+    .episode-button-container {
+        display: flex;
+        flex-basis: 15%; /* Adjust this percentage based on your design needs */
+        flex-grow: 0;
+        flex-shrink: 0;
+        align-items: center; /* Center align the buttons vertically */
+        justify-content: center; /* Center align the buttons horizontally */
+        padding: 8px;
+        gap: 8px; /* Space between buttons */
+    }
+    .episode-button-container button {
+        border-radius: 30px; /* Fully rounded borders */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none; /* Remove border */
+    }
+}
 
 .item-container img {
     width: 100%;
@@ -856,6 +969,15 @@ body {
     color: var(--standout-color);
     /*background-color: var(--accent-color);*/
     cursor: pointer;
+}
+
+.audio-top-button {
+    color: var(--text-secondary-color);
+    background-color: transparent;
+}
+
+.audio-top-button.selector-button:hover {
+    background-color: var(--hover-color); /* Replace #your-hover-color with your desired color */
 }
 
 .item-container-button {
@@ -1293,6 +1415,19 @@ button.item-container-action-button.item-container-action-button {
     align-items: start;
     margin-bottom: 20px;
 }
+
+@media (max-width: 768px) {
+    .episode-layout-container {
+        padding-top: 70px; /* Increase padding for smaller screens if necessary */
+    }
+}
+
+@media (max-height: 500px) {
+    .episode-layout-container {
+        padding-top: 80px; /* Increase padding for very small height screens */
+    }
+}
+
 
 .episode-artwork {
     /* Adjust to scale with page size */
