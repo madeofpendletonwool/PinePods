@@ -9,7 +9,7 @@ Next edition
 - [] Enhanced downloads page to better display podcasts. This improves archival experience
 - [] Added Better Download support to the client versions.
 
-Version 0.6.3
+Version 0.5.3
 
 - [x] Fix appearance and layout of podcasts on podcast screen or on searching pages. (Also added additional see more type dropdowns for descriptions to make them fit better.)
 - [x] Fix mobile experience to make images consistently sized
@@ -29,7 +29,7 @@ Version 0.6.3
 - [x] Fixed issue where spacebar didn't work in app when episode was playing
 - [x] Added and verified support for mysql databases. Thanks @rgarcia6520
 
-Version 0.6.2
+Version 0.5.2
 
 - [x] Fixed issue with removal of podcasts when no longer in nextcloud subscription
 - [x] Fixed scrolling problems where the app would sometimes start you at the bottom of the page when scrolling to different locations. 
@@ -46,9 +46,9 @@ Version 0.6.2
 - [x] Improved look at the episode page. Fixed up the spacing and the buttons.
 
 
-Version 0.6.1
+Version 0.5.1
 
-Version 0.6.0
+Version 0.5.0
 
 - [x] Complete Rust WASM Rebuild
 - [x] Make Timestamps with with Auto Resume
