@@ -27,8 +27,7 @@ Version 0.6.3
 - [x] Added episode skip button in the episode playing page. Skips to the next in the queue.
 - [x] Fixed issue with the reverse button in the episode page so that it now reverses the playback by 15 seconds.
 - [x] Fixed issue where spacebar didn't work in app when episode was playing
-- [x] Added and verified support for mysql databases. Thanks
-- [x] Fixed issue with refreshing on settings page. Thanks 
+- [x] Added and verified support for mysql databases. Thanks @rgarcia6520
 
 Version 0.6.2
 
