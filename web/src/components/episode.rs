@@ -11,10 +11,14 @@ use crate::requests::pod_req::{EpisodeRequest, EpisodeMetadataResponse, QueuePod
 use crate::components::audio::on_play_click;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::episodes_layout::UIStateMsg;
+use crate::components::click_events::create_on_title_click;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use crate::requests::login_requests::use_check_authentication;
+use yew_router::history::{BrowserHistory, History};
+use std::collections::HashMap;
+use wasm_bindgen::JsValue;
 
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
@@ -61,6 +65,7 @@ pub fn epsiode() -> Html {
     let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
+    let history = BrowserHistory::new();
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -137,6 +142,7 @@ pub fn epsiode() -> Html {
                     let episode_title_clone = episode.episode.EpisodeTitle.clone();
                     let episode_artwork_clone = episode.episode.EpisodeArtwork.clone();
                     let episode_duration_clone = episode.episode.EpisodeDuration.clone();
+                    let podcast_of_episode = episode.episode.PodcastID.clone();
                     let episode_listened_clone = Option::from(0);
                     let episode_id_clone = episode.episode.EpisodeID.clone();
     
@@ -276,38 +282,107 @@ pub fn epsiode() -> Html {
                     let date_format = match_date_format(state.date_format.as_deref());
                     let format_duration = format_time(episode.episode.EpisodeDuration as f64);
                     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+
+                    let on_title_click = {
+                        let dispatch = dispatch.clone();
+                        let server_name = server_name.clone();
+                        let api_key = api_key.clone();
+                        let podcast_id = podcast_of_episode.clone();
+                        let user_id = user_id.clone();
+                        let history = history.clone();
                     
+                        Callback::from(move |event: MouseEvent| {
+                            let dispatch = dispatch.clone();
+                            let server_name = server_name.clone();
+                            let api_key = api_key.clone();
+                            let podcast_id = podcast_id.clone();
+                            let user_id = user_id.clone();
+                            let history = history.clone();
+                    
+                            wasm_bindgen_futures::spawn_local(async move {
+                                match pod_req::call_get_podcast_details(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.unwrap(), &podcast_id).await {
+                                    Ok(details) => {
+                                        let mut categories_map: HashMap<String, String> = HashMap::new();
+                                        for (index, category) in details.categories.split(',').enumerate() {
+                                            categories_map.insert(index.to_string(), category.trim().to_string());
+                                        }
+                                        // Assuming details contain all necessary podcast info
+                                        let final_click_action = create_on_title_click(
+                                            dispatch.clone(),
+                                            server_name.unwrap(),
+                                            api_key,
+                                            &history,
+                                            details.podcast_name,
+                                            details.feed_url,
+                                            details.description,
+                                            details.author,
+                                            details.artwork_url,
+                                            details.explicit,
+                                            details.episode_count,
+                                            Some(categories_map),
+                                            details.website_url,
+                                            user_id.unwrap(),
+                                        );
+                    
+                                        // Execute the action created by create_on_title_click
+                                        final_click_action.emit(event);
+                                    },
+                                    Err(error) => {
+                                        web_sys::console::log_1(&format!("Error fetching podcast details: {}", error).into());
+                                        dispatch.reduce_mut(move |state| {
+                                            state.error_message = Some(format!("Failed to load details: {}", error));
+                                        });
+                                    }
+                                }
+                            });
+                        })
+                    };
+                    let episode_url_check = episode_url_clone;
+                    let should_show_buttons = !episode_url_check.is_empty();
                     // let format_duration = format!("Duration: {} minutes", e / 60); // Assuming duration is in seconds
                     // let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
-    
                     html! {
                         <div class="episode-layout-container">
                             <div class="episode-top-info">
                                 <img src={episode.episode.EpisodeArtwork.clone()} class="episode-artwork" />
                                 <div class="episode-details">
-                                    <h1 class="podcast-title">{ &episode.episode.PodcastName }</h1>
+                                    <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.PodcastName }</h1>
                                     <h2 class="episode-title">{ &episode.episode.EpisodeTitle }</h2>
                                     <p class="episode-duration">{ format_duration }</p>
                                     <p class="episode-release-date">{ format_release }</p>
                                 </div>
                             </div>
                             <div class="episode-action-buttons">
-                                <button onclick={on_play_click} class="play-button">
-                                    <i class="material-icons">{ "play_arrow" }</i>
-                                    {"Play"}
-                                </button>
-                                <button onclick={on_add_to_queue} class="queue-button">
-                                    <i class="material-icons">{ "playlist_add" }</i>
-                                    {"Queue"}
-                                </button>
-                                <button onclick={on_save_episode} class="save-button">
-                                    <i class="material-icons">{ "favorite" }</i>
-                                    {"Save"}
-                                </button>
-                                <button onclick={on_download_episode} class="download-button-ep">
-                                    <i class="material-icons">{ "download" }</i>
-                                    {"Download"}
-                                </button>
+                            {
+                                if should_show_buttons {
+                                    html! {
+                                        <>
+                                        <button onclick={on_play_click} class="play-button">
+                                            <i class="material-icons">{ "play_arrow" }</i>
+                                            {"Play"}
+                                        </button>
+                                        <button onclick={on_add_to_queue} class="queue-button">
+                                            <i class="material-icons">{ "playlist_add" }</i>
+                                            {"Queue"}
+                                        </button>
+                                        <button onclick={on_save_episode} class="save-button">
+                                            <i class="material-icons">{ "favorite" }</i>
+                                            {"Save"}
+                                        </button>
+                                        <button onclick={on_download_episode} class="download-button-ep">
+                                            <i class="material-icons">{ "download" }</i>
+                                            {"Download"}
+                                        </button>
+                                        </>
+                                    }
+                                } else {
+                                    html! {
+                                        <p class="no-media-warning item_container-text play-button">
+                                            {"This item contains no media file"}
+                                        </p>
+                                    }
+                                }
+                            }
                             </div>
                             <hr class="episode-divider" />
                             <div class="episode-single-desc episode-description">

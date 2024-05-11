@@ -278,9 +278,9 @@ pub fn search_bar() -> Html {
                 // Mobile dropdown content
                 if *mobile_dropdown_open {
                     html! {
-                        <div class="search-drop absolute top-full right-0 z-10 divide-y rounded-lg shadow p-4">
+                        <div class="search-drop absolute top-full right-0 z-10 divide-y rounded-lg shadow p-6">
                             // Outline buttons for podcast_index or itunes
-                            <div class="inline-flex rounded-md shadow-sm" role="group">
+                            <div class="inline-flex rounded-md shadow-sm mb-2" role="group">
                                 <button
                                     type="button"
                                     class={format!("px-4 py-2 text-sm font-medium rounded-l-lg search-drop-button {}",
@@ -301,13 +301,13 @@ pub fn search_bar() -> Html {
                             // Text field for search
                             <input
                                 type="text"
-                                class="search-input shorter-input block p-2.5 w-full text-sm rounded-lg border"
+                                class="search-input shorter-input block p-2.5 w-full text-sm rounded-lg mb-2"
                                 placeholder="Search"
                                 value={(*podcast_value).clone()}
                                 oninput={on_input_change.clone()}
                             />
                             // Search button
-                            <button class="search-btn no-margin border border-solid mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onclick={on_submit_click.clone()}>
+                            <button class="search-btn border-0 no-margin mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onclick={on_submit_click.clone()}>
                                 {"Search"}
                             </button>
                         </div>
@@ -915,6 +915,7 @@ pub fn episode_item(
     page_type: &str,
     on_checkbox_change: Callback<i32>,
     is_delete_mode: bool, // Add this line
+    ep_url: String,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -931,6 +932,7 @@ pub fn episode_item(
         }
     });
     let checkbox_ep = episode.get_episode_id();
+    let should_show_buttons = !ep_url.is_empty();
 
     #[wasm_bindgen]
     extern "C" {
@@ -1002,15 +1004,21 @@ pub fn episode_item(
                         }
                     }
                 </div>
-                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8" style="align-self: center;"> // Add align-self: center; here
-                    <button
-                        class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                        onclick={on_play_click}
-                    >
-                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
-                    </button>
-                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
-                </div>
+                {
+                    html! {
+                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
+                            if should_show_buttons {
+                                <button
+                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    onclick={on_play_click}
+                                >
+                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                </button>
+                                <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                            }
+                        </div>
+                    }
+                }
                 
                 
                 

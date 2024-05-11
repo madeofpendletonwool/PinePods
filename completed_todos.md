@@ -2,6 +2,33 @@
 
 This is the list of previous todos that are now completed
 
+Next edition
+
+- [] Added option to podcast pages to allow for downloading every episode
+- [] Added Postgresql support
+- [] Enhanced downloads page to better display podcasts. This improves archival experience
+- [] Added Better Download support to the client versions.
+
+Version 0.6.3
+
+- [x] Fix appearance and layout of podcasts on podcast screen or on searching pages. (Also added additional see more type dropdowns for descriptions to make them fit better.)
+- [x] Fix mobile experience to make images consistently sized
+- [x] Fixed layout of pinepods logo on user stats screen
+- [x] Expanded the search bar on search podcasts page for small screens. It was being cut off a bit
+- [x] Fixed order of history page
+- [x] Downloads page typo
+- [x] Improve look of search podcast dropdown on small screens
+- [x] Made the setting accordion hover effect only over the arrows.
+- [x] Added area in the settings to add custom podcast feeds
+- [x] Added a Pinepods news feed that gets automatically subscribed to on fresh installs. You can easily unsubscribe from this if you don't care about it
+- [x] Added ability to access episodes for an entire podcast from the episode display screen (click the podcast name)
+- [x] Created functionality so the app can handle when a feed doesn't contain an audio file
+- [x] Added playback speed button in the episode playing page. Now you can make playback faster!
+- [x] Added episode skip button in the episode playing page. Skips to the next in the queue.
+- [x] Fixed issue with the reverse button in the episode page so that it now reverses the playback by 15 seconds.
+- [x] Fixed issue where spacebar didn't work in app when episode was playing
+- [x] Added and verified support for mysql databases. Thanks @rgarcia6520
+
 Version 0.6.2
 
 - [x] Fixed issue with removal of podcasts when no longer in nextcloud subscription

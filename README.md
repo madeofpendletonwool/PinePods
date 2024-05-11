@@ -217,7 +217,6 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ## ToDo
 
-- [ ] Handle situation where there's no audio in a feed
 - [ ] Additional Downloads Page organization - Organize by Podcast
 - [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
@@ -226,6 +225,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
+- [ ] Add Fyyd as searching index
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes

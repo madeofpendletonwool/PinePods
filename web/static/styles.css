@@ -212,8 +212,7 @@ body {
 .search-btn {
     background-color: transparent;
     color: var(--text-color);
-    border-radius: 4px;
-    border-color: var(--border-color);
+    border-color: transparent; /* Set border color to transparent */
     cursor: pointer;
 }
 
@@ -231,10 +230,16 @@ body {
     padding-bottom: 20px;
     background-color: var(--transparent-background);
     backdrop-filter: blur(10px);
+    /* Add margin to the bottom to space out the elements */
+    margin-bottom: 10px;
 }
 
 .search-drop-button {
     color: var(--text-color);
+    /* Add margin to the right to space out the buttons */
+    margin-right: 10px;
+    /* Add padding to the bottom of the button */
+    padding-bottom: 10px;
 }
 
 .search-drop-button:hover {
@@ -278,7 +283,6 @@ body {
     height: 60px; /* Initial height */
     background-color: var(--secondary-background);
     color: white;
-    padding: 10px 20px;
     display: flex;
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
     z-index: 1000; /* Ensure it's on top */
@@ -336,6 +340,94 @@ body {
     align-items: center;
 }
 
+.audio-player .line-content {
+    padding: 10px 20px;
+    box-sizing: border-box;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        visibility: hidden;
+    }
+    to {
+        opacity: 1;
+        visibility: visible;
+    }
+}
+
+.playback-speed-display {
+    position: relative; 
+    width: 100%;
+    padding: 10px 0; 
+}
+
+.speed-text {
+    position: absolute;
+    left: 215px;
+    top: 50%;
+    transform: translateY(-50%); 
+    z-index: 1;
+}
+
+.slider {
+    width: 100%; 
+    display: block; 
+    margin: auto; 
+}
+
+@media (max-width: 768px) {
+    .speed-text {
+        position: relative;
+        left: auto; 
+        top: auto;  
+        transform: none;  
+        text-align: center; 
+        display: block;
+        width: 100%;  
+        margin-bottom: 10px; 
+    }
+
+    .speed-display-container {
+        flex-direction: column-reverse; 
+        align-items: center;  
+    }
+}
+
+
+
+
+.playback-speed-display {
+    animation: fadeIn 0.3s ease-out forwards;
+    opacity: 0;
+    visibility: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        visibility: visible;
+    }
+    to {
+        opacity: 0;
+        visibility: hidden;
+    }
+}
+
+.playback-speed-display.hidden {
+    animation: fadeOut 0.3s ease-out forwards;
+}
+
+
+.playback-speed-display.visible {
+    animation-name: fadeIn; /* Only change the animation name to trigger it */
+}
+
+
+
 .audio-player .line-content .right-group {
     justify-content: flex-end;
     padding-right: 25px;
@@ -366,7 +458,7 @@ body {
 .audio-player .top-section .retract-button {
     position: absolute;
     top: 70px; /* Adjust as needed */
-    left: 7px; /* Adjust as needed */
+    left: 25px; /* Adjust as needed */
     border: none; /* Remove the border */
     background: none; /* Remove the background */
     padding: 0; /* Remove the padding */
@@ -387,19 +479,19 @@ body {
     height: 100%;
 }
 
+.audio-image-container {
+    display: flex;
+    justify-content: center;
+}
+
 .audio-player.expanded .line-content,
 .audio-player.expanded .top-section {
     transition: visibility 0s 0.5s, opacity 0.5s linear;
 }
 
-.audio-full-button {
-    margin-top: 15px;
-}
-
 
 .audio-player button {
-    background-color: var(--button-color); /* Button background color */
-    color: white; /* Button text color */
+    background-color: transparent; /* Button background color */
     padding: 10px 15px; /* Padding inside the button */
     margin-right: 20px; /* Margin to the right */
     cursor: pointer; /* Cursor as pointer */
@@ -416,6 +508,11 @@ body {
     flex-basis: 90%; /* Adjust as needed */
 }
 
+.audio-player .top-section {
+    display: flex;
+    justify-content: center;
+}
+
 .audio-player .top-section .title {
     font-size: 2em; /* Make the title larger */
     text-align: center;
@@ -423,15 +520,15 @@ body {
 }
 
 .audio-player .top-section .scrub-bar {
-    display: flex; /* Align elements in a row */
-    align-items: center; /* Center align vertically */
-    justify-content: space-between; /* Space out the elements */
-    width: 60%;;
-    padding: 10px 20px; /* Padding for breathing space */
-    font-size: 0.9em; /* Adjust font size for time display */
-    /* color: var(--prog-bar-color); Text color */
-    margin: 10px 0; /* Vertical margin */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%; /* Adjusted to take full width of its container */
+    padding: 10px 20px;
+    font-size: 0.9em;
+    margin: 10px auto; /* Adjusted to auto to center within its container */
 }
+
 
 .audio-player .top-section .scrub-bar span {
     flex-shrink: 0; /* Prevent shrinking */
@@ -609,7 +706,7 @@ body {
 
 .item-header {
     display: flex;
-    align-items: center; /* Ensure items are centered vertically */
+    align-items: start; /* Ensure items are centered vertically */
     background-color: var(--bonus-color);
     padding: 20px;
     margin-bottom: 20px;
@@ -652,6 +749,13 @@ body {
     font-weight: bold;
     margin-bottom: 10px;
     color: var(--text-color);
+    margin-right: 20px; /* Adds space between title and button */
+}
+
+.title-button-container {
+    display: flex;
+    align-items: center;
+    width: 100%; /* Ensures the container takes full width */
 }
 
 .item-header-description {
@@ -746,6 +850,17 @@ body {
     text-overflow: ellipsis;
 }
 
+.desc-pod-collapsed {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 5; /* Limit to 3 lines initially */
+    -webkit-box-orient: vertical;
+}
+
+.desc-pod-expanded {
+    display: block;
+}
+
 
 
 .item-container {
@@ -762,21 +877,88 @@ body {
 }
 
 .button-container {
-    display: flex;
+    display: flex !important;
+    align-items: center !important;
     justify-content: center; /* Centers button horizontally */
-    align-items: center;     /* Centers button vertically */
+    line-height: 1;
 }
 
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    /* Styling for the button container */
+    .button-container {
+        display: flex;
+        flex-basis: 15%; /* Adjust this percentage based on your design needs */
+        flex-grow: 0;
+        flex-shrink: 0;
+        flex-direction: column;
+        align-items: center; /* Center align the buttons vertically */
+        justify-content: center; /* Center align the buttons horizontally */
+        padding: 8px;
+        gap: 8px; /* Space between buttons */
+    }
+    .button-container button {
+        width: 60px; /* Fixed width */
+        height: 60px; /* Fixed height */
+        border-radius: 30px; /* Fully rounded borders */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none; /* Remove border */
+    }
+}
 
+.episode-button-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center; /* Centers button horizontally */
+    line-height: 1;
+}
 
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    /* Styling for the button container */
+    .episode-button-container {
+        display: flex;
+        flex-basis: 15%; /* Adjust this percentage based on your design needs */
+        flex-grow: 0;
+        flex-shrink: 0;
+        align-items: center; /* Center align the buttons vertically */
+        justify-content: center; /* Center align the buttons horizontally */
+        padding: 8px;
+        gap: 8px; /* Space between buttons */
+    }
+    .episode-button-container button {
+        border-radius: 30px; /* Fully rounded borders */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none; /* Remove border */
+    }
+}
 
 .item-container img {
-    max-width: 200px; /* Adjust this value as needed */
-    max-height: 200px; /* Adjust this value as needed */
-    object-fit: cover; /* This will ensure the image covers the area without stretching */
+    width: 100%;
+    max-width: 200px;
+    max-height: 200px;
+    object-fit: cover;
     align-self: flex-start;
     margin-top: 10px;
+    margin-bottom: 10px;
     border-radius: 10px;
+}
+
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    .item-container img {
+        max-width: 150px; /* Smaller max width for smaller screens */
+        max-height: 150px; /* Smaller max height for smaller screens */
+        width: 150px;
+        height: 150px;
+    }
+}
+
+/* Additional styles for better alignment and consistency */
+.item-container {
+    align-items: center; /* Align items vertically */
+    justify-content: center; /* Center items horizontally */
 }
 
 .item_container-text {
@@ -789,6 +971,15 @@ body {
     cursor: pointer;
 }
 
+.audio-top-button {
+    color: var(--text-secondary-color);
+    background-color: transparent;
+}
+
+.audio-top-button.selector-button:hover {
+    background-color: var(--hover-color); /* Replace #your-hover-color with your desired color */
+}
+
 .item-container-button {
     color: var(--text-secondary-color);
     background-color: var(--container-button-color);
@@ -797,6 +988,13 @@ body {
 
 .item-container-button.selector-button:hover {
     background-color: var(--hover-color); /* Replace #your-hover-color with your desired color */
+}
+
+/* Media query for smaller screens */
+@media (max-width: 768px) {
+    .item-container-button {
+        border: none; /* Remove border on small screens */
+    }
 }
 
 .item-container-alert-button {
@@ -894,9 +1092,15 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .large-card-image {
-    max-width: 50%;
     height: auto;
     border-radius: 0.5rem;
+    width: 100%;
+    max-width: 200px;
+    max-height: 200px;
+    object-fit: cover;
+    align-self: center !important;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 .large-card-content {
@@ -933,13 +1137,21 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .search-page-input {
-    width: 50%;
+    width: 60%;
     transition: all 1s ease-in-out;
     position: absolute;
     top: 40%; /* Start from the center of the screen */
     left: 50%; /* Start from the center of the screen */
     transform: translate(-50%, -50%); /* Move up and left by half of its own width and height */
     z-index: 1; /* Ensure it's on top */
+}
+
+/* Styles for smaller screens */
+@media (max-width: 768px) {
+    .search-page-input {
+        width: 90%; /* Increase width to 90% of the viewport */
+
+    }
 }
 
 .search-page-input.move-to-top {
@@ -999,11 +1211,31 @@ button.item-container-action-button.item-container-action-button {
     color: --var(--text-color);
 }
 
-/* Hover background color for accordion header */
-.accordion-header:hover {
-    background-color: var(--hover-color); /* Example color, adjust as needed */
-    color: var(--text-color);
+/* Background color for accordion arrow */
+.accordion-arrow {
+    background-color: transparent; /* Transparent background */
+    position: relative; /* Relative position */
+    width: 24px; /* Define width */
+    height: 24px; /* Define height */
 }
+
+/* Hover background color for accordion arrow */
+/* Hover effect for the button, with a smaller circle */
+.accordion-button:hover::before {
+    content: "";
+    position: absolute;
+    top: 50%;  /* Center the circle vertically relative to the button */
+    left: 50%; /* Center the circle horizontally relative to the button */
+    transform: translate(-50%, -50%); /* Offset the centering to the exact middle */
+    left: calc(100% - 26px);
+    width: 30px; /* Smaller width, adjust based on your arrow or button size */
+    height: 30px; /* Smaller height, match width for circle */
+    background-color: var(--hover-color); /* Example color, adjust as needed */
+    border-radius: 50%; /* Rounded shape */
+    z-index: 0; /* Ensure it's visible above the button background but below text/icons */
+}
+
+
 
 /* Styles for the select dropdown */
 .theme-select-dropdown {
@@ -1184,6 +1416,19 @@ button.item-container-action-button.item-container-action-button {
     margin-bottom: 20px;
 }
 
+@media (max-width: 768px) {
+    .episode-layout-container {
+        padding-top: 70px; /* Increase padding for smaller screens if necessary */
+    }
+}
+
+@media (max-height: 500px) {
+    .episode-layout-container {
+        padding-top: 80px; /* Increase padding for very small height screens */
+    }
+}
+
+
 .episode-artwork {
     /* Adjust to scale with page size */
     max-width: 30%;
@@ -1235,6 +1480,24 @@ button.item-container-action-button.item-container-action-button {
     transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out; /* Add transition for background-color */
     border-radius: 5px; /* Round the corners */
 }
+
+.no-media-warning {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 12px;  /* Adjust padding to match your buttons */
+    font-weight: bold;
+    margin-bottom: 10px;  /* Bottom padding as requested */
+}
+
+.episode-action-buttons .no-media-warning {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    width: 100%;
+}
+
 
 .episode-action-buttons .play-button {
     position: relative;

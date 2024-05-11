@@ -252,7 +252,7 @@ pub fn saved() -> Html {
                                 let date_format = match_date_format(state.date_format.as_deref());
                                 let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
                                 let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
-    
+                                let episode_url_for_ep_item = episode_url_clone.clone();
                                 let item = episode_item(
                                     Box::new(episode),
                                     description.clone(),
@@ -266,6 +266,7 @@ pub fn saved() -> Html {
                                     "saved",
                                     Callback::from(|_| {}), 
                                     false,
+                                    episode_url_for_ep_item
                                 );
 
                                 item
@@ -280,19 +281,19 @@ pub fn saved() -> Html {
                     }
                 }
             }
-        {
-            if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
-            } else {
-                html! {}
-            }
-        }
         // Conditional rendering for the error banner
         if let Some(error) = error_message {
             <div class="error-snackbar">{ error }</div>
         }
         if let Some(info) = info_message {
             <div class="info-snackbar">{ info }</div>
+        }
+        {
+            if let Some(audio_props) = &audio_state.currently_playing {
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+            } else {
+                html! {}
+            }
         }
         </div>
         <App_drawer />

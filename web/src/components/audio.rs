@@ -45,29 +45,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         classes!("artwork")
     };
 
-    // let prog_bar_state = audio_state.clone();
-    // let update_progress = {
-    //     let progress = progress.clone();
-    //     let audio_state = audio_state.clone();
-    //     Callback::from(move |_| {
-    //         let current_time = prog_bar_state.current_time_seconds;
-    //         let duration = prog_bar_state.duration;
-    //         if duration > 0.0 {
-    //             let progress_val = (current_time as f64 / duration as f64) * 100.0;
-    //             progress.set(Some(progress_val));
-    //         }
-    //     })
-    // };
-    
-    // // Assume `update_time` updates the `audio_state.current_time_seconds`
-    // let update_time = {
-    //     let progress = progress.clone();
-    //     Callback::from(move |e: Event| {
-    //         // Logic to update the current time based on range input
-    //         update_progress.emit(());
-    //     })
-    // };
-
     let container_ref = use_node_ref();
 
     let title_click = {
@@ -105,13 +82,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             let keydown_handler = {
                 let audio_info = audio_dispatch_effect.clone();
                 Closure::wrap(Box::new(move |event: KeyboardEvent| {
-                    if event.key() == " " {
-                        // Prevent the default behavior of the spacebar key
-                        event.prevent_default();
-                        // Toggle `audio_playing` here
-                        audio_info.reduce_mut(|state| {
-                            state.toggle_playback()
-                        });
+                    // Check if the event target is not an input or textarea
+                    let target = event.target().unwrap().dyn_into::<web_sys::HtmlElement>().unwrap();
+                    if !(target.tag_name().eq_ignore_ascii_case("input") || target.tag_name().eq_ignore_ascii_case("textarea")) {
+                        if event.key() == " " {
+                            // Prevent the default behavior of the spacebar key
+                            event.prevent_default();
+                            // Toggle `audio_playing` here
+                            audio_info.reduce_mut(|state| {
+                                state.toggle_playback()
+                            });
+                        }
                     }
                 }) as Box<dyn FnMut(_)>)
             };
@@ -120,6 +101,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             || ()
         }
     );
+    
 
 
     // Effect for setting up an interval to update the current playback time
@@ -369,20 +351,106 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         })
     };
+    let speed_state = audio_state.clone();
+    let speed_dispatch = _audio_dispatch.clone();
 
+    // Adjust the playback speed based on a slider value
+    let update_playback_speed = {
+        let audio_dispatch = speed_dispatch.clone();
+        Callback::from(move |speed: f64| {
+            speed_dispatch.reduce_mut(|speed_state| {
+                speed_state.playback_speed = speed;
+                if let Some(audio_element) = &speed_state.audio_element {
+                    audio_element.set_playback_rate(speed);
+                }
+            });
+        })
+    };
+
+    let slider_visibility: UseStateHandle<bool> = use_state(|| false);
+    let toggle_slider_visibility = {
+        let slider_visibility = slider_visibility.clone();
+        Callback::from(move |_| {
+            slider_visibility.set(!*slider_visibility)
+        })
+    };
 
 // Skip forward
+    let skip_state = audio_state.clone();
     let skip_forward = {
         // let dispatch = _dispatch.clone();
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |_| {
-            if let Some(audio_element) = audio_state.audio_element.as_ref() {
+            if let Some(audio_element) = skip_state.audio_element.as_ref() {
                 let new_time = audio_element.current_time() + 15.0;
                 audio_element.set_current_time(new_time);
                 audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
             }
         })
     };
+
+    let backward_state = audio_state.clone();
+    let skip_backward = {
+        // let dispatch = _dispatch.clone();
+        let audio_dispatch = _audio_dispatch.clone();
+        Callback::from(move |_| {
+            if let Some(audio_element) = backward_state.audio_element.as_ref() {
+                let new_time = audio_element.current_time() - 15.0;
+                audio_element.set_current_time(new_time);
+                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
+            }
+        })
+    };
+
+    let skip_episode = {
+        let audio_dispatch = _audio_dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let current_episode_id = episode_id.clone(); // Assuming this is correctly obtained elsewhere
+        let audio_state = audio_state.clone();
+    
+        Callback::from(move |_: MouseEvent| {
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let audio_dispatch = audio_dispatch.clone();
+            let audio_state = audio_state.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+        
+                let episodes_result = call_get_queued_episodes(&server_name.clone().unwrap(), &api_key.clone().unwrap(), &user_id.clone().unwrap()).await;
+                if let Ok(episodes) = episodes_result {
+                    if let Some(current_episode) = episodes.iter().find(|ep| ep.EpisodeID == current_episode_id.unwrap()) {
+                        let current_queue_position = current_episode.QueuePosition.unwrap_or_default();
+    
+                        if let Some(next_episode) = episodes.iter().find(|ep| ep.QueuePosition == Some(current_queue_position + 1)) {
+                            on_play_click(
+                                next_episode.EpisodeURL.clone(),
+                                next_episode.EpisodeTitle.clone(),
+                                next_episode.EpisodeArtwork.clone(),
+                                next_episode.EpisodeDuration,
+                                next_episode.EpisodeID,
+                                next_episode.ListenDuration,
+                                api_key.clone().unwrap().unwrap(),
+                                user_id.unwrap(),
+                                server_name.clone().unwrap(),
+                                audio_dispatch.clone(),
+                                audio_state.clone(),
+                                None,
+                            ).emit(MouseEvent::new("click").unwrap());
+                        } else {
+                            audio_dispatch.reduce_mut(|state| {
+                                state.audio_playing = Some(false);
+                            });
+                        }
+                    }
+                } else {
+                    // Handle the error, maybe log it or show a user-facing message
+                    web_sys::console::log_1(&"Failed to fetch queued episodes".into());
+                }
+            });
+        })
+    };
+    
 
 
     let audio_state = _audio_dispatch.get();
@@ -431,13 +499,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         };
         
         let audio_bar_class = classes!("audio-player", "border", "border-solid", "border-color", "fixed", "bottom-0", "z-50", "w-full", if audio_state.is_expanded { "expanded" } else { "" });
+        let update_playback_closure = update_playback_speed.clone();
         html! {
             <div class={audio_bar_class} ref={container_ref.clone()}>
                 <div class="top-section">
+                    <div>
                     <button onclick={title_click.clone()} class="retract-button">
                         <span class="material-icons">{"expand_more"}</span>
                     </button>
+                    <div class="audio-image-container">
                     <img onclick={title_click.clone()} src={audio_props.artwork_url.clone()} />
+                    </div>
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
                     <div class="scrub-bar">
@@ -453,27 +525,66 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <span>{formatted_duration.clone()}</span>
                     </div>
 
-                    <div class="button-container flex items-center justify-center">
-                        <button class="rewind-button item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                    <div class="episode-button-container flex items-center justify-center">
+                        // <button onclick={change_speed.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        //     <span class="material-icons">{"speed"}</span>
+                        // </button>
+                        {
+                            html! {
+                                <>
+                                    <button onclick={toggle_slider_visibility.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                                        <span class="material-icons">{"speed"}</span>
+                                    </button>
+                                </>
+                            }
+                        }
+                        <button onclick={skip_backward.clone()} class="rewind-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">{"fast_rewind"}</span>
                         </button>
-                        <button onclick={toggle_playback.clone()} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <button onclick={toggle_playback.clone()} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">
                                 { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
                             </span>
                         </button>
-                        <button onclick={skip_forward.clone()} class="skip-button item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <button onclick={skip_forward.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">{"fast_forward"}</span>
                         </button>
+                        <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                            <span class="material-icons">{"skip_next"}</span>
+                        </button>
                     </div>
-                    <div class="button-container flex items-center justify-center">
+                    <div class="episode-button-container flex items-center justify-center">
+                    // Other buttons as before
+                        <div class={classes!("playback-speed-display", if *slider_visibility {"visible"} else {"hidden"})}>
+                            <div class="speed-display-container">
+                                <div class="speed-text"> // Use inline styles or a class
+                                    {format!("{}x", audio_state.playback_speed)}
+                                </div>
+                                <input
+                                    type="range"
+                                    class="slider"  // Center this slider independently
+                                    min="0.5"
+                                    max="2.0"
+                                    step="0.1"
+                                    value={audio_state.playback_speed.to_string()}
+                                    oninput={Callback::from(move |event: InputEvent| {
+                                        let input: HtmlInputElement = event.target_unchecked_into();
+                                        let speed = input.value_as_number();
+                                        update_playback_closure.emit(speed);
+                                    })}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                
+                    <div class="episode-button-container flex items-center justify-center">
                     {
                         if episode_in_db {
                             html! {
                                 <button onclick={Callback::from(move |e: MouseEvent| {
                                     on_shownotes_click.emit(e.clone());
                                     title_click_emit.emit(e);
-                                })} class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center">
+                                })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
                                     { "Shownotes" }
                                 </button>
                             }
@@ -486,6 +597,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         }
                     }
                     </div>
+                    </div>
                     
                 </div>
                 <div class="line-content">
@@ -496,12 +608,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
                 </div>
                 <div class="right-group">
-                    <button onclick={toggle_playback} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                    <button onclick={toggle_playback} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                         <span class="material-icons">
                             { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
                         </span>
                     </button>
-                    <button onclick={skip_forward} class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                    <button onclick={skip_forward} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                         <span class="material-icons">{"fast_forward"}</span>
                     </button>
                     <div class="flex-grow flex items-center sm:block hidden">
@@ -677,6 +789,7 @@ pub fn on_play_click(
 
         audio_dispatch.reduce_mut(move |audio_state| {
             audio_state.audio_playing = Some(true);
+            audio_state.playback_speed = 1.0;
             audio_state.currently_playing = Some(AudioPlayerProps {
                 src: src.clone(),
                 title: episode_title_for_wasm.clone(),

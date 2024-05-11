@@ -545,6 +545,31 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="You can only return pocast ids of your own podcasts!")
 
+@app.get("/api/data/get_podcast_details")
+async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header),
+                              user_id: int = Query(...)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user, or it's the web API key
+    if key_id == user_id or is_web_key:
+        details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
+        if details is None:
+            episodes = []  # Return an empty list instead of raising an exception
+        return {"details": details}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only return pocast ids of your own podcasts!")
+
+
 class PodcastFeedData(BaseModel):
     podcast_feed: str
 
@@ -2571,11 +2596,55 @@ def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url,
         else:
             cnx.close()
 
+def check_valid_feed(feed_url: str):
+    import feedparser
+    parsed_feed = feedparser.parse(feed_url)
+    if not parsed_feed.get('version'):
+        raise ValueError("Invalid podcast feed URL or content.")
+    if not ('title' in parsed_feed.feed and 'link' in parsed_feed.feed and 'description' in parsed_feed.feed):
+        raise ValueError("Feed missing required attributes: title, link, or description.")
+    return parsed_feed
+
+class CustomPodcast(BaseModel):
+    feed_url: str
+    user_id: int
+
+@app.post("/api/data/add_custom_podcast")
+async def queue_bump(data: CustomPodcast, cnx=Depends(get_database_connection),
+                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        try:
+            parsed_feed = check_valid_feed(data.feed_url)
+        except ValueError as e:
+            logger.error(f"Failed to parse: {str(e)}")
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Assuming the rest of the code processes the podcast correctly
+        try:
+            result = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id)
+            return {"data": result}
+        except Exception as e:
+            logger.error(f"Failed to process the podcast: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to process the podcast: {str(e)}")
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only add podcasts for yourself!")
+
 class QueueBump(BaseModel):
     ep_url: str
     title: str
     user_id: int
-
 
 @app.post("/api/data/queue_bump")
 async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
@@ -2697,6 +2766,32 @@ def restore_server_fun(database_pass: str, server_restore_data: str):
         database_functions.functions.restore_server(cnx, database_pass, server_restore_data)
     finally:
         cnx.close() 
+
+
+class InitRequest(BaseModel):
+    api_key: str
+    
+@app.post("/api/init/startup_tasks")
+async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_connection)):
+    try:
+        # Verify if the API key is valid
+        is_valid = database_functions.functions.verify_api_key(cnx, request.api_key)
+        
+        # Check if the provided API key is the web key
+        is_web_key = request.api_key == base_webkey.web_key
+
+        if not is_valid or not is_web_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")
+        
+        # Execute the startup tasks
+        database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
+        return {"status": "Startup tasks completed successfully."}
+    finally:
+        # The connection will automatically be closed by FastAPI's dependency system
+        pass
+
+
+
 
 async def async_tasks():
     # Start cleanup task

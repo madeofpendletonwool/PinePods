@@ -1041,3 +1041,36 @@ pub async fn call_user_admin_check(
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct CustomFeedRequest {
+    feed_url: String,
+    user_id: i32,
+}
+
+pub async fn call_add_custom_feed(
+    server_name: &str,
+    feed_url: &str,
+    user_id: &i32,
+    api_key: &str,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/add_custom_podcast", server_name);
+    let request_body = CustomFeedRequest {
+        feed_url: feed_url.to_string().clone(),
+        user_id: user_id.clone(),
+    };
+    log::info!("url: {:?}", feed_url.to_string().clone());
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        response.text().await.map_err(Error::msg)
+    } else {
+        Err(Error::msg(format!("Error adding feed: {}", response.status_text())))
+    }
+}

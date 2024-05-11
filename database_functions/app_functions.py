@@ -149,3 +149,25 @@ def get_podcast_values(feed_url, user_id):
         podcast_values['pod_explicit'] = d.feed.itunes_explicit == 'yes'
 
     return podcast_values
+
+
+
+def check_valid_feed(feed_url: str):
+    import feedparser
+    """
+    Check if the provided URL points to a valid podcast feed.
+    Raises ValueError if the feed is invalid.
+    """
+    parsed_feed = feedparser.parse(feed_url)
+
+    # Check for basic RSS or Atom feed structure
+    if not parsed_feed.get('version'):
+        # If it does not contain a recognizable version, it's likely not a valid feed
+        raise ValueError("Invalid podcast feed URL or content.")
+
+    # Check for essential elements in the feed
+    if not ('title' in parsed_feed.feed and 'link' in parsed_feed.feed and 'description' in parsed_feed.feed):
+        raise ValueError("Feed missing required attributes: title, link, or description.")
+
+    # If it passes the above checks, it's likely a valid feed
+    return parsed_feed

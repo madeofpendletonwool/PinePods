@@ -365,7 +365,7 @@ pub fn downloads() -> Html {
                                 let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
     
                                 let on_checkbox_change_cloned = on_checkbox_change.clone();
-
+                                let episode_url_for_ep_item = episode_url_clone.clone();
                                 let item = episode_item(
                                     Box::new(episode),
                                     description.clone(),
@@ -379,6 +379,7 @@ pub fn downloads() -> Html {
                                     "downloads",
                                     on_checkbox_change_cloned, // Add this line
                                     is_delete_mode, // Add this line
+                                    episode_url_for_ep_item
                                 );
 
                                 item
@@ -389,7 +390,7 @@ pub fn downloads() -> Html {
                         } else {
                             empty_message(
                                 "No Episode Downloads Found",
-                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
+                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!"
                             )
                         }
                     }

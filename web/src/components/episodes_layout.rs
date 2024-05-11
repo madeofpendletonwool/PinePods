@@ -18,20 +18,19 @@ use super::gen_funcs::{parse_date, format_datetime, match_date_format};
 use crate::components::gen_funcs::format_time;
 use crate::requests::login_requests::use_check_authentication;
 use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, convert_time_to_seconds};
+use wasm_bindgen::prelude::*;
+use htmlentity::entity::decode;
+use htmlentity::entity::ICodedDataTrait;
 
 fn add_icon() -> Html {
     html! {
-        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24">
-            <path d="M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z"/>
-        </svg>
+        <span class="material-icons">{ "add_box" }</span>
     }
 }
 
 fn trash_icon() -> Html {
     html! {
-        <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24">
-            <path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/>
-        </svg>
+        <span class="material-icons">{ "delete" }</span>
 
     }
 }
@@ -62,6 +61,19 @@ pub fn safe_html(props: &Props) -> Html {
 
     Html::VRef(div.into())
 }
+
+fn sanitize_html(html: &str) -> String {
+    let cleaned_html = ammonia::clean(html);
+    let decoded_data = decode(cleaned_html.as_bytes());
+    match decoded_data.to_string() {
+        Ok(decoded_html) => decoded_html,
+        Err(e) => {
+            // web_sys::console::error_1(&e.into());
+            String::from("Invalid HTML content")
+        }
+    }
+}
+
 
 pub enum AppStateMsg {
     ExpandEpisode(String),
@@ -263,11 +275,14 @@ pub fn episode_layout() -> Html {
         let api_key_clone = api_key.clone();
         let server_name_clone = server_name.clone();
         let user_id_clone = user_id.clone();
+        let dispatch = add_dispatch.clone();
+        let app_dispatch = _search_dispatch.clone();
 
         let is_added = is_added.clone();
 
         if *is_added == true{
             Callback::from(move |_: MouseEvent| { 
+            app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
@@ -280,6 +295,7 @@ pub fn episode_layout() -> Html {
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
+            let app_dispatch = app_dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
@@ -289,13 +305,16 @@ pub fn episode_layout() -> Html {
                     Ok(success) => {
                         if success {
                             dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully removed".to_string()));
+                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             is_added_inner.set(false);
                         } else {
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
+                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     },
                     Err(e) => {
                         dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
+                        app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
             });
@@ -303,6 +322,8 @@ pub fn episode_layout() -> Html {
 
         } else {        
             Callback::from(move |_: MouseEvent| { // Ensure this is triggered only by a MouseEvent
+                let app_dispatch = app_dispatch.clone();
+                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
                 let call_dispatch = add_dispatch.clone();
                 let pod_title = pod_title_og.clone();
@@ -342,13 +363,16 @@ pub fn episode_layout() -> Html {
                         Ok(success) => {
                             if success {
                                 dispatch_wasm.reduce_mut(|state| state.info_message = Option::from("Podcast successfully added".to_string()));
+                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
                             } else {
                                 dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Failed to add podcast".to_string()));
+                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
                         },
                         Err(e) => {
                             dispatch_wasm.reduce_mut(|state| state.error_message = Option::from(format!("Error adding podcast: {:?}", e)));
+                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 });
@@ -363,6 +387,13 @@ pub fn episode_layout() -> Html {
     };
     
     let button_class = if *is_added { "bg-red-500" } else { "bg-blue-500" };
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggle_description(guid: &str);
+    }
+
     
     html! {
         <div class="main-container">
@@ -371,13 +402,64 @@ pub fn episode_layout() -> Html {
             <h1 class="page_header text-2xl font-bold my-4 text-center">{ "Podcast Episode Results" }</h1>
         {
             if let Some(podcast_info) = clicked_podcast_info {
+                let sanitized_title = podcast_info.podcast_title.replace(|c: char| !c.is_alphanumeric(), "-");
+                let desc_id = format!("desc-{}", sanitized_title);
+                let toggle_description = {
+                    let desc_id = desc_id.clone();
+                    Callback::from(move |_: MouseEvent| {
+                        let desc_id = desc_id.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let window = web_sys::window().expect("no global `window` exists");
+                            let function = window
+                                .get("toggle_description")
+                                .expect("should have `toggle_description` as a function")
+                                .dyn_into::<js_sys::Function>()
+                                .unwrap();
+                            let this = JsValue::NULL;
+                            let guid = JsValue::from_str(&desc_id);
+                            function.call1(&this, &guid).unwrap();
+                        });
+                    })
+                };
+                
+
+                
+                web_sys::console::log_1(&format!("Error: {}", desc_id).into());
+                let toggle_description = {
+                    let desc_id = desc_id.clone();
+                    Callback::from(move |_| {
+                        let desc_id = desc_id.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let window = web_sys::window().expect("no global `window` exists");
+                            let function = window
+                                .get("toggle_description")
+                                .expect("should have `toggle_description` as a function")
+                                .dyn_into::<js_sys::Function>()
+                                .unwrap();
+                            let this = JsValue::NULL;
+                            let guid = JsValue::from_str(&desc_id);
+                            function.call1(&this, &guid).unwrap();
+                        });
+                    })
+                };
+                let sanitized_description = sanitize_html(&podcast_info.podcast_description);
+
                 html! {
                     <div class="item-header">
                         <img src={podcast_info.podcast_artwork.clone()} alt={format!("Cover for {}", &podcast_info.podcast_title)} class="item-header-cover"/>
                         <div class="item-header-info">
-                            <h2 class="item-header-title">{ &podcast_info.podcast_title }</h2>
+                            <div class="title-button-container">
+                                <h2 class="item-header-title">{ &podcast_info.podcast_title }</h2>
+                                <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
+                                    { button_content }
+                                </button>
+                            </div>
 
-                            <p class="item-header-description">{ &podcast_info.podcast_description }</p>
+                            // <p class="item-header-description">{ &podcast_info.podcast_description }</p>
+                            <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
+                                { sanitized_description }
+                                <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                            </div>
                             <div class="item-header-info">
                                 <p class="header-text">{ format!("Episode Count: {}", &podcast_info.podcast_episode_count) }</p>
                                 <p class="header-text">{ format!("Authors: {}", &podcast_info.podcast_author) }</p>
@@ -397,16 +479,7 @@ pub fn episode_layout() -> Html {
                                     }
                                 </div>
 
-
-
-
                             </div>
-                        </div>
-
-                        <div class="button-container">
-                        <button onclick={toggle_podcast} class={format!("item-container-button selector-button hover:bg-blue-700 text-white font-bold py-2 px-4 rounded {}", button_class)}>
-                            { button_content }
-                        </button>
                         </div>
                     </div>
                 }
@@ -500,6 +573,8 @@ pub fn episode_layout() -> Html {
                                 let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
                                 let duration = episode.duration.clone().unwrap().parse::<f64>().unwrap_or(0.0);
                                 let formatted_duration = format_time(duration);
+                                let episode_url_for_ep_item = episode_url_clone.clone();
+                                let should_show_buttons = !episode_url_for_ep_item.is_empty();
                                 html! {
                                     <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
                                         <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="object-cover align-top-cover w-full item-container img"/>
@@ -543,29 +618,35 @@ pub fn episode_layout() -> Html {
                                                 // }
                                             }
                                         </div>
-                                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8"> // More space on medium and larger screens
-                                            <button
-                                                class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                                onclick={on_play_click}
-                                            >
-                                                <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
-                                            </button>
-                                            {
-                                                if podcast_added {
-                                                    let page_type = "episode_layout".to_string();
+                                        {
+                                            html! {
+                                                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; heren medium and larger screens
+                                                    if should_show_buttons {
+                                                        <button
+                                                            class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                                            onclick={on_play_click}
+                                                        >
+                                                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                                        </button>
+                                                        {
+                                                            if podcast_added {
+                                                                let page_type = "episode_layout".to_string();
 
-                                                    let context_button = html! {
-                                                        <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
-                                                    };
+                                                                let context_button = html! {
+                                                                    <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
+                                                                };
 
 
-                                                    context_button
+                                                                context_button
 
-                                                } else {
-                                                    html! {}
-                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                    }
+                                                </div>
                                             }
-                                        </div>
+                                        }
 
 
                                     </div>

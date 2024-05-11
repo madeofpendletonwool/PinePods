@@ -313,6 +313,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
     };
     
     let datetime = parse_date(&props.episode.EpisodePubDate, &state.user_tz);
+    let episode_url_for_ep_item = episode_url_clone.clone();
     // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
     let item = episode_item(
@@ -328,6 +329,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         "home",
         Callback::from(|_| {}), 
         false,
+        episode_url_for_ep_item,
     );
 
     item
