@@ -1,4 +1,4 @@
-mysql-connector-python==8.1.0
+mysql-connector-python==8.4.0
 requests
 python-dateutil
 python-dateutil
