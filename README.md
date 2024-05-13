@@ -214,6 +214,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 [AntennaPod F-Droid AppListing](https://f-droid.org/en/packages/de.danoeh.antennapod/)
 
+ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version. 
 
 ## ToDo
 
