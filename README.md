@@ -36,6 +36,10 @@ PinePods is a Rust based podcast management system that manages podcasts with mu
 
 For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/)
 
+<p align="center">
+  <img src="./images/screenshots/homethemed.png">
+</p>
+
 ## Features
 
 Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql (alternative database support is on the roadmap) database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
@@ -270,6 +274,9 @@ Loads of themes!
 <p align="center">
   <img src="./images/screenshots/home.png">
 </p>
+<p align="center">
+  <img src="./images/screenshots/homelight.png">
+</p>
 
 Full Podcast Management
 <p align="center">
@@ -284,4 +291,9 @@ Browse through episodes
 Markdown and HTML display compatible
 <p align="center">
   <img src="./images/screenshots/markdownview.png">
+</p>
+
+Mobile support baked right in!
+<p align="center">
+  <img src="./images/screenshots/mobile.png">
 </p>
