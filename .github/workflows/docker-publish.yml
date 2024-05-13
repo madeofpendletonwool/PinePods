@@ -99,15 +99,16 @@ jobs:
 
 
 
-      - name: Create and push Docker manifest
+      - name: Create and push Docker manifest for the version tag
         run: |
           docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 \
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
           docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
-            docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86 \
-              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
-            docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          fi
+
+      - name: Create and push Docker manifest for the latest tag
+        run: |
+          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
+          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
