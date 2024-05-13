@@ -48,23 +48,22 @@ try:
     # Execute SQL command to create tables
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Users (
-            UserID INT AUTO_INCREMENT PRIMARY KEY,
+            UserID SERIAL PRIMARY KEY,
             Fullname VARCHAR(255),
-            Username VARCHAR(255),
+            Username VARCHAR(255) UNIQUE,
             Email VARCHAR(255),
             Hashed_PW CHAR(255),
-            IsAdmin TINYINT(1),
+            IsAdmin BOOLEAN,
             Reset_Code TEXT,
-            Reset_Expiry DATETIME,
+            Reset_Expiry TIMESTAMP,
             MFA_Secret VARCHAR(70),
             TimeZone VARCHAR(50) DEFAULT 'UTC',
             TimeFormat INT  DEFAULT 24,
             DateFormat VARCHAR(3) DEFAULT 'ISO',
-            FirstLogin TINYINT(1) DEFAULT 0,
+            FirstLogin BOOLEAN DEFAULT false,
             GpodderUrl VARCHAR(255) DEFAULT '',
             GpodderLoginName VARCHAR(255) DEFAULT '',
-            GpodderToken VARCHAR(255) DEFAULT '',
-            UNIQUE (Username)
+            GpodderToken VARCHAR(255) DEFAULT ''
         )
     """)
 
@@ -99,11 +98,11 @@ try:
     # Create the AppSettings table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS AppSettings (
-            AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
-            SelfServiceUser TINYINT(1) DEFAULT 0,
-            DownloadEnabled TINYINT(1) DEFAULT 1,
-            EncryptionKey BINARY(44),  -- Set the data type to BINARY(32) to hold the 32-byte key
-            NewsFeedSubscribed TINYINT(1) DEFAULT 0
+            AppSettingsID SERIAL PRIMARY KEY,
+            SelfServiceUser BOOLEAN DEFAULT false,
+            DownloadEnabled BOOLEAN DEFAULT true,
+            EncryptionKey BYTEA,  -- Set the data type to BYTEA for binary data
+            NewsFeedSubscribed BOOLEAN DEFAULT false
         )
     """)
 
@@ -143,9 +142,11 @@ try:
 
 
 
-    cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
-                    VALUES ('Guest User', 'guest', 'inactive', '$argon2id$v=19$m=65536,t=3,p=4$nCy4H3qu2kJOJVa7dmdS5A$C5IkJLgalKIZGwAKw3V2KYKIWxzstLAmzoL41tdhDyw', 0)""")
-
+    cursor.execute("""
+        INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+        VALUES ('Guest User', 'guest', 'inactive', '$argon2id$v=19$m=65536,t=3,p=4$nCy4H3qu2kJOJVa7dmdS5A$C5IkJLgalKIZGwAKw3V2KYKIWxzstLAmzoL41tdhDyw', false)
+        ON CONFLICT (Username) DO NOTHING
+    """)
 
     # Create the web Key
     def create_api_key(cnx, user_id=1):
@@ -194,8 +195,11 @@ try:
     # Hash the admin password
     hashed_pw = hash_password(admin_pw)
 
-    admin_insert_query = """INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
-                            VALUES (%s, %s, %s, %s, %s)"""
+    admin_insert_query = """
+        INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (Username) DO NOTHING
+    """
 
 
     # Execute the INSERT statement without a separate salt
@@ -203,12 +207,18 @@ try:
 
 
 
-    cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (1)""")
+    cursor.execute("""
+        INSERT INTO UserStats (UserID) VALUES (1)
+        ON CONFLICT (UserID) DO NOTHING
+    """)
 
-    cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (2)""")
+    cursor.execute("""
+        INSERT INTO UserStats (UserID) VALUES (2)
+        ON CONFLICT (UserID) DO NOTHING
+    """)
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
-                        PodcastID INT AUTO_INCREMENT PRIMARY KEY,
+                        PodcastID SERIAL PRIMARY KEY,
                         PodcastName TEXT,
                         ArtworkURL TEXT,
                         Author TEXT,
@@ -223,7 +233,7 @@ try:
                     )""")
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
-                        EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                        EpisodeID SERIAL PRIMARY KEY,
                         PodcastID INT,
                         EpisodeTitle TEXT,
                         EpisodeDescription TEXT,
