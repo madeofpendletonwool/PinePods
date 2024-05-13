@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Manual override version tag (optional)'
+        required: false
 
 env:
   REGISTRY: docker.io
@@ -27,12 +31,19 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_KEY }}
 
+      - name: Set Image Tag
+        id: set_tag
+        run: |
+          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
       - name: Build and push x86 image
         run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-x86 -f dockerfile .
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-x86
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-x86 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 -f dockerfile .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86
+          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
+          fi
 
   build-arm:
     runs-on: pi4
@@ -53,10 +64,12 @@ jobs:
 
       - name: Build and push ARM image
         run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-arm -f dockerfile-arm .
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-arm
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-arm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm -f dockerfile-arm .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
+          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
+          fi
 
   create-and-push-manifest:
     needs: [build-x86, build-arm]
@@ -65,6 +78,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+
     steps:
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
@@ -74,11 +88,13 @@ jobs:
 
       - name: Create and push Docker manifest
         run: |
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }} \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-x86 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}-arm
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
+          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
+            docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86 \
+              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
+            docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          fi
