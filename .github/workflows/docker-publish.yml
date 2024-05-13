@@ -62,6 +62,12 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_KEY }}
 
+      - name: Set Image Tag
+        id: set_tag
+        run: |
+          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
+
       - name: Build and push ARM image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm -f dockerfile-arm .
