@@ -197,7 +197,7 @@ try:
 
     admin_insert_query = """
         INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s::boolean)
         ON CONFLICT (Username) DO NOTHING
     """
 
@@ -217,20 +217,22 @@ try:
         ON CONFLICT (UserID) DO NOTHING
     """)
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
-                        PodcastID SERIAL PRIMARY KEY,
-                        PodcastName TEXT,
-                        ArtworkURL TEXT,
-                        Author TEXT,
-                        Categories TEXT,
-                        Description TEXT,
-                        EpisodeCount INT,
-                        FeedURL TEXT,
-                        WebsiteURL TEXT,
-                        Explicit TINYINT(1),
-                        UserID INT,
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID)
-                    )""")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Podcasts (
+            PodcastID SERIAL PRIMARY KEY,
+            PodcastName TEXT,
+            ArtworkURL TEXT,
+            Author TEXT,
+            Categories TEXT,
+            Description TEXT,
+            EpisodeCount INT,
+            FeedURL TEXT,
+            WebsiteURL TEXT,
+            Explicit BOOLEAN,
+            UserID INT,
+            FOREIGN KEY (UserID) REFERENCES Users(UserID)
+        )
+    """)
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                         EpisodeID SERIAL PRIMARY KEY,
