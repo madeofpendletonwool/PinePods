@@ -1,4 +1,4 @@
-name: Publish Pinepods Image to DockerHub
+name: Publish Pinepods Arm Image to DockerHub
 
 on:
   release:
