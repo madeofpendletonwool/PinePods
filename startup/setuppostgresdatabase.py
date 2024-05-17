@@ -4,7 +4,7 @@ from cryptography.fernet import Fernet
 import string
 import secrets
 from passlib.hash import argon2
-import psycopg2
+import psycopg
 import logging
 
 # Set up basic configuration for logging
@@ -34,7 +34,7 @@ try:
     db_name = os.environ.get("DB_NAME", "pypods_database")
 
     # Create database connector
-    cnx = psycopg2.connect(
+    cnx = psycopg.connect(
         host=db_host,
         port=db_port,
         user=db_user,
@@ -47,7 +47,7 @@ try:
 
     # Execute SQL command to create tables
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Users (
+        CREATE TABLE IF NOT EXISTS "Users" (
             UserID SERIAL PRIMARY KEY,
             Fullname VARCHAR(255),
             Username VARCHAR(255) UNIQUE,
@@ -71,15 +71,15 @@ try:
 
 
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "APIKeys" (
                         APIKeyID SERIAL PRIMARY KEY,
                         UserID INT,
                         APIKey TEXT,
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                     )""")
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "UserStats" (
                         UserStatsID SERIAL PRIMARY KEY,
                         UserID INT UNIQUE,
                         UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -88,7 +88,7 @@ try:
                         PodcastsAdded INT DEFAULT 0,
                         EpisodesSaved INT DEFAULT 0,
                         EpisodesDownloaded INT DEFAULT 0,
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                     )""")
 
 
@@ -97,7 +97,7 @@ try:
 
     # Create the AppSettings table
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS AppSettings (
+        CREATE TABLE IF NOT EXISTS "AppSettings" (
             AppSettingsID SERIAL PRIMARY KEY,
             SelfServiceUser BOOLEAN DEFAULT false,
             DownloadEnabled BOOLEAN DEFAULT true,
@@ -106,57 +106,66 @@ try:
         )
     """)
 
-    cursor.execute("SELECT COUNT(*) FROM AppSettings WHERE AppSettingsID = 1")
+    cursor.execute('SELECT COUNT(*) FROM "AppSettings" WHERE AppSettingsID = 1')
     count = cursor.fetchone()[0]
 
     if count == 0:
         cursor.execute("""
-            INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
+            INSERT INTO "AppSettings" (SelfServiceUser, DownloadEnabled, EncryptionKey) 
             VALUES (false, true, %s)
         """, (key,))
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS EmailSettings (
-            EmailSettingsID SERIAL PRIMARY KEY,
-            Server_Name VARCHAR(255),
-            Server_Port INT,
-            From_Email VARCHAR(255),
-            Send_Mode VARCHAR(255),
-            Encryption VARCHAR(255),
-            Auth_Required BOOLEAN,
-            Username VARCHAR(255),
-            Password VARCHAR(255)
-        )
-    """)
-
-    cursor.execute("""
-        SELECT COUNT(*) FROM EmailSettings
-    """)
-    rows = cursor.fetchone()
-
-    if rows[0] == 0:
+    logging.info("Creating EmailSettings table...")
+    try:
         cursor.execute("""
-            INSERT INTO EmailSettings (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
-            VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', true, 'default_username', 'default_password')
+            CREATE TABLE IF NOT EXISTS "EmailSettings" (
+                EmailSettingsID SERIAL PRIMARY KEY,
+                Server_Name VARCHAR(255),
+                Server_Port INT,
+                From_Email VARCHAR(255),
+                Send_Mode VARCHAR(255),
+                Encryption VARCHAR(255),
+                Auth_Required BOOLEAN,
+                Username VARCHAR(255),
+                Password VARCHAR(255)
+            )
         """)
+        logging.info("EmailSettings table created successfully.")
+    except Exception as e:
+        logging.error(f"Failed to create EmailSettings table: {e}")
+
+    try: 
+        cursor.execute("""
+            SELECT COUNT(*) FROM "EmailSettings"
+        """)
+        rows = cursor.fetchone()
 
 
+        if rows[0] == 0:
+            cursor.execute("""
+                INSERT INTO "EmailSettings" (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
+                VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', true, 'default_username', 'default_password')
+            """)
+    except Exception as e:
+        print(f"Error setting default email data: {e}")
+    logging.info("added default email data.")
 
-    cursor.execute("""
-        INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
-        VALUES ('Guest User', 'guest', 'inactive', '$argon2id$v=19$m=65536,t=3,p=4$nCy4H3qu2kJOJVa7dmdS5A$C5IkJLgalKIZGwAKw3V2KYKIWxzstLAmzoL41tdhDyw', false)
-        ON CONFLICT (Username) DO NOTHING
-    """)
+    try: 
+        cursor.execute("""
+            INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
+            VALUES ('Guest User', 'guest', 'inactive', '$argon2id$v=19$m=65536,t=3,p=4$nCy4H3qu2kJOJVa7dmdS5A$C5IkJLgalKIZGwAKw3V2KYKIWxzstLAmzoL41tdhDyw', false)
+            ON CONFLICT (Username) DO NOTHING
+        """)
+    except Exception as e:
+        print(f"Error setting default guest data: {e}")
+    logging.info("added default guest data.")
 
-    # Create the web Key
-    def create_api_key(cnx, user_id=1):
-        cursor_key = cnx.cursor()
 
+    try:
         # Check if API key exists for user_id
-        query = f"SELECT APIKey FROM APIKeys WHERE UserID = {user_id}"
-        cursor_key.execute(query)
+        cursor.execute('SELECT apikey FROM "APIKeys" WHERE userid = %s', (1,))
 
-        result = cursor_key.fetchone()
+        result = cursor.fetchone()
 
         if result:
             api_key = result[0]
@@ -166,166 +175,190 @@ try:
             alphabet = string.ascii_letters + string.digits
             api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
 
-            # Note the quotes around {api_key}
-            query = f"INSERT INTO APIKeys (UserID, APIKey) VALUES ({user_id}, '{api_key}')"
-            cursor_key.execute(query)
+            # Insert the new API key into the database using a parameterized query
+            cursor.execute('INSERT INTO "APIKeys" (UserID, APIKey) VALUES (%s, %s)', (1, api_key))
 
             cnx.commit()
 
-        cursor_key.close()
-        return api_key
+        with open("/tmp/web_api_key.txt", "w") as f:
+            f.write(api_key)
+    except Exception as e:
+        print(f"Error creating web key: {e}")
+
+    logging.info("created web api key.")
+
+    try:
+        # Your admin user variables
+        admin_fullname = os.environ.get("FULLNAME", "Admin User")
+        admin_username = os.environ.get("USERNAME", "admin")
+        admin_email = os.environ.get("EMAIL", "admin@pinepods.online")
+
+        alphabet = string.ascii_letters + string.digits + string.punctuation
+        fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
+
+        admin_pw = os.environ.get("PASSWORD", fallback_password)
+
+        # Hash the admin password
+        hashed_pw = hash_password(admin_pw)
+
+        admin_insert_query = """
+            INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
+            VALUES (%s, %s, %s, %s, %s::boolean)
+            ON CONFLICT (Username) DO NOTHING
+        """
 
 
-    web_api_key = create_api_key(cnx)
+        # Execute the INSERT statement without a separate salt
+        cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hashed_pw, True))
+    except Exception as e:
+        print(f"Error creating default admin: {e}")
+    logging.info("created default admin.")
 
+    try:
+        cursor.execute("""
+            INSERT INTO "UserStats" (UserID) VALUES (1)
+            ON CONFLICT (UserID) DO NOTHING
+        """)
 
-    with open("/tmp/web_api_key.txt", "w") as f:
-        f.write(web_api_key)
+        cursor.execute("""
+            INSERT INTO "UserStats" (UserID) VALUES (2)
+            ON CONFLICT (UserID) DO NOTHING
+        """)
+    except Exception as e:
+        print(f"Error creating intial users in UserStats: {e}")
+    logging.info("created initial users in stats.")
 
-    # Your admin user variables
-    admin_fullname = os.environ.get("FULLNAME", "Admin User")
-    admin_username = os.environ.get("USERNAME", "admin")
-    admin_email = os.environ.get("EMAIL", "admin@pinepods.online")
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "Podcasts" (
+                PodcastID SERIAL PRIMARY KEY,
+                PodcastName TEXT,
+                ArtworkURL TEXT,
+                Author TEXT,
+                Categories TEXT,
+                Description TEXT,
+                EpisodeCount INT,
+                FeedURL TEXT,
+                WebsiteURL TEXT,
+                Explicit BOOLEAN,
+                UserID INT,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+            )
+        """)
+        cnx.commit()  # Ensure changes are committed
+    except Exception as e:
+        print(f"Error adding Podcasts table: {e}")
+    logging.info("created podcasts table.")
 
-    alphabet = string.ascii_letters + string.digits + string.punctuation
-    fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
+    cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
+    result = cursor.fetchone()
+    if result:
+        logging.info("Table 'Podcasts' exists.")
+    else:
+        logging.error("Table 'Podcasts' does not exist.")
 
-    admin_pw = os.environ.get("PASSWORD", fallback_password)
-
-    # Hash the admin password
-    hashed_pw = hash_password(admin_pw)
-
-    admin_insert_query = """
-        INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
-        VALUES (%s, %s, %s, %s, %s::boolean)
-        ON CONFLICT (Username) DO NOTHING
-    """
-
-
-    # Execute the INSERT statement without a separate salt
-    cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hashed_pw, 1))
-
-
-
-    cursor.execute("""
-        INSERT INTO UserStats (UserID) VALUES (1)
-        ON CONFLICT (UserID) DO NOTHING
-    """)
-
-    cursor.execute("""
-        INSERT INTO UserStats (UserID) VALUES (2)
-        ON CONFLICT (UserID) DO NOTHING
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Podcasts (
-            PodcastID SERIAL PRIMARY KEY,
-            PodcastName TEXT,
-            ArtworkURL TEXT,
-            Author TEXT,
-            Categories TEXT,
-            Description TEXT,
-            EpisodeCount INT,
-            FeedURL TEXT,
-            WebsiteURL TEXT,
-            Explicit BOOLEAN,
-            UserID INT,
-            FOREIGN KEY (UserID) REFERENCES Users(UserID)
-        )
-    """)
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
-                        EpisodeID SERIAL PRIMARY KEY,
-                        PodcastID INT,
-                        EpisodeTitle TEXT,
-                        EpisodeDescription TEXT,
-                        EpisodeURL TEXT,
-                        EpisodeArtwork TEXT,
-                        EpisodePubDate DATETIME,
-                        EpisodeDuration INT,
-                        FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
-                    )""")
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "Episodes" (
+                EpisodeID SERIAL PRIMARY KEY,
+                PodcastID INT,
+                EpisodeTitle TEXT,
+                EpisodeDescription TEXT,
+                EpisodeURL TEXT,
+                EpisodeArtwork TEXT,
+                EpisodePubDate TIMESTAMP,
+                EpisodeDuration INT,
+                FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+            )
+        """)
+        cnx.commit()  # Ensure changes are committed
+    except Exception as e:
+        print(f"Error adding Episodes table: {e}")
+    logging.info("created episodes table.")
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"""
             SELECT 1 
             FROM pg_indexes 
-            WHERE lower(indexname) = lower('{index_name}') AND lower(tablename) = lower('{table_name}')
+            WHERE lower(indexname) = lower('{index_name}') AND tablename = '{table_name}'
         """)
         if not cursor.fetchone():
-            cursor.execute(f"CREATE INDEX {index_name} ON {table_name}({column_name})")
-
+            cursor.execute(f'CREATE INDEX {index_name} ON "{table_name}"({column_name})')
 
     create_index_if_not_exists(cursor, "idx_podcasts_userid", "Podcasts", "UserID")
     create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
     create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
 
 
+    try:
+        cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
+                            UserSettingID SERIAL PRIMARY KEY,
+                            UserID INT UNIQUE,
+                            Theme VARCHAR(255) DEFAULT 'nordic',
+                            FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+                        )""")
+    except Exception as e:
+        print(f"Error adding UserSettings table: {e}")
+    logging.info("created UserSettings table.")
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
-                        UserSettingID SERIAL PRIMARY KEY,
-                        UserID INT UNIQUE,
-                        Theme VARCHAR(255) DEFAULT 'nordic',
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID)
-                    )""")
+    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('1', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
+    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('2', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
 
-    cursor.execute("""INSERT INTO UserSettings (UserID, Theme) VALUES ('1', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
-    cursor.execute("""INSERT INTO UserSettings (UserID, Theme) VALUES ('2', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS UserEpisodeHistory (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "UserEpisodeHistory" (
                         UserEpisodeHistoryID SERIAL PRIMARY KEY,
                         UserID INT,
                         EpisodeID INT,
                         ListenDate TIMESTAMP,
                         ListenDuration INT,
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                        FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                        FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS SavedEpisodes (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "SavedEpisodes" (
                         SaveID SERIAL PRIMARY KEY,
                         UserID INT,
                         EpisodeID INT,
                         SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                        FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                        FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
 
 
     # Create the DownloadedEpisodes table
-    cursor.execute("""CREATE TABLE IF NOT EXISTS DownloadedEpisodes (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "DownloadedEpisodes" (
                     DownloadID SERIAL PRIMARY KEY,
                     UserID INT,
                     EpisodeID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     DownloadedSize INT,
                     DownloadedLocation VARCHAR(255),
-                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
 
     # Create the EpisodeQueue table
-    cursor.execute("""CREATE TABLE IF NOT EXISTS EpisodeQueue (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "EpisodeQueue" (
                     QueueID SERIAL PRIMARY KEY,
                     QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UserID INT,
                     EpisodeID INT,
                     QueuePosition INT NOT NULL DEFAULT 0,
-                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
 
     # Create the Sessions table
-    cursor.execute("""CREATE TABLE IF NOT EXISTS Sessions (
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "Sessions" (
                     SessionID SERIAL PRIMARY KEY,
                     UserID INT,
                     value TEXT,
                     expire TIMESTAMP NOT NULL,
-                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                     )""")
+    cnx.commit()
 
 
-except psycopg2.Error as err:
+except psycopg.Error as err:
     logging.error(f"Database error: {err}")
 except Exception as e:
     logging.error(f"General error: {e}")

@@ -17,7 +17,7 @@ eyed3
 asyncio
 websockets
 pytz
-psycopg2-binary
+psycopg[binary]
 mygpoclient
 feedparser
 pyotp
@@ -25,3 +25,4 @@ appdirs
 argon2_cffi
 httpx
 qrcode[pil]
+psycopg[pool]
