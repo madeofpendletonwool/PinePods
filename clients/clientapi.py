@@ -215,9 +215,8 @@ class Web_Key:
     def __init__(self):
         self.web_key = None
 
-    def get_web_key(self, cnx):
-        self.web_key = database_functions.functions.get_web_key(cnx)
-
+    def get_web_key(self):
+        self.web_key = secrets.token_hex(15)
 
 base_webkey = Web_Key()
 
@@ -242,7 +241,7 @@ async def get_current_user(credentials: HTTPBasicCredentials = Depends(security)
 
 # Use the non-generator version in your script initialization
 cnx = direct_database_connection()
-base_webkey.get_web_key(cnx)
+base_webkey.get_web_key()
 
 
 async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
@@ -1251,19 +1250,6 @@ async def api_return_selected_episode(cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return episode information for your own episodes!")
-
-
-@app.post("/api/data/check_usernames")
-async def api_check_usernames(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
-                              username: str = Body(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    if is_valid_key:
-        result = database_functions.functions.check_usernames(cnx, username)
-        return {"username_exists": result}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
 
 class UserValues(BaseModel):
     fullname: str
