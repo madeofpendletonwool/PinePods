@@ -27,7 +27,7 @@
     - [ios Install :iphone:](#ios-install-iphone)
   - [Pinepods Firewood](#pinepods-firewood)
   - [Platform Availability](#platform-availability)
-  - [ToDo (Listed in order they will be implemented)](#todo-listed-in-order-they-will-be-implemented)
+  - [ToDo](#todo)
   - [Screenshots :camera:](#screenshots-camera)
 
 # Getting Started
@@ -226,7 +226,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy. 
-- [ ] Options to delete users for admins. 
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
