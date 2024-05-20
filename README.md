@@ -249,6 +249,12 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Rating System
 - [ ] Sharing System
 - [ ] Option to use login images as background throughout app.
+- [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
+- [ ] Drag to reorganize queue
+- [ ] Chapter Image Support
+- [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [ ] Side load audio from the web
+- [ ] Custom Podcast Start Position
 
 ### Clients to support
 
