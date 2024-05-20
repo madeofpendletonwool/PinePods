@@ -68,7 +68,6 @@ fn sanitize_html(html: &str) -> String {
     match decoded_data.to_string() {
         Ok(decoded_html) => decoded_html,
         Err(e) => {
-            // web_sys::console::error_1(&e.into());
             String::from("Invalid HTML content")
         }
     }
@@ -423,8 +422,7 @@ pub fn episode_layout() -> Html {
                 };
                 
 
-                
-                web_sys::console::log_1(&format!("Error: {}", desc_id).into());
+
                 let toggle_description = {
                     let desc_id = desc_id.clone();
                     Callback::from(move |_| {
@@ -571,8 +569,8 @@ pub fn episode_layout() -> Html {
                                 let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
                                 let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
                                 let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
-                                let duration = episode.duration.clone().unwrap().parse::<f64>().unwrap_or(0.0);
-                                let formatted_duration = format_time(duration);
+                                let formatted_duration = format_time(episode_duration_in_seconds.into());
+                
                                 let episode_url_for_ep_item = episode_url_clone.clone();
                                 let should_show_buttons = !episode_url_for_ep_item.is_empty();
                                 html! {

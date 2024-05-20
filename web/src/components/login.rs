@@ -379,6 +379,16 @@ pub fn login() -> Html {
         })
     };
 
+    let on_key_press = {
+        let on_submit = on_submit.clone();
+        Callback::from(move |e: KeyboardEvent| {
+            if e.key() == "Enter" {
+                e.prevent_default();
+                on_submit.emit(()); // Invoke the existing on_submit logic
+            }
+        })
+    };
+
     let on_submit_click = {
         let on_submit = on_submit.clone(); // Clone the existing on_submit logic
         Callback::from(move |_: MouseEvent| {
@@ -462,7 +472,7 @@ pub fn login() -> Html {
     let username_error = use_state(|| username_error_notice::Hidden);
 
 
-
+    let create_state = _dispatch.clone();
     let on_create_submit = {
         let page_state = page_state.clone();
         let fullname = fullname.clone().to_string();
@@ -475,6 +485,7 @@ pub fn login() -> Html {
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
+            let create_state = create_state.clone();
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
@@ -525,17 +536,17 @@ pub fn login() -> Html {
                                 Ok(success) => {
                                     if success {
                                         page_state.set(PageState::Default);
-                                        dispatch.reduce_mut(|state| state.info_message = Option::from(format!("You can now login!")));
+                                        create_state.reduce_mut(|state| state.info_message = Option::from(format!("You can now login!")));
                                     } else {
                                         console::log_1(&"Error adding user".into());
                                         page_state.set(PageState::Default);
-                                        dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
+                                        create_state.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user")));
 
                                     }
                                 }
                                 Err(e) => {
                                     page_state.set(PageState::Default);
-                                    dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
+                                    create_state.reduce_mut(|state| state.error_message = Option::from(format!("Error adding user: {:?}", e)));
                                 }
                             }
                         });
@@ -1097,12 +1108,14 @@ pub fn login() -> Html {
                         placeholder="Username"
                         class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                         oninput={on_login_username_change}
+                        onkeypress={on_key_press.clone()}
                     />
                     <input
                         type="password"
                         placeholder="Password"
                         class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                         oninput={on_login_password_change}
+                        onkeypress={on_key_press}
                     />
                     // Forgot Password and Create New User buttons
                     <div class="flex justify-between">

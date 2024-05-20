@@ -5,7 +5,7 @@ use yew::platform::spawn_local;
 use crate::requests::setting_reqs::call_get_user_info;
 use web_sys::console;
 use std::borrow::Borrow;
-use crate::requests::setting_reqs::{SettingsUser, call_add_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, call_set_isadmin};
+use crate::requests::setting_reqs::{SettingsUser, call_add_user, call_delete_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, call_set_isadmin};
 use crate::components::gen_funcs::{ValidationError, encode_password, validate_email, validate_username};
 use crate::components::gen_funcs::validate_user_input;
 // use crate::gen_components::_ErrorMessageProps::error_message;
@@ -317,6 +317,41 @@ pub fn user_settings() -> Html {
     
     let error_message_container_edit = error_message_container.clone();
     let error_container_edit = error_container.clone();
+    
+    let delete_dispatch = ui_user.clone();
+    let on_delete_click = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let selected_user_id = selected_user_id.clone();
+        let page_state = page_state.clone();
+        let user_dispatch = delete_dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            if let Some(Some(user_id)) = *selected_user_id {
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let page_state = page_state.clone();
+                let user_dispatch = user_dispatch.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_delete_user(server_name.unwrap(), api_key.unwrap().unwrap(), user_id).await {
+                        Ok(response) => {
+                            web_sys::console::log_1(&format!("User deleted: {}", response.status).into());
+                            user_dispatch.reduce_mut(|state| state.info_message = Some("User deleted successfully".to_string()));
+                            page_state.set(PageState::Hidden); // Navigate back to the list page state
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(&format!("Failed to delete user: {}", e).into());
+                            user_dispatch.reduce_mut(|state| state.error_message = Some("Failed to delete user".to_string()));
+                        }
+                    }
+                });
+            } else {
+                user_dispatch.reduce_mut(|state| state.error_message = Some("No user selected".to_string()));
+            }
+        })
+    };
+
+    
     let on_edit_submit = {
         let fullname = fullname.clone().to_string();
         let page_state = page_state.clone();
@@ -512,6 +547,7 @@ pub fn user_settings() -> Html {
                                                 password_error.set(password_error_notice::Shown);
                                             } else {
                                                 page_state_pass.set(PageState::Hidden);
+                                                web_sys::console::log_1(&format!("pw: {}", hash_pw.clone()).into());
                                                 match call_set_password(server_name_unwrapped, api_key_unwrapped.clone(), user_id, hash_pw).await {
                                                     Ok(_) => {
                                                         update_trigger_in_check.set(!*update_trigger_in_check);
@@ -689,11 +725,22 @@ pub fn user_settings() -> Html {
                                     }
                                 }
                             </div>
-                            <div class="flex items-center">
-                                <label for="admin" class="mr-2 text-sm font-medium">{"Admin User?"}</label>
-                                <input oninput={on_admin_change} type="checkbox" id="admin" name="admin" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <label for="admin" class="mr-2 text-sm font-medium">{"Admin User?"}</label>
+                                    <input oninput={on_admin_change} type="checkbox" id="admin" name="admin" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                </div>
+                                <button
+                                    type="button"
+                                    onclick={on_delete_click}
+                                    class="delete-button bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                                >
+                                    {"Delete User"}
+                            
+                                </button>
                             </div>
                             <button type="submit" onclick={on_edit_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
+
                         </form>
                     </div>
                 </div>
