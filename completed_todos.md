@@ -9,6 +9,16 @@ Next edition
 - [] Enhanced downloads page to better display podcasts. This improves archival experience
 - [] Added Better Download support to the client versions.
 
+Version 0.5.4
+
+- [x] Fixed enter key to login when highlighted on username or password field of login page
+- [x] Created a confirmation message when a user gets created using self service user creation
+- [x] Fixed issue with viewing episodes with certain podcasts when any episodes were missing a duration
+- [x] Fixed issue where release date would show current timestamp when the podcast wasn't added to the db
+- [x] Added user deletion option when editing a user
+- [x] Fixed issue with password changing in the ui. It now works great.
+
+
 Version 0.5.3
 
 - [x] Fix appearance and layout of podcasts on podcast screen or on searching pages. (Also added additional see more type dropdowns for descriptions to make them fit better.)

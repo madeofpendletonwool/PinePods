@@ -1319,30 +1319,37 @@ async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
+class PasswordUpdateRequest(BaseModel):
+    hash_pw: str
+
 @app.put("/api/data/set_password/{user_id}")
-async def api_set_password(user_id: int, hash_pw: str = Body(...),
-                           cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+async def api_set_password(
+    user_id: int,
+    request: PasswordUpdateRequest,  # Use the Pydantic model
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    hash_pw = request.hash_pw  # Extract the hash_pw from the request model
+    print(f"Received hash_pw: {hash_pw}")  # Debugging line to check received hash_pw
+
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
 
     if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
     elevated_access = await has_elevated_access(api_key, cnx)
 
     if not elevated_access:
-        # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
 
         if user_id != user_id_from_api_key:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="You are not authorized to access these user details")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to access these user details")
+
     try:
         database_functions.functions.set_password(cnx, user_id, hash_pw)
         return {"detail": "Password updated."}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User not found. Error: {str(e)}")
-
 
 @app.put("/api/data/user/set_email")
 async def api_set_email(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
