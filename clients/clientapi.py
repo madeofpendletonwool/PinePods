@@ -253,17 +253,17 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
     # If it's the web key, allow the request (return True)
     if is_web_key:
         return True
-
+    print("checking api lkey")
     # Get user ID associated with the API key
     user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
+    print("got user api")
     # If no user ID found, throw an exception
     if not user_id:
         raise HTTPException(status_code=403, detail="Invalid API key.")
-
+    print("checking for admin")
     # Check if the user is an admin
     is_admin = database_functions.functions.user_admin_check(cnx, database_type, user_id)
-
+    print("yall er admin")
     # If the user is not an admin, throw an exception
     if not is_admin:
         raise HTTPException(status_code=403, detail="User not authorized.")
@@ -272,24 +272,27 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
     return True
 
 
-async def check_if_admin_inner(api_key: str, cnx):
+def check_if_admin_inner(api_key: str, cnx):
+    print("here we go with admin")
     user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     if not user_id:
         return False
-
+    print("checking admin")
     return database_functions.functions.user_admin_check(cnx, database_type, user_id)
 
 
 async def has_elevated_access(api_key: str, cnx):
     # Check if it's an admin
-    is_admin = await check_if_admin_inner(api_key, cnx)
-
+    print("in elevate")
+    is_admin = await run_in_threadpool(check_if_admin_inner, api_key, cnx)
+    print('got admin check')
     # Check if it's the web key
     web_key = base_webkey.web_key
     is_web_key = api_key == web_key
 
     return is_admin or is_web_key
+
 
 
 @app.get('/api/pinepods_check')
@@ -981,23 +984,28 @@ def refresh_pods_task():
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),
                         api_key: str = Depends(get_api_key_from_header)):
+    logging.info('Fetching API key')
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
+    logging.info('Getting key ID')
+    logger.info(f'id {user_id}')
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    logging.info(f'Got key ID: {key_id}')
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
         stats = database_functions.functions.get_stats(cnx, database_type, user_id)
+        logging.info('Got stats')
+        if stats is None:
+            raise HTTPException(status_code=404, detail="Stats not found for the given user ID")
         return stats
     else:
-        raise HTTPException(status_code=403,
-                            detail="You can only get stats for your own account.")
+        raise HTTPException(status_code=403, detail="You can only get stats for your own account.")
+
 
 
 @app.get("/api/data/get_user_episode_count")
@@ -1030,6 +1038,7 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
 
 @app.get("/api/data/get_user_info")
 async def api_get_user_info(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
+    print("ready to user info")
     user_info = database_functions.functions.get_user_info(database_type, cnx)
     return user_info
 
@@ -1053,13 +1062,13 @@ async def api_check_podcast(
 async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header),
                                      cnx=Depends(get_database_connection)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-
+    print("validated key")
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
+    print("running elevated access")
     elevated_access = await has_elevated_access(api_key, cnx)
-
+    print("post access")
     if not elevated_access:
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
@@ -1067,9 +1076,8 @@ async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_ap
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to check admin status for other users")
-    is_admin = database_functions.functions.user_admin_check(cnx, database_type, user_id)
+    is_admin = await run_in_threadpool(database_functions.functions.user_admin_check, cnx, database_type, user_id)
     return {"is_admin": is_admin}
-
 
 class RemovePodcastData(BaseModel):
     user_id: int
@@ -1124,9 +1132,13 @@ async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=De
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
+    logging.info('check gpod')
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+        logging.info('get cloud vals')
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+        logging.info('em cloud')
         database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+    logging.info('rm pod id')
     database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
     return {"success": True}
 
@@ -1649,7 +1661,7 @@ async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = 
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
+    print('getting elevate')
     elevated_access = await has_elevated_access(api_key, cnx)
 
     if not elevated_access:
@@ -2752,6 +2764,9 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         # Execute the startup tasks
         database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
         return {"status": "Startup tasks completed successfully."}
+    except Exception as e:
+        logger.error(f"Error in startup tasks: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to complete startup tasks")
     finally:
         # The connection will automatically be closed by FastAPI's dependency system
         pass

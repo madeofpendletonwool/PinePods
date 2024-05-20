@@ -93,6 +93,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
 
         cursor.execute(query, (podcast_values['pod_feed_url'], user_id))
         result = cursor.fetchone()
+        print(f"Result: {result}")
         print("Checked for existing podcast")
 
         if result is not None:
@@ -107,29 +108,58 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
             """
+            logging.info(f"explocot: {podcast_values['pod_explicit']}")
+            if podcast_values['pod_explicit'] == True:
+                explicit = True
+            else:
+                explicit = False
         else:  # MySQL or MariaDB
             add_podcast_query = """
                 INSERT INTO Podcasts 
                 (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
+            if podcast_values['pod_explicit'] == True:
+                explicit = 1
+            else:
+                explicit = 0
 
-        cursor.execute(add_podcast_query, (
-            podcast_values['pod_title'], 
-            podcast_values['pod_artwork'], 
-            podcast_values['pod_author'], 
-            str(podcast_values['categories']), 
-            podcast_values['pod_description'], 
-            podcast_values['pod_episode_count'], 
-            podcast_values['pod_feed_url'], 
-            podcast_values['pod_website'],
-            podcast_values['pod_explicit'], 
-            user_id
-        ))
+        try:
+            cursor.execute(add_podcast_query, (
+                podcast_values['pod_title'], 
+                podcast_values['pod_artwork'], 
+                podcast_values['pod_author'], 
+                str(podcast_values['categories']), 
+                podcast_values['pod_description'], 
+                podcast_values['pod_episode_count'], 
+                podcast_values['pod_feed_url'], 
+                podcast_values['pod_website'],
+                explicit, 
+                user_id
+            ))
+        except Exception as e:
+            logging.error(f"Failed to add podcast: {e}")
+            print(f"Failed to add podcast: {e}")
+            cursor.close()
+            return False
 
         print('pre-id')
+        fetch_result = cursor.fetchone()
+        if fetch_result is None:
+            logging.error("No row was inserted.")
+            print("No row was inserted.")
+            cursor.close()
+            return False
 
-        podcast_id = cursor.fetchone()[0] if database_type == "postgresql" else cursor.lastrowid
+        if isinstance(fetch_result, dict):
+            podcast_id = fetch_result['podcastid']
+        elif isinstance(fetch_result, tuple):
+            podcast_id = fetch_result[0]
+        else:
+            logging.error("Unexpected type for fetch_result.")
+            print("Unexpected type for fetch_result.")
+            cursor.close()
+            return False
         print("Got id")
         print("Inserted into db")
 
@@ -508,7 +538,7 @@ def return_episodes(database_type, cnx, user_id):
     cursor.close()
 
     if not rows:
-        return None
+        return []
 
     return rows
 
@@ -608,7 +638,10 @@ def get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_name):
     if not row:
         return None
 
-    return row['PodcastID']  # Assuming the column name is 'PodcastID'
+    if database_type == "postgresql":
+        return row['podcastid']  # Assuming the column name is 'PodcastID'    
+    else:
+        return row['PodcastID']  # Assuming the column name is 'PodcastID'
 
 
 
@@ -999,13 +1032,22 @@ def get_user_details_id(cnx, database_type, user_id):
     # cnx.close()
 
     if result:
-        return {
-            'UserID': result[0],
-            'Fullname': result[1],
-            'Username': result[2],
-            'Email': result[3],
-            'Hashed_PW': result[4]
-        }
+        if isinstance(result, dict):
+            return {
+                'UserID': result['userid'],
+                'Fullname': result['fullname'],
+                'Username': result['username'],
+                'Email': result['email'],
+                'Hashed_PW': result['hashed_pw']
+            }
+        elif isinstance(result, tuple):
+            return {
+                'UserID': result[0],
+                'Fullname': result[1],
+                'Username': result[2],
+                'Email': result[3],
+                'Hashed_PW': result[4]
+            }
     else:
         return None
 
@@ -1642,7 +1684,12 @@ def get_theme(cnx, database_type, user_id):
         else:
             query = "SELECT Theme FROM UserSettings WHERE UserID = %s"
         cursor.execute(query, (user_id,))
-        theme = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        # Check the type of the result and access the theme accordingly
+        if isinstance(result, dict):
+            theme = result["theme"]
+        else:
+            theme = result[0]
 
         return theme
 
@@ -1706,14 +1753,14 @@ def get_api_info(database_type, cnx, user_id):
     cursor.close()
 
     # Adjusting access based on the result type
-    is_admin = is_admin_result[0] if is_admin_result else 0
+    is_admin = is_admin_result[0] if isinstance(is_admin_result, tuple) else is_admin_result["isadmin"] if is_admin_result else 0
 
     # Adjust the query based on whether the user is an admin
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT APIKeyID, UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, "Created" '
+            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created '
             'FROM "APIKeys" '
             'JOIN "Users" ON "APIKeys".UserID = "Users".UserID '
         )
@@ -1951,6 +1998,8 @@ def delete_user(cnx, database_type, user_id):
 
 
 def user_admin_check(cnx, database_type, user_id):
+
+    logging.info(f"Checking admin status for user ID: {user_id}, database type: {database_type}")
     cursor = cnx.cursor()
     if database_type == "postgresql":
         query = 'SELECT IsAdmin FROM "Users" WHERE UserID = %s'
@@ -1961,11 +2010,17 @@ def user_admin_check(cnx, database_type, user_id):
     result = cursor.fetchone()
     cursor.close()
 
+    logging.info(f"Query result: {result}")
+
     if result is None:
+        logging.warning(f"No result found for user ID: {user_id}")
         return False
 
-    return bool(result[0])
-
+    try:
+        return bool(result[0] if isinstance(result, tuple) else result['isadmin'])
+    except KeyError as e:
+        logging.error(f"KeyError: {e} - Result: {result}")
+        return False
 
 
 def final_admin(cnx, database_type, user_id):
@@ -2045,7 +2100,7 @@ def enable_disable_guest(cnx, database_type):
 def enable_disable_downloads(cnx, database_type):
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'UPDATE "AppSettings" SET "DownloadEnabled" = CASE WHEN "DownloadEnabled" = true THEN false ELSE true END'
+        query = 'UPDATE "AppSettings" SET DownloadEnabled = CASE WHEN DownloadEnabled = true THEN false ELSE true END'
     else:  # MySQL or MariaDB
         query = "UPDATE AppSettings SET DownloadEnabled = CASE WHEN DownloadEnabled = 1 THEN 0 ELSE 1 END"
     
@@ -2073,7 +2128,7 @@ def self_service_status(cnx, database_type):
 def enable_disable_self_service(cnx, database_type):
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'UPDATE "AppSettings" SET "SelfServiceUser" = CASE WHEN "SelfServiceUser" = true THEN false ELSE true END'
+        query = 'UPDATE "AppSettings" SET SelfServiceUser = CASE WHEN SelfServiceUser = true THEN false ELSE true END'
     else:  # MySQL or MariaDB
         query = "UPDATE AppSettings SET SelfServiceUser = CASE WHEN SelfServiceUser = 1 THEN 0 ELSE 1 END"
     
@@ -2111,8 +2166,11 @@ def get_api_key(cnx, database_type, username):
             print("No user found with the provided username.")
             cursor.close()
             return None
+        user_id = result[0] if isinstance(result, tuple) else result["userid"]
 
-        user_id = result[0]
+            # Check the type of the result and access the is_admin value accordingly
+    # is_admin = is_admin_result[0] if isinstance(is_admin_result, tuple) else is_admin_result["IsAdmin"] if is_admin_result else 0
+
 
         # Get the API Key using the fetched UserID, and limit the results to 1
         if database_type == "postgresql":
@@ -2126,8 +2184,9 @@ def get_api_key(cnx, database_type, username):
 
         # Check and return the API key or create a new one if not found
         if result:
-            print(f"Result: {result}")
-            return result[0]  # Adjust the index if the API key is in a different column
+            api_key = result[0] if isinstance(result, tuple) else result["apikey"]
+            print(f"Result: {api_key}")
+            return api_key # Adjust the index if the API key is in a different column
         else:
             print("No API key found for the provided user. Creating a new one...")
             return create_api_key(cnx, database_type, user_id)
@@ -2151,8 +2210,9 @@ def get_api_user(cnx, database_type, api_key):
         cursor.close()
 
         if result:
-            print(f"Result: {result}")
-            return result[0]  # Adjust the index if the API key is in a different column
+            user_id = result[0] if isinstance(result, tuple) else result['userid']
+            print(f"Result: {user_id}")
+            return user_id  # Adjust the index if the API key is in a different column
         else:
             print(f"ApiKey Not Found")
             return "ApiKey Not Found"
@@ -2164,17 +2224,41 @@ def get_api_user(cnx, database_type, api_key):
 
 
 def id_from_api_key(cnx, database_type, passed_key):
-    cursor = cnx.cursor()
-    if database_type == "postgresql":
+    logging.info(f"Fetching user ID for API key: {passed_key}")
     
-        query = 'SELECT UserID FROM "APIKeys" WHERE APIKey = %s'
+    if database_type == "postgresql":
+        cursor = cnx.cursor()  # psycopg3 default cursor should be fine here
     else:
-        query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
-    cursor.execute(query, (passed_key,))
-    result = cursor.fetchone()
-    print(f"Result: {result}")
-    cursor.close()
-    return result[0] if result else None
+        cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT UserID FROM "APIKeys" WHERE APIKey = %s'
+        else:
+            query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
+        
+        cursor.execute(query, (passed_key,))
+        result = cursor.fetchone()
+        logging.info(f"Query result: {result}")
+
+        if result:
+            # Ensure accessing the first element of the tuple
+            if database_type == "postgresql":
+                user_id = result[0] if isinstance(result, tuple) else result['userid']
+            else:
+                user_id = result[0] if isinstance(result, tuple) else result['UserID']
+            logging.info(f"Found user ID: {user_id} for API key: {passed_key}")
+            return user_id
+        else:
+            logging.warning(f"No user ID found for API key: {passed_key}")
+            return None
+    except Exception as e:
+        logging.error(f"Error fetching user ID for API key: {passed_key}, error: {e}")
+        return None
+    finally:
+        cursor.close()
+
+
 
 
 # def check_api_permission(cnx, passed_key):
@@ -2204,19 +2288,34 @@ def id_from_api_key(cnx, database_type, passed_key):
 
 
 def get_stats(cnx, database_type, user_id):
+    logging.info(f"Fetching stats for user ID: {user_id}, database type: {database_type}")
     cursor = cnx.cursor()
     if database_type == "postgresql":
         query = 'SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded FROM "UserStats" WHERE UserID = %s'
     else:  # MySQL or MariaDB
         query = "SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded FROM UserStats WHERE UserID = %s"
-    
+    print('gettings stats')
     cursor.execute(query, (user_id,))
     results = cursor.fetchall()
-    result = results[0] if results else None
-
     cursor.close()
+    print(f'stats {results}')
+    logging.info(f"Query results: {results}")
 
-    if result:
+    if not results:
+        logging.warning(f"No stats found for user ID: {user_id}")
+        return None
+
+    result = results[0]
+    if database_type == "postgresql":
+        stats = {
+            "UserCreated": result['usercreated'],
+            "PodcastsPlayed": result['podcastsplayed'],
+            "TimeListened": result['timelistened'],
+            "PodcastsAdded": result['podcastsadded'],
+            "EpisodesSaved": result['episodessaved'],
+            "EpisodesDownloaded": result['episodesdownloaded']
+        }
+    else:  # MySQL or MariaDB
         stats = {
             "UserCreated": result[0],
             "PodcastsPlayed": result[1],
@@ -2225,8 +2324,7 @@ def get_stats(cnx, database_type, user_id):
             "EpisodesSaved": result[4],
             "EpisodesDownloaded": result[5]
         }
-    else:
-        stats = None
+    logging.info(f"Fetched stats: {stats}")
 
     return stats
 
@@ -2849,7 +2947,8 @@ def check_mfa_enabled(database_type, cnx, user_id):
         result = cursor.fetchone()
         cursor.close()
 
-        return bool(result['MFA_Secret'])
+        mfa_secret = result[0] if isinstance(result, tuple) else result['mfa_secret']
+        return bool(mfa_secret)
     except Exception as e:
         print("Error checking MFA status:", e)
         return False
@@ -2966,7 +3065,10 @@ def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref, date_f
         )
 
     try:
-        cursor.execute(query, (timezone, hour_pref, date_format, 1, user_id))
+        if database_type == "postgresql":
+            cursor.execute(query, (timezone, hour_pref, date_format, True, user_id))
+        else:
+            cursor.execute(query, (timezone, hour_pref, date_format, 1, user_id))
         cnx.commit()
         cursor.close()
 
@@ -2992,7 +3094,10 @@ def get_time_info(database_type, cnx, user_id):
     cursor.close()
 
     if result:
-        return result['Timezone'], result['TimeFormat'], result['DateFormat']
+        if database_type == "postgresql":
+            return result['timezone'], result['timeformat'], result['dateformat']
+        else:
+            return result['Timezone'], result['TimeFormat'], result['DateFormat']
     else:
         return None, None, None
 
@@ -3013,7 +3118,8 @@ def first_login_done(database_type, cnx, user_id):
         result = cursor.fetchone()
         cursor.close()
 
-        return result['FirstLogin'] == 1
+        first_login = result[0] if isinstance(result, tuple) else result['firstlogin']
+        return first_login == 1
     except Exception as e:
         print("Error fetching first login status:", e)
         return False
@@ -3436,11 +3542,19 @@ def check_gpodder_settings(database_type, cnx, user_id):
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
-    if result and result[0] and result[1]:
-        return True
-    else:
-        return False
+    if result:
+        # Check if result is a dictionary
+        if isinstance(result, dict):
+            gpodder_url = result.get('gpodderurl')
+            gpodder_token = result.get('gpoddertoken')
+        else:  # result is a tuple
+            gpodder_url = result[0]
+            gpodder_token = result[1]
 
+        if gpodder_url and gpodder_token:
+            return True
+
+    return False
 
 
 def get_nextcloud_users(database_type, cnx):
@@ -3748,7 +3862,7 @@ def queue_bump(database_type, cnx, ep_url, title, user_id):
 
 def backup_user(database_type, cnx, user_id):
     if database_type == "postgresql":
-        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+        cursor = cnx.cursor(row_factory=psycopg.rows.dict_row)
         query_fetch_podcasts = 'SELECT PodcastName, FeedURL FROM "Podcasts" WHERE UserID = %s'
     else:
         cursor = cnx.cursor(dictionary=True)
@@ -3760,8 +3874,12 @@ def backup_user(database_type, cnx, user_id):
 
     opml_content = '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>Podcast Subscriptions</title>\n  </head>\n  <body>\n'
 
-    for podcast in podcasts:
-        opml_content += f'    <outline text="{podcast["PodcastName"]}" title="{podcast["PodcastName"]}" type="rss" xmlUrl="{podcast["FeedURL"]}" />\n'
+    if database_type == "postgresql":
+        for podcast in podcasts:
+            opml_content += f'    <outline text="{podcast["podcastname"]}" title="{podcast["podcastname"]}" type="rss" xmlUrl="{podcast["feedurl"]}" />\n'
+    else:
+        for podcast in podcasts:
+            opml_content += f'    <outline text="{podcast["PodcastName"]}" title="{podcast["PodcastName"]}" type="rss" xmlUrl="{podcast["FeedURL"]}" />\n'
 
     opml_content += '  </body>\n</opml>'
 

@@ -243,13 +243,13 @@ pub fn api_keys() -> Html {
                     {
                         for (*api_infos).iter().map(|api_info| {
                             let on_api_key_row_click = on_api_key_row_click.clone();
-                            let row_click_callback = on_api_key_row_click(api_info.APIKeyID); // Capture the APIKeyID for the callback
+                            let row_click_callback = on_api_key_row_click(api_info.apikeyid); // Capture the APIKeyID for the callback
                             html! {
                                 <tr class="table-row border-b cursor-pointer" onclick={row_click_callback}>
-                                    <td class="px-6 py-4">{ api_info.APIKeyID }</td>
-                                    <td class="px-6 py-4">{ &api_info.LastFourDigits }</td>
-                                    <td class="px-6 py-4">{ &api_info.Created }</td>
-                                    <td class="px-6 py-4">{ &api_info.Username }</td>
+                                    <td class="px-6 py-4">{ api_info.apikeyid }</td>
+                                    <td class="px-6 py-4">{ &api_info.lastfourdigits }</td>
+                                    <td class="px-6 py-4">{ &api_info.created }</td>
+                                    <td class="px-6 py-4">{ &api_info.username }</td>
                                 </tr>
                             }
                         })

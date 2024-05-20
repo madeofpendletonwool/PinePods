@@ -728,11 +728,11 @@ impl Clone for Box<dyn EpisodeTrait> {
 
 impl EpisodeTrait for Episode {
     fn get_episode_artwork(&self) -> String {
-        self.EpisodeArtwork.clone()
+        self.episodeartwork.clone()
     }
 
     fn get_episode_title(&self) -> String {
-        self.EpisodeTitle.clone()
+        self.episodetitle.clone()
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
@@ -740,7 +740,7 @@ impl EpisodeTrait for Episode {
     }
 
     fn get_episode_id(&self) -> i32 {
-        self.EpisodeID.clone()
+        self.episodeid.clone()
     }
 
     fn as_any(&self) -> &dyn Any {

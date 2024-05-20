@@ -52,7 +52,7 @@ try:
             Fullname VARCHAR(255),
             Username VARCHAR(255) UNIQUE,
             Email VARCHAR(255),
-            Hashed_PW CHAR(255),
+            Hashed_PW VARCHAR(500),
             IsAdmin BOOLEAN,
             Reset_Code TEXT,
             Reset_Expiry TIMESTAMP,
@@ -199,7 +199,7 @@ try:
         admin_pw = os.environ.get("PASSWORD", fallback_password)
 
         # Hash the admin password
-        hashed_pw = hash_password(admin_pw)
+        hashed_pw = hash_password(admin_pw).strip()
 
         admin_insert_query = """
             INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)

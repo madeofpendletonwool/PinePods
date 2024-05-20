@@ -35,7 +35,7 @@ impl Reducer<AppState> for AppStateMsg {
                             .as_ref()
                             .unwrap_or(&vec![])
                             .iter()
-                            .filter(|p| p.PodcastID != podcast_id)
+                            .filter(|p| p.podcastid != podcast_id)
                             .cloned()
                             .collect()
                     );
@@ -157,12 +157,12 @@ pub fn podcasts() -> Html {
                             // let id_string = &podcast.PodcastID.to_string();
     
                             let dispatch = dispatch.clone();
-                            let podcast_id_loop = podcast.PodcastID.clone();
+                            let podcast_id_loop = podcast.podcastid.clone();
                             // let podcast_url_clone = podcast.FeedURL.clone();
                             // let podcast_title_clone = podcast.PodcastName.clone();
                             // let podcast_ep_count = podcast.EpisodeCount.clone();
                             // let podcast_artwork_clone = podcast.ArtworkURL.clone();
-                            let podcast_description_clone = podcast.Description.clone();
+                            let podcast_description_clone = podcast.description.clone();
                             // let categories: HashMap<String, String> = serde_json::from_str(&podcast_categories_clone).unwrap_or_else(|_| HashMap::new());
                             let on_remove_click = {
                                 let dispatch_remove = dispatch.clone();
@@ -218,27 +218,27 @@ pub fn podcasts() -> Html {
                                     }
                                 })
                             };
-                            let categories: HashMap<String, String> = serde_json::from_str(&podcast.Categories)
+                            let categories: HashMap<String, String> = serde_json::from_str(&podcast.categories)
                                 .unwrap_or_else(|_| HashMap::new());
                             let on_title_click = create_on_title_click(
                                 dispatch.clone(),
                                 server_name_iter,
                                 api_key_iter,
                                 &history,
-                                podcast.PodcastName.clone(),
-                                podcast.FeedURL.clone(),
-                                podcast.Description.clone().unwrap_or_else(|| String::from("No Description Provided")),
-                                podcast.Author.clone().unwrap_or_else(|| String::from("Unknown Author")),
-                                podcast.ArtworkURL.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
-                                podcast.Explicit.clone(),
-                                podcast.EpisodeCount.clone(),
+                                podcast.podcastname.clone(),
+                                podcast.feedurl.clone(),
+                                podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
+                                podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                                podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
+                                podcast.explicit.clone(),
+                                podcast.episodecount.clone(),
                                 Some(categories),
-                                podcast.WebsiteURL.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                                podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                                 
                                 user_id.unwrap(),
                             );
 
-                            let id_string = &podcast.PodcastID.clone().to_string();
+                            let id_string = &podcast.podcastid.clone().to_string();
                             let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
                             #[wasm_bindgen]
                             extern "C" {
@@ -248,7 +248,7 @@ pub fn podcasts() -> Html {
                             let toggle_expanded = {
                                 let desc_dispatch = desc_dispatch.clone();
                                 let desc_state = desc_state.clone();
-                                let episode_guid = podcast.PodcastID.clone().to_string();
+                                let episode_guid = podcast.podcastid.clone().to_string();
                             
                                 Callback::from(move |_: MouseEvent| {
                                     let guid = episode_guid.clone();
@@ -274,15 +274,15 @@ pub fn podcasts() -> Html {
                                 <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                                         <div class="flex flex-col w-auto object-cover pl-4">
                                             <img 
-                                                src={podcast.ArtworkURL.clone()}
+                                                src={podcast.artworkurl.clone()}
                                                 onclick={on_title_click.clone()}
-                                                alt={format!("Cover for {}", podcast.PodcastName.clone())} 
+                                                alt={format!("Cover for {}", podcast.podcastname.clone())} 
                                                 class="object-cover align-top-cover w-full item-container img"
                                             />
                                         </div> 
                                         <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                             <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click}>
-                                                { &podcast.PodcastName }
+                                                { &podcast.podcastname }
                                             </p>
                                             <hr class="my-2 border-t hidden md:block"/>
                                             {
@@ -297,7 +297,7 @@ pub fn podcasts() -> Html {
                                                     </div>
                                                 }
                                             }
-                                            <p class="item_container-text">{ format!("Episode Count: {}", &podcast.EpisodeCount) }</p>
+                                            <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
                                         </div>
                                         <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                             <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>

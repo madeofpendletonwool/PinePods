@@ -4,25 +4,53 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
-    let value: i32 = Deserialize::deserialize(deserializer)?;
-    Ok(value != 0)
+    struct BoolOrIntVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for BoolOrIntVisitor {
+        type Value = bool;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a boolean or an integer")
+        }
+
+        fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
+            Ok(value)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value != 0)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value != 0)
+        }
+    }
+
+    deserializer.deserialize_any(BoolOrIntVisitor)
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct Episode {
-    pub PodcastName: String,
-    pub EpisodeTitle: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub podcastname: String,
+    pub episodetitle: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -184,45 +212,49 @@ pub struct PodcastResponse {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct Podcast {
-    pub PodcastID: i32,
-    pub PodcastName: String,
-    pub ArtworkURL: Option<String>,
-    pub Description: Option<String>,
-    pub EpisodeCount: i32,
-    pub WebsiteURL: Option<String>,
-    pub FeedURL: String,
-    pub Author: Option<String>,
-    pub Categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub description: Option<String>,
+    pub episodecount: i32,
+    pub websiteurl: Option<String>,
+    pub feedurl: String,
+    pub author: Option<String>,
+    pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
     #[serde(deserialize_with = "bool_from_int")]
-    pub Explicit: bool,
+    pub explicit: bool,
 }
 
 
-pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {
+pub async fn call_get_podcasts(
+    server_name: &String,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<Vec<Podcast>, anyhow::Error> {
     let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
 
-    // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
+
     if !response.ok() {
         return Err(anyhow::Error::msg(format!("Failed to fetch podcasts: {}", response.status_text())));
     }
 
-    
-    // First, capture the response text for diagnostic purposes
     let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    // Try to deserialize the response text
+
     match serde_json::from_str::<PodcastResponse>(&response_text) {
         Ok(response_body) => {
             Ok(response_body.pods.unwrap_or_else(Vec::new))
         }
-        Err(_e) => {
-            Err(anyhow::Error::msg("Failed to deserialize response"))
+        Err(e) => {
+            web_sys::console::log_1(&format!("Unable to parse Podcasts: {}", &response_text).into());
+            Err(anyhow::Error::msg(format!("Failed to deserialize response: {}", e)))
         }
     }
 }

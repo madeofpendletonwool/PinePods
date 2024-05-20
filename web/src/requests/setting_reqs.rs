@@ -1,6 +1,7 @@
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
+use crate::components::misc_func::deserialize_with_lowercase;
 use std::collections::HashMap;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -540,14 +541,15 @@ pub async fn call_get_email_settings(
 // User Setting Requests
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
-#[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct APIInfo {
-    pub(crate) APIKeyID: i32,
-    pub(crate) UserID: i32,
-    pub(crate) Username: String,
-    pub(crate) LastFourDigits: String,
-    pub(crate) Created: String,
+    pub apikeyid: i32,
+    pub userid: i32,
+    pub username: String,
+    pub lastfourdigits: String,
+    pub created: String,
 }
+
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct APIInfoResponse {

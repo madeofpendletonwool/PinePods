@@ -217,7 +217,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let id_string = &props.episode.EpisodeID.to_string();
+    let id_string = &props.episode.episodeid.to_string();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
         
@@ -225,14 +225,14 @@ pub fn episode(props: &EpisodeProps) -> Html {
 
     let dispatch = dispatch.clone();
 
-    let episode_url_clone = props.episode.EpisodeURL.clone();
-    let episode_title_clone = props.episode.EpisodeTitle.clone();
-    let episode_artwork_clone = props.episode.EpisodeArtwork.clone();
-    let episode_duration_clone = props.episode.EpisodeDuration.clone();
-    let episode_id_clone = props.episode.EpisodeID.clone();
-    let episode_listened_clone = props.episode.ListenDuration.clone();
+    let episode_url_clone = props.episode.episodeurl.clone();
+    let episode_title_clone = props.episode.episodetitle.clone();
+    let episode_artwork_clone = props.episode.episodeartwork.clone();
+    let episode_duration_clone = props.episode.episodeduration.clone();
+    let episode_id_clone = props.episode.episodeid.clone();
+    let episode_listened_clone = props.episode.listenduration.clone();
 
-    let sanitized_description = sanitize_html_with_blank_target(&props.episode.EpisodeDescription.clone());
+    let sanitized_description = sanitize_html_with_blank_target(&props.episode.episodedescription.clone());
 
     // let (description, _is_truncated) = if desc_expanded {
     //     (sanitized_description, false)
@@ -246,11 +246,11 @@ pub fn episode(props: &EpisodeProps) -> Html {
         fn toggleDescription(guid: &str, expanded: bool);
     }
 
-    let episode_guid = props.episode.EpisodeID.clone().to_string();
+    let episode_guid = props.episode.episodeid.clone().to_string();
     let toggle_expanded = {
         let desc_dispatch = desc_dispatch.clone();
         let desc_state = desc_state.clone();
-        let episode_guid = props.episode.EpisodeID.clone().to_string();
+        let episode_guid = props.episode.episodeid.clone().to_string();
     
         Callback::from(move |_: MouseEvent| {
             let guid = episode_guid.clone();
@@ -312,7 +312,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         _ => DateFormat::ISO, // default to ISO if the format is not recognized
     };
     
-    let datetime = parse_date(&props.episode.EpisodePubDate, &state.user_tz);
+    let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
     let episode_url_for_ep_item = episode_url_clone.clone();
     // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
