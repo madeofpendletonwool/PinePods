@@ -240,7 +240,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] How-to guides on doing things in the app
 - [ ] *Pinepods Firewood*. A light, terminal based client used as a remote streaming device or to just listen to podcasts in your terminal! No GUI
 - [ ] Add highlight to indicate which page you're on
-- [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
 - [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
 - [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts.
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
