@@ -35,13 +35,13 @@ jobs:
       - name: Set environment variables
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            echo "ARTIFACT_NAME1=deb/pinepods_0.5.0_amd64.deb" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=appimage/pinepods_0.5.0_amd64.AppImage" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=deb/pinepods_0.5.4_amd64.deb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=appimage/pinepods_0.5.4_amd64.AppImage" >> $GITHUB_ENV
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.0_x64-setup.exe" >> $Env:GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.0_x64_en-US.msi" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.4_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.4_x64_en-US.msi" >> $Env:GITHUB_ENV
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
-            echo "ARTIFACT_NAME1=dmg/Pinepods_0.5.0_x64.dmg" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=dmg/Pinepods_0.5.4_x64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=macos/Pinepods.app" >> $GITHUB_ENV
           fi
         shell: bash
