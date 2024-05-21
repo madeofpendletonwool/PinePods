@@ -215,8 +215,9 @@ class Web_Key:
     def __init__(self):
         self.web_key = None
 
-    def get_web_key(self):
-        self.web_key = secrets.token_hex(15)
+    def get_web_key(self, cnx):
+        self.web_key = database_functions.functions.get_web_key(cnx)
+
 
 base_webkey = Web_Key()
 
@@ -241,7 +242,7 @@ async def get_current_user(credentials: HTTPBasicCredentials = Depends(security)
 
 # Use the non-generator version in your script initialization
 cnx = direct_database_connection()
-base_webkey.get_web_key()
+base_webkey.get_web_key(cnx)
 
 
 async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
