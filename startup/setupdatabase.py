@@ -5,6 +5,9 @@ from cryptography.fernet import Fernet
 import string
 import secrets
 import logging
+import random
+from argon2 import PasswordHasher
+from argon2.exceptions import HashingError
 from passlib.hash import argon2
 
 # Set up basic configuration for logging
@@ -140,10 +143,60 @@ try:
             VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', 1, 'default_username', 'default_password')
         """)
 
+    # Generate a random password
+    def generate_random_password(length=12):
+        characters = string.ascii_letters + string.digits + string.punctuation
+        return ''.join(random.choice(characters) for i in range(length))
 
+    # Hash the password using Argon2
+    def hash_password(password):
+        ph = PasswordHasher()
+        try:
+            return ph.hash(password)
+        except HashingError as e:
+            print(f"Error hashing password: {e}")
+            return None
 
-    cursor.execute("""INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
-                    VALUES ('Guest User', 'guest', 'inactive', '$argon2id$v=19$m=65536,t=3,p=4$nCy4H3qu2kJOJVa7dmdS5A$C5IkJLgalKIZGwAKw3V2KYKIWxzstLAmzoL41tdhDyw', 0)""")
+    # Check if a user with the username 'guest' exists
+    def user_exists(cursor, username):
+        cursor.execute("""
+            SELECT 1 FROM Users WHERE Username = %s
+        """, (username,))
+        return cursor.fetchone() is not None
+
+    # Insert or update the user in the database
+    def insert_or_update_user(cursor, hashed_password):
+        try:
+            if user_exists(cursor, 'guest'):
+                cursor.execute("""
+                    UPDATE Users
+                    SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
+                    WHERE Username = %s
+                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False, 'guest'))
+                logging.info("Updated existing 'guest' user to 'bt' user.")
+            else:
+                cursor.execute("""
+                    INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE Username=VALUES(Username)
+                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False))
+                logging.info("Added new 'bt' user.")
+        except Exception as e:
+            print(f"Error inserting or updating user: {e}")
+            logging.error("Error inserting or updating user: %s", e)
+
+    try: 
+        # Generate and hash the password
+        random_password = generate_random_password()
+        hashed_password = hash_password(random_password)
+
+        if hashed_password:
+            insert_or_update_user(cursor, hashed_password)
+
+    except Exception as e:
+        print(f"Error setting default Background Task User: {e}")
+        logging.error("Error setting default Background Task User: %s", e)
+
 
     # Create the web Key
     def create_api_key(cnx, user_id=1):
