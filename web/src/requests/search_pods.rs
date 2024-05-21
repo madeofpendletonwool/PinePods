@@ -9,6 +9,7 @@ use wasm_bindgen::JsValue;
 use chrono::{DateTime, Utc, TimeZone};
 use yew::Properties;
 
+
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
     pub episodes: Vec<Episode>,
@@ -285,6 +286,8 @@ pub struct PodcastEpisodesResponse {
     pub episodes: Vec<Episode>,
 }
 
+
+
 pub async fn call_get_podcast_episodes(
     server_name: &str,
     api_key: &Option<String>,
@@ -336,11 +339,19 @@ pub async fn call_parse_podcast_url(server_name: String, api_key: &Option<String
             .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
 
         let episodes = channel.items().iter().map(|item| {
+            let duration = item.itunes_ext()
+                .and_then(|ext| ext.duration())
+                .map(|d| d.to_string());
+            web_sys::console::log_1(&format!("duration: {:?}", duration.clone()).into());
+            if duration.is_none() {
+                web_sys::console::log_1(&format!("Missing duration for episode: {:?}", item.title()).into());
+            }
+
             Episode {
-                title: Option::from(item.title().map(|t| t.to_string()).unwrap_or_default()),
-                description: Option::from(item.description().unwrap_or_default().to_string()),
+                title: item.title().map(|t| t.to_string()),
+                description: item.description().map(|d| d.to_string()),
                 content: item.content().map(|c| c.to_string()),
-                enclosure_url: item.enclosure().map(|enclosure| enclosure.url().to_string()),
+                enclosure_url: item.enclosure().map(|e| e.url().to_string()),
                 enclosure_length: item.enclosure().map(|e| e.length().to_string()),
                 pub_date: item.pub_date().map(|p| p.to_string()),
                 authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
@@ -348,7 +359,7 @@ pub async fn call_parse_podcast_url(server_name: String, api_key: &Option<String
                 artwork: item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string())
                     .or_else(|| podcast_artwork_url.clone()),
                 guid: item.guid().map(|g| g.value().to_string()),
-                duration: item.itunes_ext().and_then(|ext| ext.duration()).map(|d| d.to_string()),
+                duration: Some(duration.unwrap_or_else(|| "00:00:00".to_string())),
                 episode_id: None,
             }
         }).collect();

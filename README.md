@@ -27,7 +27,7 @@
     - [ios Install :iphone:](#ios-install-iphone)
   - [Pinepods Firewood](#pinepods-firewood)
   - [Platform Availability](#platform-availability)
-  - [ToDo (Listed in order they will be implemented)](#todo-listed-in-order-they-will-be-implemented)
+  - [ToDo](#todo)
   - [Screenshots :camera:](#screenshots-camera)
 
 # Getting Started
@@ -35,6 +35,10 @@
 PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. It works on mobile devices and can also sync with a Nextcloud server so you can use external apps Like Antennapod as well!
 
 For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/)
+
+<p align="center">
+  <img src="./images/screenshots/homethemed.png">
+</p>
 
 ## Features
 
@@ -222,7 +226,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy. 
-- [ ] Options to delete users for admins. 
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
@@ -237,7 +240,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] How-to guides on doing things in the app
 - [ ] *Pinepods Firewood*. A light, terminal based client used as a remote streaming device or to just listen to podcasts in your terminal! No GUI
 - [ ] Add highlight to indicate which page you're on
-- [ ] Currently, any user api can call check_usernames - Which is a security hole at best as a user could just smash values against it until they guess valid usernames. It's like this currently because of the way the apps create new users. That needs to be reworked and this api locked down to only admins.
 - [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
 - [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts.
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
@@ -246,6 +248,12 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Rating System
 - [ ] Sharing System
 - [ ] Option to use login images as background throughout app.
+- [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
+- [ ] Drag to reorganize queue
+- [ ] Chapter Image Support
+- [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [ ] Side load audio from the web
+- [ ] Custom Podcast Start Position
 
 ### Clients to support
 
@@ -270,6 +278,9 @@ Loads of themes!
 <p align="center">
   <img src="./images/screenshots/home.png">
 </p>
+<p align="center">
+  <img src="./images/screenshots/homelight.png">
+</p>
 
 Full Podcast Management
 <p align="center">
@@ -284,4 +295,9 @@ Browse through episodes
 Markdown and HTML display compatible
 <p align="center">
   <img src="./images/screenshots/markdownview.png">
+</p>
+
+Mobile support baked right in!
+<p align="center">
+  <img src="./images/screenshots/mobile.png">
 </p>
