@@ -11,7 +11,7 @@ use argon2::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc, TimeZone};
 use chrono_tz::Tz;
-
+use std::str::FromStr;
 
 pub fn format_date(date_str: &str) -> String {
     let date = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
@@ -47,9 +47,12 @@ pub fn match_date_format(date_format: Option<&str>) -> DateFormat {
 }
 
 pub fn parse_date(date_str: &str, user_tz: &Option<String>) -> DateTime<Tz> {
-    let naive_datetime = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").unwrap_or_else(|_| Utc::now().naive_utc());
+    let naive_datetime = NaiveDateTime::parse_from_str(date_str, "%a, %d %b %Y %H:%M:%S %z")
+        .or_else(|_| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S"))
+        .unwrap_or_else(|_| Utc::now().naive_utc());
+
     let datetime_utc = Utc.from_utc_datetime(&naive_datetime);
-    let tz: Tz = user_tz.as_ref().and_then(|tz| tz.parse().ok()).unwrap_or_else(|| chrono_tz::UTC);
+    let tz: Tz = user_tz.as_ref().and_then(|tz| Tz::from_str(tz).ok()).unwrap_or_else(|| chrono_tz::UTC);
     datetime_utc.with_timezone(&tz)
 }
 

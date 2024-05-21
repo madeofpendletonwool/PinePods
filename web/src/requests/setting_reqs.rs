@@ -160,7 +160,7 @@ pub async fn call_set_password(server_name: String, api_key: String, user_id: i3
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
         .header("Content-Type", "application/json")
-        .body(&body.to_string())?
+        .body(body.to_string())?
         .send()
         .await
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
@@ -169,6 +169,28 @@ pub async fn call_set_password(server_name: String, api_key: String, user_id: i3
         response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
         Err(Error::msg(format!("Error setting password: {}", response.status_text())))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteUserResponse {
+    pub status: String,
+}
+
+pub async fn call_delete_user(server_name: String, api_key: String, user_id: i32) -> Result<DeleteUserResponse, Error> {
+    let url = format!("{}/api/data/user/delete/{}", server_name, user_id);
+
+    let response = Request::delete(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response.json::<DeleteUserResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!("Error deleting user: {}", response.status_text())))
     }
 }
 
