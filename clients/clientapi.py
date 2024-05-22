@@ -216,8 +216,9 @@ class Web_Key:
     def __init__(self):
         self.web_key = None
 
-    def get_web_key(self):
-        self.web_key = secrets.token_hex(15)
+    def get_web_key(self, cnx):
+        self.web_key = database_functions.functions.get_web_key(cnx, database_type)
+
 
 base_webkey = Web_Key()
 
@@ -242,7 +243,7 @@ async def get_current_user(credentials: HTTPBasicCredentials = Depends(security)
 
 # Use the non-generator version in your script initialization
 cnx = direct_database_connection()
-base_webkey.get_web_key()
+base_webkey.get_web_key(cnx)
 
 
 async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
@@ -1253,22 +1254,6 @@ async def api_return_selected_episode(cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="You can only return episode information for your own episodes!")
 
-<<<<<<< HEAD
-
-@app.post("/api/data/check_usernames")
-async def api_check_usernames(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
-                              username: str = Body(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if is_valid_key:
-        result = database_functions.functions.check_usernames(cnx, database_type, username)
-        return {"username_exists": result}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
-
-=======
->>>>>>> c1f5ccfc037c00c594c2bf4567987c72d56c15c5
 class UserValues(BaseModel):
     fullname: str
     username: str
@@ -1327,11 +1312,6 @@ class PasswordUpdateRequest(BaseModel):
     hash_pw: str
 
 @app.put("/api/data/set_password/{user_id}")
-<<<<<<< HEAD
-async def api_set_password(user_id: int, hash_pw: str = Body(...),
-                           cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-=======
 async def api_set_password(
     user_id: int,
     request: PasswordUpdateRequest,  # Use the Pydantic model
@@ -1342,7 +1322,6 @@ async def api_set_password(
     print(f"Received hash_pw: {hash_pw}")  # Debugging line to check received hash_pw
 
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
->>>>>>> c1f5ccfc037c00c594c2bf4567987c72d56c15c5
 
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
@@ -1350,12 +1329,7 @@ async def api_set_password(
     elevated_access = await has_elevated_access(api_key, cnx)
 
     if not elevated_access:
-<<<<<<< HEAD
-        # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-=======
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
->>>>>>> c1f5ccfc037c00c594c2bf4567987c72d56c15c5
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to access these user details")

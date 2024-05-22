@@ -651,7 +651,7 @@ def delete_episode(database_type, cnx, episode_id, user_id):
     # Get the download ID from the DownloadedEpisodes table
     if database_type == "postgresql":
         query = (
-            'SELECT "DownloadID", "DownloadedLocation" '
+            'SELECT DownloadID, DownloadedLocation '
             'FROM "DownloadedEpisodes" '
             'INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '

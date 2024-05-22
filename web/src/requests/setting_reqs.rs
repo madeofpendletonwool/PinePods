@@ -67,12 +67,13 @@ pub struct UserInfoResponse {
 }
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct SettingsUser {
-    pub UserID: i32,
-    pub Fullname: String,
-    pub Username: String,
-    pub Email: String,
-    pub IsAdmin: i32,
+    pub userid: i32,
+    pub fullname: String,
+    pub username: String,
+    pub email: String,
+    pub isadmin: i32,
 }
 
 pub async fn call_get_user_info(server_name: String, api_key: String) -> Result<Vec<SettingsUser>, anyhow::Error> {
