@@ -527,17 +527,20 @@ pub async fn call_send_email(
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Default)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "PascalCase")]
 pub struct EmailSettingsResponse {
     pub(crate) EmailSettingsID: i32,
-    pub(crate) Server_Name: String,
-    pub(crate) Server_Port: i32,
-    pub(crate) From_Email: String,
-    pub(crate) Send_Mode: String,
+    pub(crate) ServerName: String,
+    pub(crate) ServerPort: i32,
+    pub(crate) FromEmail: String,
+    pub(crate) SendMode: String,
     pub(crate) Encryption: String,
-    pub(crate) Auth_Required: i32,
+    pub(crate) AuthRequired: i32,
     pub(crate) Username: String,
     pub(crate) Password: String,
 }
+
+
 
 pub async fn call_get_email_settings(
     server_name: String,
@@ -554,7 +557,8 @@ pub async fn call_get_email_settings(
 
     if response.ok() {
         let response_text = response.text().await.map_err(|e| Error::msg(format!("Error getting response text: {}", e)))?;
-        println!("Response text: {}", response_text);
+        let js_value = wasm_bindgen::JsValue::from_str(&response_text);
+        web_sys::console::log_1(&js_value);
         serde_json::from_str::<EmailSettingsResponse>(&response_text).map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
         Err(Error::msg(format!("Error retrieving email settings: {}", response.status_text())))

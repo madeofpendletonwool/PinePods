@@ -2710,7 +2710,7 @@ async def backup_server(request: BackupServerRequest, is_admin: bool = Depends(c
     if not is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     try:
-        dump_data = database_functions.functions.backup_server(cnx, request.database_pass)
+        dump_data = database_functions.functions.backup_server(database_type, cnx, request.database_pass)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return Response(content=dump_data, media_type="text/plain")

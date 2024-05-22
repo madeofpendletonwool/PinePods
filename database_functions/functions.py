@@ -197,7 +197,8 @@ def add_user(cnx, database_type, user_values):
         add_user_query = """
             INSERT INTO "Users" 
             (Fullname, Username, Email, Hashed_PW, IsAdmin) 
-            VALUES (%s, %s, %s, %s, 0)
+            VALUES (%s, %s, %s, %s, false)
+            RETURNING UserID
         """
     else:  # MySQL or MariaDB
         add_user_query = """
@@ -207,7 +208,11 @@ def add_user(cnx, database_type, user_values):
         """
 
     cursor.execute(add_user_query, user_values)
-    user_id = cursor.lastrowid if database_type != "postgresql" else cursor.fetchone()[0]
+    result = cursor.fetchone()
+    if isinstance(result, dict):
+        user_id = result['userid']
+    else:
+        user_id = result[0]
 
     if database_type == "postgresql":
         add_user_settings_query = """
@@ -1337,11 +1342,18 @@ def get_email_settings(cnx, database_type):
     # cnx.close()
 
     if result:
-        keys = ["EmailSettingsID", "Server_Name", "Server_Port", "From_Email", "Send_Mode", "Encryption",
-                "Auth_Required", "Username", "Password"]
-        return dict(zip(keys, result))
+        keys = ["EmailSettingsID", "ServerName", "ServerPort", "FromEmail", "SendMode", "Encryption",
+                "AuthRequired", "Username", "Password"]
+        settings_dict = dict(zip(keys, result))
+
+        # Convert AuthRequired to 0 or 1 if database is PostgreSQL
+        if database_type == "postgresql":
+            settings_dict["AuthRequired"] = 1 if settings_dict["AuthRequired"] else 0
+
+        return settings_dict
     else:
         return None
+
 
 def get_episode_id(cnx, database_type, podcast_id, episode_title, episode_url):
     if database_type == "postgresql":
@@ -1719,23 +1731,31 @@ def set_theme(cnx, database_type, user_id, theme):
 
 
 def get_user_info(database_type, cnx):
-    if database_type == "postgresql":
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-        query = 'SELECT UserID, Fullname, Username, Email, IsAdmin FROM "Users"'
-    else:  # MySQL or MariaDB
-        cursor = cnx.cursor(dictionary=True)
-        query = "SELECT UserID, Fullname, Username, Email, IsAdmin FROM Users"
+    try:
+        if database_type == "postgresql":
+            cnx.row_factory = dict_row
+            cursor = cnx.cursor()
+            query = 'SELECT UserID, Fullname, Username, Email, CASE WHEN IsAdmin THEN 1 ELSE 0 END AS IsAdmin FROM "Users"'
+        else:  # MySQL or MariaDB
+            cursor = cnx.cursor(dictionary=True)
+            query = "SELECT UserID, Fullname, Username, Email, IsAdmin FROM Users"
 
-    cursor.execute(query)
-    rows = cursor.fetchall()
+        cursor.execute(query)
+        rows = cursor.fetchall()
 
-    cursor.close()
+        if not rows:
+            return None
 
-    if not rows:
+        return rows
+
+    except Exception as e:
+        print(f"Error getting user info: {e}")
         return None
 
-    return rows
+    finally:
+        if cursor:
+            cursor.close()
+
 
 
 
@@ -3887,28 +3907,44 @@ def backup_user(database_type, cnx, user_id):
 
 
 
-def backup_server(cnx, database_pass):
+def backup_server(database_type, cnx, database_pass):
     # Replace with your database and authentication details
     print(f'pass: {database_pass}')
-    cmd = [
-        "mysqldump",
-        "-h", 'db',
-        "-P", '3306',
-        "-u", "root",
-        "-p" + database_pass,
-        "pypods_database"
-    ]
+    
+    if database_type == "postgresql":
+        os.environ['PGPASSWORD'] = database_pass
+        cmd = [
+            "pg_dump",
+            "-h", 'db',
+            "-p", '5432',
+            "-U", "postgres",
+            "-d", "pypods_database",
+            "-w"
+        ]
+    else:  # Assuming MySQL or MariaDB
+        cmd = [
+            "mysqldump",
+            "-h", 'db',
+            "-P", '3306',
+            "-u", "root",
+            "-p" + database_pass,
+            "pypods_database"
+        ]
 
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
-    print("STDOUT:", stdout.decode())
-    print("STDERR:", stderr.decode())
+    try:
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        print("STDOUT:", stdout.decode())
+        print("STDERR:", stderr.decode())
 
-    if process.returncode != 0:
-        # Handle error
-        raise Exception(f"Backup failed with error: {stderr.decode()}")
+        if process.returncode != 0:
+            # Handle error
+            raise Exception(f"Backup failed with error: {stderr.decode()}")
 
-    return stdout.decode()
+        return stdout.decode()
+    finally:
+        if database_type == "postgresql":
+            del os.environ['PGPASSWORD']
 
 
 def restore_server(cnx, database_pass, server_restore_data):
