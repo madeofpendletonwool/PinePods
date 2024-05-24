@@ -529,7 +529,7 @@ pub async fn call_send_email(
 #[allow(non_snake_case)]
 #[serde(rename_all = "PascalCase")]
 pub struct EmailSettingsResponse {
-    pub(crate) EmailSettingsID: i32,
+    pub(crate) Emailsettingsid: i32,
     pub(crate) ServerName: String,
     pub(crate) ServerPort: i32,
     pub(crate) FromEmail: String,

@@ -23,6 +23,55 @@ sys.path.append('/pinepods/'),
 # Import the functions directly from app_functions.py located in the database_functions directory
 from database_functions.app_functions import sync_subscription_change, get_podcast_values, check_valid_feed
 
+
+def pascal_case(snake_str):
+    return ''.join(word.title() for word in snake_str.split('_'))
+
+def lowercase_keys(data):
+    if isinstance(data, dict):
+        return {k.lower(): v for k, v in data.items()}
+    elif isinstance(data, list):
+        return [lowercase_keys(item) for item in data]
+    return data
+
+
+def capitalize_keys(data):
+    if isinstance(data, dict):
+        return {pascal_case(k): v for k, v in data.items()}
+    elif isinstance(data, list):
+        return [capitalize_keys(item) for item in data]
+    return data
+
+def normalize_keys(data, database_type):
+    if database_type == "postgresql":
+        # Convert keys to PascalCase
+        return {pascal_case(k): v for k, v in data.items()}
+    return data
+
+def get_value(result, key, default=None):
+    if isinstance(result, dict):
+        return result.get(key, default)
+    elif isinstance(result, tuple):
+        try:
+            # If key is a string, convert to an index assuming a fixed schema order
+            if isinstance(key, str):
+                # Define a mapping of field names to their tuple indices for your specific queries
+                key_map = {
+                    "PodcastID": 0,
+                    "EpisodeURL": 0,
+                    "PodcastName": 0
+                }
+                index = key_map[key]
+                return result[index]
+            # If key is an integer, use it directly
+            return result[key]
+        except (IndexError, KeyError):
+            return default
+    else:
+        return default
+
+
+
 def get_web_key(cnx, database_type):
     cursor = cnx.cursor()
     if database_type == "postgresql":
@@ -585,8 +634,16 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     rows = cursor.fetchall()
     cursor.close()
 
-    return rows or None  # Return None or empty list if no rows found
+    logging.error(f"Raw rows before normalization: {rows}")
 
+    # Normalize keys
+    rows = capitalize_keys(rows)
+
+    logging.error(f"Raw rows after normalization: {rows}")
+
+    logging.debug(f"Rows after normalization: {rows}")
+
+    return rows or None
 
 def get_podcast_details(database_type, cnx, user_id, podcast_id):
     if database_type == "postgresql":
@@ -1088,15 +1145,14 @@ def user_history(cnx, database_type, user_id):
 
 
 
-
 def download_podcast(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
 
-    # First, get the EpisodeID and PodcastID from the Episodes table
+    # Get the EpisodeID and PodcastID from the Episodes table
     if database_type == "postgresql":
-        query = ('SELECT PodcastID FROM "Episodes" WHERE EpisodeID = %s')
+        query = 'SELECT PodcastID FROM "Episodes" WHERE EpisodeID = %s'
     else:  # MySQL or MariaDB
-        query = ("SELECT PodcastID FROM Episodes WHERE EpisodeID = %s")
+        query = "SELECT PodcastID FROM Episodes WHERE EpisodeID = %s"
     cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
 
@@ -1104,13 +1160,13 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         # Episode not found
         return False
 
-    podcast_id = result[0]
+    podcast_id = get_value(result, "PodcastID")
 
-    # First, get the EpisodeID and PodcastID from the Episodes table
+    # Get the EpisodeURL from the Episodes table
     if database_type == "postgresql":
-        query = ('SELECT EpisodeURL FROM "Episodes" WHERE EpisodeID = %s')
+        query = 'SELECT EpisodeURL FROM "Episodes" WHERE EpisodeID = %s'
     else:  # MySQL or MariaDB
-        query = ("SELECT EpisodeURL FROM Episodes WHERE EpisodeID = %s")
+        query = "SELECT EpisodeURL FROM Episodes WHERE EpisodeID = %s"
     cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
 
@@ -1118,15 +1174,21 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         # Episode not found
         return False
 
-    episode_url = result[0]
+    episode_url = get_value(result, "EpisodeURL")
 
-    # Next, using the PodcastID, get the PodcastName from the Podcasts table
+    # Get the PodcastName from the Podcasts table
     if database_type == "postgresql":
-        query = ('SELECT PodcastName FROM "Podcasts" WHERE PodcastID = %s')
+        query = 'SELECT PodcastName FROM "Podcasts" WHERE PodcastID = %s'
     else:  # MySQL or MariaDB
-        query = ("SELECT PodcastName FROM Podcasts WHERE PodcastID = %s")
+        query = "SELECT PodcastName FROM Podcasts WHERE PodcastID = %s"
     cursor.execute(query, (podcast_id,))
-    podcast_name = cursor.fetchone()[0]
+    result = cursor.fetchone()
+
+    if result is None:
+        # Podcast not found
+        return False
+
+    podcast_name = get_value(result, "PodcastName")
 
     # Create a directory named after the podcast, inside the main downloads directory
     download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
@@ -1172,9 +1234,10 @@ def download_podcast(cnx, database_type, episode_id, user_id):
 
     if cursor:
         cursor.close()
-        # cnx.close()
 
     return True
+
+
 
 
 def check_downloaded(cnx, database_type, user_id, episode_id):
@@ -1290,20 +1353,24 @@ def save_email_settings(cnx, database_type, email_settings):
     cursor = cnx.cursor()
 
     if database_type == "postgresql":
+        # Convert auth_required to boolean for PostgreSQL
+        auth_required = bool(int(email_settings['auth_required']))
         query = (
             'UPDATE "EmailSettings" SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1')
     else:
+        # Keep auth_required as integer for other databases
+        auth_required = int(email_settings['auth_required'])
         query = (
             "UPDATE EmailSettings SET Server_Name = %s, Server_Port = %s, From_Email = %s, Send_Mode = %s, Encryption = %s, Auth_Required = %s, Username = %s, Password = %s WHERE EmailSettingsID = 1")
+
     cursor.execute(query, (email_settings['server_name'], email_settings['server_port'], email_settings['from_email'],
                            email_settings['send_mode'], email_settings['encryption'],
-                           int(email_settings['auth_required']), email_settings['email_username'],
+                           auth_required, email_settings['email_username'],
                            email_settings['email_password']))
 
     cnx.commit()
     cursor.close()
     # cnx.close()
-
 
 def get_encryption_key(cnx, database_type):
     cursor = cnx.cursor()
@@ -1328,23 +1395,30 @@ def get_encryption_key(cnx, database_type):
     # Convert the bytearray to a base64 encoded string before returning.
     return base64.b64encode(result_dict['EncryptionKey']).decode()
 
-
 def get_email_settings(cnx, database_type):
-    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        cursor = cnx.cursor(row_factory=dict_row)
+    else:
+        cursor = cnx.cursor()
+        
     if database_type == "postgresql":
         query = 'SELECT * FROM "EmailSettings"'
     else:
         query = "SELECT * FROM EmailSettings"
+        
     cursor.execute(query)
-
     result = cursor.fetchone()
     cursor.close()
-    # cnx.close()
 
     if result:
-        keys = ["EmailSettingsID", "ServerName", "ServerPort", "FromEmail", "SendMode", "Encryption",
-                "AuthRequired", "Username", "Password"]
-        settings_dict = dict(zip(keys, result))
+        if database_type == "postgresql":
+            # Normalize keys to PascalCase
+            settings_dict = normalize_keys(result, database_type)
+        else:
+            # For MySQL or MariaDB, convert tuple result to dictionary and keep keys as is
+            keys = ["EmailSettingsID", "ServerName", "ServerPort", "FromEmail", "SendMode", "Encryption",
+                    "AuthRequired", "Username", "Password"]
+            settings_dict = dict(zip(keys, result))
 
         # Convert AuthRequired to 0 or 1 if database is PostgreSQL
         if database_type == "postgresql":
@@ -2070,20 +2144,26 @@ def final_admin(cnx, database_type, user_id):
 
 
 def download_status(cnx, database_type):
-    cursor = cnx.cursor()
     if database_type == "postgresql":
+        cursor = cnx.cursor(row_factory=dict_row)
         query = 'SELECT DownloadEnabled FROM "AppSettings"'
     else:  # MySQL or MariaDB
+        cursor = cnx.cursor()
         query = "SELECT DownloadEnabled FROM AppSettings"
     
     cursor.execute(query)
     result = cursor.fetchone()
     cursor.close()
 
-    if result and result[0] == 1:
-        return True
-    else:
-        return False
+    if result:
+        if database_type == 'postgresql':
+            download_enabled = result['downloadenabled']
+        else:
+            download_enabled = result['DownloadEnabled']
+        if download_enabled == 1:
+            return True
+
+    return False
 
 
 
@@ -3449,6 +3529,9 @@ def get_queued_episodes(database_type, cnx, user_id):
     queued_episodes = cursor.fetchall()
 
     cursor.close()
+
+    # Normalize keys to lowercase
+    queued_episodes = lowercase_keys(queued_episodes)
 
     return queued_episodes
 

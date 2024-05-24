@@ -213,27 +213,27 @@ where
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Episode {
-    #[serde(rename = "EpisodeTitle")]
+    #[serde(rename = "Episodetitle")]
     pub title: Option<String>,
-    #[serde(rename = "EpisodeDescription")]
+    #[serde(rename = "Episodedescription")]
     pub description: Option<String>,
-    #[serde(rename = "EpisodePubDate")]
+    #[serde(rename = "Episodepubdate")]
     pub pub_date: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub links: Vec<String>,
-    #[serde(rename = "EpisodeURL")]
+    #[serde(rename = "Episodeurl")]
     pub enclosure_url: Option<String>,
     pub enclosure_length: Option<String>,
-    #[serde(rename = "EpisodeArtwork")]
+    #[serde(rename = "Episodeartwork")]
     pub artwork: Option<String>,
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub authors: Vec<String>,
     pub guid: Option<String>,
-    #[serde(rename = "EpisodeDuration", deserialize_with = "deserialize_string_or_int")]
+    #[serde(rename = "Episodeduration", deserialize_with = "deserialize_string_or_int")]
     pub duration: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "EpisodeID")]
+    #[serde(rename = "Episodeid")]
     pub episode_id: Option<i32>,
 }
 

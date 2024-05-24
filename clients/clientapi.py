@@ -519,10 +519,12 @@ async def api_podcast_episodes(cnx=Depends(get_database_connection), api_key: st
         episodes = database_functions.functions.return_podcast_episodes(database_type, cnx, user_id, podcast_id)
         if episodes is None:
             episodes = []  # Return an empty list instead of raising an exception
+        # logging.error(f"Episodes returned: {episodes}")
         return {"episodes": episodes}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return episodes of your own!")
+
 
 
 @app.get("/api/data/get_podcast_id")
@@ -835,7 +837,7 @@ async def api_download_podcast(data: DownloadPodcastData, background_tasks: Back
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_downloaded(cnx, data.user_id, data.episode_id)
+        ep_status = database_functions.functions.check_downloaded(cnx, database_type, data.user_id, data.episode_id)
         if ep_status:
             return {"detail": "Podcast already downloaded."}
         else:
@@ -900,7 +902,7 @@ async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_conne
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_saved(cnx, data.user_id, data.episode_id)
+        ep_status = database_functions.functions.check_saved(cnx, database_type, data.user_id, data.episode_id)
         if ep_status:
             return {"detail": "Episode already saved."}
         else:
@@ -1532,6 +1534,7 @@ async def api_send_email(payload: SendTestEmailValues, is_admin: bool = Depends(
         send_status = await run_in_threadpool(send_email, payload)
         return {"email_status": send_status}
     except Exception as e:
+        print(traceback.format_exc())  # Print full exception information
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 class SendEmailValues(BaseModel):
@@ -1539,26 +1542,26 @@ class SendEmailValues(BaseModel):
     subject : str
     message: str  # Add this line
 
-def send_email_with_settings(email_values, payload: SendEmailValues):
+def send_email_with_settings(email_values, database_type, payload: SendEmailValues):
 
     try:
         msg = MIMEMultipart()
-        msg['From'] = email_values['From_Email']
+        msg['From'] = email_values['FromEmail']
         msg['To'] = payload.to_email
         msg['Subject'] = payload.subject
         msg.attach(MIMEText(payload.message, 'plain'))
         
         try:
-            port = int(email_values['Server_Port'])
+            port = int(email_values['ServerPort'])
             if email_values['Encryption'] == "SSL/TLS":
-                server = smtplib.SMTP_SSL(email_values['Server_Name'], port)
+                server = smtplib.SMTP_SSL(email_values['ServerName'], port)
             elif email_values['Encryption'] == "StartTLS":
-                server = smtplib.SMTP(email_values['Server_Name'], port)
+                server = smtplib.SMTP(email_values['ServerName'], port)
                 server.starttls()
             else:
-                server = smtplib.SMTP(email_values['Server_Name'], port)
+                server = smtplib.SMTP(email_values['ServerName'], port)
                 
-            if email_values['Auth_Required']:
+            if email_values['AuthRequired']:
                 server.login(email_values['Username'], email_values['Password'])
                 
             server.send_message(msg)
@@ -1569,7 +1572,6 @@ def send_email_with_settings(email_values, payload: SendEmailValues):
     except Exception as e:
         logging.error(f"Failed to send email: {str(e)}", exc_info=True)
         raise Exception(f"Failed to send email: {str(e)}")
-
 
 
 @app.post("/api/data/send_email")
@@ -1584,7 +1586,9 @@ async def api_send_email(payload: SendEmailValues, cnx=Depends(get_database_conn
         raise HTTPException(status_code=404, detail="Email settings not found")
 
     try:
-        send_status = await run_in_threadpool(send_email_with_settings, email_values, payload)
+        logger.error(email_values)
+        print(email_values)
+        send_status = await run_in_threadpool(send_email_with_settings, email_values, database_type, payload)
         return {"email_status": send_status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")

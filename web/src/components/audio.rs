@@ -256,8 +256,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         let queued_episodes_result = call_get_queued_episodes(&server_name.clone().unwrap(), &api_key.clone().unwrap(), &user_id.clone().unwrap()).await;
                         match queued_episodes_result {
                             Ok(episodes) => {
-                                if let Some(current_episode) = episodes.iter().find(|ep| ep.EpisodeID == current_episode_id.unwrap()) {
-                                    let current_queue_position = current_episode.QueuePosition.unwrap_or_default();
+                                if let Some(current_episode) = episodes.iter().find(|ep| ep.episodeid == current_episode_id.unwrap()) {
+                                    let current_queue_position = current_episode.queueposition.unwrap_or_default();
                                     // Remove the currently playing episode from the queue
                                     let request = QueuePodcastRequest {
                                         episode_id: current_episode_id.clone().unwrap(),
@@ -272,14 +272,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             // web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
                                         }
                                     }
-                                    if let Some(next_episode) = episodes.iter().find(|ep| ep.QueuePosition == Some(current_queue_position + 1)) {
+                                    if let Some(next_episode) = episodes.iter().find(|ep| ep.queueposition == Some(current_queue_position + 1)) {
                                         on_play_click(
-                                            next_episode.EpisodeURL.clone(),
-                                            next_episode.EpisodeTitle.clone(),
-                                            next_episode.EpisodeArtwork.clone(),
-                                            next_episode.EpisodeDuration,
-                                            next_episode.EpisodeID,
-                                            next_episode.ListenDuration,
+                                            next_episode.episodeurl.clone(),
+                                            next_episode.episodetitle.clone(),
+                                            next_episode.episodeartwork.clone(),
+                                            next_episode.episodeduration,
+                                            next_episode.episodeid,
+                                            next_episode.listenduration,
                                             api_key.clone().unwrap().unwrap(),
                                             user_id.unwrap(),
                                             server_name.clone().unwrap(),
@@ -419,17 +419,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         
                 let episodes_result = call_get_queued_episodes(&server_name.clone().unwrap(), &api_key.clone().unwrap(), &user_id.clone().unwrap()).await;
                 if let Ok(episodes) = episodes_result {
-                    if let Some(current_episode) = episodes.iter().find(|ep| ep.EpisodeID == current_episode_id.unwrap()) {
-                        let current_queue_position = current_episode.QueuePosition.unwrap_or_default();
+                    if let Some(current_episode) = episodes.iter().find(|ep| ep.episodeid == current_episode_id.unwrap()) {
+                        let current_queue_position = current_episode.queueposition.unwrap_or_default();
     
-                        if let Some(next_episode) = episodes.iter().find(|ep| ep.QueuePosition == Some(current_queue_position + 1)) {
+                        if let Some(next_episode) = episodes.iter().find(|ep| ep.queueposition == Some(current_queue_position + 1)) {
                             on_play_click(
-                                next_episode.EpisodeURL.clone(),
-                                next_episode.EpisodeTitle.clone(),
-                                next_episode.EpisodeArtwork.clone(),
-                                next_episode.EpisodeDuration,
-                                next_episode.EpisodeID,
-                                next_episode.ListenDuration,
+                                next_episode.episodeurl.clone(),
+                                next_episode.episodetitle.clone(),
+                                next_episode.episodeartwork.clone(),
+                                next_episode.episodeduration,
+                                next_episode.episodeid,
+                                next_episode.listenduration,
                                 api_key.clone().unwrap().unwrap(),
                                 user_id.unwrap(),
                                 server_name.clone().unwrap(),

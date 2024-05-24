@@ -53,6 +53,8 @@ pub struct Episode {
     pub episodeid: i32,
 }
 
+
+
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
@@ -449,19 +451,20 @@ pub struct QueuedEpisodesResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct QueuedEpisode {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
     #[serde(default)]
-    pub QueuePosition: Option<i32>,
-    pub EpisodeDuration: i32,
-    pub QueueDate: String,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub queueposition: Option<i32>,
+    pub episodeduration: i32,
+    pub queuedate: String,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -489,7 +492,8 @@ pub async fn call_get_queued_episodes(
         return Err(anyhow::Error::msg(format!("Failed to fetch queued episodes: {}", response.status_text())));
     }
     let response_text = response.text().await?;
-
+    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
+    web_sys::console::log_1(&js_value);
     
     let response_data: DataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
