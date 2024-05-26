@@ -509,17 +509,18 @@ pub struct SavedEpisodesResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct SavedEpisode {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
-    pub WebsiteURL: String,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub websiteurl: String,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -635,16 +636,17 @@ pub struct HistoryEpisodesResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct HistoryEpisode {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -722,18 +724,19 @@ pub struct EpisodeDownloadResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct EpisodeDownload {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
-    pub DownloadedLocation: String,
-    pub PodcastID: i32,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub downloadedlocation: String,
+    pub podcastid: i32,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]

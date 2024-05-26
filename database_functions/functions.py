@@ -1002,44 +1002,64 @@ def refresh_single_pod(cnx, database_type, podcast_id):
     # cnx.close()
 
 
+def get_hist_value(result, key, default=None):
+    """
+    Helper function to extract value from result set.
+    It handles both dictionaries and tuples.
+    """
+    if isinstance(result, dict):
+        return result.get(key, default)
+    elif isinstance(result, tuple):
+        key_map = {
+            "UserEpisodeHistoryID": 0,
+        }
+        index = key_map.get(key)
+        return result[index] if index is not None else default
+    return default
+
 def record_podcast_history(cnx, database_type, episode_id, user_id, episode_pos):
     from datetime import datetime
     cursor = cnx.cursor()
 
     # Check if a record already exists in the UserEpisodeHistory table
     if database_type == "postgresql":
-        check_history = ('SELECT * FROM "UserEpisodeHistory" WHERE EpisodeID = %s AND UserID = %s')
+        check_history = 'SELECT UserEpisodeHistoryID FROM "UserEpisodeHistory" WHERE EpisodeID = %s AND UserID = %s'
     else:  # MySQL or MariaDB
-        check_history = ("SELECT * FROM UserEpisodeHistory WHERE EpisodeID = %s AND UserID = %s")
+        check_history = "SELECT UserEpisodeHistoryID FROM UserEpisodeHistory WHERE EpisodeID = %s AND UserID = %s"
     cursor.execute(check_history, (episode_id, user_id))
     result = cursor.fetchone()
 
     if result is not None:
-        # Update the existing record
-        if database_type == "postgresql":
-            update_history = ('UPDATE "UserEpisodeHistory" SET ListenDuration = %s, ListenDate = %s WHERE UserEpisodeHistoryID = %s')
-        else:  # MySQL or MariaDB
-            update_history = ("UPDATE UserEpisodeHistory SET ListenDuration = %s, ListenDate = %s WHERE UserEpisodeHistoryID = %s")
-        progress_id = result[0]
-        new_listen_duration = round(episode_pos)
-        now = datetime.now()
-        values = (new_listen_duration, now, progress_id)
-        cursor.execute(update_history, values)
+        # Extract progress_id regardless of result type
+        progress_id = get_hist_value(result, "UserEpisodeHistoryID")
+
+        if progress_id is not None:
+            # Update the existing record
+            if database_type == "postgresql":
+                update_history = 'UPDATE "UserEpisodeHistory" SET ListenDuration = %s, ListenDate = %s WHERE UserEpisodeHistoryID = %s'
+            else:  # MySQL or MariaDB
+                update_history = "UPDATE UserEpisodeHistory SET ListenDuration = %s, ListenDate = %s WHERE UserEpisodeHistoryID = %s"
+            new_listen_duration = round(episode_pos)
+            now = datetime.now()
+            values = (new_listen_duration, now, progress_id)
+            cursor.execute(update_history, values)
     else:
         # Add a new record
         if database_type == "postgresql":
-            add_history = ('INSERT INTO "UserEpisodeHistory" (EpisodeID, UserID, ListenDuration, ListenDate) VALUES (%s, %s, %s, %s)')
+            add_history = 'INSERT INTO "UserEpisodeHistory" (EpisodeID, UserID, ListenDuration, ListenDate) VALUES (%s, %s, %s, %s)'
         else:  # MySQL or MariaDB
-            add_history = ("INSERT INTO UserEpisodeHistory (EpisodeID, UserID, ListenDuration, ListenDate) VALUES (%s, %s, %s, %s)")
+            add_history = "INSERT INTO UserEpisodeHistory (EpisodeID, UserID, ListenDuration, ListenDate) VALUES (%s, %s, %s, %s)"
         new_listen_duration = round(episode_pos)
         now = datetime.now()
         values = (episode_id, user_id, new_listen_duration, now)
         cursor.execute(add_history, values)
 
     cnx.commit()
-
     cursor.close()
     # cnx.close()
+
+
+
 
 
 def get_user_id(cnx, database_type, username):
@@ -1119,7 +1139,7 @@ def user_history(cnx, database_type, user_id):
     if database_type == "postgresql":
         query = ('SELECT "Episodes".EpisodeID, "UserEpisodeHistory".ListenDate, "UserEpisodeHistory".ListenDuration, '
                  '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
-                 '"Episodes".EpisodeURL, "Episodes"."EpisodeDuration", "Podcasts".PodcastName, "Episodes".EpisodePubDate '
+                 '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate '
                  'FROM "UserEpisodeHistory" '
                  'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
                  'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -1141,7 +1161,9 @@ def user_history(cnx, database_type, user_id):
 
     cursor.close()
     # cnx.close()
-    return results
+    history_episodes = lowercase_keys(results)
+    
+    return history_episodes
 
 
 
@@ -1345,8 +1367,10 @@ def download_episode_list(database_type, cnx, user_id):
 
     if not rows:
         return None
+    
+    downloaded_episodes = lowercase_keys(rows)
 
-    return rows
+    return downloaded_episodes
 
 
 def save_email_settings(cnx, database_type, email_settings):
@@ -1588,7 +1612,8 @@ def record_listen_duration(cnx, database_type, episode_id, user_id, listen_durat
     if listen_duration < 0:
         logging.info(f"Skipped updating listen duration for user {user_id} and episode {episode_id} due to invalid duration: {listen_duration}")
         return
-    
+    print(database_type)
+    print(listen_duration)
     listen_date = datetime.datetime.now()
     cursor = cnx.cursor()
 
@@ -1598,17 +1623,23 @@ def record_listen_duration(cnx, database_type, episode_id, user_id, listen_durat
             cursor.execute('SELECT ListenDuration FROM "UserEpisodeHistory" WHERE UserID=%s AND EpisodeID=%s', (user_id, episode_id))
         else:
             cursor.execute("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID=%s AND EpisodeID=%s", (user_id, episode_id))
-        existing_duration = cursor.fetchone()
-
-        if existing_duration:
+        result = cursor.fetchone()
+        print("run result check")
+        if result is not None:
+            existing_duration = result[0] if isinstance(result, tuple) else result.get("ListenDuration")
+            # Ensure existing_duration is not None
+            existing_duration = existing_duration if existing_duration is not None else 0
             # Update only if the new duration is greater than the existing duration
-            if listen_duration > existing_duration[0]:
+            print('post rescd check')
+            if listen_duration > existing_duration:
                 if database_type == "postgresql":
                     update_listen_duration = 'UPDATE "UserEpisodeHistory" SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND EpisodeID=%s'
                 else:
                     update_listen_duration = "UPDATE UserEpisodeHistory SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND EpisodeID=%s"
                 cursor.execute(update_listen_duration, (listen_duration, listen_date, user_id, episode_id))
-                logging.info(f"Updated listen duration for user {user_id} and episode {episode_id} to {listen_duration}")
+                print(f"Updated listen duration for user {user_id} and episode {episode_id} to {listen_duration}")
+            else:
+                print(f"No update required for user {user_id} and episode {episode_id} as existing duration {existing_duration} is greater than or equal to new duration {listen_duration}")
         else:
             # Insert new row
             if database_type == "postgresql":
@@ -1616,7 +1647,7 @@ def record_listen_duration(cnx, database_type, episode_id, user_id, listen_durat
             else:
                 add_listen_duration = "INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration) VALUES (%s, %s, %s, %s)"
             cursor.execute(add_listen_duration, (user_id, episode_id, listen_date, listen_duration))
-            logging.info(f"Inserted new listen duration for user {user_id} and episode {episode_id}: {listen_duration}")
+            print(f"Inserted new listen duration for user {user_id} and episode {episode_id}: {listen_duration}")
 
         cnx.commit()
     except Exception as e:
@@ -1625,6 +1656,7 @@ def record_listen_duration(cnx, database_type, episode_id, user_id, listen_durat
     finally:
         cursor.close()
     # cnx.close()
+
 
 def get_local_episode_times(cnx, database_type, user_id):
     if database_type == "postgresql":
@@ -2466,8 +2498,10 @@ def saved_episode_list(database_type, cnx, user_id):
 
     if not rows:
         return None
+    
+    saved_episodes = lowercase_keys(rows)
 
-    return rows
+    return saved_episodes
 
 
 def save_episode(cnx, database_type, episode_id, user_id):
@@ -2569,6 +2603,22 @@ def increment_played(cnx, database_type, user_id):
     cursor.execute(query, (user_id,))
     cnx.commit()
     cursor.close()
+
+def increment_listen_time(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+
+    # Update UserStats table to increment PodcastsPlayed count
+    if database_type == "postgresql":
+        query = ('UPDATE "UserStats" SET TimeListened = TimeListened + 1 '
+                "WHERE UserID = %s")
+    else:
+        query = ("UPDATE UserStats SET TimeListened = TimeListened + 1 "
+                "WHERE UserID = %s")
+    cursor.execute(query, (user_id,))
+    cnx.commit()
+
+    cursor.close()
+    # cnx.close()
 
 
 
@@ -3327,6 +3377,7 @@ import time
 
 
 
+
 def search_data(database_type, cnx, search_term, user_id):
     if database_type == "postgresql":
         from psycopg.rows import dict_row
@@ -3336,7 +3387,7 @@ def search_data(database_type, cnx, search_term, user_id):
             'SELECT * FROM "Podcasts" '
             'INNER JOIN "Episodes" ON "Podcasts".PodcastID = "Episodes".PodcastID '
             'WHERE "Podcasts".UserID = %s AND '
-            '"Episodes".EpisodeTitle LIKE %s'
+            '"Episodes".EpisodeTitle ILIKE %s'
         )
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
@@ -3346,20 +3397,32 @@ def search_data(database_type, cnx, search_term, user_id):
             "WHERE Podcasts.UserID = %s AND "
             "Episodes.EpisodeTitle LIKE %s"
         )
-    search_term = '%' + search_term + '%'
+
+    # Add wildcards for the LIKE clause
+    search_term = f"%{search_term}%"
 
     try:
         start = time.time()
+        logging.info(f"Executing query: {query}")
+        logging.info(f"Search term: {search_term}, User ID: {user_id}")
         cursor.execute(query, (user_id, search_term))
         result = cursor.fetchall()
         end = time.time()
-        print(f"Query executed in {end - start} seconds.")
+        logging.info(f"Query executed in {end - start} seconds.")
+        logging.info(f"Query result: {result}")
         cursor.close()
+
+        # Post-process the results to cast boolean to integer for the 'explicit' field
+        if database_type == "postgresql":
+            for row in result:
+                if 'explicit' in row:
+                    row['explicit'] = 1 if row['explicit'] else 0
 
         return result
     except Exception as e:
-        print("Error retrieving Podcast Episodes:", e)
+        logging.error(f"Error retrieving Podcast Episodes: {e}")
         return None
+
 
 
 def queue_pod(database_type, cnx, episode_id, user_id):
@@ -3554,7 +3617,14 @@ def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url
     cursor.execute(query, (user_id, episode_title, episode_url))
     result = cursor.fetchone()
     cursor.close()
-    return result[0] == 1
+
+    # Check if result is a dictionary or a tuple
+    if isinstance(result, dict):
+        return result['exists'] == 1
+    elif isinstance(result, tuple):
+        return result[0] == 1
+    else:
+        raise TypeError("Unexpected type for 'result'")
 
 
 

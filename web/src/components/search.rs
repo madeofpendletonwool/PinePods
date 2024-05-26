@@ -205,20 +205,20 @@ pub fn search(_props: &SearchProps) -> Html {
                                 )
                             } else {
                                 episodes.into_iter().map(|episode| {
-                                    let id_string = &episode.EpisodeID.to_string();
+                                    let id_string = &episode.episodeid.to_string();
 
                                     let is_expanded = state.expanded_descriptions.contains(id_string);
 
                                     let dispatch = dispatch.clone();
 
-                                    let episode_url_clone = episode.EpisodeURL.clone();
-                                    let episode_title_clone = episode.EpisodeTitle.clone();
-                                    let episode_artwork_clone = episode.EpisodeArtwork.clone();
-                                    let episode_duration_clone = episode.EpisodeDuration.clone();
-                                    let episode_id_clone = episode.EpisodeID.clone();
-                                    let episode_listened_clone = episode.ListenDuration.clone();
+                                    let episode_url_clone = episode.episodeurl.clone();
+                                    let episode_title_clone = episode.episodetitle.clone();
+                                    let episode_artwork_clone = episode.episodeartwork.clone();
+                                    let episode_duration_clone = episode.episodeduration.clone();
+                                    let episode_id_clone = episode.episodeid.clone();
+                                    let episode_listened_clone = episode.listenduration.clone();
                                     let history_clone = history.clone();
-                                    let sanitized_description = sanitize_html_with_blank_target(&episode.EpisodeDescription.clone());
+                                    let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
 
                                     let (description, _is_truncated) = if is_expanded {
                                         (sanitized_description, false)
@@ -229,7 +229,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let toggle_expanded = {
                                         let search_dispatch_clone = dispatch.clone();
                                         let state_clone = state.clone();
-                                        let episode_guid = episode.EpisodeID.clone();
+                                        let episode_guid = episode.episodeid.clone();
 
                                         Callback::from(move |_: MouseEvent| {
                                             let guid_clone = episode_guid.to_string().clone();
@@ -277,7 +277,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     );
 
                                     let date_format = match_date_format(state.date_format.as_deref());
-                                    let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz);
+                                    let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
                                     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                                     let episode_url_for_ep_item = episode_url_clone.clone();
                                     let item = episode_item(

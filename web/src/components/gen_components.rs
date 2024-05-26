@@ -774,11 +774,11 @@ impl EpisodeTrait for QueuedEpisode {
 
 impl EpisodeTrait for SavedEpisode {
     fn get_episode_artwork(&self) -> String {
-        self.EpisodeArtwork.clone()
+        self.episodeartwork.clone()
     }
 
     fn get_episode_title(&self) -> String {
-        self.EpisodeTitle.clone()
+        self.episodetitle.clone()
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
@@ -786,7 +786,7 @@ impl EpisodeTrait for SavedEpisode {
     }
 
     fn get_episode_id(&self) -> i32 {
-        self.EpisodeID.clone()
+        self.episodeid.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -796,11 +796,11 @@ impl EpisodeTrait for SavedEpisode {
 
 impl EpisodeTrait for HistoryEpisode {
     fn get_episode_artwork(&self) -> String {
-        self.EpisodeArtwork.clone()
+        self.episodeartwork.clone()
     }
 
     fn get_episode_title(&self) -> String {
-        self.EpisodeTitle.clone()
+        self.episodetitle.clone()
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
@@ -808,7 +808,7 @@ impl EpisodeTrait for HistoryEpisode {
     }
 
     fn get_episode_id(&self) -> i32 {
-        self.EpisodeID.clone()
+        self.episodeid.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -818,15 +818,15 @@ impl EpisodeTrait for HistoryEpisode {
 
 impl EpisodeTrait for EpisodeDownload {
     fn get_episode_artwork(&self) -> String {
-        self.EpisodeArtwork.clone()
+        self.episodeartwork.clone()
     }
 
     fn get_episode_title(&self) -> String {
-        self.EpisodeTitle.clone()
+        self.episodetitle.clone()
     }
 
     fn get_episode_id(&self) -> i32 {
-        self.EpisodeID.clone()
+        self.episodeid.clone()
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
@@ -840,15 +840,15 @@ impl EpisodeTrait for EpisodeDownload {
 
 impl EpisodeTrait for SearchEpisode {
     fn get_episode_artwork(&self) -> String {
-        self.EpisodeArtwork.clone()
+        self.episodeartwork.clone()
     }
 
     fn get_episode_title(&self) -> String {
-        self.EpisodeTitle.clone()
+        self.episodetitle.clone()
     }
 
     fn get_episode_id(&self) -> i32 {
-        self.EpisodeID.clone()
+        self.episodeid.clone()
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {

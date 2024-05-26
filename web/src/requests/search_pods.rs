@@ -429,29 +429,29 @@ pub struct SearchResponse {
     pub data: Vec<SearchEpisode>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct SearchEpisode {
-    pub PodcastID: i32,
-    pub PodcastName: String,
-    pub ArtworkURL: String,
-    pub Author: String,
-    pub Categories: String, // or change to appropriate type if you plan to parse the categories
-    pub Description: String,
-    pub EpisodeCount: i32,
-    pub FeedURL: String,
-    pub WebsiteURL: String,
-    pub Explicit: i32, // or bool if it always contains 0 or 1
-    pub UserID: i32,
-    pub EpisodeID: i32,
-    pub EpisodeTitle: String,
-    pub EpisodeDescription: String,
-    pub EpisodeURL: String,
-    pub EpisodeArtwork: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDuration: i32,
-    // Existing fields
-    pub ListenDuration: Option<i32>,
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: String,
+    pub author: String,
+    pub categories: String,
+    pub description: String,
+    pub episodecount: i32,
+    pub feedurl: String,
+    pub websiteurl: String,
+    pub explicit: i32,
+    pub userid: i32,
+    pub episodeid: i32,
+    pub episodetitle: String,
+    pub episodedescription: String,
+    pub episodeurl: String,
+    pub episodeartwork: String,
+    pub episodepubdate: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
 }
 
 pub async fn call_search_database (
@@ -481,6 +481,11 @@ pub async fn call_search_database (
 
         // Extract the vector of episodes from the SearchResponse
         let results = search_response.data;
+
+        let results_jsvalue = JsValue::from_serde(&results).unwrap();
+        web_sys::console::log_1(&results_jsvalue);
+        
+
 
         Ok(results)
 }
