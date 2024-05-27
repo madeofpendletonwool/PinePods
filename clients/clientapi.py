@@ -585,7 +585,7 @@ async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_dat
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
-    
+
     # Fetch the podcast feed data using httpx
     async with httpx.AsyncClient(follow_redirects=True) as client:
         response = await client.get(podcast_feed)
@@ -693,7 +693,7 @@ class PodcastValuesModel(BaseModel):
 @app.post("/api/data/add_podcast")
 async def api_add_podcast(podcast_values: PodcastValuesModel,
                           cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-                          
+
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     logging.error(f"{podcast_values}")
     if not is_valid_key:
@@ -720,7 +720,7 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make sessions for yourself!")
-    
+
 @app.post("/api/data/enable_disable_guest")
 async def api_enable_disable_guest(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
     database_functions.functions.enable_disable_guest(cnx, database_type)
@@ -846,10 +846,14 @@ async def api_download_podcast(data: DownloadPodcastData, background_tasks: Back
     else:
         raise HTTPException(status_code=403,
                             detail="You can only download podcasts for yourself!")
-    
+
 def download_podcast_fun(episode_id: int, user_id: int):
     cnx = create_database_connection()  # replace with your function to create a new database connection
+    print('downloading fun for print')
+    logger.error('downloading fun for log')
     try:
+        print('downloading fun for print')
+        logger.error('downloading fun for log')
         database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
         cnx.close()  # make sure to close the connection when you're done
@@ -1047,10 +1051,10 @@ async def api_get_user_info(is_admin: bool = Depends(check_if_admin), cnx=Depend
 
 @app.get("/api/data/check_podcast", response_model=Dict[str, bool])
 async def api_check_podcast(
-    user_id: int, 
-    podcast_name: str, 
+    user_id: int,
+    podcast_name: str,
     podcast_url: str,
-    cnx=Depends(get_database_connection), 
+    cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
@@ -1213,7 +1217,7 @@ async def api_saved_episode_list(user_id: int, cnx=Depends(get_database_connecti
 
 @app.get("/api/data/download_episode_list")
 async def api_download_episode_list(cnx=Depends(get_database_connection),
-                                    api_key: str = Depends(get_api_key_from_header), 
+                                    api_key: str = Depends(get_api_key_from_header),
                                     user_id: int = Query(...)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
@@ -1550,7 +1554,7 @@ def send_email_with_settings(email_values, database_type, payload: SendEmailValu
         msg['To'] = payload.to_email
         msg['Subject'] = payload.subject
         msg.attach(MIMEText(payload.message, 'plain'))
-        
+
         try:
             port = int(email_values['ServerPort'])
             if email_values['Encryption'] == "SSL/TLS":
@@ -1560,10 +1564,10 @@ def send_email_with_settings(email_values, database_type, payload: SendEmailValu
                 server.starttls()
             else:
                 server = smtplib.SMTP(email_values['ServerName'], port)
-                
+
             if email_values['AuthRequired']:
                 server.login(email_values['Username'], email_values['Password'])
-                
+
             server.send_message(msg)
             server.quit()
             return "Email sent successfully"
@@ -1696,7 +1700,7 @@ async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_da
         check_user = database_functions.functions.check_reset_user(cnx, database_type, payload.username, payload.email)
         if check_user:
             create_code = database_functions.functions.reset_password_create_code(cnx, database_type, payload.email)
-                              
+
                                           # Create a SendTestEmailValues instance with the email setup values and the password reset code
             email_payload = SendEmailValues(
                 to_email=payload.email,
@@ -1710,7 +1714,7 @@ async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_da
             else:
                 database_functions.functions.reset_password_remove_code(cnx, database_type, payload.email)
                 raise HTTPException(status_code=500, detail="Failed to send email")
-            
+
             return {"user_exists": user_exists}
         else:
             raise HTTPException(status_code=404, detail="User not found")
@@ -1832,7 +1836,7 @@ async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection)
         logging.warning("Attempted to generate MFA secret for another user")
         raise HTTPException(status_code=403,
                             detail="You can only generate MFA secrets for yourself!")
-    
+
 class VerifyTempMFABody(BaseModel):
     user_id: int
     mfa_code: str
@@ -1944,7 +1948,7 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_conn
         logging.warning("Attempted to save MFA secret for another user")
         raise HTTPException(status_code=403,
                             detail="You can only save MFA secrets for yourself!")
-    
+
 @app.get("/api/data/check_mfa_enabled/{user_id}")
 async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connection),
                                 api_key: str = Depends(get_api_key_from_header)):
@@ -2423,7 +2427,7 @@ async def remove_gpodder_settings(data: RemoveGpodderSettings, cnx=Depends(get_d
     else:
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
-    
+
 @app.get("/api/data/check_gpodder_settings/{user_id}")
 async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
@@ -2444,7 +2448,7 @@ async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connecti
     else:
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
-    
+
 @app.get("/api/data/get_gpodder_settings/{user_id}")
 async def get_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
@@ -2529,7 +2533,7 @@ async def poll_for_auth_completion(endpoint: HttpUrl, token: str):
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < timeout:
             try:
-                response = await client.post(str(endpoint), json=payload, headers={"Content-Type": "application/json"}) 
+                response = await client.post(str(endpoint), json=payload, headers={"Content-Type": "application/json"})
             except httpx.ConnectTimeout:
                 logging.info("Connection timed out, retrying...")
                 logging.info(f"endpoint: {endpoint}, token: {token}")
@@ -2645,10 +2649,10 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only bump the queue for yourself!")
-    
+
 @app.get("/api/data/stream/{episode_id}")
 async def stream_episode(
-    episode_id: int, 
+    episode_id: int,
     cnx=Depends(get_database_connection),
     api_key: str = Query(..., alias='api_key'),  # Change here
     user_id: int = Query(..., alias='user_id')   # Change here
@@ -2668,6 +2672,7 @@ async def stream_episode(
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
         file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+        print(file_path)
         if file_path:
             return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
         else:
@@ -2726,7 +2731,7 @@ class RestoreServer(BaseModel):
 
 @app.post("/api/data/restore_server")
 async def api_restore_server(data: RestoreServer, background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    
+
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
     logging.info(f"Restoring server with data")
@@ -2741,24 +2746,24 @@ def restore_server_fun(database_pass: str, server_restore_data: str):
         # Restore server using the provided password and data
         database_functions.functions.restore_server(cnx, database_pass, server_restore_data)
     finally:
-        cnx.close() 
+        cnx.close()
 
 
 class InitRequest(BaseModel):
     api_key: str
-    
+
 @app.post("/api/init/startup_tasks")
 async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_connection)):
     try:
         # Verify if the API key is valid
         is_valid = database_functions.functions.verify_api_key(cnx, database_type, request.api_key)
-        
+
         # Check if the provided API key is the web key
         is_web_key = request.api_key == base_webkey.web_key
 
         if not is_valid or not is_web_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")
-        
+
         # Execute the startup tasks
         database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
         return {"status": "Startup tasks completed successfully."}
