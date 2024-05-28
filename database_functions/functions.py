@@ -126,7 +126,6 @@ def add_news_feed_if_not_added(database_type, cnx):
     finally:
         cursor.close()
 
-
 def add_podcast(cnx, database_type, podcast_values, user_id):
     cursor = cnx.cursor()
     print(f"Podcast values '{podcast_values}'")
@@ -155,21 +154,14 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
             """
-            logging.info(f"explocot: {podcast_values['pod_explicit']}")
-            if podcast_values['pod_explicit'] == True:
-                explicit = True
-            else:
-                explicit = False
+            explicit = podcast_values['pod_explicit']
         else:  # MySQL or MariaDB
             add_podcast_query = """
                 INSERT INTO Podcasts
                 (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            if podcast_values['pod_explicit'] == True:
-                explicit = 1
-            else:
-                explicit = 0
+            explicit = 1 if podcast_values['pod_explicit'] else 0
 
         try:
             cursor.execute(add_podcast_query, (
@@ -184,48 +176,47 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 explicit,
                 user_id
             ))
+
+            if database_type == "postgresql":
+                podcast_id = cursor.fetchone()[0]
+            else:  # MySQL or MariaDB
+                cnx.commit()
+                podcast_id = cursor.lastrowid
+
+            print('pre-id')
+            if podcast_id is None:
+                logging.error("No row was inserted.")
+                print("No row was inserted.")
+                cursor.close()
+                return False
+
+            print("Got id")
+            print("Inserted into db")
+
+            # Update UserStats table to increment PodcastsAdded count
+            if database_type == "postgresql":
+                query = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s'
+            else:  # MySQL or MariaDB
+                query = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s"
+
+            cursor.execute(query, (user_id,))
+            cnx.commit()
+            print("stats table updated")
+
+            # Add episodes to database
+            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'])
+            print("episodes added")
+
         except Exception as e:
             logging.error(f"Failed to add podcast: {e}")
             print(f"Failed to add podcast: {e}")
+            cnx.rollback()
             cursor.close()
             return False
-
-        print('pre-id')
-        fetch_result = cursor.fetchone()
-        if fetch_result is None:
-            logging.error("No row was inserted.")
-            print("No row was inserted.")
-            cursor.close()
-            return False
-
-        if isinstance(fetch_result, dict):
-            podcast_id = fetch_result['podcastid']
-        elif isinstance(fetch_result, tuple):
-            podcast_id = fetch_result[0]
-        else:
-            logging.error("Unexpected type for fetch_result.")
-            print("Unexpected type for fetch_result.")
-            cursor.close()
-            return False
-        print("Got id")
-        print("Inserted into db")
-
-        # Update UserStats table to increment PodcastsAdded count
-        if database_type == "postgresql":
-            query = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s'
-        else:  # MySQL or MariaDB
-            query = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s"
-
-        cursor.execute(query, (user_id,))
-        cnx.commit()
-        print("stats table updated")
-
-        # Add episodes to database
-        add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'])
-        print("episodes added")
 
     except Exception as e:
         print(f"Error during podcast insertion or UserStats update: {e}")
+        logging.error(f"Error during podcast insertion or UserStats update: {e}")
         cnx.rollback()
         raise
 
@@ -255,11 +246,16 @@ def add_user(cnx, database_type, user_values):
         """
 
     cursor.execute(add_user_query, user_values)
-    result = cursor.fetchone()
-    if isinstance(result, dict):
-        user_id = result['userid']
-    else:
-        user_id = result[0]
+    # result = cursor.fetchone()
+    # if isinstance(result, dict):
+    #     user_id = result['userid']
+    # else:
+    #     user_id = result[0]
+    if database_type == "postgresql":
+        result = cursor.fetchone()
+        user_id = result['userid'] if isinstance(result, dict) else result[0]
+    else:  # MySQL or MariaDB
+        user_id = cursor.lastrowid
 
     if database_type == "postgresql":
         add_user_settings_query = """
@@ -592,6 +588,10 @@ def return_episodes(database_type, cnx, user_id):
     if not rows:
         return []
 
+    if database_type != "postgresql":
+        # Convert column names to lowercase for MySQL
+        rows = [{k.lower(): v for k, v in row.items()} for row in rows]
+
     return rows
 
 
@@ -866,7 +866,12 @@ def return_pods(database_type, cnx, user_id):
     if not rows:
         return None
 
+    if database_type != "postgresql":
+        # Convert column names to lowercase for MySQL
+        rows = [{k.lower(): v for k, v in row.items()} for row in rows]
+
     return rows
+
 
 def check_self_service(cnx, database_type):
     cursor = cnx.cursor()
@@ -1512,7 +1517,7 @@ def get_email_settings(cnx, database_type):
             settings_dict = normalize_keys(result, database_type)
         else:
             # For MySQL or MariaDB, convert tuple result to dictionary and keep keys as is
-            keys = ["EmailSettingsID", "ServerName", "ServerPort", "FromEmail", "SendMode", "Encryption",
+            keys = ["Emailsettingsid", "ServerName", "ServerPort", "FromEmail", "SendMode", "Encryption",
                     "AuthRequired", "Username", "Password"]
             settings_dict = dict(zip(keys, result))
 
@@ -1924,6 +1929,10 @@ def get_user_info(database_type, cnx):
         if not rows:
             return None
 
+        if database_type != "postgresql":
+            # Convert column names to lowercase for MySQL
+            rows = [{k.lower(): v for k, v in row.items()} for row in rows]
+
         return rows
 
     except Exception as e:
@@ -1972,7 +1981,10 @@ def get_api_info(database_type, cnx, user_id):
 
     # Append condition to query if the user is not an admin
     if not is_admin:
-        query += "WHERE APIKeys.UserID = %s"
+        if database_type == 'postgresql':
+            query += 'WHERE "APIKeys".UserID = %s'
+        else:
+            query += "WHERE APIKeys.UserID = %s"
 
     cursor.execute(query, (user_id,) if not is_admin else ())
     rows = cursor.fetchall()
@@ -1980,6 +1992,10 @@ def get_api_info(database_type, cnx, user_id):
 
     if not rows:
         return []
+
+    if database_type != "postgresql":
+        # Convert column names to lowercase for MySQL
+        rows = [{k.lower(): v for k, v in row.items()} for row in rows]
 
     return rows
 
@@ -2249,10 +2265,11 @@ def final_admin(cnx, database_type, user_id):
 
 def download_status(cnx, database_type):
     if database_type == "postgresql":
+        from psycopg.rows import dict_row
         cursor = cnx.cursor(row_factory=dict_row)
         query = 'SELECT DownloadEnabled FROM "AppSettings"'
     else:  # MySQL or MariaDB
-        cursor = cnx.cursor()
+        cursor = cnx.cursor(dictionary=True)
         query = "SELECT DownloadEnabled FROM AppSettings"
 
     cursor.execute(query)
@@ -2260,14 +2277,16 @@ def download_status(cnx, database_type):
     cursor.close()
 
     if result:
-        if database_type == 'postgresql':
-            download_enabled = result['downloadenabled']
-        else:
-            download_enabled = result['DownloadEnabled']
+        if isinstance(result, dict):
+            download_enabled = result.get('DownloadEnabled') or result.get('downloadenabled')
+        else:  # Handle the case where result is a tuple
+            download_enabled = result[0]
+
         if download_enabled == 1:
             return True
 
     return False
+
 
 
 
@@ -3196,11 +3215,20 @@ def check_mfa_enabled(database_type, cnx, user_id):
         result = cursor.fetchone()
         cursor.close()
 
-        mfa_secret = result[0] if isinstance(result, tuple) else result['mfa_secret']
+        if result is None:
+            return False
+
+        # For PostgreSQL, the column name will be 'mfa_secret' in lowercase
+        # For MySQL, the column name might be 'MFA_Secret' so we access it using lowercase
+        if database_type != "postgresql":
+            result = {k.lower(): v for k, v in result.items()}
+
+        mfa_secret = result[0] if isinstance(result, tuple) else result.get('mfa_secret')
         return bool(mfa_secret)
     except Exception as e:
         print("Error checking MFA status:", e)
         return False
+
 
 
 
@@ -3476,7 +3504,6 @@ import time
 
 
 
-
 def search_data(database_type, cnx, search_term, user_id):
     if database_type == "postgresql":
         from psycopg.rows import dict_row
@@ -3510,6 +3537,13 @@ def search_data(database_type, cnx, search_term, user_id):
         logging.info(f"Query executed in {end - start} seconds.")
         logging.info(f"Query result: {result}")
         cursor.close()
+
+        if not result:
+            return []
+
+        # Convert column names to lowercase for MySQL
+        if database_type != "postgresql":
+            result = [{k.lower(): v for k, v in row.items()} for row in result]
 
         # Post-process the results to cast boolean to integer for the 'explicit' field
         if database_type == "postgresql":
