@@ -99,7 +99,7 @@ services:
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
     volumes:
-    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
+    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
 
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
@@ -174,13 +174,13 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-There's a exe and msi windows install file. 
+There's a exe and msi windows install file.
 
-The exe will actually start an install window and allow you to properly install the program to your computer. 
+The exe will actually start an install window and allow you to properly install the program to your computer.
 
 The msi will simply run a portable version of the app.
 
-Either one does the same thing ultimately and will work just fine. 
+Either one does the same thing ultimately and will work just fine.
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
@@ -190,11 +190,11 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-There's a dmg and pinepods_mac file. 
+There's a dmg and pinepods_mac file.
 
 Simply extract, and then go into Contents/MacOS. From there you can run the app.
 
-The dmg file will prompt you to install the Pinepods client into your applications fileter while the _mac file will just run a portable version of the app. 
+The dmg file will prompt you to install the Pinepods client into your applications fileter while the _mac file will just run a portable version of the app.
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
@@ -212,20 +212,20 @@ A CLI only client that can be used to remotely share your podcasts to is in the 
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For Android you can use AntennaPod and sync podcasts between AntennaPod and Pinepods using the Nextcloud sync App. 
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For Android you can use AntennaPod and sync podcasts between AntennaPod and Pinepods using the Nextcloud sync App.
 
 [Nextcloud Podcast Sync App](https://apps.nextcloud.com/apps/gpoddersync)
 
 [AntennaPod F-Droid AppListing](https://f-droid.org/en/packages/de.danoeh.antennapod/)
 
-ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version. 
+ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version.
 
 ## ToDo
 
 - [ ] Additional Downloads Page organization - Organize by Podcast
 - [ ] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
-- [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy. 
+- [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
 - [ ] Installable PWA
@@ -233,7 +233,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
 - [ ] Offline mode for playing locally downloaded episodes
-- [ ] Implement Postgresql as option for database backend (Potentially other databases)
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
 - [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
 - [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
