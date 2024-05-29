@@ -551,6 +551,30 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="You can only return pocast ids of your own podcasts!")
 
+@app.get("/api/data/get_podcast_id_from_ep_id")
+async def api_get_podcast_id(episode_id: int, user_id: int, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    logging.info('Fetching API key')
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    logging.info('Getting key ID')
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    logging.info(f'Got key ID: {key_id}')
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+        if podcast_id is None:
+            raise HTTPException(status_code=404, detail="Podcast ID not found for the given episode ID")
+        return {"podcast_id": podcast_id}
+    else:
+        raise HTTPException(status_code=403, detail="You can only get podcast ID for your own episodes.")
+
+
 @app.get("/api/data/get_podcast_details")
 async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
@@ -854,6 +878,45 @@ def download_podcast_fun(episode_id: int, user_id: int):
     try:
         print('downloading fun for print')
         logger.error('downloading fun for log')
+        database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
+    finally:
+        cnx.close()  # make sure to close the connection when you're done
+
+class DownloadAllPodcastData(BaseModel):
+    podcast_id: int
+    user_id: int
+
+@app.post("/api/data/download_all_podcast")
+async def api_download_all_podcast(data: DownloadAllPodcastData, background_tasks: BackgroundTasks, cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        episode_ids = database_functions.functions.get_episode_ids_for_podcast(cnx, database_type, data.podcast_id)
+        if not episode_ids:
+            return {"detail": "No episodes found for the given podcast."}
+
+        for episode_id in episode_ids:
+            background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id)
+
+        return {"detail": "Podcast download started for all episodes."}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only download podcasts for yourself!")
+
+def download_all_podcast_fun(episode_id: int, user_id: int):
+    cnx = create_database_connection()  # replace with your function to create a new database connection
+    logger.error('Starting download for episode: %d', episode_id)
+    try:
         database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
         cnx.close()  # make sure to close the connection when you're done

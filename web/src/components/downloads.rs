@@ -13,7 +13,8 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::pod_req::{
     call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
-    DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse, Podcast, PodcastResponse,
+    DownloadAllPodcastRequest, DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse,
+    Podcast, PodcastResponse,
 };
 use yew::prelude::*;
 use yew::{function_component, html, Html};

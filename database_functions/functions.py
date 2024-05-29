@@ -1307,6 +1307,48 @@ def download_podcast(cnx, database_type, episode_id, user_id):
 
     return True
 
+def get_episode_ids_for_podcast(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s'
+    else:  # MySQL or MariaDB
+        query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s"
+
+    cursor.execute(query, (podcast_id,))
+    results = cursor.fetchall()
+    cursor.close()
+
+    # Extract episode IDs from the results
+    episode_ids = [row[0] if isinstance(row, tuple) else row.get('episodeid') for row in results]
+    return episode_ids
+
+def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = (
+                'SELECT "Episodes"."PodcastID" '
+                'FROM "Episodes" '
+                'INNER JOIN "Podcasts" ON "Episodes"."PodcastID" = "Podcasts"."PodcastID" '
+                'WHERE "Episodes"."EpisodeID" = %s AND "Podcasts"."UserID" = %s'
+            )
+        else:  # MySQL or MariaDB
+            query = (
+                "SELECT Episodes.PodcastID "
+                "FROM Episodes "
+                "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+                "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s"
+            )
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            return result[0] if isinstance(result, tuple) else result.get("podcastid")
+        return None
+
+    finally:
+        cursor.close()
 
 
 
