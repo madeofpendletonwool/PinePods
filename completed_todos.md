@@ -5,6 +5,7 @@ This is the list of previous todos that are now completed
 Next Version:
 
 - [] Added Better Download support to the client versions.
+- [] Added Auto Skip options for intro and outros of podcasts
 
 Version 0.6.0
 

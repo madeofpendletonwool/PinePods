@@ -255,6 +255,7 @@ try:
 
     cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (2)""")
 
+    # Create the Podcasts table if it doesn't exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                         PodcastID INT AUTO_INCREMENT PRIMARY KEY,
                         PodcastName TEXT,
@@ -267,8 +268,24 @@ try:
                         WebsiteURL TEXT,
                         Explicit TINYINT(1),
                         UserID INT,
+                        AutoDownload TINYINT(1) DEFAULT 0,
+                        StartSkip INT DEFAULT 0,
+                        EndSkip INT DEFAULT 0,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
+    logging.info("Podcasts table checked/created.")
+
+    # Check if the new columns exist, and add them if they don't
+    cursor.execute("SHOW COLUMNS FROM Podcasts LIKE 'AutoDownload'")
+    result = cursor.fetchone()
+    if not result:
+        cursor.execute("""
+            ALTER TABLE Podcasts
+            ADD COLUMN AutoDownload TINYINT(1) DEFAULT 0,
+            ADD COLUMN StartSkip INT DEFAULT 0,
+            ADD COLUMN EndSkip INT DEFAULT 0
+        """)
+        logging.info("AutoDownload, StartSkip, and EndSkip columns added to Podcasts table.")
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                         EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
@@ -279,8 +296,18 @@ try:
                         EpisodeArtwork TEXT,
                         EpisodePubDate DATETIME,
                         EpisodeDuration INT,
+                        Completed TINYINT(1) DEFAULT 0,
                         FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                     )""")
+    # Check if the Completed column exists, and add it if it doesn't
+    cursor.execute("SHOW COLUMNS FROM Episodes LIKE 'Completed'")
+    result = cursor.fetchone()
+    if not result:
+        cursor.execute("""
+            ALTER TABLE Episodes
+            ADD COLUMN Completed TINYINT(1) DEFAULT 0
+        """)
+
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"SELECT COUNT(1) IndexIsThere FROM INFORMATION_SCHEMA.STATISTICS WHERE table_schema = DATABASE() AND index_name = '{index_name}'")

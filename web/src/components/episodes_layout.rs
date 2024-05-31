@@ -10,8 +10,10 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
-    call_add_podcast, call_check_podcast, call_download_all_podcast, call_get_podcast_id_from_ep,
-    call_remove_podcasts_name, DownloadAllPodcastRequest, PodcastValues, RemovePodcastValuesName,
+    call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
+    call_enable_auto_download, call_get_auto_download_status, call_get_auto_skip_times,
+    call_get_podcast_id_from_ep, call_remove_podcasts_name, AutoDownloadRequest,
+    DownloadAllPodcastRequest, PodcastValues, RemovePodcastValuesName, SkipTimesRequest,
 };
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
@@ -20,7 +22,7 @@ use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{window, Event, MouseEvent};
+use web_sys::{window, Event, HtmlInputElement, MouseEvent};
 use yew::prelude::*;
 use yew::Properties;
 use yew::{
@@ -145,6 +147,12 @@ pub fn episode_layout() -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
+    let episode_id_pre: Option<i32> = search_state
+        .podcast_feed_results
+        .as_ref()
+        .and_then(|results| results.episodes.get(0))
+        .and_then(|episode| episode.episode_id);
+
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
     let user_id = search_state
@@ -199,6 +207,7 @@ pub fn episode_layout() -> Html {
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
     let effect_api_key = api_key.clone();
+    let ep_effect = episode_id_pre.clone();
 
     {
         let is_added = is_added.clone();
@@ -222,6 +231,93 @@ pub fn episode_layout() -> Html {
                 .unwrap_or_default()
                 .exists;
                 is_added.set(added);
+            });
+            || ()
+        });
+    }
+
+    let download_status = use_state(|| false);
+    let original_start_skip = use_state(|| 0);
+    let original_end_skip = use_state(|| 0);
+    let podcast_id = use_state(|| 0);
+    let podcast_id_effect = podcast_id.clone();
+
+    {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+        let download_status = download_status.clone();
+        let episode_id = episode_id_pre.clone();
+        let start_skip = original_start_skip.clone();
+        let end_skip = original_end_skip.clone();
+        let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
+
+        use_effect_with((), move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let podcast_id = podcast_id.clone();
+            let download_status = download_status.clone();
+            let episode_id = episode_id;
+            let user_id = user_id.unwrap();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_get_podcast_id_from_ep(
+                        &server_name,
+                        &api_key,
+                        episode_id.unwrap(),
+                        user_id,
+                    )
+                    .await
+                    {
+                        Ok(id) => {
+                            podcast_id.set(id);
+
+                            match call_get_auto_download_status(
+                                &server_name,
+                                user_id,
+                                &Some(api_key.clone().unwrap()),
+                                id,
+                            )
+                            .await
+                            {
+                                Ok(status) => {
+                                    download_status.set(status);
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Error getting auto-download status: {}", e)
+                                            .into(),
+                                    );
+                                }
+                            }
+                            match call_get_auto_skip_times(
+                                &server_name,
+                                &Some(api_key.clone().unwrap()),
+                                user_id,
+                                id,
+                            )
+                            .await
+                            {
+                                Ok((start, end)) => {
+                                    start_skip.set(start);
+                                    end_skip.set(end);
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Error getting auto-skip times: {}", e).into(),
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error getting podcast ID: {}", e).into(),
+                            );
+                        }
+                    }
+                }
             });
             || ()
         });
@@ -453,29 +549,6 @@ pub fn episode_layout() -> Html {
         }
     };
 
-    // let toggle_settings = {
-    //     let add_dispatch = _dispatch.clone();
-    //     let pod_values = clicked_podcast_info.clone();
-
-    //     let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-    //     let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
-    //     let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
-    //     let categories_og = pod_values.clone().unwrap().podcast_categories.unwrap().clone();
-    //     let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
-    //     let pod_episode_count_og = pod_values.clone().unwrap().podcast_episode_count.clone();
-    //     let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
-    //     let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
-    //     let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
-    //     let user_id_og = user_id.unwrap().clone();
-
-    //     let api_key_clone = api_key.clone();
-    //     let server_name_clone = server_name.clone();
-    //     let user_id_clone = user_id.clone();
-    //     let dispatch = add_dispatch.clone();
-    //     let app_dispatch = _search_dispatch.clone();
-
-    //     let is_added = is_added.clone();
-    //
     let download_post = state.clone();
     let download_server_name = server_name.clone();
     let download_api_key = api_key.clone();
@@ -589,14 +662,112 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_download = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let download_status = download_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let download_status = download_status.clone();
+            let auto_download = !*download_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            let request_data = AutoDownloadRequest {
+                podcast_id: pod_id_deref, // Replace with the actual podcast ID
+                user_id,
+                auto_download,
+            };
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_enable_auto_download(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        &request_data,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            download_status.set(auto_download);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error enabling/disabling downloads: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    let start_skip = use_state(|| 0);
+    let end_skip = use_state(|| 0);
+    let start_skip_call = start_skip.clone();
+    let end_skip_call = end_skip.clone();
+
+    // Save the skip times to the server
+    let save_skip_times = {
+        let start_skip = start_skip.clone();
+        let end_skip = end_skip.clone();
+        let original_start_skip = original_start_skip.clone();
+        let original_end_skip = original_end_skip.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+
+        Callback::from(move |_| {
+            let start_skip = *start_skip;
+            let end_skip = *end_skip;
+            let original_start_skip = original_start_skip.clone();
+            let original_end_skip = original_end_skip.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap();
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    let request = SkipTimesRequest {
+                        podcast_id,
+                        start_skip,
+                        end_skip,
+                        user_id,
+                    };
+
+                    match call_adjust_skip_times(&server_name, &api_key, &request).await {
+                        Ok(_) => {
+                            original_start_skip.set(start_skip);
+                            original_end_skip.set(end_skip);
+                            web_sys::console::log_1(&"Skip times updated successfully".into());
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error updating skip times: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     // Define the modal components
     let podcast_option_model = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
             <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Create New User"}
+                            {"Podcast Options"}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
@@ -609,17 +780,58 @@ pub fn episode_layout() -> Html {
                         <form class="space-y-4" action="#">
                             <div>
                                 <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Download Future Episodes Automatically:"}</label>
-                                <input placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" checked={*download_status} class="sr-only peer" onclick={toggle_download} />
+                                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600"></div>
+                                    <div class="peer-checked:translate-x-6 peer-focus:ring-4 peer-focus:ring-blue-300 absolute left-0 top-0 w-6 h-6 bg-white border rounded-full transition-transform"></div>
+                                </label>
                             </div>
-                            <div>
+                            <div class="mt-4">
                                 <label for="auto-skip" class="block mb-2 text-sm font-medium">{"Auto Skip Intros and Outros"}</label>
-                                <input placeholder="user@pinepods.online" type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                <div class="flex items-center space-x-2">
+                                    <div class="flex items-center space-x-2">
+                                        <label for="start-skip" class="block text-sm font-medium">{"Start Skip (seconds):"}</label>
+                                        <input
+                                            type="number"
+                                            id="start-skip"
+                                            value={(*original_start_skip).to_string()}
+                                            class="text-box-input border text-sm rounded-lg p-2.5"
+                                            oninput={Callback::from(move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    let value = input.value().parse::<i32>().unwrap_or(0);
+                                                    start_skip_call.set(value);
+                                                }
+                                            })}
+                                        />
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <label for="end-skip" class="block text-sm font-medium">{"End Skip (seconds):"}</label>
+                                        <input
+                                            type="number"
+                                            id="end-skip"
+                                            value={(*original_end_skip).to_string()}
+                                            class="text-box-input border text-sm rounded-lg p-2.5"
+                                            oninput={Callback::from(move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    let value = input.value().parse::<i32>().unwrap_or(0);
+                                                    end_skip_call.set(value);
+                                                }
+                                            })}
+                                        />
+                                    </div>
+                                    <button
+                                        class="confirm-button bg-blue-600 text-white font-bold py-2 px-4 rounded"
+                                        onclick={save_skip_times}
+                                        disabled={*start_skip == *original_start_skip && *end_skip == *original_end_skip}
+                                    >
+                                        {"Confirm"}
+                                    </button>
+                                </div>
                             </div>
                             <div>
                                 <label for="tag-adjust" class="block mb-2 text-sm font-medium">{"Adjust Tags Associated with this Podcast"}</label>
                                 <input placeholder="my_S3creT_P@$$" type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                             </div>
-                            <button type="close" onclick={on_close_modal.clone()} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Close"}</button>
                         </form>
                     </div>
                 </div>

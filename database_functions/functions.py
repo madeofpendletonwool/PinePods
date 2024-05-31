@@ -1350,6 +1350,96 @@ def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
     finally:
         cursor.close()
 
+def mark_episode_completed(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s AND EXISTS (SELECT 1 FROM "UserEpisodeHistory" WHERE UserID = %s AND EpisodeID = %s)'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = %s AND EXISTS (SELECT 1 FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s)"
+
+        cursor.execute(query, (episode_id, user_id, episode_id))
+        cnx.commit()
+    finally:
+        cursor.close()
+
+def enable_auto_download(cnx, database_type, podcast_id, user_id, auto_download):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Podcasts" SET "AutoDownload" = %s WHERE "PodcastID" = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Podcasts SET AutoDownload = %s WHERE PodcastID = %s AND UserID = %s"
+        cursor.execute(query, (auto_download, podcast_id, user_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
+
+def call_get_auto_download_status(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    print(f'podcast_id: {podcast_id}')
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT AutoDownload FROM "Podcasts" WHERE PodcastID = %s AND UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "SELECT AutoDownload FROM Podcasts WHERE PodcastID = %s AND UserID = %s"
+
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            return result[0] if isinstance(result, tuple) else result.get("AutoDownload")
+        else:
+            return None
+    finally:
+        cursor.close()
+
+
+
+def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Podcasts" SET "StartSkip" = %s, "EndSkip" = %s WHERE "PodcastID" = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Podcasts SET StartSkip = %s, EndSkip = %s WHERE PodcastID = %s"
+        cursor.execute(query, (start_skip, end_skip, podcast_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
+
+def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT StartSkip, EndSkip
+                FROM "Podcasts"
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        else:  # MySQL or MariaDB
+            query = """
+                SELECT StartSkip, EndSkip
+                FROM Podcasts
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            if isinstance(result, dict):
+                return result.get("StartSkip"), result.get("EndSkip")
+            elif isinstance(result, tuple):
+                return result[0], result[1]
+        return None, None
+    finally:
+        cursor.close()
 
 
 def check_downloaded(cnx, database_type, user_id, episode_id):
@@ -1366,15 +1456,18 @@ def check_downloaded(cnx, database_type, user_id, episode_id):
         result = cursor.fetchone()
 
         if result:
-            return True
-        else:
-            return False
+            if isinstance(result, dict):
+                return result.get("DownloadID") is not None
+            elif isinstance(result, tuple):
+                return result[0] is not None
+        return False
 
     except mysql.connector.errors.InterfaceError:
         return False
     finally:
         if cursor:
             cursor.close()
+
 
 def get_download_value(result, key, default=None):
     """

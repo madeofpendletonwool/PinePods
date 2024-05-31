@@ -906,7 +906,8 @@ async def api_download_all_podcast(data: DownloadAllPodcastData, background_task
             return {"detail": "No episodes found for the given podcast."}
 
         for episode_id in episode_ids:
-            background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id)
+            if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, episode_id):
+                background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id)
 
         return {"detail": "Podcast download started for all episodes."}
     else:
@@ -947,6 +948,126 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
     else:
         raise HTTPException(status_code=403,
                             detail="You can only delete podcasts for yourself!")
+
+class MarkEpisodeCompletedData(BaseModel):
+    episode_id: int
+    user_id: int
+
+@app.post("/api/data/mark_episode_completed")
+async def api_mark_episode_completed(data: MarkEpisodeCompletedData, cnx=Depends(get_database_connection),
+                                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.mark_episode_completed(cnx, database_type, data.episode_id, data.user_id)
+        return {"detail": "Episode marked as completed."}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only mark episodes as completed for yourself.")
+
+class AutoDownloadRequest(BaseModel):
+    podcast_id: int
+    auto_download: bool
+    user_id: int
+
+@app.post("/api/data/enable_auto_download")
+async def api_enable_auto_download(data: AutoDownloadRequest, cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id:
+        database_functions.functions.enable_auto_download(cnx, database_type, data.podcast_id, data.user_id, data.auto_download)
+        return {"detail": "Auto-download status updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+
+class AutoDownloadStatusRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+class AutoDownloadStatusResponse(BaseModel):
+    auto_download: bool
+
+@app.post("/api/data/get_auto_download_status")
+async def api_get_auto_download_status(data: AutoDownloadStatusRequest, cnx=Depends(get_database_connection),
+                                       api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403, detail="You can only get the status for your own podcast.")
+
+    status = database_functions.functions.call_get_auto_download_status(cnx, database_type, data.podcast_id, data.user_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    return AutoDownloadStatusResponse(auto_download=status)
+
+class SkipTimesRequest(BaseModel):
+    podcast_id: int
+    start_skip: Optional[int] = 0
+    end_skip: Optional[int] = 0
+
+@app.post("/api/data/adjust_skip_times")
+async def api_adjust_skip_times(data: SkipTimesRequest, cnx=Depends(get_database_connection),
+                                api_key: str = Depends(api_key_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.podcast_id or is_web_key:
+        database_functions.functions.adjust_skip_times(cnx, database_type, data.podcast_id, data.start_skip, data.end_skip)
+        return {"detail": "Skip times updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+
+class AutoSkipTimesRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+class AutoSkipTimesResponse(BaseModel):
+    start_skip: int
+    end_skip: int
+
+@app.post("/api/data/get_auto_skip_times")
+async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_database_connection),
+                                  api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403, detail="You can only get the skip times for your own podcast.")
+
+    start_skip, end_skip = database_functions.functions.get_auto_skip_times(cnx, database_type, data.podcast_id, data.user_id)
+    if start_skip is None or end_skip is None:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    return AutoSkipTimesResponse(start_skip=start_skip, end_skip=end_skip)
 
 
 class SaveEpisodeData(BaseModel):

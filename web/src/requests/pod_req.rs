@@ -2,6 +2,7 @@ use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -1331,6 +1332,253 @@ pub async fn call_get_podcast_details(
         Err(Error::msg(format!(
             "Error retrieving podcast details. Server response: {}",
             response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MarkEpisodeCompletedRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+struct MarkEpisodeCompletedResponse {
+    detail: String,
+}
+
+pub async fn call_mark_episode_completed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &MarkEpisodeCompletedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/mark_episode_completed", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: MarkEpisodeCompletedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to mark episode completed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoDownloadRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub auto_download: bool,
+}
+
+#[derive(Deserialize, Debug)]
+struct AutoDownloadResponse {
+    detail: String,
+}
+
+pub async fn call_enable_auto_download(
+    server_name: &String,
+    api_key: &String,
+    request_data: &AutoDownloadRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/enable_auto_download", server_name);
+
+    web_sys::console::log_1(&JsValue::from_str(&format!("api: {}", api_key)));
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoDownloadResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to enable auto-download: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoDownloadStatusRequest {
+    pub podcast_id: i32,
+    user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoDownloadStatusResponse {
+    pub auto_download: bool,
+}
+
+pub async fn call_get_auto_download_status(
+    server_name: &str,
+    user_id: i32,
+    api_key: &Option<String>,
+    podcast_id: i32,
+) -> Result<bool, anyhow::Error> {
+    let url = format!("{}/api/data/get_auto_download_status", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(&AutoDownloadStatusRequest {
+        podcast_id,
+        user_id,
+    })
+    .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoDownloadStatusResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.auto_download)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get auto-download status: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SkipTimesRequest {
+    pub podcast_id: i32,
+    pub start_skip: i32,
+    pub end_skip: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+struct SkipTimesResponse {
+    detail: String,
+}
+
+pub async fn call_adjust_skip_times(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &SkipTimesRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/adjust_skip_times", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: SkipTimesResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to adjust skip times: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoSkipTimesRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoSkipTimesResponse {
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+pub async fn call_get_auto_skip_times(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<(i32, i32), Error> {
+    let url = format!("{}/api/data/get_auto_skip_times", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(&AutoSkipTimesRequest {
+        podcast_id,
+        user_id,
+    })?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: AutoSkipTimesResponse = response.json().await?;
+        Ok((response_data.start_skip, response_data.end_skip))
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get auto skip times: {}",
+            error_text
         )))
     }
 }

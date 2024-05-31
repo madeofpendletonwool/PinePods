@@ -128,7 +128,7 @@ try:
 
     if count == 0:
         cursor.execute("""
-            INSERT INTO "AppSettings" (SelfServiceUser, DownloadEnabled, EncryptionKey) 
+            INSERT INTO "AppSettings" (SelfServiceUser, DownloadEnabled, EncryptionKey)
             VALUES (false, true, %s)
         """, (key,))
 
@@ -151,7 +151,7 @@ try:
     except Exception as e:
         logging.error(f"Failed to create EmailSettings table: {e}")
 
-    try: 
+    try:
         cursor.execute("""
             SELECT COUNT(*) FROM "EmailSettings"
         """)
@@ -195,7 +195,7 @@ try:
             logging.error("Error inserting or updating user: %s", e)
 
 
-    try: 
+    try:
         # Generate and hash the password
         random_password = generate_random_password()
         hashed_password = hash_password(random_password)
@@ -291,6 +291,9 @@ try:
                 WebsiteURL TEXT,
                 Explicit BOOLEAN,
                 UserID INT,
+                AutoDownload BOOLEAN DEFAULT FALSE,
+                StartSkip INT DEFAULT 0,
+                EndSkip INT DEFAULT 0,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -306,6 +309,25 @@ try:
     else:
         logging.error("Table 'Podcasts' does not exist.")
 
+    # Check if the new columns exist, and add them if they don't
+    try:
+        cursor.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name='Podcasts' AND column_name='AutoDownload'
+        """)
+        result = cursor.fetchone()
+        if not result:
+            cursor.execute("""
+                ALTER TABLE "Podcasts"
+                ADD COLUMN AutoDownload BOOLEAN DEFAULT FALSE,
+                ADD COLUMN StartSkip INT DEFAULT 0,
+                ADD COLUMN EndSkip INT DEFAULT 0
+            """)
+            logging.info("AutoDownload, StartSkip, and EndSkip columns added to Podcasts table.")
+    except Exception as e:
+        logging.error(f"Error altering Podcasts table: {e}")
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS "Episodes" (
@@ -317,18 +339,35 @@ try:
                 EpisodeArtwork TEXT,
                 EpisodePubDate TIMESTAMP,
                 EpisodeDuration INT,
+                Completed BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
             )
         """)
+
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Episodes table: {e}")
+    # Check if the Completed column exists, and add it if it doesn't
+    try:
+        cursor.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name='Episodes' AND column_name='Completed'
+        """)
+        result = cursor.fetchone()
+        if not result:
+            cursor.execute("""
+                ALTER TABLE "Episodes"
+                ADD COLUMN Completed BOOLEAN DEFAULT FALSE
+            """)
+    except Exception as e:
+        print(f"Error altering table: {e}")
     logging.info("created episodes table.")
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"""
-            SELECT 1 
-            FROM pg_indexes 
+            SELECT 1
+            FROM pg_indexes
             WHERE lower(indexname) = lower('{index_name}') AND tablename = '{table_name}'
         """)
         if not cursor.fetchone():
