@@ -711,6 +711,8 @@ pub fn episode_layout() -> Html {
     let end_skip = use_state(|| 0);
     let start_skip_call = start_skip.clone();
     let end_skip_call = end_skip.clone();
+    let start_skip_call_button = start_skip.clone();
+    let end_skip_call_button = end_skip.clone();
 
     // Save the skip times to the server
     let save_skip_times = {
@@ -723,7 +725,8 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
 
-        Callback::from(move |_| {
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
             let start_skip = *start_skip;
             let end_skip = *end_skip;
             let original_start_skip = original_start_skip.clone();
@@ -794,7 +797,7 @@ pub fn episode_layout() -> Html {
                                         <input
                                             type="number"
                                             id="start-skip"
-                                            value={(*original_start_skip).to_string()}
+                                            value={start_skip_call.to_string()}
                                             class="text-box-input border text-sm rounded-lg p-2.5"
                                             oninput={Callback::from(move |e: InputEvent| {
                                                 if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
@@ -809,7 +812,7 @@ pub fn episode_layout() -> Html {
                                         <input
                                             type="number"
                                             id="end-skip"
-                                            value={(*original_end_skip).to_string()}
+                                            value={end_skip_call.to_string()}
                                             class="text-box-input border text-sm rounded-lg p-2.5"
                                             oninput={Callback::from(move |e: InputEvent| {
                                                 if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
@@ -822,16 +825,16 @@ pub fn episode_layout() -> Html {
                                     <button
                                         class="confirm-button bg-blue-600 text-white font-bold py-2 px-4 rounded"
                                         onclick={save_skip_times}
-                                        disabled={*start_skip == *original_start_skip && *end_skip == *original_end_skip}
+                                        disabled={*start_skip_call_button == *original_start_skip && *end_skip_call_button == *original_end_skip}
                                     >
                                         {"Confirm"}
                                     </button>
                                 </div>
                             </div>
-                            <div>
-                                <label for="tag-adjust" class="block mb-2 text-sm font-medium">{"Adjust Tags Associated with this Podcast"}</label>
-                                <input placeholder="my_S3creT_P@$$" type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                            </div>
+                            // <div>
+                            //     <label for="tag-adjust" class="block mb-2 text-sm font-medium">{"Adjust Tags Associated with this Podcast"}</label>
+                            //     <input placeholder="my_S3creT_P@$$" type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                            // </div>
                         </form>
                     </div>
                 </div>
@@ -1171,7 +1174,7 @@ pub fn episode_layout() -> Html {
         // }
         {
             if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
             } else {
                 html! {}
             }

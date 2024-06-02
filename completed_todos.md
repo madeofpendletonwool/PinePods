@@ -2,10 +2,10 @@
 
 This is the list of previous todos that are now completed
 
-Next Version:
+Next Minor Version:
 
 - [] Added Better Download support to the client versions.
-- [] Added Auto Skip options for intro and outros of podcasts
+- [] Manually adjust tags for podcast in podcast settings
 
 Version 0.6.0
 
@@ -14,6 +14,12 @@ Version 0.6.0
 - [] Enhanced downloads page to better display podcasts. This improves archival experience
 - [] Auto Download Episodes when released for given podcasts
 - [] Completed status added so podcasts can be marked as completed and will auto complete once finished
+- [] Added Auto Skip options for intro and outros of podcasts
+
+things needing a fix:
+- fix issue when adding new pod and options won't work
+- implement backend for auto download
+- implement backend for start skip and end skip
 
 Version 0.5.4
 

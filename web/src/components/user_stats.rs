@@ -1,14 +1,13 @@
-use yew::{function_component, Html, html};
-use yew::prelude::*;
 use super::app_drawer::App_drawer;
 use super::gen_components::Search_nav;
-use crate::requests::stat_reqs;
-use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::audio::AudioPlayer;
+use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::gen_funcs::{format_date, format_time_mins};
+use crate::requests::stat_reqs;
+use yew::prelude::*;
+use yew::{function_component, html, Html};
+use yewdux::prelude::*;
 // use crate::requests::login_requests::use_check_authentication;
-
 
 #[function_component(UserStats)]
 pub fn user_stats() -> Html {
@@ -24,9 +23,15 @@ pub fn user_stats() -> Html {
     {
         // let episodes = episodes.clone();
         // let error = error.clone();
-        let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let api_key = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let server_name = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
 
         let server_name_effect = server_name.clone();
 
@@ -35,7 +40,13 @@ pub fn user_stats() -> Html {
             move |_| {
                 // your async call here, using stat_dispatch to update stat_state
                 wasm_bindgen_futures::spawn_local(async move {
-                    if let Ok(fetched_stats) = stat_reqs::call_get_stats(server_name_effect.unwrap().clone(), api_key.flatten().clone(), &user_id.unwrap()).await {
+                    if let Ok(fetched_stats) = stat_reqs::call_get_stats(
+                        server_name_effect.unwrap().clone(),
+                        api_key.flatten().clone(),
+                        &user_id.unwrap(),
+                    )
+                    .await
+                    {
                         stat_dispatch.reduce_mut(move |state| {
                             state.stats = Some(fetched_stats);
                         });
@@ -113,7 +124,7 @@ pub fn user_stats() -> Html {
             </div>
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
             } else {
                 html! {}
             }

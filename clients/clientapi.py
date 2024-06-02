@@ -1025,10 +1025,11 @@ class SkipTimesRequest(BaseModel):
     podcast_id: int
     start_skip: Optional[int] = 0
     end_skip: Optional[int] = 0
+    user_id: int
 
 @app.post("/api/data/adjust_skip_times")
 async def api_adjust_skip_times(data: SkipTimesRequest, cnx=Depends(get_database_connection),
-                                api_key: str = Depends(api_key_header)):
+                                api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
@@ -1038,7 +1039,7 @@ async def api_adjust_skip_times(data: SkipTimesRequest, cnx=Depends(get_database
 
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    if key_id == data.podcast_id or is_web_key:
+    if key_id == data.user_id or is_web_key:
         database_functions.functions.adjust_skip_times(cnx, database_type, data.podcast_id, data.start_skip, data.end_skip)
         return {"detail": "Skip times updated."}
     else:

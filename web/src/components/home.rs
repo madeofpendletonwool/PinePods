@@ -1,26 +1,29 @@
-use yew::{function_component, Html, html};
-use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, episode_item, on_shownotes_click, UseScrollToTop};
-use crate::requests::pod_req;
-use yewdux::prelude::*;
-use yew_router::history::BrowserHistory;
-use crate::components::context::{AppState, UIState, ExpandedDescriptions};
-use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, format_datetime, parse_date, DateFormat};
-use crate::requests::pod_req::RecentEps;
-use crate::requests::pod_req::Episode as EpisodeData; 
+use super::gen_components::{
+    empty_message, episode_item, on_shownotes_click, Search_nav, UseScrollToTop,
+};
 use crate::components::audio::on_play_click;
+use crate::components::audio::AudioPlayer;
+use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::desc_impl::AppStateMsg;
+use crate::components::gen_funcs::{
+    format_datetime, parse_date, sanitize_html_with_blank_target, truncate_description, DateFormat,
+};
+use crate::requests::pod_req;
+use crate::requests::pod_req::Episode as EpisodeData;
+use crate::requests::pod_req::RecentEps;
+use yew::prelude::*;
+use yew::{function_component, html, Html};
+use yew_router::history::BrowserHistory;
+use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
-use wasm_bindgen::closure::Closure;
-use web_sys::window;
-use wasm_bindgen::JsCast;
 use crate::requests::login_requests::use_check_authentication;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use web_sys::window;
 
 use wasm_bindgen::prelude::*;
-
 
 #[function_component(Home)]
 pub fn home() -> Html {
@@ -39,26 +42,28 @@ pub fn home() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let performance = window.performance().expect("should have performance");
             let navigation_type = performance.navigation().type_();
-            
-            if navigation_type == 1 { // 1 stands for reload
+
+            if navigation_type == 1 {
+                // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage.set_item("isAuthenticated", "false").unwrap();
+                session_storage
+                    .set_item("isAuthenticated", "false")
+                    .unwrap();
             }
-    
+
             // Always check authentication status
             let current_route = window.location().href().unwrap_or_default();
             use_check_authentication(session_dispatch.clone(), &current_route);
-    
+
             // Mark that the page reload handling has occurred
             session_dispatch.reduce_mut(|state| {
                 state.reload_occured = Some(true);
                 state.clone() // Return the modified state
             });
         }
-    
+
         || ()
     });
-    
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -66,7 +71,6 @@ pub fn home() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let loading = use_state(|| true);
-    
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -79,25 +83,34 @@ pub fn home() -> Html {
                 ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
             }) as Box<dyn Fn(_)>);
 
-            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+            document
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                .unwrap();
 
             // Return cleanup function
             move || {
-                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                document
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                    .unwrap();
                 closure.forget(); // Prevents the closure from being dropped
             }
         });
     }
-
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
     {
         // let episodes = episodes.clone();
         let error = error.clone();
-        let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let api_key = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let server_name = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
 
         let effect_dispatch = dispatch.clone();
 
@@ -107,21 +120,25 @@ pub fn home() -> Html {
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
                 let error_clone = error.clone();
-                if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
                     let dispatch = effect_dispatch.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
                                 dispatch.reduce_mut(move |state| {
-                                    state.server_feed_results = Some(RecentEps { episodes: Some(fetched_episodes) });
+                                    state.server_feed_results = Some(RecentEps {
+                                        episodes: Some(fetched_episodes),
+                                    });
                                 });
                                 loading_ep.set(false);
-                            },
+                            }
                             Err(e) => {
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false); // Set loading to false here
-                            },
+                            }
                         }
                     });
                 }
@@ -151,7 +168,7 @@ pub fn home() -> Html {
                     if let Some(recent_eps) = state.server_feed_results.clone() {
                         let int_recent_eps = recent_eps.clone();
                         if let Some(episodes) = int_recent_eps.episodes {
-                    
+
                             if episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty
                                 empty_message(
@@ -183,7 +200,7 @@ pub fn home() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
             } else {
                 html! {}
             }
@@ -201,11 +218,10 @@ pub fn home() -> Html {
     }
 }
 
-
 #[derive(Properties, PartialEq, Clone)]
 pub struct EpisodeProps {
     pub episode: EpisodeData, // Assuming EpisodeData contains all episode details
-    // Add callbacks for play and shownotes if they can't be internally handled
+                              // Add callbacks for play and shownotes if they can't be internally handled
 }
 
 #[function_component(Episode)]
@@ -220,7 +236,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let id_string = &props.episode.episodeid.to_string();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
-        
+
     let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
 
     let dispatch = dispatch.clone();
@@ -232,7 +248,8 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let episode_id_clone = props.episode.episodeid.clone();
     let episode_listened_clone = props.episode.listenduration.clone();
 
-    let sanitized_description = sanitize_html_with_blank_target(&props.episode.episodedescription.clone());
+    let sanitized_description =
+        sanitize_html_with_blank_target(&props.episode.episodedescription.clone());
 
     // let (description, _is_truncated) = if desc_expanded {
     //     (sanitized_description, false)
@@ -251,7 +268,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         let desc_dispatch = desc_dispatch.clone();
         let desc_state = desc_state.clone();
         let episode_guid = props.episode.episodeid.clone().to_string();
-    
+
         Callback::from(move |_: MouseEvent| {
             let guid = episode_guid.clone();
             desc_dispatch.reduce_mut(move |state| {
@@ -265,8 +282,6 @@ pub fn episode(props: &EpisodeProps) -> Html {
             });
         })
     };
-    
-    
 
     let episode_url_for_closure = episode_url_clone.clone();
     let episode_title_for_closure = episode_title_clone.clone();
@@ -311,11 +326,14 @@ pub fn episode(props: &EpisodeProps) -> Html {
         Some("JIS") => DateFormat::JIS,
         _ => DateFormat::ISO, // default to ISO if the format is not recognized
     };
-    
+
     let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
     let episode_url_for_ep_item = episode_url_clone.clone();
     // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
-    let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+    let format_release = format!(
+        "{}",
+        format_datetime(&datetime, &state.hour_preference, date_format)
+    );
     let item = episode_item(
         Box::new(props.episode.clone()),
         sanitized_description.clone(),
@@ -327,7 +345,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         episode_duration_clone,
         episode_listened_clone,
         "home",
-        Callback::from(|_| {}), 
+        Callback::from(|_| {}),
         false,
         episode_url_for_ep_item,
     );

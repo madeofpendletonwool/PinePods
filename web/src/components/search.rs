@@ -1,26 +1,31 @@
-use yew::{function_component, html, use_node_ref, Html, Properties, Callback, MouseEvent};
-use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{UseScrollToTop, Search_nav, empty_message, episode_item, on_shownotes_click};
-use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
-use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use yew_router::history::BrowserHistory;
-use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, truncate_description, parse_date, format_datetime, match_date_format};
+use super::gen_components::{
+    empty_message, episode_item, on_shownotes_click, Search_nav, UseScrollToTop,
+};
 use crate::components::audio::on_play_click;
+use crate::components::audio::AudioPlayer;
+use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
+use crate::components::gen_funcs::{
+    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
+    truncate_description,
+};
+use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
+use yew::prelude::*;
+use yew::{function_component, html, use_node_ref, Callback, Html, MouseEvent, Properties};
+use yew_router::history::BrowserHistory;
+use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
-use web_sys::HtmlInputElement;
-use web_sys::HtmlElement;
-use wasm_bindgen_futures::spawn_local;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use crate::requests::login_requests::use_check_authentication;
 use async_std::task::sleep;
 use std::time::Duration;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
-use crate::requests::login_requests::use_check_authentication;
+use web_sys::HtmlElement;
+use web_sys::HtmlInputElement;
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct SearchProps {
@@ -44,23 +49,26 @@ pub fn search(_props: &SearchProps) -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let performance = window.performance().expect("should have performance");
             let navigation_type = performance.navigation().type_();
-            
-            if navigation_type == 1 { // 1 stands for reload
+
+            if navigation_type == 1 {
+                // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage.set_item("isAuthenticated", "false").unwrap();
+                session_storage
+                    .set_item("isAuthenticated", "false")
+                    .unwrap();
             }
-    
+
             // Always check authentication status
             let current_route = window.location().href().unwrap_or_default();
             use_check_authentication(session_dispatch.clone(), &current_route);
-    
+
             // Mark that the page reload handling has occurred
             session_dispatch.reduce_mut(|state| {
                 state.reload_occured = Some(true);
                 state.clone() // Return the modified state
             });
         }
-    
+
         || ()
     });
 
@@ -82,18 +90,21 @@ pub fn search(_props: &SearchProps) -> Html {
                 ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
             }) as Box<dyn Fn(_)>);
 
-            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+            document
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                .unwrap();
 
             // Return cleanup function
             move || {
-                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                document
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                    .unwrap();
                 closure.forget(); // Prevents the closure from being dropped
             }
         });
     }
     // let search_results = use_state(|| Vec::new());
     // let search_results_clone = search_results.clone();
-
 
     let input_ref = use_node_ref();
     let input_ref_clone1 = input_ref.clone();
@@ -103,9 +114,15 @@ pub fn search(_props: &SearchProps) -> Html {
     let container_ref = use_node_ref();
     let container_ref_clone1 = container_ref.clone();
 
-    let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let api_key = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let server_name = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
 
     // let on_click = Callback::from(move |_| {
     //     if let Some(form) = input_ref_clone1.cast::<HtmlElement>() {
@@ -116,7 +133,6 @@ pub fn search(_props: &SearchProps) -> Html {
     let api_key_submit = api_key.clone();
     let user_id_submit = user_id.clone();
     let server_name_submit = server_name.clone();
-
 
     let on_submit = Callback::from(move |event: SubmitEvent| {
         event.prevent_default();
@@ -154,7 +170,13 @@ pub fn search(_props: &SearchProps) -> Html {
             }
             if let Some(search_request) = search_request {
                 let dispatch = future_dispatch.clone();
-                match call_search_database(&server_name_submit.unwrap(), &api_key_submit.flatten(), &search_request).await {
+                match call_search_database(
+                    &server_name_submit.unwrap(),
+                    &api_key_submit.flatten(),
+                    &search_request,
+                )
+                .await
+                {
                     Ok(results) => {
                         dispatch.reduce_mut(move |state| {
                             state.search_episodes = Some(SearchResponse { data: results });
@@ -164,15 +186,15 @@ pub fn search(_props: &SearchProps) -> Html {
                     }
                     Err(e) => {
                         // Handle the error
-                        web_sys::console::log_1(&format!("Failed to search database: {:?}", e).into()); // Log for debugging
+                        web_sys::console::log_1(
+                            &format!("Failed to search database: {:?}", e).into(),
+                        ); // Log for debugging
                     }
                 }
             }
         };
         spawn_local(future);
     });
-
-    
 
     html! {
         <>
@@ -254,7 +276,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let server_name_play = server_name.clone();
                                     let api_key_play = api_key.clone();
                                     let audio_dispatch = audio_dispatch.clone();
-        
+
                                     let on_play_click = on_play_click(
                                         episode_url_for_closure.clone(),
                                         episode_title_for_closure.clone(),
@@ -291,7 +313,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         episode_duration_clone,
                                         episode_listened_clone,
                                         "search",
-                                        Callback::from(|_| {}), 
+                                        Callback::from(|_| {}),
                                         false,
                                         episode_url_for_ep_item,
                                     );
@@ -306,13 +328,13 @@ pub fn search(_props: &SearchProps) -> Html {
                     //     )
                     // }
                 } else {
-                    html! {} 
+                    html! {}
                 }
             }
             <App_drawer />
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
-                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
                 } else {
                     html! {}
                 }

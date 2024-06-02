@@ -1403,7 +1403,7 @@ def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
-            query = 'UPDATE "Podcasts" SET "StartSkip" = %s, "EndSkip" = %s WHERE "PodcastID" = %s'
+            query = 'UPDATE "Podcasts" SET StartSkip = %s, EndSkip = %s WHERE PodcastID = %s'
         else:  # MySQL or MariaDB
             query = "UPDATE Podcasts SET StartSkip = %s, EndSkip = %s WHERE PodcastID = %s"
         cursor.execute(query, (start_skip, end_skip, podcast_id))
@@ -1416,6 +1416,8 @@ def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
 
 def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
     cursor = cnx.cursor()
+    print(podcast_id, user_id)
+    logging.error(f"Error retrieving DownloadedLocation: {podcast_id}, {user_id}")
     try:
         if database_type == "postgresql":
             query = """

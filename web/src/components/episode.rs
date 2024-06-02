@@ -1,24 +1,29 @@
-use yew::{function_component, Html, html};
-use yew::prelude::*;
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, UseScrollToTop};
-use crate::requests::pod_req;
-use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use crate::components::audio::AudioPlayer;
-use crate::components::gen_funcs::{sanitize_html_with_blank_target, format_datetime, format_time, match_date_format, parse_date};
-use crate::requests::pod_req::{EpisodeRequest, EpisodeMetadataResponse, QueuePodcastRequest, call_queue_episode, SavePodcastRequest, call_save_episode, DownloadEpisodeRequest, call_download_episode};
+use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::audio::on_play_click;
+use crate::components::audio::AudioPlayer;
+use crate::components::click_events::create_on_title_click;
+use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::episodes_layout::UIStateMsg;
-use crate::components::click_events::create_on_title_click;
+use crate::components::gen_funcs::{
+    format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
+};
+use crate::requests::login_requests::use_check_authentication;
+use crate::requests::pod_req;
+use crate::requests::pod_req::{
+    call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest,
+    EpisodeMetadataResponse, EpisodeRequest, QueuePodcastRequest, SavePodcastRequest,
+};
+use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::window;
-use crate::requests::login_requests::use_check_authentication;
-use yew_router::history::{BrowserHistory, History};
-use std::collections::HashMap;
 use wasm_bindgen::JsValue;
+use web_sys::window;
+use yew::prelude::*;
+use yew::{function_component, html, Html};
+use yew_router::history::{BrowserHistory, History};
+use yewdux::prelude::*;
 
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
@@ -36,33 +41,41 @@ pub fn epsiode() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let performance = window.performance().expect("should have performance");
             let navigation_type = performance.navigation().type_();
-            
-            if navigation_type == 1 { // 1 stands for reload
+
+            if navigation_type == 1 {
+                // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage.set_item("isAuthenticated", "false").unwrap();
+                session_storage
+                    .set_item("isAuthenticated", "false")
+                    .unwrap();
             }
-    
+
             // Always check authentication status
             let current_route = window.location().href().unwrap_or_default();
             use_check_authentication(session_dispatch.clone(), &current_route);
-    
+
             // Mark that the page reload handling has occurred
             session_dispatch.reduce_mut(|state| {
                 state.reload_occured = Some(true);
                 state.clone() // Return the modified state
             });
         }
-    
+
         || ()
     });
-
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let api_key = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let server_name = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
@@ -78,11 +91,15 @@ pub fn epsiode() -> Html {
                 ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
             }) as Box<dyn Fn(_)>);
 
-            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+            document
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                .unwrap();
 
             // Return cleanup function
             move || {
-                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                document
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                    .unwrap();
                 closure.forget(); // Prevents the closure from being dropped
             }
         });
@@ -92,9 +109,15 @@ pub fn epsiode() -> Html {
     {
         // let episodes = episodes.clone();
         let error = error.clone();
-        let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let api_key = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.api_key.clone());
         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let server_name = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
         let effect_dispatch = dispatch.clone();
 
         let episode_id = state.selected_episode_id.clone();
@@ -105,24 +128,34 @@ pub fn epsiode() -> Html {
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
                 let error_clone = error.clone();
-                if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
                     let dispatch = effect_dispatch.clone();
-    
+
                     let episode_request = EpisodeRequest {
                         episode_id: episode_id.clone().unwrap(),
                         user_id: user_id.clone(),
                     };
-        
+
                     wasm_bindgen_futures::spawn_local(async move {
-                        match pod_req::call_get_episode_metadata(&server_name, api_key, &episode_request).await {
+                        match pod_req::call_get_episode_metadata(
+                            &server_name,
+                            api_key,
+                            &episode_request,
+                        )
+                        .await
+                        {
                             Ok(fetched_episode) => {
                                 dispatch.reduce_mut(move |state| {
-                                    state.fetched_episode = Some(EpisodeMetadataResponse { episode: fetched_episode });
+                                    state.fetched_episode = Some(EpisodeMetadataResponse {
+                                        episode: fetched_episode,
+                                    });
                                 });
-                            },
+                            }
                             Err(e) => {
                                 error_clone.set(Some(e.to_string()));
-                            },
+                            }
                         }
                     });
                 }
@@ -137,7 +170,7 @@ pub fn epsiode() -> Html {
             <Search_nav />
             <UseScrollToTop />
             {
-                if let Some(episode) = state.fetched_episode.clone() {    
+                if let Some(episode) = state.fetched_episode.clone() {
                     let episode_url_clone = episode.episode.EpisodeURL.clone();
                     let episode_title_clone = episode.episode.EpisodeTitle.clone();
                     let episode_artwork_clone = episode.episode.EpisodeArtwork.clone();
@@ -145,10 +178,10 @@ pub fn epsiode() -> Html {
                     let podcast_of_episode = episode.episode.PodcastID.clone();
                     let episode_listened_clone = Option::from(0);
                     let episode_id_clone = episode.episode.EpisodeID.clone();
-    
+
                     let sanitized_description = sanitize_html_with_blank_target(&episode.episode.EpisodeDescription.clone());
                     let description = sanitized_description;
-    
+
                     let episode_url_for_closure = episode_url_clone.clone();
                     let episode_title_for_closure = episode_title_clone.clone();
                     let episode_artwork_for_closure = episode_artwork_clone.clone();
@@ -290,7 +323,7 @@ pub fn epsiode() -> Html {
                         let podcast_id = podcast_of_episode.clone();
                         let user_id = user_id.clone();
                         let history = history.clone();
-                    
+
                         Callback::from(move |event: MouseEvent| {
                             let dispatch = dispatch.clone();
                             let server_name = server_name.clone();
@@ -298,7 +331,7 @@ pub fn epsiode() -> Html {
                             let podcast_id = podcast_id.clone();
                             let user_id = user_id.clone();
                             let history = history.clone();
-                    
+
                             wasm_bindgen_futures::spawn_local(async move {
                                 match pod_req::call_get_podcast_details(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.unwrap(), &podcast_id).await {
                                     Ok(details) => {
@@ -323,7 +356,7 @@ pub fn epsiode() -> Html {
                                             details.website_url,
                                             user_id.unwrap(),
                                         );
-                    
+
                                         // Execute the action created by create_on_title_click
                                         final_click_action.emit(event);
                                     },
@@ -386,7 +419,7 @@ pub fn epsiode() -> Html {
                             </div>
                             <hr class="episode-divider" />
                             <div class="episode-single-desc episode-description">
-                            // <p>{ description }</p> 
+                            // <p>{ description }</p>
                             <div class="item_container-text episode-description-container">
                                 <SafeHtml html={description} />
                             </div>
@@ -404,7 +437,7 @@ pub fn epsiode() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
             } else {
                 html! {}
             }
