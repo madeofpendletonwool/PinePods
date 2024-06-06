@@ -309,25 +309,6 @@ try:
     else:
         logging.error("Table 'Podcasts' does not exist.")
 
-    # Check if the new columns exist, and add them if they don't
-    try:
-        cursor.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name='Podcasts' AND column_name='AutoDownload'
-        """)
-        result = cursor.fetchone()
-        if not result:
-            cursor.execute("""
-                ALTER TABLE "Podcasts"
-                ADD COLUMN AutoDownload BOOLEAN DEFAULT FALSE,
-                ADD COLUMN StartSkip INT DEFAULT 0,
-                ADD COLUMN EndSkip INT DEFAULT 0
-            """)
-            logging.info("AutoDownload, StartSkip, and EndSkip columns added to Podcasts table.")
-    except Exception as e:
-        logging.error(f"Error altering Podcasts table: {e}")
-
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS "Episodes" (
@@ -347,22 +328,6 @@ try:
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Episodes table: {e}")
-    # Check if the Completed column exists, and add it if it doesn't
-    try:
-        cursor.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name='Episodes' AND column_name='Completed'
-        """)
-        result = cursor.fetchone()
-        if not result:
-            cursor.execute("""
-                ALTER TABLE "Episodes"
-                ADD COLUMN Completed BOOLEAN DEFAULT FALSE
-            """)
-    except Exception as e:
-        print(f"Error altering table: {e}")
-    logging.info("created episodes table.")
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"""

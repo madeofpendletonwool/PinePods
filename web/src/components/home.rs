@@ -128,10 +128,17 @@ pub fn home() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
+                                let completed_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.completed)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+
                                 dispatch.reduce_mut(move |state| {
                                     state.server_feed_results = Some(RecentEps {
                                         episodes: Some(fetched_episodes),
                                     });
+                                    state.completed_episodes = Some(completed_episode_ids);
                                 });
                                 loading_ep.set(false);
                             }
@@ -234,6 +241,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let id_string = &props.episode.episodeid.to_string();
+    let completed = props.episode.completed.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
 
@@ -334,6 +342,12 @@ pub fn episode(props: &EpisodeProps) -> Html {
         "{}",
         format_datetime(&datetime, &state.hour_preference, date_format)
     );
+    let check_episode_id = props.episode.episodeid.clone();
+    let is_completed = state
+        .completed_episodes
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&check_episode_id);
     let item = episode_item(
         Box::new(props.episode.clone()),
         sanitized_description.clone(),
@@ -348,6 +362,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         Callback::from(|_| {}),
         false,
         episode_url_for_ep_item,
+        is_completed,
     );
 
     item

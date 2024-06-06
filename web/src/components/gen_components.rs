@@ -2,10 +2,11 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_time;
 use crate::requests::pod_req::{
-    call_download_episode, call_queue_episode, call_remove_downloaded_episode,
-    call_remove_queued_episode, call_remove_saved_episode, call_save_episode,
-    DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode, QueuePodcastRequest,
-    QueuedEpisode, SavePodcastRequest, SavedEpisode,
+    call_download_episode, call_mark_episode_completed, call_queue_episode,
+    call_remove_downloaded_episode, call_remove_queued_episode, call_remove_saved_episode,
+    call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest,
+    SavedEpisode,
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
@@ -694,12 +695,77 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let complete_api_key = api_key.clone();
+    let complete_server_name = server_name.clone();
+    let complete_download_post = audio_dispatch.clone();
+    let dispatch_clone = post_dispatch.clone();
+    let on_complete_episode = {
+        let episode = props.episode.clone();
+        let episode_id = props.episode.get_episode_id();
+        Callback::from(move |_| {
+            let post_dispatch = dispatch_clone.clone();
+            let post_state = complete_download_post.clone();
+            let server_name_copy = complete_server_name.clone();
+            let api_key_copy = complete_api_key.clone();
+            let request = MarkEpisodeCompletedRequest {
+                episode_id: episode.get_episode_id(),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                match call_mark_episode_completed(
+                    &server_name.unwrap(),
+                    &api_key.flatten(),
+                    &request,
+                )
+                .await
+                {
+                    Ok(success_message) => {
+                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                        post_dispatch.reduce_mut(|state| {
+                            if let Some(completed_episodes) = state.completed_episodes.as_mut() {
+                                if let Some(pos) =
+                                    completed_episodes.iter().position(|&id| id == episode_id)
+                                {
+                                    completed_episodes.remove(pos);
+                                } else {
+                                    completed_episodes.push(episode_id);
+                                }
+                            } else {
+                                state.completed_episodes = Some(vec![episode_id]);
+                            }
+                            state.info_message = Some(format!("{}", success_message));
+                        });
+                    }
+                    Err(e) => {
+                        post_state.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", e))
+                        });
+                        // Handle error, e.g., display the error message
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+    let check_episode_id = props.episode.get_episode_id();
+    let is_completed = post_state
+        .completed_episodes
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&check_episode_id);
+
     let action_buttons = match props.page_type.as_str() {
         "saved" => html! {
             <>
                 <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
                 <li class="dropdown-option" onclick={on_remove_saved_episode.clone()}>{ "Remove Saved Episode" }</li>
                 <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         "queue" => html! {
@@ -707,6 +773,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
                 <li class="dropdown-option" onclick={on_remove_queued_episode.clone()}>{ "Remove from Queue" }</li>
                 <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         "downloads" => html! {
@@ -714,6 +781,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
                 <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
                 <li class="dropdown-option" onclick={on_remove_downloaded_episode.clone()}>{ "Remove Downloaded Episode" }</li>
+                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         // Add more page types and their respective button sets as needed
@@ -723,6 +791,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
                 <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
                 <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
     };
@@ -986,6 +1055,7 @@ pub fn episode_item(
     on_checkbox_change: Callback<i32>,
     is_delete_mode: bool, // Add this line
     ep_url: String,
+    completed: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1032,9 +1102,20 @@ pub fn episode_item(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_shownotes_click}>
-                        { episode.get_episode_title() }
-                    </p>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                        <p class="item_container-text text-xl font-semibold">
+                            { episode.get_episode_title() }
+                        </p>
+                        {
+                            if completed.clone() {
+                                html! {
+                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
+                    </div>
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
@@ -1055,20 +1136,28 @@ pub fn episode_item(
                         { format_release }
                     </span>
                     {
-                        if formatted_listen_duration.is_some() {
+                        if completed {
                             html! {
                                 <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
-                                    <div class="progress-bar-container">
-                                        <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                    </div>
                                     <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ "-  Completed" }</span>
                                 </div>
                             }
-
                         } else {
-                            html! {
-                                <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ formatted_duration }</span>
+                                    </div>
+                                }
+                            } else {
+                                html! {
+                                    <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                                }
                             }
                         }
                     }
@@ -1111,6 +1200,7 @@ pub fn download_episode_item(
     on_checkbox_change: Callback<i32>,
     is_delete_mode: bool, // Add this line
     ep_url: String,
+    completed: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1157,9 +1247,20 @@ pub fn download_episode_item(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_shownotes_click}>
-                        { episode.get_episode_title() }
-                    </p>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                        <p class="item_container-text text-xl font-semibold">
+                            { episode.get_episode_title() }
+                        </p>
+                        {
+                            if completed.clone() {
+                                html! {
+                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
+                    </div>
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
@@ -1180,19 +1281,28 @@ pub fn download_episode_item(
                         { format_release }
                     </span>
                     {
-                        if formatted_listen_duration.is_some() {
+                        if completed {
                             html! {
                                 <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
-                                    <div class="progress-bar-container">
-                                        <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                    </div>
                                     <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ "-  Completed" }</span>
                                 </div>
                             }
                         } else {
-                            html! {
-                                <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ formatted_duration }</span>
+                                    </div>
+                                }
+                            } else {
+                                html! {
+                                    <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                                }
                             }
                         }
                     }

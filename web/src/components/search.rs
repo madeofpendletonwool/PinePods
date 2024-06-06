@@ -238,6 +238,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let episode_artwork_clone = episode.episodeartwork.clone();
                                     let episode_duration_clone = episode.episodeduration.clone();
                                     let episode_id_clone = episode.episodeid.clone();
+                                    let completed = episode.completed.clone();
                                     let episode_listened_clone = episode.listenduration.clone();
                                     let history_clone = history.clone();
                                     let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
@@ -302,6 +303,12 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
                                     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                                     let episode_url_for_ep_item = episode_url_clone.clone();
+                                    let check_episode_id = &episode.episodeid.clone();
+                                    let is_completed = state
+                                        .completed_episodes
+                                        .as_ref()
+                                        .unwrap_or(&vec![])
+                                        .contains(&check_episode_id);
                                     let item = episode_item(
                                         Box::new(episode),
                                         description.clone(),
@@ -316,6 +323,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         Callback::from(|_| {}),
                                         false,
                                         episode_url_for_ep_item,
+                                        is_completed,
                                     );
 
                                     item

@@ -29,10 +29,11 @@ def pascal_case(snake_str):
 
 def lowercase_keys(data):
     if isinstance(data, dict):
-        return {k.lower(): v for k, v in data.items()}
+        return {k.lower(): (bool(v) if k.lower() == 'completed' else v) for k, v in data.items()}
     elif isinstance(data, list):
         return [lowercase_keys(item) for item in data]
     return data
+
 
 
 def capitalize_keys(data):
@@ -163,6 +164,17 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             """
             explicit = 1 if podcast_values['pod_explicit'] else 0
 
+        print("Inserting into db")
+        print(podcast_values['pod_title'])
+        print(podcast_values['pod_artwork'])
+        print(podcast_values['pod_author'])
+        print(str(podcast_values['categories']))
+        print(podcast_values['pod_description'])
+        print(podcast_values['pod_episode_count'])
+        print(podcast_values['pod_feed_url'])
+        print(podcast_values['pod_website'])
+        print(explicit)
+        print(user_id)
         try:
             cursor.execute(add_podcast_query, (
                 podcast_values['pod_title'],
@@ -178,7 +190,11 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             ))
 
             if database_type == "postgresql":
-                podcast_id = cursor.fetchone()[0]
+                podcast_id = cursor.fetchone()
+                if isinstance(podcast_id, tuple):
+                    podcast_id = podcast_id[0]
+                elif isinstance(podcast_id, dict):
+                    podcast_id = podcast_id['podcastid']
             else:  # MySQL or MariaDB
                 cnx.commit()
                 podcast_id = cursor.lastrowid
@@ -204,7 +220,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             print("stats table updated")
 
             # Add episodes to database
-            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'])
+            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False)
             print("episodes added")
 
         except Exception as e:
@@ -340,7 +356,7 @@ def add_admin_user(cnx, database_type, user_values):
     cursor.close()
 
 
-def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url):
+def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download):
     import datetime
     import feedparser
     import dateutil.parser
@@ -439,8 +455,14 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url):
 
         cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
         print('episodes inserted')
+        # Get the EpisodeID for the newly added episode
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
+            if auto_download:  # Check if auto-download is enabled
+                episode_id = get_episode_id(cnx, database_type, podcast_id, parsed_title, parsed_audio_url)
+                user_id = get_user_id_from_pod_id(cnx, database_type, podcast_id)
+                # Call your download function here
+                download_podcast(cnx, database_type, episode_id, user_id)
 
     cnx.commit()
 
@@ -559,7 +581,7 @@ def return_episodes(database_type, cnx, user_id):
         query = (
             'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, '
-            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID '
+            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID, "Episodes".Completed '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
             'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "UserEpisodeHistory".UserID = %s '
@@ -571,7 +593,7 @@ def return_episodes(database_type, cnx, user_id):
         query = (
             "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID "
+            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID, Episodes.Completed "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
@@ -589,8 +611,8 @@ def return_episodes(database_type, cnx, user_id):
         return []
 
     if database_type != "postgresql":
-        # Convert column names to lowercase for MySQL
-        rows = [{k.lower(): v for k, v in row.items()} for row in rows]
+        # Convert column names to lowercase for MySQL and ensure `Completed` is a boolean
+        rows = [{k.lower(): (bool(v) if k.lower() == 'completed' else v) for k, v in row.items()} for row in rows]
 
     return rows
 
@@ -897,17 +919,17 @@ def refresh_pods(cnx, database_type):
     cursor = cnx.cursor()
 
     if database_type == "postgresql":
-        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL FROM "Podcasts"'
+        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM "Podcasts"'
     else:  # MySQL or MariaDB
-        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL FROM Podcasts"
+        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM Podcasts"
 
 
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall()  # fetch the result set
 
-    for (podcast_id, feed_url, artwork_url) in result_set:
+    for (podcast_id, feed_url, artwork_url, auto_download) in result_set:
         print(f'Running for :{podcast_id}')
-        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url)
+        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download)
 
     cursor.close()
     # cnx.close()
@@ -1111,6 +1133,30 @@ def get_user_id(cnx, database_type, username):
     else:
         return 1
 
+def get_user_id_from_pod_id(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT UserID FROM "Podcasts" WHERE PodcastID = %s'
+    else:
+        query = "SELECT UserID FROM Podcasts WHERE PodcastID = %s"
+
+    cursor.execute(query, (podcast_id,))
+    result = cursor.fetchone()
+
+    if result:
+        # Check if the result is a dictionary or tuple
+        if isinstance(result, dict):
+            user_id = result.get("userid")
+        elif isinstance(result, tuple):
+            user_id = result[0]
+        else:
+            user_id = None
+    else:
+        user_id = None
+
+    cursor.close()
+    return user_id
+
 
 def get_user_details(cnx, database_type, username):
     cursor = cnx.cursor()
@@ -1172,7 +1218,7 @@ def user_history(cnx, database_type, user_id):
     if database_type == "postgresql":
         query = ('SELECT "Episodes".EpisodeID, "UserEpisodeHistory".ListenDate, "UserEpisodeHistory".ListenDuration, '
                  '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
-                 '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate '
+                 '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate, "Episodes".Completed '
                  'FROM "UserEpisodeHistory" '
                  'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
                  'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -1181,7 +1227,7 @@ def user_history(cnx, database_type, user_id):
     else:  # MySQL or MariaDB
         query = ("SELECT Episodes.EpisodeID, UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
                  "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-                 "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
+                 "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate, Episodes.Completed "
                  "FROM UserEpisodeHistory "
                  "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
                  "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -1328,10 +1374,10 @@ def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
     try:
         if database_type == "postgresql":
             query = (
-                'SELECT "Episodes"."PodcastID" '
+                'SELECT "Episodes".PodcastID '
                 'FROM "Episodes" '
-                'INNER JOIN "Podcasts" ON "Episodes"."PodcastID" = "Podcasts"."PodcastID" '
-                'WHERE "Episodes"."EpisodeID" = %s AND "Podcasts"."UserID" = %s'
+                'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
+                'WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s'
             )
         else:  # MySQL or MariaDB
             query = (
@@ -1352,22 +1398,27 @@ def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
 
 def mark_episode_completed(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
+    print(f"episode_id: {episode_id}")
+    print(f"user_id: {user_id}")
+    logging.error(f"episode_id: {episode_id}")
+    logging.error(f"user_id: {user_id}")
     try:
         if database_type == "postgresql":
-            query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s AND EXISTS (SELECT 1 FROM "UserEpisodeHistory" WHERE UserID = %s AND EpisodeID = %s)'
+            query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s'
         else:  # MySQL or MariaDB
-            query = "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = %s AND EXISTS (SELECT 1 FROM UserEpisodeHistory WHERE UserID = %s AND EpisodeID = %s)"
+            query = "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = %s"
 
-        cursor.execute(query, (episode_id, user_id, episode_id))
+        cursor.execute(query, (episode_id,))
         cnx.commit()
     finally:
         cursor.close()
+
 
 def enable_auto_download(cnx, database_type, podcast_id, user_id, auto_download):
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
-            query = 'UPDATE "Podcasts" SET "AutoDownload" = %s WHERE "PodcastID" = %s'
+            query = 'UPDATE "Podcasts" SET AutoDownload = %s WHERE PodcastID = %s AND UserID = %s'
         else:  # MySQL or MariaDB
             query = "UPDATE Podcasts SET AutoDownload = %s WHERE PodcastID = %s AND UserID = %s"
         cursor.execute(query, (auto_download, podcast_id, user_id))
@@ -1391,7 +1442,7 @@ def call_get_auto_download_status(cnx, database_type, podcast_id, user_id):
         result = cursor.fetchone()
 
         if result:
-            return result[0] if isinstance(result, tuple) else result.get("AutoDownload")
+            return result[0] if isinstance(result, tuple) else result.get("autodownload")
         else:
             return None
     finally:
@@ -1436,7 +1487,7 @@ def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
 
         if result:
             if isinstance(result, dict):
-                return result.get("StartSkip"), result.get("EndSkip")
+                return result.get("startskip"), result.get("endskip")
             elif isinstance(result, tuple):
                 return result[0], result[1]
         return None, None
@@ -1542,7 +1593,8 @@ def download_episode_list(database_type, cnx, user_id):
             '"Episodes".EpisodeDuration, '
             '"Podcasts".WebsiteURL, '
             '"DownloadedEpisodes".DownloadedLocation, '
-            '"UserEpisodeHistory".ListenDuration '
+            '"UserEpisodeHistory".ListenDuration, '
+            '"Episodes".Completed '
             'FROM "DownloadedEpisodes" '
             'INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -1565,7 +1617,8 @@ def download_episode_list(database_type, cnx, user_id):
             "Episodes.EpisodeDuration, "
             "Podcasts.WebsiteURL, "
             "DownloadedEpisodes.DownloadedLocation, "
-            "UserEpisodeHistory.ListenDuration "
+            "UserEpisodeHistory.ListenDuration, "
+            "Episodes.Completed "
             "FROM DownloadedEpisodes "
             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -2697,7 +2750,7 @@ def saved_episode_list(database_type, cnx, user_id):
         query = (
             'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeID, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, '
-            '"Episodes".EpisodeDuration, "Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration '
+            '"Episodes".EpisodeDuration, "Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "SavedEpisodes" '
             'INNER JOIN "Episodes" ON "SavedEpisodes".EpisodeID = "Episodes".EpisodeID '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -2710,7 +2763,7 @@ def saved_episode_list(database_type, cnx, user_id):
         query = (
             "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeID, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
-            "Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
+            "Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM SavedEpisodes "
             "INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -3679,8 +3732,7 @@ def search_data(database_type, cnx, search_term, user_id):
             return []
 
         # Convert column names to lowercase for MySQL
-        if database_type != "postgresql":
-            result = [{k.lower(): v for k, v in row.items()} for row in result]
+        result = lowercase_keys(result)
 
         # Post-process the results to cast boolean to integer for the 'explicit' field
         if database_type == "postgresql":
@@ -3850,7 +3902,8 @@ def get_queued_episodes(database_type, cnx, user_id):
             "Episodes".EpisodeDuration,
             "EpisodeQueue".QueueDate,
             "UserEpisodeHistory".ListenDuration,
-            "Episodes".EpisodeID
+            "Episodes".EpisodeID,
+            "Episodes".Completed
         FROM "EpisodeQueue"
         INNER JOIN "Episodes" ON "EpisodeQueue".EpisodeID = "Episodes".EpisodeID
         INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
@@ -3872,7 +3925,8 @@ def get_queued_episodes(database_type, cnx, user_id):
             Episodes.EpisodeDuration,
             EpisodeQueue.QueueDate,
             UserEpisodeHistory.ListenDuration,
-            Episodes.EpisodeID
+            Episodes.EpisodeID,
+            Episodes.Completed
         FROM EpisodeQueue
         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID

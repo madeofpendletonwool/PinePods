@@ -6,24 +6,30 @@ Next Minor Version:
 
 - [] Added Better Download support to the client versions.
 - [] Manually adjust tags for podcast in podcast settings
+- [] Volume control in the player
+- [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
 
 Version 0.6.0
 
 - [x] Added Postgresql support
-- [] Added option to podcast pages to allow for downloading every episode
-- [] Enhanced downloads page to better display podcasts. This improves archival experience
+- [x] Added option to podcast pages to allow for downloading every episode
+- [x] Enhanced downloads page to better display podcasts. This improves archival experience
+- [x] Added ability to download all episodes of a podcast at once with a button
+- [x] Added Individual Podcast Settings Button
+- [x] Completed status added so podcasts can be marked as completed manually and will auto complete once finished
 - [] Auto Download Episodes when released for given podcasts
-- [] Completed status added so podcasts can be marked as completed and will auto complete once finished
 - [] Added Auto Skip options for intro and outros of podcasts
 
 things needing a fix:
 - fix issue when adding new pod and options won't work
-- implement backend for auto download
-- implement backend for start skip and end skip
+- Get added pod to allow setting changes right away
+- Get values for start and end skip to load dynamically
+- Add display to show enabled auto downloads or skip adjustments
 
 Version 0.5.4
 
 - [x] Fixed enter key to login when highlighted on username or password field of login page
+
 - [x] Created a confirmation message when a user gets created using self service user creation
 - [x] Fixed issue with viewing episodes with certain podcasts when any episodes were missing a duration
 - [x] Fixed issue where release date would show current timestamp when the podcast wasn't added to the db

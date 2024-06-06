@@ -2,12 +2,13 @@ use crate::components::context::{AppState, UIState};
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_get_auto_skip_times,
     call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
-    call_increment_played, call_queue_episode, call_record_listen_duration,
-    call_remove_queued_episode, HistoryAddRequest, QueuePodcastRequest,
-    RecordListenDurationRequest,
+    call_increment_played, call_mark_episode_completed, call_queue_episode,
+    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
 };
 use futures_util::stream::StreamExt;
 use gloo_timers::callback::Interval;
+use std::cell::Cell;
 use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
@@ -125,18 +126,70 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     use_effect_with((), {
         let audio_dispatch = _audio_dispatch.clone();
         let progress = progress.clone(); // Clone for the interval closure
+        let closure_api_key = api_key.clone();
+        let closure_server_name = server_name.clone();
+        let closure_user_id = user_id.clone();
+        let closure_episode_id = episode_id.clone();
         move |_| {
-            let interval_handle = Interval::new(1000, move || {
+            let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
+            let interval_handle_clone = interval_handle.clone();
+
+            let interval = Interval::new(1000, move || {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
                     let duration = audio_element.duration(); // Assuming you can get the duration from the audio_element
                     let end_pos_sec = end_pos.clone(); // Get the end position
-                    let test_math = duration - end_pos_sec.unwrap();
+                    let complete_api_key = closure_api_key.clone();
+                    let complete_server_name = closure_server_name.clone();
+                    let complete_user_id = closure_user_id.clone();
+                    let complete_episode_id = closure_episode_id.clone();
                     if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
                         audio_element.pause().unwrap_or(());
                         // Manually trigger the `ended` event
                         let event = web_sys::Event::new("ended").unwrap();
                         audio_element.dispatch_event(&event).unwrap();
+                        // Call the endpoint to mark episode as completed
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let (
+                                Some(complete_api_key),
+                                Some(complete_server_name),
+                                Some(complete_user_id),
+                                Some(complete_episode_id),
+                            ) = (
+                                complete_api_key.as_ref(),
+                                complete_server_name.as_ref(),
+                                complete_user_id.as_ref(),
+                                complete_episode_id.as_ref(),
+                            ) {
+                                let request = MarkEpisodeCompletedRequest {
+                                    episode_id: *complete_episode_id, // Dereference the option
+                                    user_id: *complete_user_id,       // Dereference the option
+                                };
+
+                                match call_mark_episode_completed(
+                                    &complete_server_name,
+                                    &complete_api_key,
+                                    &request,
+                                )
+                                .await
+                                {
+                                    Ok(message) => {
+                                        web_sys::console::log_1(
+                                            &format!("Success: {}", message).into(),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(&format!("Error: {}", e).into());
+                                    }
+                                }
+                            }
+                        });
+
+                        // Stop the interval
+                        if let Some(handle) = interval_handle.take() {
+                            handle.cancel();
+                            interval_handle.set(None);
+                        }
                     } else {
                         let hours = (time_in_seconds / 3600.0).floor() as i32;
                         let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
@@ -161,8 +214,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 }
             });
 
+            interval_handle_clone.set(Some(interval));
+            let interval_handle = interval_handle_clone;
             // Return a cleanup function that will be run when the component unmounts or the dependencies of the effect change
-            move || drop(interval_handle)
+            move || {
+                if let Some(handle) = interval_handle.take() {
+                    handle.cancel();
+                }
+            }
         }
     });
 

@@ -138,10 +138,17 @@ pub fn saved() -> Html {
                             .await
                         {
                             Ok(fetched_episodes) => {
+                                let completed_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.completed)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+
                                 dispatch.reduce_mut(move |state| {
                                     state.saved_episodes = Some(SavedEpisodesResponse {
                                         episodes: fetched_episodes,
                                     });
+                                    state.completed_episodes = Some(completed_episode_ids);
                                 });
                                 loading_ep.set(false);
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
@@ -213,6 +220,7 @@ pub fn saved() -> Html {
                                 let episode_duration_clone = episode.episodeduration.clone();
                                 let episode_id_clone = episode.episodeid.clone();
                                 let episode_listened_clone = episode.listenduration.clone();
+                                let completed = episode.completed.clone();
 
                                 let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
 
@@ -276,6 +284,12 @@ pub fn saved() -> Html {
                                 let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
                                 let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                                 let episode_url_for_ep_item = episode_url_clone.clone();
+                                let check_episode_id = &episode.episodeid.clone();
+                                let is_completed = state
+                                    .completed_episodes
+                                    .as_ref()
+                                    .unwrap_or(&vec![])
+                                    .contains(&check_episode_id);
                                 let item = episode_item(
                                     Box::new(episode),
                                     description.clone(),
@@ -289,7 +303,8 @@ pub fn saved() -> Html {
                                     "saved",
                                     Callback::from(|_| {}),
                                     false,
-                                    episode_url_for_ep_item
+                                    episode_url_for_ep_item,
+                                    is_completed,
                                 );
 
                                 item

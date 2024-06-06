@@ -1,14 +1,13 @@
-use std::collections::HashMap;
-use gloo_net::http::Request;
-use serde::{Deserialize, Serialize, Deserializer};
-use serde::de::{self, Visitor};
-use std::fmt;
 use anyhow::Error;
+use chrono::{DateTime, TimeZone, Utc};
+use gloo_net::http::Request;
 use rss::Channel;
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
+use std::fmt;
 use wasm_bindgen::JsValue;
-use chrono::{DateTime, Utc, TimeZone};
 use yew::Properties;
-
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -17,9 +16,9 @@ pub struct RecentEps {
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct PodcastSearchResult {
-    pub status: Option<String>, // for PodcastIndex
-    pub resultCount: Option<i32>, // for iTunes
-    pub feeds: Option<Vec<Podcast>>, // for PodcastIndex
+    pub status: Option<String>,              // for PodcastIndex
+    pub resultCount: Option<i32>,            // for iTunes
+    pub feeds: Option<Vec<Podcast>>,         // for PodcastIndex
     pub results: Option<Vec<ITunesPodcast>>, // for iTunes
 }
 
@@ -69,14 +68,16 @@ impl From<Podcast> for UnifiedPodcast {
 
 impl From<ITunesPodcast> for UnifiedPodcast {
     fn from(podcast: ITunesPodcast) -> Self {
-        let genre_map: HashMap<String, String> = podcast.genres.into_iter().enumerate()
+        let genre_map: HashMap<String, String> = podcast
+            .genres
+            .into_iter()
+            .enumerate()
             .map(|(index, genre)| (index.to_string(), genre))
             .collect();
 
         let parsed_date = DateTime::parse_from_rfc3339(&podcast.releaseDate)
             .map(|dt| dt.timestamp())
-            .unwrap_or(0);  // Default to 0 or choose a more sensible default
-
+            .unwrap_or(0); // Default to 0 or choose a more sensible default
 
         UnifiedPodcast {
             id: podcast.trackId,
@@ -101,8 +102,6 @@ impl From<ITunesPodcast> for UnifiedPodcast {
         }
     }
 }
-
-
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 #[allow(non_snake_case)]
@@ -142,7 +141,6 @@ pub struct ITunesPodcast {
     pub(crate) genres: Vec<String>,
     pub(crate) collectionExplicitness: String,
     pub(crate) trackCount: Option<i32>,
-
     // add other fields as needed
 }
 
@@ -150,7 +148,7 @@ fn deserialize_string_or_int<'de, D>(deserializer: D) -> Result<Option<String>, 
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::de::{self, Visitor, Unexpected};
+    use serde::de::{self, Unexpected, Visitor};
     use std::fmt;
 
     struct StringOrIntVisitor;
@@ -208,9 +206,6 @@ where
     deserializer.deserialize_option(StringOrIntVisitor)
 }
 
-
-
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Episode {
     #[serde(rename = "Episodetitle")]
@@ -230,13 +225,15 @@ pub struct Episode {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub authors: Vec<String>,
     pub guid: Option<String>,
-    #[serde(rename = "Episodeduration", deserialize_with = "deserialize_string_or_int")]
+    #[serde(
+        rename = "Episodeduration",
+        deserialize_with = "deserialize_string_or_int"
+    )]
     pub duration: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Episodeid")]
     pub episode_id: Option<i32>,
 }
-
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct PodcastFeedResult {
@@ -244,37 +241,53 @@ pub struct PodcastFeedResult {
     pub(crate) episodes: Vec<Episode>,
 }
 
-pub async fn call_get_podcast_info(podcast_value: &String, search_api_url: &Option<String>, search_index: &str) -> Result<PodcastSearchResult, anyhow::Error> {
+pub async fn call_get_podcast_info(
+    podcast_value: &String,
+    search_api_url: &Option<String>,
+    search_index: &str,
+) -> Result<PodcastSearchResult, anyhow::Error> {
     let url = if let Some(api_url) = search_api_url {
         format!("{}?query={}&index={}", api_url, podcast_value, search_index)
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
 
-    let response = Request::get(&url).send().await.map_err(|err| anyhow::Error::new(err))?;
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|err| anyhow::Error::new(err))?;
 
     if response.ok() {
-        let response_text = response.text().await.map_err(|err| anyhow::Error::new(err))?;
+        let response_text = response
+            .text()
+            .await
+            .map_err(|err| anyhow::Error::new(err))?;
 
         let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
         // web_sys::console::log_1(search_results.clone());
         Ok(search_results)
     } else {
-        Err(anyhow::Error::msg(format!("Failed to fetch podcast info: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!(
+            "Failed to fetch podcast info: {}",
+            response.status_text()
+        )))
     }
 }
 
-
-
 pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Error> {
-    let url = search_api_url.as_ref().ok_or_else(|| Error::msg("API URL is missing"))?;
+    let url = search_api_url
+        .as_ref()
+        .ok_or_else(|| Error::msg("API URL is missing"))?;
 
     match Request::get(url).send().await {
         Ok(response) => {
             if response.ok() {
                 Ok(())
             } else {
-                Err(Error::msg(format!("HTTP error occurred: {}", response.status_text())))
+                Err(Error::msg(format!(
+                    "HTTP error occurred: {}",
+                    response.status_text()
+                )))
             }
         }
         Err(err) => Err(Error::new(err)),
@@ -286,16 +299,19 @@ pub struct PodcastEpisodesResponse {
     pub episodes: Vec<Episode>,
 }
 
-
-
 pub async fn call_get_podcast_episodes(
     server_name: &str,
     api_key: &Option<String>,
     user_id: &i32,
     podcast_id: &i32,
 ) -> Result<PodcastFeedResult, anyhow::Error> {
-    let url = format!("{}/api/data/podcast_episodes?user_id={}&podcast_id={}", server_name, user_id, podcast_id);
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let url = format!(
+        "{}/api/data/podcast_episodes?user_id={}&podcast_id={}",
+        server_name, user_id, podcast_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -303,7 +319,10 @@ pub async fn call_get_podcast_episodes(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to get podcast episodes: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast episodes: {}",
+            response.status_text()
+        )));
     }
 
     let response_text = response.text().await?;
@@ -311,19 +330,34 @@ pub async fn call_get_podcast_episodes(
 
     let response_data: PodcastEpisodesResponse = serde_json::from_str(&response_text)?;
 
-    let episodes = response_data.episodes.into_iter().map(|mut episode| {
-        episode.guid = episode.guid.or_else(|| episode.episode_id.map(|id| id.to_string()));
-        episode
-    }).collect::<Vec<_>>();
+    let episodes = response_data
+        .episodes
+        .into_iter()
+        .map(|mut episode| {
+            episode.guid = episode
+                .guid
+                .or_else(|| episode.episode_id.map(|id| id.to_string()));
+            episode
+        })
+        .collect::<Vec<_>>();
 
     Ok(PodcastFeedResult { episodes })
 }
 
-pub async fn call_parse_podcast_url(server_name: String, api_key: &Option<String>, podcast_url: &str) -> Result<PodcastFeedResult, Error> {
+pub async fn call_parse_podcast_url(
+    server_name: String,
+    api_key: &Option<String>,
+    podcast_url: &str,
+) -> Result<PodcastFeedResult, Error> {
     let encoded_podcast_url = urlencoding::encode(podcast_url);
-    let endpoint = format!("{}/api/data/fetch_podcast_feed?podcast_feed={}", server_name, encoded_podcast_url);
-    
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let endpoint = format!(
+        "{}/api/data/fetch_podcast_feed?podcast_feed={}",
+        server_name, encoded_podcast_url
+    );
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let request = Request::get(&endpoint)
         .header("Content-Type", "application/json")
@@ -335,38 +369,61 @@ pub async fn call_parse_podcast_url(server_name: String, api_key: &Option<String
         let response_text = request.text().await?;
         let channel = Channel::read_from(response_text.as_bytes())?;
 
-        let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
-            .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
+        let podcast_artwork_url = channel
+            .image()
+            .map(|img| img.url().to_string())
+            .or_else(|| {
+                channel
+                    .itunes_ext()
+                    .and_then(|ext| ext.image())
+                    .map(|url| url.to_string())
+            });
 
-        let episodes = channel.items().iter().map(|item| {
-            let duration = item.itunes_ext()
-                .and_then(|ext| ext.duration())
-                .map(|d| d.to_string());
-            web_sys::console::log_1(&format!("duration: {:?}", duration.clone()).into());
-            if duration.is_none() {
-                web_sys::console::log_1(&format!("Missing duration for episode: {:?}", item.title()).into());
-            }
+        let episodes = channel
+            .items()
+            .iter()
+            .map(|item| {
+                let duration = item
+                    .itunes_ext()
+                    .and_then(|ext| ext.duration())
+                    .map(|d| d.to_string());
+                web_sys::console::log_1(&format!("duration: {:?}", duration.clone()).into());
+                if duration.is_none() {
+                    web_sys::console::log_1(
+                        &format!("Missing duration for episode: {:?}", item.title()).into(),
+                    );
+                }
 
-            Episode {
-                title: item.title().map(|t| t.to_string()),
-                description: item.description().map(|d| d.to_string()),
-                content: item.content().map(|c| c.to_string()),
-                enclosure_url: item.enclosure().map(|e| e.url().to_string()),
-                enclosure_length: item.enclosure().map(|e| e.length().to_string()),
-                pub_date: item.pub_date().map(|p| p.to_string()),
-                authors: item.author().map(|a| vec![a.to_string()]).unwrap_or_default(),
-                links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
-                artwork: item.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string())
-                    .or_else(|| podcast_artwork_url.clone()),
-                guid: item.guid().map(|g| g.value().to_string()),
-                duration: Some(duration.unwrap_or_else(|| "00:00:00".to_string())),
-                episode_id: None,
-            }
-        }).collect();
+                Episode {
+                    title: item.title().map(|t| t.to_string()),
+                    description: item.description().map(|d| d.to_string()),
+                    content: item.content().map(|c| c.to_string()),
+                    enclosure_url: item.enclosure().map(|e| e.url().to_string()),
+                    enclosure_length: item.enclosure().map(|e| e.length().to_string()),
+                    pub_date: item.pub_date().map(|p| p.to_string()),
+                    authors: item
+                        .author()
+                        .map(|a| vec![a.to_string()])
+                        .unwrap_or_default(),
+                    links: item.link().map(|l| vec![l.to_string()]).unwrap_or_default(),
+                    artwork: item
+                        .itunes_ext()
+                        .and_then(|ext| ext.image())
+                        .map(|url| url.to_string())
+                        .or_else(|| podcast_artwork_url.clone()),
+                    guid: item.guid().map(|g| g.value().to_string()),
+                    duration: Some(duration.unwrap_or_else(|| "00:00:00".to_string())),
+                    episode_id: None,
+                }
+            })
+            .collect();
 
         Ok(PodcastFeedResult { episodes })
     } else {
-        Err(anyhow::Error::msg(format!("Failed to fetch podcast feed: HTTP {}", request.status())))
+        Err(anyhow::Error::msg(format!(
+            "Failed to fetch podcast feed: HTTP {}",
+            request.status()
+        )))
     }
 }
 
@@ -386,18 +443,36 @@ pub async fn call_parse_podcast_channel_info(podcast_url: &str) -> Result<Podcas
     let response_text = Request::get(podcast_url).send().await?.text().await?;
     let channel = Channel::read_from(response_text.as_bytes())?;
 
-    let podcast_artwork_url = channel.image().map(|img| img.url().to_string())
-        .or_else(|| channel.itunes_ext().and_then(|ext| ext.image()).map(|url| url.to_string()));
+    let podcast_artwork_url = channel
+        .image()
+        .map(|img| img.url().to_string())
+        .or_else(|| {
+            channel
+                .itunes_ext()
+                .and_then(|ext| ext.image())
+                .map(|url| url.to_string())
+        });
     let podcast_title = channel.title().to_string();
     let podcast_description = channel.description().to_string();
-    let podcast_authors = channel.itunes_ext().and_then(|ext| ext.author()).map(|a| a.to_string()).unwrap_or_default();
+    let podcast_authors = channel
+        .itunes_ext()
+        .and_then(|ext| ext.author())
+        .map(|a| a.to_string())
+        .unwrap_or_default();
     let podcast_website = channel.link().to_string();
-    let podcast_categories = channel.categories().iter().map(|c| c.name().to_string()).collect::<Vec<_>>();
-    let podcast_explicit = channel.itunes_ext().map_or(false, |ext| ext.explicit().map(|e| e.eq("yes") || e.eq("true")).unwrap_or_default());
+    let podcast_categories = channel
+        .categories()
+        .iter()
+        .map(|c| c.name().to_string())
+        .collect::<Vec<_>>();
+    let podcast_explicit = channel.itunes_ext().map_or(false, |ext| {
+        ext.explicit()
+            .map(|e| e.eq("yes") || e.eq("true"))
+            .unwrap_or_default()
+    });
 
     let podcast_episode_count = channel.items().len() as i32;
 
-    
     // Note: Add other podcast-level details as needed.
 
     let podcast_info = PodcastInfo {
@@ -414,7 +489,6 @@ pub async fn call_parse_podcast_channel_info(podcast_url: &str) -> Result<Podcas
 
     Ok(podcast_info)
 }
-
 
 // In Databases
 
@@ -452,19 +526,23 @@ pub struct SearchEpisode {
     pub episodepubdate: String,
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
+    pub completed: bool,
 }
 
-pub async fn call_search_database (
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &SearchRequest
+pub async fn call_search_database(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &SearchRequest,
 ) -> Result<Vec<SearchEpisode>, Error> {
     let url = format!("{}/api/data/search_data", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -473,19 +551,20 @@ pub async fn call_search_database (
         .send()
         .await?;
 
-        if !response.ok() {
-            return Err(anyhow::Error::msg(format!("Failed to search database: {}", response.status_text())));
-        }
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to search database: {}",
+            response.status_text()
+        )));
+    }
     // Deserialize the response body into a SearchResponse
-        let search_response: SearchResponse = response.json().await?;
+    let search_response: SearchResponse = response.json().await?;
 
-        // Extract the vector of episodes from the SearchResponse
-        let results = search_response.data;
+    // Extract the vector of episodes from the SearchResponse
+    let results = search_response.data;
 
-        let results_jsvalue = JsValue::from_serde(&results).unwrap();
-        web_sys::console::log_1(&results_jsvalue);
-        
+    let results_jsvalue = JsValue::from_serde(&results).unwrap();
+    web_sys::console::log_1(&results_jsvalue);
 
-
-        Ok(results)
+    Ok(results)
 }

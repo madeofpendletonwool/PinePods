@@ -104,10 +104,16 @@ pub fn history() -> Html {
                         match pod_req::call_get_user_history(&server_name, &api_key, &user_id).await
                         {
                             Ok(fetched_episodes) => {
+                                let completed_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.completed)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
                                 dispatch.reduce_mut(move |state| {
                                     state.episode_history = Some(HistoryDataResponse {
                                         data: fetched_episodes,
                                     });
+                                    state.completed_episodes = Some(completed_episode_ids);
                                 });
                                 loading_ep.set(false);
                             }
@@ -179,7 +185,7 @@ pub fn history() -> Html {
                                         let episode_duration_clone = episode.episodeduration.clone();
                                         let episode_id_clone = episode.episodeid.clone();
                                         let episode_listened_clone = episode.listenduration.clone();
-
+                                        let completed = episode.completed.clone();
                                         let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
 
                                         let (description, _is_truncated) = if is_expanded {
@@ -242,6 +248,12 @@ pub fn history() -> Html {
                                         let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
                                         let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                                         let episode_url_for_ep_item = episode_url_clone.clone();
+                                        let check_episode_id = &episode.episodeid.clone();
+                                        let is_completed = state
+                                            .completed_episodes
+                                            .as_ref()
+                                            .unwrap_or(&vec![])
+                                            .contains(&check_episode_id);
                                         let item = episode_item(
                                             Box::new(episode),
                                             description.clone(),
@@ -256,6 +268,7 @@ pub fn history() -> Html {
                                             Callback::from(|_| {}),
                                             false,
                                             episode_url_for_ep_item,
+                                            is_completed,
                                         );
 
                                         item

@@ -52,6 +52,7 @@ pub struct Episode {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -529,6 +530,7 @@ pub struct QueuedEpisode {
     pub queuedate: String,
     pub listenduration: Option<i32>,
     pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -592,6 +594,7 @@ pub struct SavedEpisode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub websiteurl: String,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -625,6 +628,9 @@ pub async fn call_get_saved_episodes(
     }
 
     let response_text = response.text().await?;
+    // let response_text = response.text().await?;
+    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
+    web_sys::console::log_1(&js_value);
 
     let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.saved_episodes)
@@ -746,6 +752,7 @@ pub struct HistoryEpisode {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -843,6 +850,7 @@ pub struct EpisodeDownload {
     pub episodeid: i32,
     pub downloadedlocation: String,
     pub podcastid: i32,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
