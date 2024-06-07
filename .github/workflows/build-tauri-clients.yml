@@ -20,28 +20,28 @@ jobs:
     # Set an environment variable based on the OS
     env:
       DEPENDS_SETUP: ${{ matrix.os == 'ubuntu-latest' && 'true' || 'false' }}
-      # ARTIFACT_NAME1: ${{ 
-      #   matrix.os == 'ubuntu-latest' && 'deb/pinepods_0.5.0_amd64.deb' || 
-      #   matrix.os == 'windows-latest' && 'exe/pinepods_0.5.0_amd64.exe' || 
-      #   matrix.os == 'macOS-latest' && 'dmg/pinepods_0.5.0_amd64.dmg' 
+      # ARTIFACT_NAME1: ${{
+      #   matrix.os == 'ubuntu-latest' && 'deb/pinepods_0.5.0_amd64.deb' ||
+      #   matrix.os == 'windows-latest' && 'exe/pinepods_0.5.0_amd64.exe' ||
+      #   matrix.os == 'macOS-latest' && 'dmg/pinepods_0.5.0_amd64.dmg'
       # }}
-      # ARTIFACT_NAME2: ${{ 
-      #   matrix.os == 'ubuntu-latest' && 'appimage/pinepods_0.5.0_amd64.AppImage' || 
-      #   matrix.os == 'windows-latest' && 'msi/pinepods_0.5.0_amd64.msi' || 
-      #   matrix.os == 'macOS-latest' && 'app/pinepods_0.5.0_amd64.app' 
+      # ARTIFACT_NAME2: ${{
+      #   matrix.os == 'ubuntu-latest' && 'appimage/pinepods_0.5.0_amd64.AppImage' ||
+      #   matrix.os == 'windows-latest' && 'msi/pinepods_0.5.0_amd64.msi' ||
+      #   matrix.os == 'macOS-latest' && 'app/pinepods_0.5.0_amd64.app'
       # }}
 
     steps:
       - name: Set environment variables
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            echo "ARTIFACT_NAME1=deb/pinepods_0.5.4_amd64.deb" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=appimage/pinepods_0.5.4_amd64.AppImage" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=deb/pinepods_0.6.0_amd64.deb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=appimage/pinepods_0.6.0_amd64.AppImage" >> $GITHUB_ENV
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.4_x64-setup.exe" >> $Env:GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.4_x64_en-US.msi" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.6.0_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.6.0_x64_en-US.msi" >> $Env:GITHUB_ENV
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
-            echo "ARTIFACT_NAME1=dmg/Pinepods_0.5.4_x64.dmg" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=dmg/Pinepods_0.6.0_x64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=macos/Pinepods.app" >> $GITHUB_ENV
           fi
         shell: bash
@@ -50,8 +50,8 @@ jobs:
       - name: Set environment variables (Windows)
         run: |
           if ("${{ matrix.os }}" -eq "windows-latest") {
-            echo "ARTIFACT_NAME1=nsis/Pinepods_0.5.4_x64-setup.exe" >> $Env:GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/Pinepods_0.5.4_x64_en-US.msi" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_0.6.0_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_0.6.0_x64_en-US.msi" >> $Env:GITHUB_ENV
           }
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
@@ -81,7 +81,7 @@ jobs:
           cargo binstall trunk -y
 
       - name: Install Tauri
-        run : |
+        run: |
           cargo install tauri-cli --locked
 
       - name: Build | Compile (UNIX)
@@ -113,7 +113,7 @@ jobs:
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME2 }}
-            
+
   # release:
   #   needs: compile
   #   runs-on: ubuntu-latest
@@ -149,34 +149,34 @@ jobs:
   #         prerelease: true
 
   #     - name: Upload Release Asset
-  #       id: upload-release-asset-ubuntu 
+  #       id: upload-release-asset-ubuntu
   #       uses: actions/upload-release-asset@v1
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   #       with:
-  #         upload_url: ${{ steps.create_release.outputs.upload_url }} 
+  #         upload_url: ${{ steps.create_release.outputs.upload_url }}
   #         asset_path: ./artifacts/ubuntu-latest/PinePods
   #         asset_name: PinePods-ubuntu-latest
   #         asset_content_type: application/octet-stream
 
   #     - name: Upload Release Asset
-  #       id: upload-release-asset-macos 
+  #       id: upload-release-asset-macos
   #       uses: actions/upload-release-asset@v1
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   #       with:
-  #         upload_url: ${{ steps.create_release.outputs.upload_url }} 
+  #         upload_url: ${{ steps.create_release.outputs.upload_url }}
   #         asset_path: ./artifacts/macOS-latest/PinePods
   #         asset_name: PinePods-macOS-latest
   #         asset_content_type: application/octet-stream
 
   #     - name: Upload Release Asset
-  #       id: upload-release-asset-windows 
+  #       id: upload-release-asset-windows
   #       uses: actions/upload-release-asset@v1
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   #       with:
-  #         upload_url: ${{ steps.create_release.outputs.upload_url }} 
+  #         upload_url: ${{ steps.create_release.outputs.upload_url }}
   #         asset_path: ./artifacts/windows-latest/PinePods.exe
   #         asset_name: PinePods-windows-latest.exe
   #         asset_content_type: application/octet-stream
