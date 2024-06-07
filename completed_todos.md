@@ -8,6 +8,7 @@ Next Minor Version:
 - [] Manually adjust tags for podcast in podcast settings
 - [] Volume control in the player
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
+- [] Add support for gpodder sync standalone container
 
 Version 0.6.0
 
@@ -17,14 +18,8 @@ Version 0.6.0
 - [x] Added ability to download all episodes of a podcast at once with a button
 - [x] Added Individual Podcast Settings Button
 - [x] Completed status added so podcasts can be marked as completed manually and will auto complete once finished
-- [] Auto Download Episodes when released for given podcasts
-- [] Added Auto Skip options for intro and outros of podcasts
-
-things needing a fix:
-- fix issue when adding new pod and options won't work
-- Get added pod to allow setting changes right away
-- Get values for start and end skip to load dynamically
-- Add display to show enabled auto downloads or skip adjustments
+- [x] Auto Download Episodes when released for given podcasts
+- [x] Added Auto Skip options for intro and outros of podcasts
 
 Version 0.5.4
 

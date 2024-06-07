@@ -588,6 +588,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 .map(|audio_props| audio_props.episode_id);
 
             Callback::from(move |_: MouseEvent| {
+                web_sys::console::log_1(&format!("episode_id: {:?}", episode_id).into());
                 let dispatch_clone = dispatch.clone();
                 let history_clone = history.clone();
                 if let Some(episode_id) = episode_id {

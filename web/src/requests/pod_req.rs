@@ -566,8 +566,6 @@ pub async fn call_get_queued_episodes(
         )));
     }
     let response_text = response.text().await?;
-    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
-    web_sys::console::log_1(&js_value);
 
     let response_data: DataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
@@ -629,8 +627,6 @@ pub async fn call_get_saved_episodes(
 
     let response_text = response.text().await?;
     // let response_text = response.text().await?;
-    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
-    web_sys::console::log_1(&js_value);
 
     let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.saved_episodes)
@@ -786,6 +782,8 @@ pub async fn call_get_user_history(
     }
 
     let response_text = response.text().await?;
+    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
+    web_sys::console::log_1(&js_value);
 
     let response_data: HistoryDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
@@ -888,8 +886,6 @@ pub async fn call_get_episode_downloads(
     }
 
     let response_text = response.text().await?;
-    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
-    web_sys::console::log_1(&js_value);
 
     let response_data: DownloadDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.episodes)
@@ -1044,16 +1040,16 @@ pub async fn call_remove_downloaded_episode(
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
 pub struct EpisodeInfo {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub PodcastID: i32,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub podcastid: i32,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1275,6 +1271,43 @@ pub async fn call_get_podcast_id_from_ep(
     Ok(response_data.podcast_id)
 }
 
+pub async fn call_get_podcast_id_from_ep_name(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_name: String,
+    episode_url: String,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!(
+        "{}/api/data/get_podcast_id_from_ep_name?episode_name={}&episode_url={}&user_id={}",
+        server_name,
+        urlencoding::encode(&episode_name),
+        urlencoding::encode(&episode_url),
+        user_id
+    );
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast id: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+
+    let response_data: PodcastIdEpResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.podcast_id)
+}
+
 fn explicit_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: Deserializer<'de>,
@@ -1411,7 +1444,6 @@ pub async fn call_enable_auto_download(
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/enable_auto_download", server_name);
 
-    web_sys::console::log_1(&JsValue::from_str(&format!("api: {}", api_key)));
     let request_body = serde_json::to_string(request_data)
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 

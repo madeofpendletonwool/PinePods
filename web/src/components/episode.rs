@@ -171,15 +171,15 @@ pub fn epsiode() -> Html {
             <UseScrollToTop />
             {
                 if let Some(episode) = state.fetched_episode.clone() {
-                    let episode_url_clone = episode.episode.EpisodeURL.clone();
-                    let episode_title_clone = episode.episode.EpisodeTitle.clone();
-                    let episode_artwork_clone = episode.episode.EpisodeArtwork.clone();
-                    let episode_duration_clone = episode.episode.EpisodeDuration.clone();
-                    let podcast_of_episode = episode.episode.PodcastID.clone();
+                    let episode_url_clone = episode.episode.episodeurl.clone();
+                    let episode_title_clone = episode.episode.episodetitle.clone();
+                    let episode_artwork_clone = episode.episode.episodeartwork.clone();
+                    let episode_duration_clone = episode.episode.episodeduration.clone();
+                    let podcast_of_episode = episode.episode.podcastid.clone();
                     let episode_listened_clone = Option::from(0);
-                    let episode_id_clone = episode.episode.EpisodeID.clone();
+                    let episode_id_clone = episode.episode.episodeid.clone();
 
-                    let sanitized_description = sanitize_html_with_blank_target(&episode.episode.EpisodeDescription.clone());
+                    let sanitized_description = sanitize_html_with_blank_target(&episode.episode.episodedescription.clone());
                     let description = sanitized_description;
 
                     let episode_url_for_closure = episode_url_clone.clone();
@@ -311,9 +311,9 @@ pub fn epsiode() -> Html {
                         })
                     };
 
-                    let datetime = parse_date(&episode.episode.EpisodePubDate, &state.user_tz);
+                    let datetime = parse_date(&episode.episode.episodepubdate, &state.user_tz);
                     let date_format = match_date_format(state.date_format.as_deref());
-                    let format_duration = format_time(episode.episode.EpisodeDuration as f64);
+                    let format_duration = format_time(episode.episode.episodeduration as f64);
                     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
 
                     let on_title_click = {
@@ -377,10 +377,10 @@ pub fn epsiode() -> Html {
                     html! {
                         <div class="episode-layout-container">
                             <div class="episode-top-info">
-                                <img src={episode.episode.EpisodeArtwork.clone()} class="episode-artwork" />
+                                <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
                                 <div class="episode-details">
-                                    <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.PodcastName }</h1>
-                                    <h2 class="episode-title">{ &episode.episode.EpisodeTitle }</h2>
+                                    <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
+                                    <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
                                     <p class="episode-duration">{ format_duration }</p>
                                     <p class="episode-release-date">{ format_release }</p>
                                 </div>

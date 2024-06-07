@@ -12,8 +12,9 @@ use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
     call_enable_auto_download, call_get_auto_download_status, call_get_auto_skip_times,
-    call_get_podcast_id_from_ep, call_remove_podcasts_name, AutoDownloadRequest,
-    DownloadAllPodcastRequest, PodcastValues, RemovePodcastValuesName, SkipTimesRequest,
+    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name, call_remove_podcasts_name,
+    AutoDownloadRequest, DownloadAllPodcastRequest, PodcastValues, RemovePodcastValuesName,
+    SkipTimesRequest,
 };
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
@@ -147,11 +148,21 @@ pub fn episode_layout() -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
-    let episode_id_pre: Option<i32> = search_state
+    let episode_name_pre: Option<String> = search_state
         .podcast_feed_results
         .as_ref()
         .and_then(|results| results.episodes.get(0))
-        .and_then(|episode| episode.episode_id);
+        .and_then(|episode| episode.title.clone());
+    let episode_url_pre: Option<String> = search_state
+        .podcast_feed_results
+        .as_ref()
+        .and_then(|results| results.episodes.get(0))
+        .and_then(|episode| episode.enclosure_url.clone());
+
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "Episode url: {:?}",
+        episode_url_pre
+    )));
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -207,7 +218,8 @@ pub fn episode_layout() -> Html {
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
     let effect_api_key = api_key.clone();
-    let ep_effect = episode_id_pre.clone();
+    let ep_name_effect = episode_name_pre.clone();
+    let ep_url_effect = episode_url_pre.clone();
 
     {
         let is_added = is_added.clone();
@@ -237,88 +249,96 @@ pub fn episode_layout() -> Html {
     }
 
     let download_status = use_state(|| false);
-    let original_start_skip = use_state(|| 0);
-    let original_end_skip = use_state(|| 0);
     let podcast_id = use_state(|| 0);
     let podcast_id_effect = podcast_id.clone();
+    let start_skip = use_state(|| 0);
+    let end_skip = use_state(|| 0);
 
     {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
-        let episode_id = episode_id_pre.clone();
-        let start_skip = original_start_skip.clone();
-        let end_skip = original_end_skip.clone();
+        let episode_name = episode_name_pre.clone();
+        let episode_url = episode_url_pre.clone();
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
+        let effect_start_skip = start_skip.clone();
+        let effect_end_skip = end_skip.clone();
+        let effect_added = is_added.clone();
 
-        use_effect_with((), move |_| {
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let podcast_id = podcast_id.clone();
-            let download_status = download_status.clone();
-            let episode_id = episode_id;
-            let user_id = user_id.unwrap();
+        use_effect_with(effect_added.clone(), move |_| {
+            let bool_true = *effect_added; // Dereference here
+            if bool_true {
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let podcast_id = podcast_id.clone();
+                let download_status = download_status.clone();
+                let episode_name = episode_name;
+                let episode_url = episode_url;
+                let user_id = user_id.unwrap();
 
-            wasm_bindgen_futures::spawn_local(async move {
-                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
-                {
-                    match call_get_podcast_id_from_ep(
-                        &server_name,
-                        &api_key,
-                        episode_id.unwrap(),
-                        user_id,
-                    )
-                    .await
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let (Some(api_key), Some(server_name)) =
+                        (api_key.as_ref(), server_name.as_ref())
                     {
-                        Ok(id) => {
-                            podcast_id.set(id);
+                        match call_get_podcast_id_from_ep_name(
+                            &server_name,
+                            &api_key,
+                            episode_name.unwrap(),
+                            episode_url.unwrap(),
+                            user_id,
+                        )
+                        .await
+                        {
+                            Ok(id) => {
+                                podcast_id.set(id);
 
-                            match call_get_auto_download_status(
-                                &server_name,
-                                user_id,
-                                &Some(api_key.clone().unwrap()),
-                                id,
-                            )
-                            .await
-                            {
-                                Ok(status) => {
-                                    download_status.set(status);
+                                match call_get_auto_download_status(
+                                    &server_name,
+                                    user_id,
+                                    &Some(api_key.clone().unwrap()),
+                                    id,
+                                )
+                                .await
+                                {
+                                    Ok(status) => {
+                                        download_status.set(status);
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Error getting auto-download status: {}", e)
+                                                .into(),
+                                        );
+                                    }
                                 }
-                                Err(e) => {
-                                    web_sys::console::log_1(
-                                        &format!("Error getting auto-download status: {}", e)
-                                            .into(),
-                                    );
+                                match call_get_auto_skip_times(
+                                    &server_name,
+                                    &Some(api_key.clone().unwrap()),
+                                    user_id,
+                                    id,
+                                )
+                                .await
+                                {
+                                    Ok((start, end)) => {
+                                        effect_start_skip.set(start);
+                                        effect_end_skip.set(end);
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Error getting auto-skip times: {}", e).into(),
+                                        );
+                                    }
                                 }
                             }
-                            match call_get_auto_skip_times(
-                                &server_name,
-                                &Some(api_key.clone().unwrap()),
-                                user_id,
-                                id,
-                            )
-                            .await
-                            {
-                                Ok((start, end)) => {
-                                    start_skip.set(start);
-                                    end_skip.set(end);
-                                }
-                                Err(e) => {
-                                    web_sys::console::log_1(
-                                        &format!("Error getting auto-skip times: {}", e).into(),
-                                    );
-                                }
+                            Err(e) => {
+                                web_sys::console::log_1(
+                                    &format!("Error getting podcast ID: {}", e).into(),
+                                );
                             }
-                        }
-                        Err(e) => {
-                            web_sys::console::log_1(
-                                &format!("Error getting podcast ID: {}", e).into(),
-                            );
                         }
                     }
-                }
-            });
+                });
+            }
             || ()
         });
     }
@@ -707,30 +727,27 @@ pub fn episode_layout() -> Html {
         })
     };
 
-    let start_skip = use_state(|| 0);
-    let end_skip = use_state(|| 0);
     let start_skip_call = start_skip.clone();
     let end_skip_call = end_skip.clone();
     let start_skip_call_button = start_skip.clone();
     let end_skip_call_button = end_skip.clone();
+    let skip_dispatch = _dispatch.clone();
 
     // Save the skip times to the server
     let save_skip_times = {
         let start_skip = start_skip.clone();
         let end_skip = end_skip.clone();
-        let original_start_skip = original_start_skip.clone();
-        let original_end_skip = original_end_skip.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
+        let skip_dispatch = skip_dispatch.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let skip_call_dispatch = skip_dispatch.clone();
             let start_skip = *start_skip;
             let end_skip = *end_skip;
-            let original_start_skip = original_start_skip.clone();
-            let original_end_skip = original_end_skip.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
@@ -748,14 +765,19 @@ pub fn episode_layout() -> Html {
 
                     match call_adjust_skip_times(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            original_start_skip.set(start_skip);
-                            original_end_skip.set(end_skip);
+                            skip_call_dispatch.reduce_mut(|state| {
+                                state.info_message = Option::from("Skip times Adjusted".to_string())
+                            });
                             web_sys::console::log_1(&"Skip times updated successfully".into());
                         }
                         Err(e) => {
                             web_sys::console::log_1(
                                 &format!("Error updating skip times: {}", e).into(),
                             );
+                            skip_call_dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from("Error Adjusting Skip Times".to_string())
+                            });
                         }
                     }
                 }
@@ -796,7 +818,7 @@ pub fn episode_layout() -> Html {
                                         <input
                                             type="number"
                                             id="start-skip"
-                                            value={start_skip_call.to_string()}
+                                            value={start_skip_call_button.to_string()}
                                             class="email-input border text-sm rounded-lg p-2.5 w-16"
                                             oninput={Callback::from(move |e: InputEvent| {
                                                 if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
@@ -811,7 +833,7 @@ pub fn episode_layout() -> Html {
                                         <input
                                             type="number"
                                             id="end-skip"
-                                            value={end_skip_call.to_string()}
+                                            value={end_skip_call_button.to_string()}
                                             class="email-input border text-sm rounded-lg p-2.5 w-16"
                                             oninput={Callback::from(move |e: InputEvent| {
                                                 if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
@@ -824,7 +846,6 @@ pub fn episode_layout() -> Html {
                                     <button
                                         class="download-button font-bold py-2 px-4 rounded"
                                         onclick={save_skip_times}
-                                        disabled={*start_skip_call_button == *original_start_skip && *end_skip_call_button == *original_end_skip}
                                     >
                                         {"Confirm"}
                                     </button>

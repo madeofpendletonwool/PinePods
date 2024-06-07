@@ -575,6 +575,30 @@ async def api_get_podcast_id(episode_id: int, user_id: int, cnx=Depends(get_data
         raise HTTPException(status_code=403, detail="You can only get podcast ID for your own episodes.")
 
 
+@app.get("/api/data/get_podcast_id_from_ep_name")
+async def api_get_podcast_id_name(episode_name: str, episode_url: str, user_id: int, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    logging.info('Fetching API key')
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    logging.info('Getting key ID')
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    logging.info(f'Got key ID: {key_id}')
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        podcast_id = database_functions.functions.get_podcast_id_from_episode_name(cnx, database_type, episode_name, episode_url, user_id)
+        if podcast_id is None:
+            raise HTTPException(status_code=404, detail="Podcast ID not found for the given episode name and URL")
+        return {"podcast_id": podcast_id}
+    else:
+        raise HTTPException(status_code=403, detail="You can only get podcast ID for your own episodes.")
+
+
 @app.get("/api/data/get_podcast_details")
 async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
@@ -839,6 +863,26 @@ async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_da
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make sessions for yourself!")
+
+class GetEpisodeIdRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+
+@app.post("/api/data/get_episode_id")
+async def api_get_episode_id(data: GetEpisodeIdRequest, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Fetch the first episode ID for the given podcast
+    episode_id = database_functions.functions.get_first_episode_id(cnx, database_type, data.podcast_id, data.user_id)
+    if episode_id is None:
+        raise HTTPException(status_code=404, detail="No episodes found for this podcast.")
+
+    return {"episode_id": episode_id}
+
 
 
 class DownloadPodcastData(BaseModel):
@@ -1296,7 +1340,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
                                 detail="You are not authorized to remove podcasts for other users")
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
     database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
     return {"success": True}
 
@@ -1306,7 +1350,7 @@ class RemovePodcastIDData(BaseModel):
 
 
 @app.post("/api/data/remove_podcast_id")
-async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=Depends(get_database_connection),
+async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...), cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
@@ -1328,7 +1372,7 @@ async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=De
         logging.info('get cloud vals')
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
         logging.info('em cloud')
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
     logging.info('rm pod id')
     database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
     return {"success": True}
@@ -1376,6 +1420,7 @@ async def api_user_history(user_id: int, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return history for yourself!")
+
 
 
 @app.get("/api/data/saved_episode_list/{user_id}")
