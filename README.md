@@ -54,9 +54,9 @@ There's potentially a few steps to getting Pinepods fully installed. After you g
 
 ### Server Installation :floppy_disk:
 
-First, the server. It's hightly recommended you run the server using docker compose. Here's a template compose file to start with.
+First, the server. It's hightly recommended you run the server using docker compose. Here's a template compose file to start with. You can also choose to use mysql/mariaDB or Postgres as your database. Examples for both are provided below.
 
-#### Compose File
+#### Compose File - mariadb
 
 ```
 version: '3'
@@ -67,7 +67,7 @@ services:
     environment:
       MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: myS3curepass
-      MYSQL_DATABASE: pypods_database
+      MYSQL_DATABASE: pinepods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
@@ -95,7 +95,7 @@ services:
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: myS3curepass
-      DB_NAME: pypods_database
+      DB_NAME: pinepods_database
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
     volumes:
@@ -106,6 +106,54 @@ services:
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
       - db
+```
+
+#### Compose File - postgres
+
+```
+
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: pypods_database
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: myS3curepass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+      - "8040:8040"
+    environment:
+      # Basic Server Info
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+      # Default Admin User Information
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
+      # Database Vars
+      DB_TYPE: postgresql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: myS3curepass
+      DB_NAME: pinepods_database
+      # Port Settings
+      # Enable or Disable Debug Mode for additional Printing
+      DEBUG_MODE: False
+    volumes:
+      # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
+      - /home/user/pinepods/downloads:/opt/pinepods/downloads
+      - /home/user/pinepods/backups:/opt/pinepods/backups
+    depends_on:
+      - db
+
 ```
 
 Make sure you change these variables to variables specific to yourself.

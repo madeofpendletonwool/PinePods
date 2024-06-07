@@ -20,6 +20,7 @@ Version 0.6.0
 - [x] Completed status added so podcasts can be marked as completed manually and will auto complete once finished
 - [x] Auto Download Episodes when released for given podcasts
 - [x] Added Auto Skip options for intro and outros of podcasts
+- [x] Fixed issue where episodes could be downloaded multiple times
 
 Version 0.5.4
 
