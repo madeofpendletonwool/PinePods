@@ -326,7 +326,6 @@ pub async fn call_get_podcast_episodes(
     }
 
     let response_text = response.text().await?;
-    web_sys::console::log_1(&JsValue::from_str(&response_text));
 
     let response_data: PodcastEpisodesResponse = serde_json::from_str(&response_text)?;
 
@@ -387,7 +386,6 @@ pub async fn call_parse_podcast_url(
                     .itunes_ext()
                     .and_then(|ext| ext.duration())
                     .map(|d| d.to_string());
-                web_sys::console::log_1(&format!("duration: {:?}", duration.clone()).into());
                 if duration.is_none() {
                     web_sys::console::log_1(
                         &format!("Missing duration for episode: {:?}", item.title()).into(),
@@ -564,7 +562,6 @@ pub async fn call_search_database(
     let results = search_response.data;
 
     let results_jsvalue = JsValue::from_serde(&results).unwrap();
-    web_sys::console::log_1(&results_jsvalue);
 
     Ok(results)
 }

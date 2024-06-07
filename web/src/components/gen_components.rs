@@ -121,23 +121,17 @@ pub fn search_bar() -> Html {
             // Convert the Rust String to JsValue
             let js_value = JsValue::from_str(&*search_index_test);
 
-            // Use the converted JsValue with `web_sys::console::log_1`
-            web_sys::console::log_1(&js_value);
-            // web_sys::console::log_1((*search_index).clone());
-
             wasm_bindgen_futures::spawn_local(async move {
                 dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let cloned_api_url = &api_url.clone();
                 match test_connection(&cloned_api_url.clone().unwrap()).await {
                     Ok(_) => {
                         let js_value = JsValue::from_str("running call");
-                        console::log_1(&js_value);
                         match call_get_podcast_info(&search_value, &api_url.unwrap(), &search_index)
                             .await
                         {
                             Ok(search_results) => {
                                 let js_value = JsValue::from_str("pulled response");
-                                console::log_1(&js_value);
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
                                     state.podcast_added = Some(false);
@@ -150,7 +144,6 @@ pub fn search_bar() -> Html {
                                     "Error getting data connection: {}",
                                     e
                                 ));
-                                console::log_1(&js_value);
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
                         }

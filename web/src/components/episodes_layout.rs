@@ -159,11 +159,6 @@ pub fn episode_layout() -> Html {
         .and_then(|results| results.episodes.get(0))
         .and_then(|episode| episode.enclosure_url.clone());
 
-    web_sys::console::log_1(&JsValue::from_str(&format!(
-        "Episode url: {:?}",
-        episode_url_pre
-    )));
-
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
     let user_id = search_state
@@ -589,8 +584,6 @@ pub fn episode_layout() -> Html {
             let api_key = api_key_copy.clone();
             let search_state = search_call_state.clone();
             let call_down_dispatch = call_dispatch.clone();
-            web_sys::console::log_1(&"Download All Clicked".into());
-
             wasm_bindgen_futures::spawn_local(async move {
                 let episode_id = match search_state
                     .podcast_feed_results
@@ -604,7 +597,6 @@ pub fn episode_layout() -> Html {
                         return;
                     }
                 };
-                web_sys::console::log_1(&format!("Episode ID: {}", episode_id).into());
                 let ep_api_key = api_key.clone();
                 let ep_server_name = server_name.clone();
                 let ep_user_id = user_id_copy.clone();
@@ -768,7 +760,6 @@ pub fn episode_layout() -> Html {
                             skip_call_dispatch.reduce_mut(|state| {
                                 state.info_message = Option::from("Skip times Adjusted".to_string())
                             });
-                            web_sys::console::log_1(&"Skip times updated successfully".into());
                         }
                         Err(e) => {
                             web_sys::console::log_1(

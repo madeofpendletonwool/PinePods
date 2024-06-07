@@ -782,8 +782,6 @@ pub async fn call_get_user_history(
     }
 
     let response_text = response.text().await?;
-    let js_value = wasm_bindgen::JsValue::from_str(&response_text);
-    web_sys::console::log_1(&js_value);
 
     let response_data: HistoryDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
