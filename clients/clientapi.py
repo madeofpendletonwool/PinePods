@@ -96,14 +96,12 @@ reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
 api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
-print(f'Search API URL: {api_url}')
 
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
     proxy_url = f'{proxy_protocol}://{proxy_host}/mover/?url='
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/mover/?url='
-print(f'Proxy url is configured to {proxy_url}')
 
 logger = logging.getLogger(__name__)
 
@@ -253,17 +251,13 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
     # If it's the web key, allow the request (return True)
     if is_web_key:
         return True
-    print("checking api lkey")
     # Get user ID associated with the API key
     user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    print("got user api")
     # If no user ID found, throw an exception
     if not user_id:
         raise HTTPException(status_code=403, detail="Invalid API key.")
-    print("checking for admin")
     # Check if the user is an admin
     is_admin = database_functions.functions.user_admin_check(cnx, database_type, user_id)
-    print("yall er admin")
     # If the user is not an admin, throw an exception
     if not is_admin:
         raise HTTPException(status_code=403, detail="User not authorized.")
@@ -273,7 +267,6 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
 
 
 def check_if_admin_inner(api_key: str, cnx):
-    print("here we go with admin")
     user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     if not user_id:
@@ -284,9 +277,7 @@ def check_if_admin_inner(api_key: str, cnx):
 
 async def has_elevated_access(api_key: str, cnx):
     # Check if it's an admin
-    print("in elevate")
     is_admin = await run_in_threadpool(check_if_admin_inner, api_key, cnx)
-    print('got admin check')
     # Check if it's the web key
     web_key = base_webkey.web_key
     is_web_key = api_key == web_key
@@ -315,7 +306,6 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         retrieved_id = database_functions.functions.get_api_user(cnx, database_type, api_key)
-        logging.error(f"here's id: {retrieved_id}")
         return {"status": "success", "retrieved_id": retrieved_id}
     else:
         raise HTTPException(status_code=403,
@@ -468,7 +458,6 @@ async def api_verify_password(data: VerifyPasswordInput, cnx=Depends(get_databas
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         if database_type == 'postgresql':
-            print('run in postgres')
             is_password_valid = database_functions.functions.verify_password(cnx, database_type, data.username, data.password)
         else:
             is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, data.username, data.password)
@@ -743,7 +732,6 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
                           cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
 
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    logging.error(f"{podcast_values}")
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -917,11 +905,8 @@ async def api_download_podcast(data: DownloadPodcastData, background_tasks: Back
 
 def download_podcast_fun(episode_id: int, user_id: int):
     cnx = create_database_connection()  # replace with your function to create a new database connection
-    print('downloading fun for print')
     logger.error('downloading fun for log')
     try:
-        print('downloading fun for print')
-        logger.error('downloading fun for log')
         database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
         cnx.close()  # make sure to close the connection when you're done
@@ -1264,8 +1249,6 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
                                 detail="You are not authorized to access these user details")
     episode_count = database_functions.functions.get_user_episode_count(cnx, database_type, user_id)
     if episode_count:
-        print(episode_count)
-        logging.error(f"here's count: {episode_count}")
         return episode_count
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1273,7 +1256,6 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
 
 @app.get("/api/data/get_user_info")
 async def api_get_user_info(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    print("ready to user info")
     user_info = database_functions.functions.get_user_info(database_type, cnx)
     return user_info
 
@@ -1555,7 +1537,6 @@ async def api_set_password(
     api_key: str = Depends(get_api_key_from_header)
 ):
     hash_pw = request.hash_pw  # Extract the hash_pw from the request model
-    print(f"Received hash_pw: {hash_pw}")  # Debugging line to check received hash_pw
 
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
 
@@ -1820,8 +1801,6 @@ async def api_send_email(payload: SendEmailValues, cnx=Depends(get_database_conn
         raise HTTPException(status_code=404, detail="Email settings not found")
 
     try:
-        logger.error(email_values)
-        print(email_values)
         send_status = await run_in_threadpool(send_email_with_settings, email_values, database_type, payload)
         return {"email_status": send_status}
     except Exception as e:
@@ -2012,7 +1991,6 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
 async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     # Perform API key validation and user authorization checks as before
-    logging.error(f"Running Save mfa")
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         logging.warning(f"Invalid API key: {api_key}")
@@ -2075,7 +2053,6 @@ class VerifyTempMFABody(BaseModel):
 async def verify_temp_mfa(body: VerifyTempMFABody, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     # Perform API key validation and user authorization checks as before
-    logging.error(f"Running Save mfa")
     logging.info(f"Verifying MFA code for user_id: {body.user_id} with code: {body.mfa_code}")
 
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
@@ -2151,7 +2128,6 @@ class MfaSecretData(BaseModel):
 async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     logging.info(f"Received request to save MFA secret for user {data.user_id}")
-    logging.error(f"Running Save mfa")
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         logging.warning(f"Invalid API key: {api_key}")
@@ -2887,9 +2863,6 @@ async def stream_episode(
     api_key: str = Query(..., alias='api_key'),  # Change here
     user_id: int = Query(..., alias='user_id')   # Change here
 ):
-    print(f"Episode ID: {episode_id}")
-    print(f"API Key: {api_key}")
-    print(f"User ID: {user_id}")
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
@@ -2898,7 +2871,6 @@ async def stream_episode(
     is_web_key = api_key == base_webkey.web_key
 
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    print("About to start the episode stream")
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
         file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)

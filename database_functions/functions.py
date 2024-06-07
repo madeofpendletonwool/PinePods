@@ -1313,8 +1313,6 @@ def user_history(cnx, database_type, user_id):
 
 def download_podcast(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
-    print('download pod for print')
-    logging.error('download pod for log')
 
     # Check if the episode is already downloaded
     if database_type == "postgresql":
@@ -1327,8 +1325,6 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         # Episode already downloaded
         cursor.close()
         return True
-
-    print('getting id')
     # Get the EpisodeID and PodcastID from the Episodes table
     if database_type == "postgresql":
         query = 'SELECT PodcastID FROM "Episodes" WHERE EpisodeID = %s'
@@ -1336,14 +1332,11 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         query = "SELECT PodcastID FROM Episodes WHERE EpisodeID = %s"
     cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
-    print(f'here it is {result}')
-    logging.error(f'here it is {result}')
     if result is None:
         # Episode not found
         return False
 
     podcast_id = get_value(result, "PodcastID")
-    print('getting url')
     # Get the EpisodeURL from the Episodes table
     if database_type == "postgresql":
         query = 'SELECT EpisodeURL FROM "Episodes" WHERE EpisodeID = %s'
@@ -1351,14 +1344,11 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         query = "SELECT EpisodeURL FROM Episodes WHERE EpisodeID = %s"
     cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
-    print(f'here it is {result}')
-    logging.error(f'here it is {result}')
     if result is None:
         # Episode not found
         return False
 
     episode_url = get_value(result, "EpisodeURL")
-    print('getting name')
     # Get the PodcastName from the Podcasts table
     if database_type == "postgresql":
         query = 'SELECT PodcastName FROM "Podcasts" WHERE PodcastID = %s'
@@ -1366,44 +1356,27 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         query = "SELECT PodcastName FROM Podcasts WHERE PodcastID = %s"
     cursor.execute(query, (podcast_id,))
     result = cursor.fetchone()
-    print(f'here it is name {result}')
-    logging.error(f'here it is name {result}')
     if result is None:
         # Podcast not found
         return False
 
     podcast_name = get_value(result, "PodcastName")
-    print('doing dir work')
-    print(f'doing dirs')
-    logging.error(f'doing dirs')
     # Create a directory named after the podcast, inside the main downloads directory
     download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
-    print(f'generate name')
-    logging.error(f'generate name')
     # Generate the episode filename based on episode ID and user ID
     filename = f"{user_id}-{episode_id}.mp3"
-    print(filename)
     file_path = os.path.join(download_dir, filename)
-    print(file_path)
     response = requests.get(episode_url, stream=True)
     response.raise_for_status()
-    print(f'get date')
-    logging.error(f'get date')
     # Get the current date and time for DownloadedDate
     downloaded_date = datetime.datetime.now()
-    print(f'size')
-    logging.error(f'size')
     # Get the file size from the Content-Length header
     file_size = int(response.headers.get("Content-Length", 0))
-    print(f'file write')
-    logging.error(f'file write')
     # Write the file to disk
     with open(file_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
             f.write(chunk)
-    print(f'insert')
-    logging.error(f'insert')
     # Insert a new row into the DownloadedEpisodes table
     if database_type == "postgresql":
         query = ('INSERT INTO "DownloadedEpisodes" '
@@ -1414,16 +1387,12 @@ def download_podcast(cnx, database_type, episode_id, user_id):
                  "(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) "
                  "VALUES (%s, %s, %s, %s, %s)")
     cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
-    print(f'download table write')
-    logging.error(f'download table write')
     # Update UserStats table to increment EpisodesDownloaded count
     if database_type == "postgresql":
         query = ('UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s')
     else:  # MySQL or MariaDB
         query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s")
     cursor.execute(query, (user_id,))
-    print(f'user stat')
-    logging.error(f'user stat')
     cnx.commit()
 
     if cursor:
@@ -1508,10 +1477,6 @@ def get_podcast_id_from_episode_name(cnx, database_type, episode_name, episode_u
 
 def mark_episode_completed(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
-    print(f"episode_id: {episode_id}")
-    print(f"user_id: {user_id}")
-    logging.error(f"episode_id: {episode_id}")
-    logging.error(f"user_id: {user_id}")
     try:
         if database_type == "postgresql":
             query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s'
@@ -1541,7 +1506,6 @@ def enable_auto_download(cnx, database_type, podcast_id, user_id, auto_download)
 
 def call_get_auto_download_status(cnx, database_type, podcast_id, user_id):
     cursor = cnx.cursor()
-    print(f'podcast_id: {podcast_id}')
     try:
         if database_type == "postgresql":
             query = 'SELECT AutoDownload FROM "Podcasts" WHERE PodcastID = %s AND UserID = %s'
@@ -1577,7 +1541,6 @@ def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
 
 def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
     cursor = cnx.cursor()
-    print(podcast_id, user_id)
     logging.error(f"Error retrieving DownloadedLocation: {podcast_id}, {user_id}")
     try:
         if database_type == "postgresql":
@@ -1662,7 +1625,6 @@ def get_download_location(cnx, database_type, episode_id, user_id):
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
 
-        print(f"Query result: {result}")
 
         if result:
             location = get_download_value(result, "DownloadedLocation")
