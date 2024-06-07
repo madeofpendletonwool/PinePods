@@ -5,6 +5,7 @@ export DB_PASSWORD=$DB_PASSWORD
 export DB_HOST=$DB_HOST
 export DB_NAME=$DB_NAME
 export DB_PORT=$DB_PORT
+export DB_TYPE=$DB_TYPE
 export FULLNAME=${FULLNAME:-'Pinepods Admin'}
 export USERNAME=${USERNAME:-'pine-admin'}
 export EMAIL=${EMAIL:-'admin@pinepods.online'}
@@ -51,13 +52,12 @@ mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
-
-openssl req -x509 -nodes -newkey rsa:4096 -keyout /opt/pinepods/certs/key.pem -out /opt/pinepods/certs/cert.pem -days 365 -subj "/C=US/ST=NY/L=NewYork/O=PinePods/CN=$HOSTNAME"
-
 # Database Setup
 if [[ $DB_TYPE == "postgresql" ]]; then
+echo "Setting up Postgresdb"
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setuppostgresdatabase.py
 else
+echo "Setting my mysql/mariadb"
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
 echo "Database setup complete"

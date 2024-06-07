@@ -322,11 +322,11 @@ pub fn email_settings() -> Html {
                         // Access the state directly without let binding inside html!
                         html! {
                             <tr class="table-row border-b">
-                                <td class="px-6 py-4">{ format!("{}:{}", &email_values.Server_Name, &email_values.Server_Port) }</td>
-                                <td class="px-6 py-4">{ &email_values.From_Email }</td>
-                                <td class="px-6 py-4">{ &email_values.Send_Mode }</td>
+                                <td class="px-6 py-4">{ format!("{}:{}", &email_values.ServerName, &email_values.ServerPort) }</td>
+                                <td class="px-6 py-4">{ &email_values.FromEmail }</td>
+                                <td class="px-6 py-4">{ &email_values.SendMode }</td>
                                 <td class="px-6 py-4">{ &email_values.Encryption }</td>
-                                <td class="px-6 py-4">{ if email_values.Auth_Required == 1 { "Yes" } else { "No" } }</td>
+                                <td class="px-6 py-4">{ if email_values.AuthRequired == 1 { "Yes" } else { "No" } }</td>
                                 <td class="px-6 py-4">{ &email_values.Username }</td>
                             </tr>
                         }

@@ -1,28 +1,58 @@
-use std::collections::HashMap;
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
+use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
-    let value: i32 = Deserialize::deserialize(deserializer)?;
-    Ok(value != 0)
+    struct BoolOrIntVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for BoolOrIntVisitor {
+        type Value = bool;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a boolean or an integer")
+        }
+
+        fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
+            Ok(value)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value != 0)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value != 0)
+        }
+    }
+
+    deserializer.deserialize_any(BoolOrIntVisitor)
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct Episode {
-    pub PodcastName: String,
-    pub EpisodeTitle: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub podcastname: String,
+    pub episodetitle: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -30,34 +60,40 @@ pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
 }
 
-pub async fn call_get_recent_eps(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Episode>, anyhow::Error> {
+pub async fn call_get_recent_eps(
+    server_name: &String,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<Vec<Episode>, anyhow::Error> {
     let url = format!("{}/api/data/return_episodes/{}", server_name, user_id);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to fetch episodes: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch episodes: {}",
+            response.status_text()
+        )));
     }
-    
+
     // First, capture the response text for diagnostic purposes
-    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    let response_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to get response text".to_string());
     // Try to deserialize the response text
     match serde_json::from_str::<RecentEps>(&response_text) {
-        Ok(response_body) => {
-            Ok(response_body.episodes.unwrap_or_else(Vec::new))
-        }
-        Err(_e) => {
-            Err(anyhow::Error::msg("Failed to deserialize response"))
-        }
+        Ok(response_body) => Ok(response_body.episodes.unwrap_or_else(Vec::new)),
+        Err(_e) => Err(anyhow::Error::msg("Failed to deserialize response")),
     }
 }
-
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PodcastValues {
@@ -70,7 +106,7 @@ pub struct PodcastValues {
     pub pod_feed_url: String,
     pub pod_website: String,
     pub pod_explicit: bool,
-    pub user_id: i32
+    pub user_id: i32,
 }
 
 #[derive(serde::Deserialize)]
@@ -79,9 +115,16 @@ struct PodcastStatusResponse {
     // Include other fields if your response contains more data
 }
 
-pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, _user_id: i32, added_podcast: &PodcastValues) -> Result<bool, Error> {
+pub async fn call_add_podcast(
+    server_name: &str,
+    api_key: &Option<String>,
+    _user_id: i32,
+    added_podcast: &PodcastValues,
+) -> Result<bool, Error> {
     let url = format!("{}/api/data/add_podcast", server_name);
-    let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
 
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(added_podcast)?;
@@ -97,21 +140,30 @@ pub async fn call_add_podcast(server_name: &str, api_key: &Option<String>, _user
         let response_body = response.json::<PodcastStatusResponse>().await?;
         Ok(response_body.success)
     } else {
-        Err(Error::msg(format!("Error adding podcast: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error adding podcast: {}",
+            response.status_text()
+        )))
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemovePodcastValues {
     pub podcast_id: i32,
-    pub user_id: i32
+    pub user_id: i32,
 }
 
-pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>, remove_podcast: &RemovePodcastValues) -> Result<bool, Error> {
+pub async fn call_remove_podcasts(
+    server_name: &String,
+    api_key: &Option<String>,
+    remove_podcast: &RemovePodcastValues,
+) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast_id", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(remove_podcast)?;
@@ -123,18 +175,21 @@ pub async fn call_remove_podcasts(server_name: &String, api_key: &Option<String>
         .send()
         .await?;
 
-    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-
+    let response_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to get response text".to_string());
 
     if response.ok() {
         match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(_parse_error) => {
-                Err(anyhow::Error::msg("Failed to parse response"))
-            }
+            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
         }
     } else {
-        Err(anyhow::Error::msg(format!("Error removing podcast: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!(
+            "Error removing podcast: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -145,12 +200,17 @@ pub struct RemovePodcastValuesName {
     pub podcast_url: String,
 }
 
-pub async fn call_remove_podcasts_name(server_name: &String, api_key: &Option<String>, remove_podcast: &RemovePodcastValuesName) -> Result<bool, Error> {
+pub async fn call_remove_podcasts_name(
+    server_name: &String,
+    api_key: &Option<String>,
+    remove_podcast: &RemovePodcastValuesName,
+) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast", server_name);
 
-
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(remove_podcast)?;
@@ -162,20 +222,23 @@ pub async fn call_remove_podcasts_name(server_name: &String, api_key: &Option<St
         .send()
         .await?;
 
-    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+    let response_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to get response text".to_string());
 
     if response.ok() {
         match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(_parse_error) => {
-                Err(anyhow::Error::msg("Failed to parse response"))
-            }
+            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
         }
     } else {
-        Err(anyhow::Error::msg(format!("Error removing podcast: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!(
+            "Error removing podcast: {}",
+            response.status_text()
+        )))
     }
 }
-
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct PodcastResponse {
@@ -184,45 +247,59 @@ pub struct PodcastResponse {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct Podcast {
-    pub PodcastID: i32,
-    pub PodcastName: String,
-    pub ArtworkURL: Option<String>,
-    pub Description: Option<String>,
-    pub EpisodeCount: i32,
-    pub WebsiteURL: Option<String>,
-    pub FeedURL: String,
-    pub Author: Option<String>,
-    pub Categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub description: Option<String>,
+    pub episodecount: i32,
+    pub websiteurl: Option<String>,
+    pub feedurl: String,
+    pub author: Option<String>,
+    pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
     #[serde(deserialize_with = "bool_from_int")]
-    pub Explicit: bool,
+    pub explicit: bool,
 }
 
-
-pub async fn call_get_podcasts(server_name: &String, api_key: &Option<String>, user_id: &i32) -> Result<Vec<Podcast>, anyhow::Error> {
+pub async fn call_get_podcasts(
+    server_name: &String,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<Vec<Podcast>, anyhow::Error> {
     let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
 
-    // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
+
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to fetch podcasts: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch podcasts: {}",
+            response.status_text()
+        )));
     }
 
-    
-    // First, capture the response text for diagnostic purposes
-    let response_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
-    // Try to deserialize the response text
+    let response_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to get response text".to_string());
+
     match serde_json::from_str::<PodcastResponse>(&response_text) {
-        Ok(response_body) => {
-            Ok(response_body.pods.unwrap_or_else(Vec::new))
-        }
-        Err(_e) => {
-            Err(anyhow::Error::msg("Failed to deserialize response"))
+        Ok(response_body) => Ok(response_body.pods.unwrap_or_else(Vec::new)),
+        Err(e) => {
+            web_sys::console::log_1(
+                &format!("Unable to parse Podcasts: {}", &response_text).into(),
+            );
+            Err(anyhow::Error::msg(format!(
+                "Failed to deserialize response: {}",
+                e
+            )))
         }
     }
 }
@@ -258,7 +335,6 @@ pub async fn call_get_time_info(
     }
 }
 
-
 #[derive(Default, Deserialize, Debug)]
 pub struct CheckPodcastResponse {
     pub exists: bool,
@@ -274,7 +350,7 @@ pub async fn call_check_podcast(
     let encoded_name = utf8_percent_encode(podcast_name, NON_ALPHANUMERIC).to_string();
     let encoded_url = utf8_percent_encode(podcast_url, NON_ALPHANUMERIC).to_string();
     let endpoint = format!(
-        "{}/api/data/check_podcast?user_id={}&podcast_name={}&podcast_url={}", 
+        "{}/api/data/check_podcast?user_id={}&podcast_name={}&podcast_url={}",
         server, user_id, encoded_name, encoded_url
     );
 
@@ -311,8 +387,10 @@ pub async fn call_check_episode_in_db(
 ) -> Result<bool, anyhow::Error> {
     let encoded_title = utf8_percent_encode(episode_title, NON_ALPHANUMERIC).to_string();
     let encoded_url = utf8_percent_encode(episode_url, NON_ALPHANUMERIC).to_string();
-    let endpoint = format!("{}/api/data/check_episode_in_db/{}?episode_title={}&episode_url={}", 
-        server, user_id, encoded_title, encoded_url);
+    let endpoint = format!(
+        "{}/api/data/check_episode_in_db/{}?episode_title={}&episode_url={}",
+        server, user_id, encoded_title, encoded_url
+    );
 
     let resp = Request::get(&endpoint)
         .header("Api-Key", api_key)
@@ -321,7 +399,8 @@ pub async fn call_check_episode_in_db(
         .context("Network Request Error")?;
 
     if resp.ok() {
-        let episode_in_db_response = resp.json::<EpisodeInDbResponse>()
+        let episode_in_db_response = resp
+            .json::<EpisodeInDbResponse>()
             .await
             .context("Response Parsing Error")?;
         Ok(episode_in_db_response.episode_in_db)
@@ -332,8 +411,6 @@ pub async fn call_check_episode_in_db(
         ))
     }
 }
-
-
 
 // Queue calls
 
@@ -350,15 +427,18 @@ struct QueueResponse {
 }
 
 pub async fn call_queue_episode(
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &QueuePodcastRequest
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &QueuePodcastRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/queue_pod", server_name);
 
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -369,28 +449,37 @@ pub async fn call_queue_episode(
 
     if response.ok() {
         // Deserialize the JSON response into QueueResponse
-        let response_body: QueueResponse = response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        let response_body: QueueResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
         // Extract and return the data string
         Ok(response_body.data)
     } else {
-        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        Err(anyhow::Error::msg(format!("Failed to queue episode: {} - {}", response.status_text(), error_text)))
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to queue episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }
 
-
-
 pub async fn call_remove_queued_episode(
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &QueuePodcastRequest
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &QueuePodcastRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/remove_queued_pod", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -401,12 +490,22 @@ pub async fn call_remove_queued_episode(
 
     if response.ok() {
         // Read the success message from the response body as text
-        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode queued successfully"));
+        let success_message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Episode queued successfully"));
         Ok(success_message)
     } else {
         // Read the error response body as text to include in the error
-        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        Err(anyhow::Error::msg(format!("Failed to queue episode: {} - {}", response.status_text(), error_text)))
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to queue episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }
 
@@ -417,19 +516,21 @@ pub struct QueuedEpisodesResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct QueuedEpisode {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
     #[serde(default)]
-    pub QueuePosition: Option<i32>,
-    pub EpisodeDuration: i32,
-    pub QueueDate: String,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub queueposition: Option<i32>,
+    pub episodeduration: i32,
+    pub queuedate: String,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -438,15 +539,20 @@ pub struct DataResponse {
 }
 
 pub async fn call_get_queued_episodes(
-    server_name: &str, 
-    api_key: &Option<String>, 
-    user_id: &i32
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
 ) -> Result<Vec<QueuedEpisode>, anyhow::Error> {
     // Append the user_id as a query parameter
-    let url = format!("{}/api/data/get_queued_episodes?user_id={}", server_name, user_id);
+    let url = format!(
+        "{}/api/data/get_queued_episodes?user_id={}",
+        server_name, user_id
+    );
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -454,17 +560,18 @@ pub async fn call_get_queued_episodes(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to fetch queued episodes: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch queued episodes: {}",
+            response.status_text()
+        )));
     }
     let response_text = response.text().await?;
 
-    
     let response_data: DataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
 }
 
 // Save episode calls
-
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct SavedEpisodesResponse {
@@ -473,17 +580,19 @@ pub struct SavedEpisodesResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct SavedEpisode {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
-    pub WebsiteURL: String,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub websiteurl: String,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -492,15 +601,17 @@ pub struct SavedDataResponse {
 }
 
 pub async fn call_get_saved_episodes(
-    server_name: &str, 
-    api_key: &Option<String>, 
-    user_id: &i32
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
 ) -> Result<Vec<SavedEpisode>, anyhow::Error> {
     // Append the user_id as a query parameter
     let url = format!("{}/api/data/saved_episode_list/{}", server_name, user_id);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -508,12 +619,15 @@ pub async fn call_get_saved_episodes(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to fetch saved episodes: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch saved episodes: {}",
+            response.status_text()
+        )));
     }
 
     let response_text = response.text().await?;
+    // let response_text = response.text().await?;
 
-    
     let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.saved_episodes)
 }
@@ -530,16 +644,19 @@ struct SaveResponse {
 }
 
 pub async fn call_save_episode(
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &SavePodcastRequest
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &SavePodcastRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/save_episode", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -550,27 +667,38 @@ pub async fn call_save_episode(
 
     if response.ok() {
         // Deserialize the JSON response into SaveResponse
-        let response_body: SaveResponse = response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        let response_body: SaveResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
         // Extract and return the detail string
         Ok(response_body.detail)
     } else {
         // Read the error response body as text to include in the error
-        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        Err(anyhow::Error::msg(format!("Failed to save episode: {} - {}", response.status_text(), error_text)))
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to save episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }
 
 pub async fn call_remove_saved_episode(
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &SavePodcastRequest
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &SavePodcastRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/remove_saved_episode", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -581,12 +709,22 @@ pub async fn call_remove_saved_episode(
 
     if response.ok() {
         // Read the success message from the response body as text
-        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode saved successfully"));
+        let success_message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Episode saved successfully"));
         Ok(success_message)
     } else {
         // Read the error response body as text to include in the error
-        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        Err(anyhow::Error::msg(format!("Failed to save episode: {} - {}", response.status_text(), error_text)))
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to save episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }
 
@@ -599,16 +737,18 @@ pub struct HistoryEpisodesResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct HistoryEpisode {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -617,16 +757,17 @@ pub struct HistoryDataResponse {
 }
 
 pub async fn call_get_user_history(
-    server_name: &str, 
-    api_key: &Option<String>, 
-    user_id: &i32
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
 ) -> Result<Vec<HistoryEpisode>, anyhow::Error> {
     // Append the user_id as a query parameter
     let url = format!("{}/api/data/user_history/{}", server_name, user_id);
 
-
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -634,12 +775,14 @@ pub async fn call_get_user_history(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to fetch history: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch history: {}",
+            response.status_text()
+        )));
     }
 
     let response_text = response.text().await?;
 
-    
     let response_data: HistoryDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.data)
 }
@@ -652,16 +795,17 @@ pub struct HistoryAddRequest {
 }
 
 pub async fn call_add_history(
-    server_name: &String, 
-    api_key: String, 
-    request_data: &HistoryAddRequest
+    server_name: &String,
+    api_key: String,
+    request_data: &HistoryAddRequest,
 ) -> Result<(), Error> {
     let url = format!("{}/api/data/record_podcast_history", server_name);
 
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key.as_str();
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -671,7 +815,10 @@ pub async fn call_add_history(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to record history: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to record history: {}",
+            response.status_text()
+        )));
     }
 
     Ok(())
@@ -686,18 +833,20 @@ pub struct EpisodeDownloadResponse {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct EpisodeDownload {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
-    pub DownloadedLocation: String,
-    pub PodcastID: i32,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub downloadedlocation: String,
+    pub podcastid: i32,
+    pub completed: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -709,15 +858,18 @@ pub struct DownloadDataResponse {
 pub async fn call_get_episode_downloads(
     server_name: &str,
     api_key: &Option<String>,
-    user_id: &i32
+    user_id: &i32,
 ) -> Result<Vec<EpisodeDownload>, anyhow::Error> {
     // Append the user_id as a query parameter
-    let url = format!("{}/api/data/download_episode_list?user_id={}", server_name, user_id);
-
-
+    let url = format!(
+        "{}/api/data/download_episode_list?user_id={}",
+        server_name, user_id
+    );
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -725,12 +877,14 @@ pub async fn call_get_episode_downloads(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to episode downloads: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to episode downloads: {}",
+            response.status_text()
+        )));
     }
 
     let response_text = response.text().await?;
 
-    
     let response_data: DownloadDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.episodes)
 }
@@ -746,17 +900,20 @@ struct DownloadResponse {
     detail: String,
 }
 
-pub async fn call_download_episode (
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &DownloadEpisodeRequest
+pub async fn call_download_episode(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &DownloadEpisodeRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/download_podcast", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -765,29 +922,88 @@ pub async fn call_download_episode (
         .send()
         .await?;
 
-        if response.ok() {
-            // Deserialize the JSON response into DownloadResponse
-            let response_body: DownloadResponse = response.json().await.map_err(|e| anyhow::Error::new(e))?;
-            // Extract and return the detail string
-            Ok(response_body.detail)
+    if response.ok() {
+        // Deserialize the JSON response into DownloadResponse
+        let response_body: DownloadResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        // Extract and return the detail string
+        Ok(response_body.detail)
     } else {
         // Read the error response body as text to include in the error
-        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        Err(anyhow::Error::msg(format!("Failed to download episode: {} - {}", response.status_text(), error_text)))
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to download episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }
 
-pub async fn call_remove_downloaded_episode (
-    server_name: &String, 
-    api_key: &Option<String>, 
-    request_data: &DownloadEpisodeRequest
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DownloadAllPodcastRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+pub async fn call_download_all_podcast(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &DownloadAllPodcastRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/download_all_podcast", server_name);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        // Deserialize the JSON response into DownloadResponse
+        let response_body: DownloadResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        // Extract and return the detail string
+        Ok(response_body.detail)
+    } else {
+        // Read the error response body as text to include in the error
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to download all episodes: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_remove_downloaded_episode(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &DownloadEpisodeRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/delete_episode", server_name);
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let request_body = serde_json::to_string(request_data).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -798,12 +1014,22 @@ pub async fn call_remove_downloaded_episode (
 
     if response.ok() {
         // Read the success message from the response body as text
-        let success_message = response.text().await.unwrap_or_else(|_| String::from("Episode downloaded successfully"));
+        let success_message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Episode downloaded successfully"));
         Ok(success_message)
     } else {
         // Read the error response body as text to include in the error
-        let error_text = response.text().await.unwrap_or_else(|_| String::from("Failed to read error message"));
-        Err(anyhow::Error::msg(format!("Failed to download episode: {} - {}", response.status_text(), error_text)))
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to download episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }
 
@@ -812,16 +1038,16 @@ pub async fn call_remove_downloaded_episode (
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
 pub struct EpisodeInfo {
-    pub EpisodeTitle: String,
-    pub PodcastName: String,
-    pub PodcastID: i32,
-    pub EpisodePubDate: String,
-    pub EpisodeDescription: String,
-    pub EpisodeArtwork: String,
-    pub EpisodeURL: String,
-    pub EpisodeDuration: i32,
-    pub ListenDuration: Option<i32>,
-    pub EpisodeID: i32,
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub podcastid: i32,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -836,15 +1062,18 @@ pub struct EpisodeMetadataResponse {
 }
 
 pub async fn call_get_episode_metadata(
-    server_name: &str, 
-    api_key: Option<String>, 
+    server_name: &str,
+    api_key: Option<String>,
     episode_request: &EpisodeRequest,
 ) -> Result<EpisodeInfo, anyhow::Error> {
     let url = format!("{}/api/data/get_episode_metadata", server_name);
 
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-    
-    let request_body = serde_json::to_string(episode_request).map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(episode_request)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -854,7 +1083,10 @@ pub async fn call_get_episode_metadata(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to episode downloads: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to episode downloads: {}",
+            response.status_text()
+        )));
     }
 
     let response_text = response.text().await?;
@@ -877,7 +1109,6 @@ pub struct RecordListenDurationResponse {
     pub detail: String, // Assuming a simple status response; adjust according to actual API response
 }
 
-
 pub async fn call_record_listen_duration(
     server_name: &str,
     api_key: &str,
@@ -897,7 +1128,8 @@ pub async fn call_record_listen_duration(
         .map_err(|e| Error::msg(format!("Network Request Error: {}", e)))?;
 
     if response.ok() {
-        response.json::<RecordListenDurationResponse>()
+        response
+            .json::<RecordListenDurationResponse>()
             .await
             .map_err(|e| Error::msg(format!("Response Parsing Error: {}", e)))
     } else {
@@ -907,7 +1139,6 @@ pub async fn call_record_listen_duration(
         )))
     }
 }
-
 
 pub async fn call_increment_listen_time(
     server_name: &str,
@@ -972,10 +1203,15 @@ pub async fn call_get_podcast_id(
     // Append the user_id, podcast_feed, and podcast_title as query parameters
     let encoded_feed = utf8_percent_encode(podcast_feed, NON_ALPHANUMERIC).to_string();
     let encoded_title = utf8_percent_encode(podcast_title, NON_ALPHANUMERIC).to_string();
-    let url = format!("{}/api/data/get_podcast_id?user_id={}&podcast_feed={}&podcast_title={}", server_name, user_id, encoded_feed, encoded_title);
+    let url = format!(
+        "{}/api/data/get_podcast_id?user_id={}&podcast_feed={}&podcast_title={}",
+        server_name, user_id, encoded_feed, encoded_title
+    );
 
     // Convert Option<String> to Option<&str>
-    let api_key_ref = api_key.as_deref().ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
@@ -983,13 +1219,91 @@ pub async fn call_get_podcast_id(
         .await?;
 
     if !response.ok() {
-        return Err(anyhow::Error::msg(format!("Failed to get podcast id: {}", response.status_text())));
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast id: {}",
+            response.status_text()
+        )));
     }
 
     let response_text = response.text().await?;
 
     let response_data: PodcastIdResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.episodes)
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct PodcastIdEpResponse {
+    pub podcast_id: i32,
+}
+
+pub async fn call_get_podcast_id_from_ep(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_id: i32,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!(
+        "{}/api/data/get_podcast_id_from_ep_id?episode_id={}&user_id={}",
+        server_name, episode_id, user_id
+    );
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast id: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+
+    let response_data: PodcastIdEpResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.podcast_id)
+}
+
+pub async fn call_get_podcast_id_from_ep_name(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_name: String,
+    episode_url: String,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!(
+        "{}/api/data/get_podcast_id_from_ep_name?episode_name={}&episode_url={}&user_id={}",
+        server_name,
+        urlencoding::encode(&episode_name),
+        urlencoding::encode(&episode_url),
+        user_id
+    );
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast id: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+
+    let response_data: PodcastIdEpResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.podcast_id)
 }
 
 fn explicit_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -999,7 +1313,6 @@ where
     let val: i32 = Deserialize::deserialize(deserializer)?;
     Ok(val == 1) // 1 = true, 0 = false
 }
-
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
@@ -1036,7 +1349,10 @@ pub async fn call_get_podcast_details(
     user_id: i32,
     podcast_id: &i32,
 ) -> Result<PodcastDetails, Error> {
-    let url = format!("{}/api/data/get_podcast_details?user_id={}&podcast_id={}", server_name, user_id, podcast_id);
+    let url = format!(
+        "{}/api/data/get_podcast_details?user_id={}&podcast_id={}",
+        server_name, user_id, podcast_id
+    );
 
     let response = Request::get(&url)
         .header("Content-Type", "application/json")
@@ -1046,12 +1362,261 @@ pub async fn call_get_podcast_details(
         .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
 
     if response.ok() {
-        let response_data: PodcastDetailsResponse = response.json().await.map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
+        let response_data: PodcastDetailsResponse = response
+            .json()
+            .await
+            .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
         Ok(response_data.details)
     } else {
         Err(Error::msg(format!(
             "Error retrieving podcast details. Server response: {}",
             response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MarkEpisodeCompletedRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+struct MarkEpisodeCompletedResponse {
+    detail: String,
+}
+
+pub async fn call_mark_episode_completed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &MarkEpisodeCompletedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/mark_episode_completed", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: MarkEpisodeCompletedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to mark episode completed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoDownloadRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub auto_download: bool,
+}
+
+#[derive(Deserialize, Debug)]
+struct AutoDownloadResponse {
+    detail: String,
+}
+
+pub async fn call_enable_auto_download(
+    server_name: &String,
+    api_key: &String,
+    request_data: &AutoDownloadRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/enable_auto_download", server_name);
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoDownloadResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to enable auto-download: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoDownloadStatusRequest {
+    pub podcast_id: i32,
+    user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoDownloadStatusResponse {
+    pub auto_download: bool,
+}
+
+pub async fn call_get_auto_download_status(
+    server_name: &str,
+    user_id: i32,
+    api_key: &Option<String>,
+    podcast_id: i32,
+) -> Result<bool, anyhow::Error> {
+    let url = format!("{}/api/data/get_auto_download_status", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(&AutoDownloadStatusRequest {
+        podcast_id,
+        user_id,
+    })
+    .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoDownloadStatusResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.auto_download)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get auto-download status: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SkipTimesRequest {
+    pub podcast_id: i32,
+    pub start_skip: i32,
+    pub end_skip: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+struct SkipTimesResponse {
+    detail: String,
+}
+
+pub async fn call_adjust_skip_times(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &SkipTimesRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/adjust_skip_times", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: SkipTimesResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to adjust skip times: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoSkipTimesRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoSkipTimesResponse {
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+pub async fn call_get_auto_skip_times(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<(i32, i32), Error> {
+    let url = format!("{}/api/data/get_auto_skip_times", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(&AutoSkipTimesRequest {
+        podcast_id,
+        user_id,
+    })?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: AutoSkipTimesResponse = response.json().await?;
+        Ok((response_data.start_skip, response_data.end_skip))
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get auto skip times: {}",
+            error_text
         )))
     }
 }

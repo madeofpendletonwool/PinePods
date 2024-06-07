@@ -16,8 +16,8 @@ RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/ap
 RUN apk add trunk@testing
 
 # Add your application files to the builder stage
-COPY . /app
-WORKDIR /app/web
+COPY ./web /app
+WORKDIR /app
 
 # Build the Yew application in release mode
 RUN trunk build --features server_build --release
@@ -29,22 +29,22 @@ FROM alpine:3.19
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
 # Install runtime dependencies
-RUN apk add --no-cache nginx python3 openssl py3-pip bash mariadb-client curl cronie openrc supervisor
+RUN apk add --no-cache nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc supervisor
 
 # Setup Python environment
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python packages
-COPY --from=builder /app/requirements.txt /
+COPY ./requirements.txt /
 RUN pip install --no-cache-dir -r /requirements.txt
 
 # Copy wait-for-it script and give execute permission
-COPY --from=builder /app/wait-for-it/wait-for-it.sh /wait-for-it.sh
+COPY ./wait-for-it/wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
 # Copy built files from the builder stage to the Nginx serving directory
-COPY --from=builder /app/web/dist /var/www/html/
+COPY --from=builder /app/dist /var/www/html/
 
 # Move to the root directory to execute the startup script
 WORKDIR /

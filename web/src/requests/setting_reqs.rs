@@ -1,13 +1,19 @@
+use crate::components::misc_func::deserialize_with_lowercase;
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use wasm_bindgen::JsValue;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetThemeResponse {
     theme: String,
 }
-pub async fn call_get_theme(server_name: String, api_key: String, user_id: &i32) -> Result<String, anyhow::Error> {
+pub async fn call_get_theme(
+    server_name: String,
+    api_key: String,
+    user_id: &i32,
+) -> Result<String, anyhow::Error> {
     let url = format!("{}/api/data/get_theme/{}", server_name, user_id);
     let api_key_ref = api_key.as_str();
 
@@ -21,7 +27,10 @@ pub async fn call_get_theme(server_name: String, api_key: String, user_id: &i32)
         let response_body = response.json::<GetThemeResponse>().await?;
         Ok(response_body.theme)
     } else {
-        Err(Error::msg(format!("Error getting theme. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error getting theme. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -35,10 +44,16 @@ pub struct SetThemeResponse {
     message: String,
 }
 
-pub async fn call_set_theme(server_name: &Option<String>, api_key: &Option<String>, set_theme: &SetThemeRequest) -> Result<bool, Error> {
+pub async fn call_set_theme(
+    server_name: &Option<String>,
+    api_key: &Option<String>,
+    set_theme: &SetThemeRequest,
+) -> Result<bool, Error> {
     let server = server_name.clone().unwrap();
     let url = format!("{}/api/data/user/set_theme", server);
-    let api_key_ref = api_key.as_deref().ok_or_else(|| Error::msg("API key is missing"))?;
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
 
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(set_theme)?;
@@ -54,7 +69,10 @@ pub async fn call_set_theme(server_name: &Option<String>, api_key: &Option<Strin
         let response_body = response.json::<SetThemeResponse>().await?;
         Ok(response_body.message == "Success")
     } else {
-        Err(Error::msg(format!("Error updating theme: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error updating theme: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -66,15 +84,19 @@ pub struct UserInfoResponse {
 }
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct SettingsUser {
-    pub UserID: i32,
-    pub Fullname: String,
-    pub Username: String,
-    pub Email: String,
-    pub IsAdmin: i32,
+    pub userid: i32,
+    pub fullname: String,
+    pub username: String,
+    pub email: String,
+    pub isadmin: i32,
 }
 
-pub async fn call_get_user_info(server_name: String, api_key: String) -> Result<Vec<SettingsUser>, anyhow::Error> {
+pub async fn call_get_user_info(
+    server_name: String,
+    api_key: String,
+) -> Result<Vec<SettingsUser>, anyhow::Error> {
     let url = format!("{}/api/data/get_user_info", server_name);
     let api_key_ref = api_key.as_str();
 
@@ -89,7 +111,10 @@ pub async fn call_get_user_info(server_name: String, api_key: String) -> Result<
         let users: Vec<SettingsUser> = serde_json::from_str(&response_text)?;
         Ok(users)
     } else {
-        Err(Error::msg(format!("Error getting user info. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error getting user info. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -106,8 +131,11 @@ pub struct AddUserResponse {
     detail: String,
 }
 
-
-pub async fn call_add_user(server_name: String, api_key: String, add_user: &AddSettingsUserRequest) -> Result<bool, Error> {
+pub async fn call_add_user(
+    server_name: String,
+    api_key: String,
+    add_user: &AddSettingsUserRequest,
+) -> Result<bool, Error> {
     let server = server_name.clone();
     let url = format!("{}/api/data/add_user", server);
 
@@ -127,7 +155,10 @@ pub async fn call_add_user(server_name: String, api_key: String, add_user: &AddS
         let response_body = response.json::<AddUserResponse>().await?;
         Ok(response_body.detail == "Success")
     } else {
-        Err(Error::msg(format!("Error adding user: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error adding user: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -136,8 +167,16 @@ pub struct DetailResponse {
     detail: String,
 }
 
-pub async fn call_set_fullname(server_name: String, api_key: String, user_id: i32, new_name: String) -> Result<DetailResponse, Error> {
-    let url = format!("{}/api/data/set_fullname/{}?new_name={}", server_name, user_id, new_name);
+pub async fn call_set_fullname(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    new_name: String,
+) -> Result<DetailResponse, Error> {
+    let url = format!(
+        "{}/api/data/set_fullname/{}?new_name={}",
+        server_name, user_id, new_name
+    );
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
         .header("Content-Type", "application/json")
@@ -146,13 +185,24 @@ pub async fn call_set_fullname(server_name: String, api_key: String, user_id: i3
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error setting fullname: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error setting fullname: {}",
+            response.status_text()
+        )))
     }
 }
 
-pub async fn call_set_password(server_name: String, api_key: String, user_id: i32, hash_pw: String) -> Result<DetailResponse, Error> {
+pub async fn call_set_password(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    hash_pw: String,
+) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/set_password/{}", server_name, user_id);
     let body = serde_json::json!({ "hash_pw": hash_pw });
 
@@ -165,9 +215,15 @@ pub async fn call_set_password(server_name: String, api_key: String, user_id: i3
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error setting password: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error setting password: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -176,7 +232,11 @@ pub struct DeleteUserResponse {
     pub status: String,
 }
 
-pub async fn call_delete_user(server_name: String, api_key: String, user_id: i32) -> Result<DeleteUserResponse, Error> {
+pub async fn call_delete_user(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<DeleteUserResponse, Error> {
     let url = format!("{}/api/data/user/delete/{}", server_name, user_id);
 
     let response = Request::delete(&url)
@@ -187,13 +247,24 @@ pub async fn call_delete_user(server_name: String, api_key: String, user_id: i32
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DeleteUserResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DeleteUserResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error deleting user: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error deleting user: {}",
+            response.status_text()
+        )))
     }
 }
 
-pub async fn call_set_email(server_name: String, api_key: String, user_id: i32, new_email: String) -> Result<DetailResponse, Error> {
+pub async fn call_set_email(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    new_email: String,
+) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/user/set_email", server_name);
     let body = serde_json::json!({ "user_id": user_id, "new_email": new_email });
 
@@ -206,13 +277,24 @@ pub async fn call_set_email(server_name: String, api_key: String, user_id: i32, 
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error setting email: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error setting email: {}",
+            response.status_text()
+        )))
     }
 }
 
-pub async fn call_set_username(server_name: String, api_key: String, user_id: i32, new_username: String) -> Result<DetailResponse, Error> {
+pub async fn call_set_username(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    new_username: String,
+) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/user/set_username", server_name);
     let body = serde_json::json!({ "user_id": user_id, "new_username": new_username });
 
@@ -225,13 +307,24 @@ pub async fn call_set_username(server_name: String, api_key: String, user_id: i3
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error setting username: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error setting username: {}",
+            response.status_text()
+        )))
     }
 }
 #[allow(dead_code)]
-pub async fn call_set_isadmin(server_name: String, api_key: String, user_id: i32, isadmin: bool) -> Result<DetailResponse, Error> {
+pub async fn call_set_isadmin(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    isadmin: bool,
+) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/user/set_isadmin", server_name);
     let body = serde_json::json!({ "user_id": user_id, "isadmin": isadmin });
 
@@ -244,9 +337,15 @@ pub async fn call_set_isadmin(server_name: String, api_key: String, user_id: i32
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error setting admin status: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error setting admin status: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -255,9 +354,12 @@ pub struct FinalAdminResponse {
     pub(crate) final_admin: bool,
 }
 
-
 #[allow(dead_code)]
-pub async fn call_check_admin(server_name: String, api_key: String, user_id: i32) -> Result<FinalAdminResponse, Error> {
+pub async fn call_check_admin(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<FinalAdminResponse, Error> {
     let url = format!("{}/api/data/user/final_admin/{}", server_name, user_id);
 
     let response = Request::get(&url)
@@ -267,9 +369,15 @@ pub async fn call_check_admin(server_name: String, api_key: String, user_id: i32
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<FinalAdminResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<FinalAdminResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error getting admin status: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error getting admin status: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -292,7 +400,10 @@ pub struct SuccessResponse {
     success: bool,
 }
 
-pub async fn call_enable_disable_guest(server_name: String, api_key: String) -> Result<SuccessResponse, Error> {
+pub async fn call_enable_disable_guest(
+    server_name: String,
+    api_key: String,
+) -> Result<SuccessResponse, Error> {
     let url = format!("{}/api/data/enable_disable_guest", server_name);
 
     let response = Request::post(&url)
@@ -303,13 +414,22 @@ pub async fn call_enable_disable_guest(server_name: String, api_key: String) -> 
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<SuccessResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<SuccessResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error enabling/disabling guest access: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error enabling/disabling guest access: {}",
+            response.status_text()
+        )))
     }
 }
 
-pub async fn call_enable_disable_downloads(server_name: String, api_key: String) -> Result<SuccessResponse, Error> {
+pub async fn call_enable_disable_downloads(
+    server_name: String,
+    api_key: String,
+) -> Result<SuccessResponse, Error> {
     let url = format!("{}/api/data/enable_disable_downloads", server_name);
 
     let response = Request::post(&url)
@@ -320,13 +440,22 @@ pub async fn call_enable_disable_downloads(server_name: String, api_key: String)
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<SuccessResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<SuccessResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error enabling/disabling downloads: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error enabling/disabling downloads: {}",
+            response.status_text()
+        )))
     }
 }
 
-pub async fn call_enable_disable_self_service(server_name: String, api_key: String) -> Result<SuccessResponse, Error> {
+pub async fn call_enable_disable_self_service(
+    server_name: String,
+    api_key: String,
+) -> Result<SuccessResponse, Error> {
     let url = format!("{}/api/data/enable_disable_self_service", server_name);
 
     let response = Request::post(&url)
@@ -337,9 +466,15 @@ pub async fn call_enable_disable_self_service(server_name: String, api_key: Stri
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<SuccessResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<SuccessResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error enabling/disabling self service: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error enabling/disabling self service: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -358,9 +493,15 @@ pub async fn call_guest_status(server_name: String, api_key: String) -> Result<b
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<bool>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<bool>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error fetching guest status: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error fetching guest status: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -379,9 +520,15 @@ pub async fn call_download_status(server_name: String, api_key: String) -> Resul
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<bool>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<bool>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error fetching download status: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error fetching download status: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -400,10 +547,16 @@ pub async fn call_self_service_status(server_name: String, api_key: String) -> R
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        let status_response: SelfServiceStatusResponse = response.json().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))?;
+        let status_response: SelfServiceStatusResponse = response
+            .json()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))?;
         Ok(status_response.status)
     } else {
-        Err(Error::msg(format!("Error fetching self service status: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error fetching self service status: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -430,9 +583,7 @@ pub async fn call_save_email_settings(
     email_settings: EmailSettings,
 ) -> Result<DetailResponse, Error> {
     let url = format!("{}/api/data/save_email_settings", server_name);
-    let body = EmailSettingsRequest {
-        email_settings,
-    };
+    let body = EmailSettingsRequest { email_settings };
 
     let response = Request::post(&url)
         .header("Api-Key", &api_key)
@@ -443,9 +594,15 @@ pub async fn call_save_email_settings(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<DetailResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error saving email settings: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error saving email settings: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -486,17 +643,22 @@ pub async fn call_send_test_email(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<EmailSendResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<EmailSendResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error sending email: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error sending email: {}",
+            response.status_text()
+        )))
     }
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SendEmailSettings {
     pub(crate) to_email: String,
-    pub(crate) subject : String,
+    pub(crate) subject: String,
     pub(crate) message: String,
 }
 
@@ -517,22 +679,29 @@ pub async fn call_send_email(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<EmailSendResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<EmailSendResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error sending email: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error sending email: {}",
+            response.status_text()
+        )))
     }
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Default)]
 #[allow(non_snake_case)]
+#[serde(rename_all = "PascalCase")]
 pub struct EmailSettingsResponse {
-    pub(crate) EmailSettingsID: i32,
-    pub(crate) Server_Name: String,
-    pub(crate) Server_Port: i32,
-    pub(crate) From_Email: String,
-    pub(crate) Send_Mode: String,
+    pub(crate) Emailsettingsid: i32,
+    pub(crate) ServerName: String,
+    pub(crate) ServerPort: i32,
+    pub(crate) FromEmail: String,
+    pub(crate) SendMode: String,
     pub(crate) Encryption: String,
-    pub(crate) Auth_Required: i32,
+    pub(crate) AuthRequired: i32,
     pub(crate) Username: String,
     pub(crate) Password: String,
 }
@@ -551,24 +720,30 @@ pub async fn call_get_email_settings(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        let response_text = response.text().await.map_err(|e| Error::msg(format!("Error getting response text: {}", e)))?;
-        println!("Response text: {}", response_text);
-        serde_json::from_str::<EmailSettingsResponse>(&response_text).map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| Error::msg(format!("Error getting response text: {}", e)))?;
+        serde_json::from_str::<EmailSettingsResponse>(&response_text)
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error retrieving email settings: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error retrieving email settings: {}",
+            response.status_text()
+        )))
     }
 }
 
 // User Setting Requests
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
-#[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
 pub struct APIInfo {
-    pub(crate) APIKeyID: i32,
-    pub(crate) UserID: i32,
-    pub(crate) Username: String,
-    pub(crate) LastFourDigits: String,
-    pub(crate) Created: String,
+    pub apikeyid: i32,
+    pub userid: i32,
+    pub username: String,
+    pub lastfourdigits: String,
+    pub created: String,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -590,9 +765,15 @@ pub async fn call_get_api_info(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        response.json::<APIInfoResponse>().await.map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+        response
+            .json::<APIInfoResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error retrieving API info: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error retrieving API info: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -618,7 +799,10 @@ pub async fn call_create_api_key(
         .map_err(anyhow::Error::msg)?;
 
     if response.ok() {
-        response.json::<CreateAPIKeyResponse>().await.map_err(anyhow::Error::msg)
+        response
+            .json::<CreateAPIKeyResponse>()
+            .await
+            .map_err(anyhow::Error::msg)
     } else {
         Err(anyhow::Error::msg("Error creating API key"))
     }
@@ -652,14 +836,22 @@ pub async fn call_delete_api_key(
         .map_err(anyhow::Error::msg)?;
 
     if response.ok() {
-        response.json::<DeleteAPIKeyResponse>().await.map_err(anyhow::Error::msg)
+        response
+            .json::<DeleteAPIKeyResponse>()
+            .await
+            .map_err(anyhow::Error::msg)
     } else {
         // If the response is not ok(), read the response body to extract the error message
-        let error_message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(anyhow::Error::msg(format!("Error deleting API key: {}", error_message)))
+        let error_message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(anyhow::Error::msg(format!(
+            "Error deleting API key: {}",
+            error_message
+        )))
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackupUserRequest {
@@ -670,7 +862,8 @@ pub async fn call_backup_user(
     server_name: &str,
     user_id: i32,
     api_key: &str,
-) -> Result<String, anyhow::Error> { // Assuming the OPML content is returned as a plain string
+) -> Result<String, anyhow::Error> {
+    // Assuming the OPML content is returned as a plain string
     let url = format!("{}/api/data/backup_user", server_name);
     let request_body = BackupUserRequest { user_id };
 
@@ -710,7 +903,10 @@ pub async fn call_backup_server(
     if response.ok() {
         response.text().await.map_err(anyhow::Error::msg)
     } else {
-        Err(anyhow::Error::msg(format!("Error backing up server data: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!(
+            "Error backing up server data: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -745,7 +941,10 @@ pub async fn call_restore_server(
     if response.ok() {
         response.text().await.map_err(Error::msg)
     } else {
-        Err(Error::msg(format!("Error restoring server data: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error restoring server data: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -756,7 +955,11 @@ pub struct GenerateMFAResponse {
 }
 
 // Then adjust the function to return this struct:
-pub async fn call_generate_mfa_secret(server_name: String, api_key: String, user_id: i32) -> Result<GenerateMFAResponse, anyhow::Error> {
+pub async fn call_generate_mfa_secret(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<GenerateMFAResponse, anyhow::Error> {
     let url = format!("{}/api/data/generate_mfa_secret/{}", server_name, user_id);
     let api_key_ref = &api_key;
 
@@ -770,7 +973,10 @@ pub async fn call_generate_mfa_secret(server_name: String, api_key: String, user
         let response_body = response.json::<GenerateMFAResponse>().await?;
         Ok(response_body)
     } else {
-        Err(anyhow::Error::msg(format!("Error generating MFA secret. Server Response: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!(
+            "Error generating MFA secret. Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -804,20 +1010,29 @@ pub async fn call_verify_temp_mfa(
         .map_err(Error::msg)?;
 
     if response.ok() {
-        response.json::<VerifyTempMFAResponse>().await.map_err(Error::msg)
+        response
+            .json::<VerifyTempMFAResponse>()
+            .await
+            .map_err(Error::msg)
     } else {
         let status_text = response.status_text();
         let error_text = response.text().await.unwrap_or_default();
-        Err(Error::msg(format!("Error verifying temp MFA: {} - {}", status_text, error_text)))
+        Err(Error::msg(format!(
+            "Error verifying temp MFA: {} - {}",
+            status_text, error_text
+        )))
     }
 }
-
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetMFAResponse {
     mfa_enabled: bool,
 }
-pub async fn call_mfa_settings(server_name: String, api_key: String, user_id: i32) -> Result<bool, anyhow::Error> {
+pub async fn call_mfa_settings(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<bool, anyhow::Error> {
     let url = format!("{}/api/data/check_mfa_enabled/{}", server_name, user_id);
     let api_key_ref = api_key.as_str();
 
@@ -831,7 +1046,10 @@ pub async fn call_mfa_settings(server_name: String, api_key: String, user_id: i3
         let response_body = response.json::<GetMFAResponse>().await?;
         Ok(response_body.mfa_enabled)
     } else {
-        Err(Error::msg(format!("Error getting MFA status. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error getting MFA status. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -846,10 +1064,18 @@ pub struct SaveMFASecretResponse {
     pub(crate) status: String,
 }
 #[allow(dead_code)]
-pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_id: i32, mfa_secret: String) -> Result<SaveMFASecretResponse, anyhow::Error> {
+pub async fn call_save_mfa_secret(
+    server_name: &String,
+    api_key: &String,
+    user_id: i32,
+    mfa_secret: String,
+) -> Result<SaveMFASecretResponse, anyhow::Error> {
     let url = format!("{}/api/data/save_mfa_secret", server_name);
     let api_key_ref = api_key.as_str();
-    let body = SaveMFASecretRequest { user_id, mfa_secret };
+    let body = SaveMFASecretRequest {
+        user_id,
+        mfa_secret,
+    };
     let json_body = serde_json::to_string(&body)?;
 
     let response = Request::post(&url)
@@ -863,7 +1089,10 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
         let response_body = response.json::<SaveMFASecretResponse>().await?;
         Ok(response_body)
     } else {
-        Err(Error::msg(format!("Error saving MFA secret. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error saving MFA secret. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -873,7 +1102,6 @@ pub async fn call_save_mfa_secret(server_name: &String, api_key: &String, user_i
 //     pub(crate) poll_endpoint: String,
 //     pub(crate) nextcloud_url: String,
 // }
-
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Poll {
@@ -893,7 +1121,12 @@ pub struct LoginInitiateRequest {
     nextcloud_url: String,
 }
 
-pub async fn initiate_nextcloud_login(nextcloud_url: &str, server_name: &str, api_key: &str, user_id: i32) -> Result<NextcloudInitiateResponse, Error> {
+pub async fn initiate_nextcloud_login(
+    nextcloud_url: &str,
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<NextcloudInitiateResponse, Error> {
     // Construct the URL with query parameters
     let url = format!("{}/api/data/initiate_nextcloud_login", server_name);
     let request_body = LoginInitiateRequest {
@@ -922,10 +1155,12 @@ pub async fn initiate_nextcloud_login(nextcloud_url: &str, server_name: &str, ap
         serde_json::from_str::<NextcloudInitiateResponse>(&response_body)
             .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
-        Err(Error::msg(format!("Error initiating Nextcloud login: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error initiating Nextcloud login: {}",
+            response.status_text()
+        )))
     }
 }
-
 
 #[derive(Serialize)]
 pub struct NextcloudAuthRequest {
@@ -960,7 +1195,10 @@ pub async fn call_add_nextcloud_server(
         let response_body = response.json::<NextcloudAuthResponse>().await?;
         Ok(response_body)
     } else {
-        Err(Error::msg(format!("Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -973,9 +1211,12 @@ pub struct NextcloudCheckResponse {
 pub async fn call_check_nextcloud_server(
     server_name: &String,
     api_key: &String,
-    user_id: i32
+    user_id: i32,
 ) -> Result<NextcloudCheckResponse, anyhow::Error> {
-    let url = format!("{}/api/data/check_gpodder_settings/{}", server_name, user_id);
+    let url = format!(
+        "{}/api/data/check_gpodder_settings/{}",
+        server_name, user_id
+    );
     let api_key_ref = api_key.as_str();
 
     let response = Request::get(&url)
@@ -988,13 +1229,22 @@ pub async fn call_check_nextcloud_server(
         let response_body = response.json::<NextcloudCheckResponse>().await?;
         Ok(response_body)
     } else {
-        Err(Error::msg(format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct NextcloudGetResponse {
-    pub(crate) data: Vec<String>, // Assuming the response always wraps the gpodder_url and token in a list under "data"
+    pub data: GpodderData,
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+pub struct GpodderData {
+    pub gpodderurl: String,
+    pub gpoddertoken: String,
 }
 pub async fn call_get_nextcloud_server(
     server_name: &String,
@@ -1010,31 +1260,36 @@ pub async fn call_get_nextcloud_server(
         .send()
         .await?;
 
+    let status_text = response.status_text();
+    let response_text = response.text().await.unwrap_or_default();
+
     if response.ok() {
-        match response.json::<NextcloudGetResponse>().await {
+        match serde_json::from_str::<NextcloudGetResponse>(&response_text) {
             Ok(response_body) => {
-                // Check if the data array is not empty and does not contain just empty strings
-                if !response_body.data.is_empty() && !response_body.data.iter().all(|s| s.trim().is_empty()) {
-                    let gpodder_url = response_body.data.get(0).cloned().unwrap_or_default(); 
-                    Ok(gpodder_url)
+                // Check if the data fields are not empty
+                let response_body_str = serde_json::to_string(&response_body).unwrap_or_default();
+
+                if !response_body.data.gpodderurl.trim().is_empty() {
+                    Ok(response_body.data.gpodderurl.clone())
                 } else {
-                    // Instead of returning an error, return a specific message indicating no sync
                     Ok(String::from("Not currently syncing with Nextcloud server"))
                 }
-            },
+            }
             Err(e) => {
+                web_sys::console::error_1(&JsValue::from_str(&format!(
+                    "Error parsing JSON: {:?}",
+                    e
+                )));
                 Err(anyhow::Error::new(e))
-            },
+            }
         }
     } else {
-        let error_text = response.text().await.unwrap_or_default();
-        Err(anyhow::Error::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}, {}", response.status_text(), error_text),
+        Err(anyhow::Error::msg(format!(
+            "Failed to get Nextcloud settings: {}",
+            status_text
         )))
     }
 }
-
 
 #[derive(Deserialize, Debug)]
 pub struct AdminCheckResponse {
@@ -1044,7 +1299,7 @@ pub struct AdminCheckResponse {
 pub async fn call_user_admin_check(
     server_name: &String,
     api_key: &String,
-    user_id: i32
+    user_id: i32,
 ) -> Result<AdminCheckResponse, anyhow::Error> {
     let url = format!("{}/api/data/user_admin_check/{}", server_name, user_id);
     let api_key_ref = api_key.as_str();
@@ -1059,7 +1314,10 @@ pub async fn call_user_admin_check(
         let response_body = response.json::<AdminCheckResponse>().await?;
         Ok(response_body)
     } else {
-        Err(anyhow::Error::msg(format!("Error checking admin status. Is the server reachable? Server Response: {}", response.status_text())))
+        Err(anyhow::Error::msg(format!(
+            "Error checking admin status. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
     }
 }
 
@@ -1093,6 +1351,9 @@ pub async fn call_add_custom_feed(
     if response.ok() {
         response.text().await.map_err(Error::msg)
     } else {
-        Err(Error::msg(format!("Error adding feed: {}", response.status_text())))
+        Err(Error::msg(format!(
+            "Error adding feed: {}",
+            response.status_text()
+        )))
     }
 }

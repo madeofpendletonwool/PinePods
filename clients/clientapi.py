@@ -15,9 +15,9 @@ import mysql.connector
 from mysql.connector import pooling
 from mysql.connector.pooling import MySQLConnectionPool
 from mysql.connector import Error
-import psycopg2
-from psycopg2 import pool as pg_pool
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
 import os
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -96,21 +96,22 @@ reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
 api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
-print(f'Search API URL: {api_url}')
 
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
     proxy_url = f'{proxy_protocol}://{proxy_host}/mover/?url='
 else:
     proxy_url = f'{proxy_protocol}://{proxy_host}:{proxy_port}/mover/?url='
-print(f'Proxy url is configured to {proxy_url}')
 
 logger = logging.getLogger(__name__)
 
 
 def get_database_connection():
     try:
-        db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
+        if database_type == "postgresql":
+            db = connection_pool.getconn()
+        else:
+            db = connection_pool.get_connection()
         yield db
     except HTTPException:
         raise  # Re-raise the HTTPException to let FastAPI handle it properly
@@ -126,8 +127,10 @@ def get_database_connection():
 
 def create_database_connection():
     try:
-        db = connection_pool.getconn() if database_type == "postgresql" else connection_pool.get_connection()
-        return db
+        if database_type == "postgresql":
+            return connection_pool.getconn()
+        else:
+            return connection_pool.get_connection()
     except Exception as e:
         logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
         logger.error(traceback.format_exc())
@@ -142,15 +145,8 @@ def setup_connection_pool():
     db_name = os.environ.get("DB_NAME", "pypods_database")
 
     if database_type == "postgresql":
-        return pg_pool.SimpleConnectionPool(
-            1,  # minconn
-            32,  # maxconn
-            host=db_host,
-            port=db_port,
-            user=db_user,
-            password=db_password,
-            dbname=db_name
-        )
+        conninfo = f"host={db_host} port={db_port} user={db_user} password={db_password} dbname={db_name}"
+        return ConnectionPool(conninfo=conninfo, min_size=1, max_size=32, open=True)
     else:  # Default to MariaDB/MySQL
         return pooling.MySQLConnectionPool(
             pool_name="pinepods_api_pool",
@@ -170,11 +166,14 @@ connection_pool = setup_connection_pool()
 def get_api_keys(cnx):
     logging.info("Executing get_api_keys function...")
     if database_type == "postgresql":
-        cursor = cnx.cursor(cursor_factory=RealDictCursor)
+        # Use dict_row row factory for PostgreSQL
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query = 'SELECT * FROM "APIKeys"'
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
+        query = "SELECT * FROM APIKeys"
 
-    query = "SELECT * FROM APIKeys"
     try:
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -216,7 +215,7 @@ class Web_Key:
         self.web_key = None
 
     def get_web_key(self, cnx):
-        self.web_key = database_functions.functions.get_web_key(cnx)
+        self.web_key = database_functions.functions.get_web_key(cnx, database_type)
 
 
 base_webkey = Web_Key()
@@ -252,17 +251,13 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
     # If it's the web key, allow the request (return True)
     if is_web_key:
         return True
-
     # Get user ID associated with the API key
-    user_id = database_functions.functions.id_from_api_key(cnx, api_key)
-
+    user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     # If no user ID found, throw an exception
     if not user_id:
         raise HTTPException(status_code=403, detail="Invalid API key.")
-
     # Check if the user is an admin
-    is_admin = database_functions.functions.user_admin_check(cnx, user_id)
-
+    is_admin = database_functions.functions.user_admin_check(cnx, database_type, user_id)
     # If the user is not an admin, throw an exception
     if not is_admin:
         raise HTTPException(status_code=403, detail="User not authorized.")
@@ -271,24 +266,24 @@ async def check_if_admin(api_key: str = Depends(get_api_key_from_header), cnx=De
     return True
 
 
-async def check_if_admin_inner(api_key: str, cnx):
-    user_id = database_functions.functions.id_from_api_key(cnx, api_key)
+def check_if_admin_inner(api_key: str, cnx):
+    user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     if not user_id:
         return False
-
-    return database_functions.functions.user_admin_check(cnx, user_id)
+    print("checking admin")
+    return database_functions.functions.user_admin_check(cnx, database_type, user_id)
 
 
 async def has_elevated_access(api_key: str, cnx):
     # Check if it's an admin
-    is_admin = await check_if_admin_inner(api_key, cnx)
-
+    is_admin = await run_in_threadpool(check_if_admin_inner, api_key, cnx)
     # Check if it's the web key
     web_key = base_webkey.web_key
     is_web_key = api_key == web_key
 
     return is_admin or is_web_key
+
 
 
 @app.get('/api/pinepods_check')
@@ -298,9 +293,9 @@ async def pinepods_check():
 
 @app.get('/api/data/verify_key')
 async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        database_functions.functions.clean_expired_sessions(cnx)
+        database_functions.functions.clean_expired_sessions(cnx, database_type)
         return {"status": "success"}
     else:
         raise HTTPException(status_code=403,
@@ -308,10 +303,9 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
 
 @app.get('/api/data/get_user')
 async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        retrieved_id = database_functions.functions.get_api_user(cnx, api_key)
-        logging.error(f"here's id: {retrieved_id}")
+        retrieved_id = database_functions.functions.get_api_user(cnx, database_type, api_key)
         return {"status": "success", "retrieved_id": retrieved_id}
     else:
         raise HTTPException(status_code=403,
@@ -321,9 +315,9 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
 async def verify_key(cnx=Depends(get_database_connection),
                      credentials: HTTPBasicCredentials = Depends(get_current_user)):
     logging.info(f"creds: {credentials.username}, {credentials.password}")
-    is_password_valid = database_functions.auth_functions.verify_password(cnx, credentials.username, credentials.password)
+    is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, credentials.username, credentials.password)
     if is_password_valid:
-        retrieved_key = database_functions.functions.get_api_key(cnx, credentials.username)
+        retrieved_key = database_functions.functions.get_api_key(cnx, database_type, credentials.username)
         return {"status": "success", "retrieved_key": retrieved_key}
     else:
         raise HTTPException(status_code=403,
@@ -333,9 +327,9 @@ async def verify_key(cnx=Depends(get_database_connection),
 @app.post("/api/data/clean_expired_sessions/")
 async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        database_functions.functions.clean_expired_sessions(cnx)
+        database_functions.functions.clean_expired_sessions(cnx, database_type)
         return {"status": "success"}
     else:
         raise HTTPException(status_code=403,
@@ -345,9 +339,9 @@ async def api_clean_expired_sessions(cnx=Depends(get_database_connection),
 @app.get("/api/data/check_saved_session/{session_value}", response_model=int)
 async def api_check_saved_session(session_value: str, cnx=Depends(get_database_connection),
                                   api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        result = database_functions.functions.check_saved_session(cnx, session_value)
+        result = database_functions.functions.check_saved_session(cnx, database_type, session_value)
         if result:
             return result
         else:
@@ -361,7 +355,7 @@ async def api_check_saved_session(session_value: str, cnx=Depends(get_database_c
 async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depends(get_database_connection)):
     global api_url, proxy_url, proxy_host, proxy_port, proxy_protocol, reverse_proxy
 
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         return {
             "api_url": api_url,
@@ -378,9 +372,9 @@ async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depend
 
 @app.get("/api/data/guest_status", response_model=bool)
 async def api_guest_status(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        result = database_functions.functions.guest_status(cnx)
+        result = database_functions.functions.guest_status(cnx, database_type)
         return result
     else:
         raise HTTPException(status_code=403,
@@ -389,9 +383,9 @@ async def api_guest_status(cnx=Depends(get_database_connection), api_key: str = 
 
 @app.get("/api/data/download_status", response_model=bool)
 async def api_download_status(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        result = database_functions.functions.download_status(cnx)
+        result = database_functions.functions.download_status(cnx, database_type)
         return result
     else:
         raise HTTPException(status_code=403,
@@ -401,7 +395,7 @@ async def api_download_status(cnx=Depends(get_database_connection), api_key: str
 @app.get("/api/data/user_details/{username}")
 async def api_get_user_details(username: str, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -411,16 +405,16 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
 
     if not elevated_access:
         # Get user ID from username
-        user_id_from_username = database_functions.functions.get_user_id(cnx, username)
+        user_id_from_username = database_functions.functions.get_user_id(cnx, database_type, username)
 
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id_from_username != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
 
-    result = database_functions.functions.get_user_details(cnx, username)
+    result = database_functions.functions.get_user_details(cnx, database_type, username)
     if result:
         return result
     else:
@@ -434,7 +428,7 @@ class SessionData(BaseModel):
 @app.post("/api/data/create_session/{user_id}")
 async def api_create_session(user_id: int, session_data: SessionData, cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -442,11 +436,11 @@ async def api_create_session(user_id: int, session_data: SessionData, cnx=Depend
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        database_functions.functions.create_session(cnx, user_id, session_data.session_token)
+        database_functions.functions.create_session(cnx, database_type, user_id, session_data.session_token)
         return {"status": "success"}
     else:
         raise HTTPException(status_code=403,
@@ -461,13 +455,12 @@ class VerifyPasswordInput(BaseModel):
 @app.post("/api/data/verify_password/")
 async def api_verify_password(data: VerifyPasswordInput, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         if database_type == 'postgresql':
-            print('run in postgres')
-            is_password_valid = database_functions.functions.verify_password(cnx, data.username, data.password)
+            is_password_valid = database_functions.functions.verify_password(cnx, database_type, data.username, data.password)
         else:
-            is_password_valid = database_functions.auth_functions.verify_password(cnx, data.username, data.password)
+            is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, data.username, data.password)
         return {"is_password_valid": is_password_valid}
     else:
         raise HTTPException(status_code=403,
@@ -477,7 +470,7 @@ async def api_verify_password(data: VerifyPasswordInput, cnx=Depends(get_databas
 @app.get("/api/data/return_episodes/{user_id}")
 async def api_return_episodes(user_id: int, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -485,7 +478,7 @@ async def api_return_episodes(user_id: int, cnx=Depends(get_database_connection)
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
@@ -500,7 +493,7 @@ async def api_return_episodes(user_id: int, cnx=Depends(get_database_connection)
 
 @app.get("/api/data/podcast_episodes")
 async def api_podcast_episodes(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Query(...), podcast_id: int = Query(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -508,24 +501,26 @@ async def api_podcast_episodes(cnx=Depends(get_database_connection), api_key: st
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
         episodes = database_functions.functions.return_podcast_episodes(database_type, cnx, user_id, podcast_id)
         if episodes is None:
             episodes = []  # Return an empty list instead of raising an exception
+        # logging.error(f"Episodes returned: {episodes}")
         return {"episodes": episodes}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return episodes of your own!")
 
 
+
 @app.get("/api/data/get_podcast_id")
 async def api_podcast_id(cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
                               user_id: int = Query(...), podcast_feed: str = Query(...), podcast_title: str = Query(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -533,7 +528,7 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
@@ -545,11 +540,59 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="You can only return pocast ids of your own podcasts!")
 
+@app.get("/api/data/get_podcast_id_from_ep_id")
+async def api_get_podcast_id(episode_id: int, user_id: int, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    logging.info('Fetching API key')
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    logging.info('Getting key ID')
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    logging.info(f'Got key ID: {key_id}')
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+        if podcast_id is None:
+            raise HTTPException(status_code=404, detail="Podcast ID not found for the given episode ID")
+        return {"podcast_id": podcast_id}
+    else:
+        raise HTTPException(status_code=403, detail="You can only get podcast ID for your own episodes.")
+
+
+@app.get("/api/data/get_podcast_id_from_ep_name")
+async def api_get_podcast_id_name(episode_name: str, episode_url: str, user_id: int, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    logging.info('Fetching API key')
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    logging.info('Getting key ID')
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    logging.info(f'Got key ID: {key_id}')
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        podcast_id = database_functions.functions.get_podcast_id_from_episode_name(cnx, database_type, episode_name, episode_url, user_id)
+        if podcast_id is None:
+            raise HTTPException(status_code=404, detail="Podcast ID not found for the given episode name and URL")
+        return {"podcast_id": podcast_id}
+    else:
+        raise HTTPException(status_code=403, detail="You can only get podcast ID for your own episodes.")
+
+
 @app.get("/api/data/get_podcast_details")
 async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
                               user_id: int = Query(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -557,7 +600,7 @@ async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
@@ -576,10 +619,10 @@ class PodcastFeedData(BaseModel):
 @app.get("/api/data/fetch_podcast_feed")
 async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
-    
+
     # Fetch the podcast feed data using httpx
     async with httpx.AsyncClient(follow_redirects=True) as client:
         response = await client.get(podcast_feed)
@@ -594,7 +637,7 @@ async def api_check_episode_playback(
         episode_url: Optional[str] = Form(None),
         cnx=Depends(get_database_connection),
         api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -602,14 +645,14 @@ async def api_check_episode_playback(
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
         logging.info(f"Received: user_id={user_id}, episode_title={episode_title}, episode_url={episode_url}")
 
         has_playback, listen_duration = database_functions.functions.check_episode_playback(
-            cnx, user_id, episode_title, episode_url
+            cnx, database_type, user_id, episode_title, episode_url
         )
         if has_playback:
             logging.info("Playback found, listen_duration={}".format(listen_duration))
@@ -625,7 +668,7 @@ async def api_check_episode_playback(
 @app.get("/api/data/user_details_id/{user_id}")
 async def api_get_user_details_id(user_id: int, cnx=Depends(get_database_connection),
                                   api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -635,12 +678,12 @@ async def api_get_user_details_id(user_id: int, cnx=Depends(get_database_connect
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
-    result = database_functions.functions.get_user_details_id(cnx, user_id)
+    result = database_functions.functions.get_user_details_id(cnx, database_type, user_id)
     if result:
         return result
     else:
@@ -650,7 +693,7 @@ async def api_get_user_details_id(user_id: int, cnx=Depends(get_database_connect
 @app.get("/api/data/get_theme/{user_id}")
 async def api_get_theme(user_id: int, cnx=Depends(get_database_connection),
                         api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -658,11 +701,11 @@ async def api_get_theme(user_id: int, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
-        theme = database_functions.functions.get_theme(cnx, user_id)
+        theme = database_functions.functions.get_theme(cnx, database_type, user_id)
         return {"theme": theme}
     else:
         raise HTTPException(status_code=403,
@@ -687,9 +730,8 @@ class PodcastValuesModel(BaseModel):
 @app.post("/api/data/add_podcast")
 async def api_add_podcast(podcast_values: PodcastValuesModel,
                           cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-                          
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-    logging.error(f"{podcast_values}")
+
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -697,7 +739,7 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == podcast_values.user_id or is_web_key:
@@ -705,8 +747,8 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
         if database_functions.functions.check_gpodder_settings(database_type, cnx, podcast_values.user_id):
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, podcast_values.user_id)
             print(f"Adding podcast to Nextcloud: {gpodder_url}, {gpodder_login}, {gpodder_token}, {podcast_values.pod_feed_url}")
-            database_functions.functions.add_podcast_to_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
-        result = database_functions.functions.add_podcast(cnx, podcast_values.dict(), podcast_values.user_id)
+            database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
+        result = database_functions.functions.add_podcast(cnx, database_type, podcast_values.dict(), podcast_values.user_id)
         if result:
             return {"success": True}
         else:
@@ -714,35 +756,35 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make sessions for yourself!")
-    
+
 @app.post("/api/data/enable_disable_guest")
 async def api_enable_disable_guest(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    database_functions.functions.enable_disable_guest(cnx)
+    database_functions.functions.enable_disable_guest(cnx, database_type)
     return {"success": True}
 
 
 @app.post("/api/data/enable_disable_downloads")
 async def api_enable_disable_downloads(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    database_functions.functions.enable_disable_downloads(cnx)
+    database_functions.functions.enable_disable_downloads(cnx, database_type)
     return {"success": True}
 
 
 @app.post("/api/data/enable_disable_self_service")
 async def api_enable_disable_self_service(is_admin: bool = Depends(check_if_admin),
                                           cnx=Depends(get_database_connection)):
-    database_functions.functions.enable_disable_self_service(cnx)
+    database_functions.functions.enable_disable_self_service(cnx, database_type)
     return {"success": True}
 
 
 @app.get("/api/data/self_service_status")
 async def api_self_service_status(cnx=Depends(get_database_connection)):
-    status = database_functions.functions.self_service_status(cnx)
+    status = database_functions.functions.self_service_status(cnx, database_type)
     return {"status": status}
 
 @app.put("/api/data/increment_listen_time/{user_id}")
 async def api_increment_listen_time(user_id: int, cnx=Depends(get_database_connection),
                                     api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -750,11 +792,11 @@ async def api_increment_listen_time(user_id: int, cnx=Depends(get_database_conne
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
-        database_functions.functions.increment_listen_time(cnx, user_id)
+        database_functions.functions.increment_listen_time(cnx, database_type, user_id)
         return {"detail": "Listen time incremented."}
     else:
         raise HTTPException(status_code=403,
@@ -764,7 +806,7 @@ async def api_increment_listen_time(user_id: int, cnx=Depends(get_database_conne
 @app.put("/api/data/increment_played/{user_id}")
 async def api_increment_played(user_id: int, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -772,11 +814,11 @@ async def api_increment_played(user_id: int, cnx=Depends(get_database_connection
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        database_functions.functions.increment_played(cnx, user_id)
+        database_functions.functions.increment_played(cnx, database_type, user_id)
         return {"detail": "Played count incremented."}
     else:
         raise HTTPException(status_code=403,
@@ -792,7 +834,7 @@ class RecordHistoryData(BaseModel):
 @app.post("/api/data/record_podcast_history")
 async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -800,15 +842,35 @@ async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_da
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_podcast_history(cnx, data.episode_id, data.user_id, data.episode_pos)
+        database_functions.functions.record_podcast_history(cnx, database_type, data.episode_id, data.user_id, data.episode_pos)
         return {"detail": "Podcast history recorded."}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only make sessions for yourself!")
+
+class GetEpisodeIdRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+
+@app.post("/api/data/get_episode_id")
+async def api_get_episode_id(data: GetEpisodeIdRequest, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Fetch the first episode ID for the given podcast
+    episode_id = database_functions.functions.get_first_episode_id(cnx, database_type, data.podcast_id, data.user_id)
+    if episode_id is None:
+        raise HTTPException(status_code=404, detail="No episodes found for this podcast.")
+
+    return {"episode_id": episode_id}
+
 
 
 class DownloadPodcastData(BaseModel):
@@ -819,7 +881,7 @@ class DownloadPodcastData(BaseModel):
 @app.post("/api/data/download_podcast")
 async def api_download_podcast(data: DownloadPodcastData, background_tasks: BackgroundTasks, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -827,11 +889,11 @@ async def api_download_podcast(data: DownloadPodcastData, background_tasks: Back
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_downloaded(cnx, data.user_id, data.episode_id)
+        ep_status = database_functions.functions.check_downloaded(cnx, database_type, data.user_id, data.episode_id)
         if ep_status:
             return {"detail": "Podcast already downloaded."}
         else:
@@ -840,24 +902,54 @@ async def api_download_podcast(data: DownloadPodcastData, background_tasks: Back
     else:
         raise HTTPException(status_code=403,
                             detail="You can only download podcasts for yourself!")
-    
+
 def download_podcast_fun(episode_id: int, user_id: int):
     cnx = create_database_connection()  # replace with your function to create a new database connection
+    logger.error('downloading fun for log')
     try:
-        database_functions.functions.download_podcast(cnx, episode_id, user_id)
+        database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
         cnx.close()  # make sure to close the connection when you're done
 
-def test_download_podcast_fun(episode_id: int, user_id: int):
-    print(f"Downloading podcast {episode_id} for user {user_id}")
-    cnx = create_database_connection()
+class DownloadAllPodcastData(BaseModel):
+    podcast_id: int
+    user_id: int
+
+@app.post("/api/data/download_all_podcast")
+async def api_download_all_podcast(data: DownloadAllPodcastData, background_tasks: BackgroundTasks, cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        episode_ids = database_functions.functions.get_episode_ids_for_podcast(cnx, database_type, data.podcast_id)
+        if not episode_ids:
+            return {"detail": "No episodes found for the given podcast."}
+
+        for episode_id in episode_ids:
+            if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, episode_id):
+                background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id)
+
+        return {"detail": "Podcast download started for all episodes."}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only download podcasts for yourself!")
+
+def download_all_podcast_fun(episode_id: int, user_id: int):
+    cnx = create_database_connection()  # replace with your function to create a new database connection
+    logger.error('Starting download for episode: %d', episode_id)
     try:
-        database_functions.functions.download_podcast(cnx, episode_id, user_id)
+        database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        cnx.close()  # make sure to close the connection when you're done
 
 
 class DeletePodcastData(BaseModel):
@@ -868,7 +960,7 @@ class DeletePodcastData(BaseModel):
 @app.post("/api/data/delete_episode")
 async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -876,15 +968,136 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.delete_episode(cnx, data.episode_id, data.user_id)
+        database_functions.functions.delete_episode(database_type, cnx, data.episode_id, data.user_id)
         return {"detail": "Podcast deleted."}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only delete podcasts for yourself!")
+
+class MarkEpisodeCompletedData(BaseModel):
+    episode_id: int
+    user_id: int
+
+@app.post("/api/data/mark_episode_completed")
+async def api_mark_episode_completed(data: MarkEpisodeCompletedData, cnx=Depends(get_database_connection),
+                                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.mark_episode_completed(cnx, database_type, data.episode_id, data.user_id)
+        return {"detail": "Episode marked as completed."}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only mark episodes as completed for yourself.")
+
+class AutoDownloadRequest(BaseModel):
+    podcast_id: int
+    auto_download: bool
+    user_id: int
+
+@app.post("/api/data/enable_auto_download")
+async def api_enable_auto_download(data: AutoDownloadRequest, cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id:
+        database_functions.functions.enable_auto_download(cnx, database_type, data.podcast_id, data.user_id, data.auto_download)
+        return {"detail": "Auto-download status updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+
+class AutoDownloadStatusRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+class AutoDownloadStatusResponse(BaseModel):
+    auto_download: bool
+
+@app.post("/api/data/get_auto_download_status")
+async def api_get_auto_download_status(data: AutoDownloadStatusRequest, cnx=Depends(get_database_connection),
+                                       api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403, detail="You can only get the status for your own podcast.")
+
+    status = database_functions.functions.call_get_auto_download_status(cnx, database_type, data.podcast_id, data.user_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    return AutoDownloadStatusResponse(auto_download=status)
+
+class SkipTimesRequest(BaseModel):
+    podcast_id: int
+    start_skip: Optional[int] = 0
+    end_skip: Optional[int] = 0
+    user_id: int
+
+@app.post("/api/data/adjust_skip_times")
+async def api_adjust_skip_times(data: SkipTimesRequest, cnx=Depends(get_database_connection),
+                                api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.adjust_skip_times(cnx, database_type, data.podcast_id, data.start_skip, data.end_skip)
+        return {"detail": "Skip times updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+
+class AutoSkipTimesRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+class AutoSkipTimesResponse(BaseModel):
+    start_skip: int
+    end_skip: int
+
+@app.post("/api/data/get_auto_skip_times")
+async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_database_connection),
+                                  api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403, detail="You can only get the skip times for your own podcast.")
+
+    start_skip, end_skip = database_functions.functions.get_auto_skip_times(cnx, database_type, data.podcast_id, data.user_id)
+    if start_skip is None or end_skip is None:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    return AutoSkipTimesResponse(start_skip=start_skip, end_skip=end_skip)
 
 
 class SaveEpisodeData(BaseModel):
@@ -895,7 +1108,7 @@ class SaveEpisodeData(BaseModel):
 @app.post("/api/data/save_episode")
 async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -903,15 +1116,15 @@ async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_conne
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_saved(cnx, data.user_id, data.episode_id)
+        ep_status = database_functions.functions.check_saved(cnx, database_type, data.user_id, data.episode_id)
         if ep_status:
             return {"detail": "Episode already saved."}
         else:
-            success = database_functions.functions.save_episode(cnx, data.episode_id, data.user_id)
+            success = database_functions.functions.save_episode(cnx, database_type, data.episode_id, data.user_id)
         if success:
             return {"detail": "Episode saved!"}
         else:
@@ -929,11 +1142,11 @@ class RemoveSavedEpisodeData(BaseModel):
 @app.post("/api/data/remove_saved_episode")
 async def api_remove_saved_episode(data: RemoveSavedEpisodeData, cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
         if key_id == data.user_id:
-            database_functions.functions.remove_saved_episode(cnx, data.episode_id, data.user_id)
+            database_functions.functions.remove_saved_episode(cnx, database_type, data.episode_id, data.user_id)
             return {"detail": "Saved episode removed."}
         else:
             raise HTTPException(status_code=403,
@@ -952,7 +1165,7 @@ class RecordListenDurationData(BaseModel):
 @app.post("/api/data/record_listen_duration")
 async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -963,10 +1176,10 @@ async def api_record_listen_duration(data: RecordListenDurationData, cnx=Depends
 
     # Continue as normal for all other episode IDs
     is_web_key = api_key == base_webkey.web_key
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_listen_duration(cnx, data.episode_id, data.user_id, data.listen_duration)
+        database_functions.functions.record_listen_duration(cnx, database_type, data.episode_id, data.user_id, data.listen_duration)
         return {"detail": "Listen duration recorded."}
     else:
         raise HTTPException(status_code=403, detail="You can only record your own listen duration")
@@ -981,7 +1194,7 @@ async def api_refresh_pods(background_tasks: BackgroundTasks, is_admin: bool = D
 def refresh_pods_task():
     cnx = create_database_connection()
     try:
-        database_functions.functions.refresh_pods(cnx)
+        database_functions.functions.refresh_pods(cnx, database_type)
     finally:
         if database_type == "postgresql":
             connection_pool.putconn(cnx)
@@ -991,29 +1204,34 @@ def refresh_pods_task():
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),
                         api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    logging.info('Fetching API key')
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    logging.info('Getting key ID')
+    logger.info(f'id {user_id}')
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    logging.info(f'Got key ID: {key_id}')
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        stats = database_functions.functions.get_stats(cnx, user_id)
+        stats = database_functions.functions.get_stats(cnx, database_type, user_id)
+        logging.info('Got stats')
+        if stats is None:
+            raise HTTPException(status_code=404, detail="Stats not found for the given user ID")
         return stats
     else:
-        raise HTTPException(status_code=403,
-                            detail="You can only get stats for your own account.")
+        raise HTTPException(status_code=403, detail="You can only get stats for your own account.")
+
 
 
 @app.get("/api/data/get_user_episode_count")
 async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_connection),
                                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         logging.error(f"not valid key")
@@ -1024,15 +1242,13 @@ async def api_get_user_episode_count(user_id: int, cnx=Depends(get_database_conn
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
-    episode_count = database_functions.functions.get_user_episode_count(cnx, user_id)
+    episode_count = database_functions.functions.get_user_episode_count(cnx, database_type, user_id)
     if episode_count:
-        print(episode_count)
-        logging.error(f"here's count: {episode_count}")
         return episode_count
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1046,15 +1262,15 @@ async def api_get_user_info(is_admin: bool = Depends(check_if_admin), cnx=Depend
 
 @app.get("/api/data/check_podcast", response_model=Dict[str, bool])
 async def api_check_podcast(
-    user_id: int, 
-    podcast_name: str, 
+    user_id: int,
+    podcast_name: str,
     podcast_url: str,
-    cnx=Depends(get_database_connection), 
+    cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        exists = database_functions.functions.check_podcast(cnx, user_id, podcast_name, podcast_url)
+        exists = database_functions.functions.check_podcast(cnx, database_type, user_id, podcast_name, podcast_url)
         return {"exists": exists}
     else:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
@@ -1062,24 +1278,23 @@ async def api_check_podcast(
 @app.get("/api/data/user_admin_check/{user_id}")
 async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header),
                                      cnx=Depends(get_database_connection)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    print("validated key")
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
+    print("running elevated access")
     elevated_access = await has_elevated_access(api_key, cnx)
-
+    print("post access")
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to check admin status for other users")
-    is_admin = database_functions.functions.user_admin_check(cnx, user_id)
+    is_admin = await run_in_threadpool(database_functions.functions.user_admin_check, cnx, database_type, user_id)
     return {"is_admin": is_admin}
-
 
 class RemovePodcastData(BaseModel):
     user_id: int
@@ -1090,7 +1305,7 @@ class RemovePodcastData(BaseModel):
 @app.post("/api/data/remove_podcast")
 async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1100,15 +1315,15 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
-    database_functions.functions.remove_podcast(cnx, data.podcast_name, data.podcast_url, data.user_id)
+        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+    database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
     return {"success": True}
 
 class RemovePodcastIDData(BaseModel):
@@ -1117,9 +1332,9 @@ class RemovePodcastIDData(BaseModel):
 
 
 @app.post("/api/data/remove_podcast_id")
-async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=Depends(get_database_connection),
+async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...), cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1129,22 +1344,26 @@ async def api_remove_podcast_route(data: RemovePodcastIDData = Body(...), cnx=De
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
+    logging.info('check gpod')
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+        logging.info('get cloud vals')
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
-    database_functions.functions.remove_podcast_id(cnx, data.podcast_id, data.user_id)
+        logging.info('em cloud')
+        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+    logging.info('rm pod id')
+    database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
     return {"success": True}
 
 
 @app.get("/api/data/return_pods/{user_id}")
 async def api_return_pods(user_id: int, cnx=Depends(get_database_connection),
                           api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1152,7 +1371,7 @@ async def api_return_pods(user_id: int, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -1166,7 +1385,7 @@ async def api_return_pods(user_id: int, cnx=Depends(get_database_connection),
 @app.get("/api/data/user_history/{user_id}")
 async def api_user_history(user_id: int, cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1174,21 +1393,22 @@ async def api_user_history(user_id: int, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        history = database_functions.functions.user_history(cnx, user_id)
+        history = database_functions.functions.user_history(cnx, database_type, user_id)
         return {"data": history}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return history for yourself!")
 
 
+
 @app.get("/api/data/saved_episode_list/{user_id}")
 async def api_saved_episode_list(user_id: int, cnx=Depends(get_database_connection),
                                  api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1196,7 +1416,7 @@ async def api_saved_episode_list(user_id: int, cnx=Depends(get_database_connecti
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -1209,9 +1429,9 @@ async def api_saved_episode_list(user_id: int, cnx=Depends(get_database_connecti
 
 @app.get("/api/data/download_episode_list")
 async def api_download_episode_list(cnx=Depends(get_database_connection),
-                                    api_key: str = Depends(get_api_key_from_header), 
+                                    api_key: str = Depends(get_api_key_from_header),
                                     user_id: int = Query(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1219,7 +1439,7 @@ async def api_download_episode_list(cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -1234,7 +1454,7 @@ async def api_download_episode_list(cnx=Depends(get_database_connection),
 async def api_return_selected_episode(cnx=Depends(get_database_connection),
                                       api_key: str = Depends(get_api_key_from_header), user_id: int = Body(...),
                                       title: str = Body(...), url: str = Body(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1242,11 +1462,11 @@ async def api_return_selected_episode(cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        episode_info = database_functions.functions.return_selected_episode(cnx, user_id, title, url)
+        episode_info = database_functions.functions.return_selected_episode(database_type, cnx, user_id, title, url)
         return {"episode_info": episode_info}
     else:
         raise HTTPException(status_code=403,
@@ -1263,7 +1483,7 @@ class UserValues(BaseModel):
 @app.post("/api/data/add_user")
 async def api_add_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                        user_values: UserValues = Body(...)):
-    database_functions.functions.add_user(cnx, (
+    database_functions.functions.add_user(cnx, database_type, (
         user_values.fullname, user_values.username, user_values.email, user_values.hash_pw))
     return {"detail": "User added."}
 
@@ -1271,9 +1491,9 @@ async def api_add_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get
 @app.post("/api/data/add_login_user")
 async def api_add_user(cnx=Depends(get_database_connection),
                        user_values: UserValues = Body(...)):
-    self_service = database_functions.functions.check_self_service(cnx)
+    self_service = database_functions.functions.check_self_service(cnx, database_type)
     if self_service:
-        database_functions.functions.add_user(cnx, (
+        database_functions.functions.add_user(cnx, database_type, (
             user_values.fullname, user_values.username, user_values.email, user_values.hash_pw))
         return {"detail": "User added."}
     else:
@@ -1284,7 +1504,7 @@ async def api_add_user(cnx=Depends(get_database_connection),
 @app.put("/api/data/set_fullname/{user_id}")
 async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1294,13 +1514,13 @@ async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
     try:
-        database_functions.functions.set_fullname(cnx, user_id, new_name)
+        database_functions.functions.set_fullname(cnx, database_type, user_id, new_name)
         return {"detail": "Fullname updated."}
     except:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1317,7 +1537,6 @@ async def api_set_password(
     api_key: str = Depends(get_api_key_from_header)
 ):
     hash_pw = request.hash_pw  # Extract the hash_pw from the request model
-    print(f"Received hash_pw: {hash_pw}")  # Debugging line to check received hash_pw
 
     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
 
@@ -1333,7 +1552,7 @@ async def api_set_password(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to access these user details")
 
     try:
-        database_functions.functions.set_password(cnx, user_id, hash_pw)
+        database_functions.functions.set_password(cnx, database_type, user_id, hash_pw)
         return {"detail": "Password updated."}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User not found. Error: {str(e)}")
@@ -1341,7 +1560,7 @@ async def api_set_password(
 @app.put("/api/data/user/set_email")
 async def api_set_email(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                         user_id: int = Body(...), new_email: str = Body(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1351,13 +1570,13 @@ async def api_set_email(cnx=Depends(get_database_connection), api_key: str = Dep
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
     try:
-        database_functions.functions.set_email(cnx, user_id, new_email)
+        database_functions.functions.set_email(cnx, database_type, user_id, new_email)
         return {"detail": "Email updated."}
     except:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1366,7 +1585,7 @@ async def api_set_email(cnx=Depends(get_database_connection), api_key: str = Dep
 @app.put("/api/data/user/set_username")
 async def api_set_username(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                            user_id: int = Body(...), new_username: str = Body(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1376,13 +1595,13 @@ async def api_set_username(cnx=Depends(get_database_connection), api_key: str = 
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
     try:
-        database_functions.functions.set_username(cnx, user_id, new_username)
+        database_functions.functions.set_username(cnx, database_type, user_id, new_username)
         return {"detail": "Username updated."}
     except:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1391,28 +1610,28 @@ async def api_set_username(cnx=Depends(get_database_connection), api_key: str = 
 @app.put("/api/data/user/set_isadmin")
 async def api_set_isadmin(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection),
                           user_id: int = Body(...), isadmin: bool = Body(...)):
-    database_functions.functions.set_isadmin(cnx, user_id, isadmin)
+    database_functions.functions.set_isadmin(cnx, database_type, user_id, isadmin)
     return {"detail": "IsAdmin status updated."}
 
 
 @app.get("/api/data/user/final_admin/{user_id}")
 async def api_final_admin(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection),
                           user_id: int = Path(...)):
-    is_final_admin = database_functions.functions.final_admin(cnx, user_id)
+    is_final_admin = database_functions.functions.final_admin(cnx, database_type, user_id)
     return {"final_admin": is_final_admin}
 
 
 @app.delete("/api/data/user/delete/{user_id}")
 async def api_delete_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection),
                           user_id: int = Path(...)):
-    database_functions.functions.delete_user(cnx, user_id)
+    database_functions.functions.delete_user(cnx, database_type, user_id)
     return {"status": "User deleted"}
 
 
 @app.put("/api/data/user/set_theme")
 async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cnx=Depends(get_database_connection),
                         api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1420,11 +1639,11 @@ async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cn
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        database_functions.functions.set_theme(cnx, user_id, new_theme)
+        database_functions.functions.set_theme(cnx, database_type, user_id, new_theme)
         return {"message": "Theme updated successfully"}
     else:
         raise HTTPException(status_code=403,
@@ -1434,7 +1653,7 @@ async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cn
 @app.get("/api/data/user/check_downloaded")
 async def api_check_downloaded(user_id: int, title: str, url: str, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1442,11 +1661,11 @@ async def api_check_downloaded(user_id: int, title: str, url: str, cnx=Depends(g
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        is_downloaded = database_functions.functions.check_downloaded(cnx, user_id, title, url)
+        is_downloaded = database_functions.functions.check_downloaded(cnx, database_type, user_id, title, url)
         return {"is_downloaded": is_downloaded}
     else:
         raise HTTPException(status_code=403,
@@ -1456,7 +1675,7 @@ async def api_check_downloaded(user_id: int, title: str, url: str, cnx=Depends(g
 @app.get("/api/data/user/check_saved")
 async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_database_connection),
                           api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1464,11 +1683,11 @@ async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_da
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        is_saved = database_functions.functions.check_saved(cnx, user_id, title, url)
+        is_saved = database_functions.functions.check_saved(cnx, database_type, user_id, title, url)
         return {"is_saved": is_saved}
     else:
         raise HTTPException(status_code=403,
@@ -1478,9 +1697,9 @@ async def api_check_saved(user_id: int, title: str, url: str, cnx=Depends(get_da
 @app.post("/api/data/create_api_key")
 async def api_create_api_key(user_id: int = Body(..., embed=True), cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        new_api_key = database_functions.functions.create_api_key(cnx, user_id)
+        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
         return {"api_key": new_api_key}
     else:
         raise HTTPException(status_code=403,
@@ -1530,6 +1749,7 @@ async def api_send_email(payload: SendTestEmailValues, is_admin: bool = Depends(
         send_status = await run_in_threadpool(send_email, payload)
         return {"email_status": send_status}
     except Exception as e:
+        print(traceback.format_exc())  # Print full exception information
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 class SendEmailValues(BaseModel):
@@ -1537,28 +1757,28 @@ class SendEmailValues(BaseModel):
     subject : str
     message: str  # Add this line
 
-def send_email_with_settings(email_values, payload: SendEmailValues):
+def send_email_with_settings(email_values, database_type, payload: SendEmailValues):
 
     try:
         msg = MIMEMultipart()
-        msg['From'] = email_values['From_Email']
+        msg['From'] = email_values['FromEmail']
         msg['To'] = payload.to_email
         msg['Subject'] = payload.subject
         msg.attach(MIMEText(payload.message, 'plain'))
-        
+
         try:
-            port = int(email_values['Server_Port'])
+            port = int(email_values['ServerPort'])
             if email_values['Encryption'] == "SSL/TLS":
-                server = smtplib.SMTP_SSL(email_values['Server_Name'], port)
+                server = smtplib.SMTP_SSL(email_values['ServerName'], port)
             elif email_values['Encryption'] == "StartTLS":
-                server = smtplib.SMTP(email_values['Server_Name'], port)
+                server = smtplib.SMTP(email_values['ServerName'], port)
                 server.starttls()
             else:
-                server = smtplib.SMTP(email_values['Server_Name'], port)
-                
-            if email_values['Auth_Required']:
+                server = smtplib.SMTP(email_values['ServerName'], port)
+
+            if email_values['AuthRequired']:
                 server.login(email_values['Username'], email_values['Password'])
-                
+
             server.send_message(msg)
             server.quit()
             return "Email sent successfully"
@@ -1569,20 +1789,19 @@ def send_email_with_settings(email_values, payload: SendEmailValues):
         raise Exception(f"Failed to send email: {str(e)}")
 
 
-
 @app.post("/api/data/send_email")
 async def api_send_email(payload: SendEmailValues, cnx=Depends(get_database_connection),
                          api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key")
 
-    email_values = database_functions.functions.get_email_settings(cnx)
+    email_values = database_functions.functions.get_email_settings(cnx, database_type)
     if not email_values:
         raise HTTPException(status_code=404, detail="Email settings not found")
 
     try:
-        send_status = await run_in_threadpool(send_email_with_settings, email_values, payload)
+        send_status = await run_in_threadpool(send_email_with_settings, email_values, database_type, payload)
         return {"email_status": send_status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
@@ -1591,19 +1810,19 @@ async def api_send_email(payload: SendEmailValues, cnx=Depends(get_database_conn
 @app.post("/api/data/save_email_settings")
 async def api_save_email_settings(email_settings: dict = Body(..., embed=True),
                                   is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    database_functions.functions.save_email_settings(cnx, email_settings)
+    database_functions.functions.save_email_settings(cnx, database_type, email_settings)
     return {"message": "Email settings saved."}
 
 
 @app.get("/api/data/get_encryption_key")
 async def api_get_encryption_key(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    encryption_key = database_functions.functions.get_encryption_key(cnx)
+    encryption_key = database_functions.functions.get_encryption_key(cnx, database_type)
     return {"encryption_key": encryption_key}
 
 
 @app.get("/api/data/get_email_settings")
 async def api_get_email_settings(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection)):
-    email_settings = database_functions.functions.get_email_settings(cnx)
+    email_settings = database_functions.functions.get_email_settings(cnx, database_type)
     return email_settings
 
 
@@ -1615,7 +1834,7 @@ class DeleteAPIKeyHeaders(BaseModel):
 @app.delete("/api/data/delete_api_key")
 async def api_delete_api_key(payload: DeleteAPIKeyHeaders, cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1625,40 +1844,40 @@ async def api_delete_api_key(payload: DeleteAPIKeyHeaders, cnx=Depends(get_datab
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if payload.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access or remove other users api-keys.")
     # Check if the API key to be deleted is the same as the one used in the current request
-    if database_functions.functions.is_same_api_key(cnx, payload.api_id, api_key):
+    if database_functions.functions.is_same_api_key(cnx, database_type, payload.api_id, api_key):
         raise HTTPException(status_code=403,
                             detail="You cannot delete the API key that is currently in use.")
 
     # Check if the API key belongs to the guest user (user_id 1)
-    if database_functions.functions.belongs_to_guest_user(cnx, payload.api_id):
+    if database_functions.functions.belongs_to_guest_user(cnx, database_type, payload.api_id):
         raise HTTPException(status_code=403,
                             detail="Cannot delete guest user api.")
 
     # Proceed with deletion if the checks pass
-    database_functions.functions.delete_api(cnx, payload.api_id)
+    database_functions.functions.delete_api(cnx, database_type, payload.api_id)
     return {"detail": "API key deleted."}
 
 
 @app.get("/api/data/get_api_info/{user_id}")
 async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                            user_id: int = Path(...)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
+    print('getting elevate')
     elevated_access = await has_elevated_access(api_key, cnx)
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -1682,15 +1901,15 @@ class ResetPasswordPayload(BaseModel):
 
 @app.post("/api/data/reset_password_create_code")
 async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_database_connection)):
-    email_setup = database_functions.functions.get_email_settings(cnx)
+    email_setup = database_functions.functions.get_email_settings(cnx, database_type)
     if email_setup['Server_Name'] == "default_server":
         raise HTTPException(status_code=403,
                             detail="Email settings not configured. Please contact your administrator.")
     else:
-        check_user = database_functions.functions.check_reset_user(cnx, payload.username, payload.email)
+        check_user = database_functions.functions.check_reset_user(cnx, database_type, payload.username, payload.email)
         if check_user:
-            create_code = database_functions.functions.reset_password_create_code(cnx, payload.email)
-                              
+            create_code = database_functions.functions.reset_password_create_code(cnx, database_type, payload.email)
+
                                           # Create a SendTestEmailValues instance with the email setup values and the password reset code
             email_payload = SendEmailValues(
                 to_email=payload.email,
@@ -1702,9 +1921,9 @@ async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_da
             if email_send:
                 return {"code_created": True}
             else:
-                database_functions.functions.reset_password_remove_code(cnx, payload.email)
+                database_functions.functions.reset_password_remove_code(cnx, database_type, payload.email)
                 raise HTTPException(status_code=500, detail="Failed to send email")
-            
+
             return {"user_exists": user_exists}
         else:
             raise HTTPException(status_code=404, detail="User not found")
@@ -1716,14 +1935,14 @@ class ResetVerifyCodePayload(BaseModel):
 
 @app.post("/api/data/verify_and_reset_password")
 async def api_verify_and_reset_password_route(payload: ResetVerifyCodePayload, cnx=Depends(get_database_connection)):
-    code_valid = database_functions.functions.verify_reset_code(cnx, payload.email, payload.reset_code)
+    code_valid = database_functions.functions.verify_reset_code(cnx, database_type, payload.email, payload.reset_code)
     if code_valid is None:
         raise HTTPException(status_code=404, detail="User not found")
     elif not code_valid:
         raise HTTPException(status_code=400, detail="Code is invalid")
         # return {"code_valid": False}
 
-    message = database_functions.functions.reset_password_prompt(cnx, payload.email, payload.new_password)
+    message = database_functions.functions.reset_password_prompt(cnx, database_type, payload.email, payload.new_password)
     if message is None:
         raise HTTPException(status_code=500, detail="Failed to reset password")
     return {"message": message}
@@ -1731,9 +1950,9 @@ async def api_verify_and_reset_password_route(payload: ResetVerifyCodePayload, c
 
 @app.post("/api/data/clear_guest_data")
 async def api_clear_guest_data(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
-        message = database_functions.functions.clear_guest_data(cnx)
+        message = database_functions.functions.clear_guest_data(cnx, database_type)
         if message is None:
             raise HTTPException(status_code=404, detail="User not found")
         return {"message": message}
@@ -1750,7 +1969,7 @@ class EpisodeMetadata(BaseModel):
 @app.post("/api/data/get_episode_metadata")
 async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1758,7 +1977,7 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -1772,8 +1991,7 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
 async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     # Perform API key validation and user authorization checks as before
-    logging.error(f"Running Save mfa")
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         logging.warning(f"Invalid API key: {api_key}")
         raise HTTPException(status_code=403,
@@ -1783,12 +2001,12 @@ async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection)
     is_web_key = api_key == base_webkey.web_key
     logging.info(f"Is web key: {is_web_key}")
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     logging.info(f"Key ID from API key: {key_id}")
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        user_details = database_functions.functions.get_user_details_id(cnx, user_id)
+        user_details = database_functions.functions.get_user_details_id(cnx, database_type, user_id)
         if not user_details:
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -1826,7 +2044,7 @@ async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection)
         logging.warning("Attempted to generate MFA secret for another user")
         raise HTTPException(status_code=403,
                             detail="You can only generate MFA secrets for yourself!")
-    
+
 class VerifyTempMFABody(BaseModel):
     user_id: int
     mfa_code: str
@@ -1835,10 +2053,9 @@ class VerifyTempMFABody(BaseModel):
 async def verify_temp_mfa(body: VerifyTempMFABody, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     # Perform API key validation and user authorization checks as before
-    logging.error(f"Running Save mfa")
     logging.info(f"Verifying MFA code for user_id: {body.user_id} with code: {body.mfa_code}")
 
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         logging.warning(f"Invalid API key: {api_key}")
         raise HTTPException(status_code=403,
@@ -1848,7 +2065,7 @@ async def verify_temp_mfa(body: VerifyTempMFABody, cnx=Depends(get_database_conn
     is_web_key = api_key == base_webkey.web_key
     logging.info(f"Is web key: {is_web_key}")
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     logging.info(f"Key ID from API key: {key_id}")
 
     if key_id == body.user_id or is_web_key:
@@ -1911,8 +2128,7 @@ class MfaSecretData(BaseModel):
 async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
     logging.info(f"Received request to save MFA secret for user {data.user_id}")
-    logging.error(f"Running Save mfa")
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         logging.warning(f"Invalid API key: {api_key}")
         raise HTTPException(status_code=403,
@@ -1922,7 +2138,7 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_conn
     is_web_key = api_key == base_webkey.web_key
     logging.info(f"Is web key: {is_web_key}")
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     logging.info(f"Key ID from API key: {key_id}")
 
     # Allow the action if the API key belongs to the user or it's the web API key
@@ -1938,11 +2154,11 @@ async def api_save_mfa_secret(data: MfaSecretData, cnx=Depends(get_database_conn
         logging.warning("Attempted to save MFA secret for another user")
         raise HTTPException(status_code=403,
                             detail="You can only save MFA secrets for yourself!")
-    
+
 @app.get("/api/data/check_mfa_enabled/{user_id}")
 async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connection),
                                 api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -1952,7 +2168,7 @@ async def api_check_mfa_enabled(user_id: int, cnx=Depends(get_database_connectio
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -1971,7 +2187,7 @@ class VerifyMFABody(BaseModel):
 @app.post("/api/data/verify_mfa")
 async def api_verify_mfa(body: VerifyMFABody, cnx=Depends(get_database_connection),
                          api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -1979,7 +2195,7 @@ async def api_verify_mfa(body: VerifyMFABody, cnx=Depends(get_database_connectio
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == body.user_id or is_web_key:
@@ -2003,7 +2219,7 @@ class UserIDBody(BaseModel):
 @app.delete("/api/data/delete_mfa")
 async def api_delete_mfa(body: UserIDBody, cnx=Depends(get_database_connection),
                          api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -2013,7 +2229,7 @@ async def api_delete_mfa(body: UserIDBody, cnx=Depends(get_database_connection),
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if body.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -2033,7 +2249,7 @@ class AllEpisodes(BaseModel):
 @app.post("/api/data/get_all_episodes")
 async def api_get_episodes(data: AllEpisodes, cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         episodes = database_functions.functions.get_all_episodes(database_type, cnx, data.pod_feed)
         return {"episodes": episodes}
@@ -2051,7 +2267,7 @@ class EpisodeToRemove(BaseModel):
 @app.post("/api/data/remove_episode_history")
 async def api_remove_episode_from_history(data: EpisodeToRemove, cnx=Depends(get_database_connection),
                                           api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2059,7 +2275,7 @@ async def api_remove_episode_from_history(data: EpisodeToRemove, cnx=Depends(get
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2083,7 +2299,7 @@ class TimeZoneInfo(BaseModel):
 @app.post("/api/data/setup_time_info")
 async def setup_timezone_info(data: TimeZoneInfo, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -2093,7 +2309,7 @@ async def setup_timezone_info(data: TimeZoneInfo, cnx=Depends(get_database_conne
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -2110,7 +2326,7 @@ async def setup_timezone_info(data: TimeZoneInfo, cnx=Depends(get_database_conne
 @app.get("/api/data/get_time_info")
 async def get_time_info(user_id: int, cnx=Depends(get_database_connection),
                         api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -2120,7 +2336,7 @@ async def get_time_info(user_id: int, cnx=Depends(get_database_connection),
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -2135,7 +2351,7 @@ async def get_time_info(user_id: int, cnx=Depends(get_database_connection),
 @app.get("/api/data/first_login_done/{user_id}")
 async def first_login_done(user_id: int, cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2143,7 +2359,7 @@ async def first_login_done(user_id: int, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -2161,7 +2377,7 @@ class SelectedEpisodesDelete(BaseModel):
 @app.post("/api/data/delete_selected_episodes")
 async def delete_selected_episodes(data: SelectedEpisodesDelete, cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2169,12 +2385,12 @@ async def delete_selected_episodes(data: SelectedEpisodesDelete, cnx=Depends(get
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         if is_valid_key:
-            delete_status = database_functions.functions.delete_selected_episodes(cnx, data.selected_episodes,
+            delete_status = database_functions.functions.delete_selected_episodes(cnx, database_type, data.selected_episodes,
                                                                                   data.user_id)
             return {"status": delete_status}
         else:
@@ -2193,7 +2409,7 @@ class SelectedPodcastsDelete(BaseModel):
 @app.post("/api/data/delete_selected_podcasts")
 async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2201,12 +2417,12 @@ async def delete_selected_podcasts(data: SelectedPodcastsDelete, cnx=Depends(get
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         if is_valid_key:
-            delete_status = database_functions.functions.delete_selected_podcasts(cnx, data.delete_list,
+            delete_status = database_functions.functions.delete_selected_podcasts(cnx, database_type, data.delete_list,
                                                                                   data.user_id)
             return {"status": delete_status}
         else:
@@ -2225,7 +2441,7 @@ class SearchPodcastData(BaseModel):
 @app.post("/api/data/search_data")
 async def search_data(data: SearchPodcastData, cnx=Depends(get_database_connection),
                       api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         result = database_functions.functions.search_data(database_type, cnx, data.search_term, data.user_id)
         return {"data": result}
@@ -2242,7 +2458,7 @@ class QueuePodData(BaseModel):
 @app.post("/api/data/queue_pod")
 async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
                     api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2250,7 +2466,7 @@ async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2274,7 +2490,7 @@ class QueueRmData(BaseModel):
 @app.post("/api/data/remove_queued_pod")
 async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connection),
                             api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2282,7 +2498,7 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2300,7 +2516,7 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
 @app.get("/api/data/get_queued_episodes")
 async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2308,7 +2524,7 @@ async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_databas
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -2322,14 +2538,14 @@ async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_databas
 @app.get("/api/data/check_episode_in_db/{user_id}")
 async def check_episode_in_db(user_id: int, episode_title: str = Query(...), episode_url: str = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
-    if database_functions.functions.id_from_api_key(cnx, api_key) != user_id:
+    if database_functions.functions.id_from_api_key(cnx, database_type, api_key) != user_id:
         raise HTTPException(status_code=403, detail="You can only check episodes for your own account")
 
-    episode_exists = database_functions.functions.check_episode_exists(cnx, user_id, episode_title, episode_url)
+    episode_exists = database_functions.functions.check_episode_exists(cnx, database_type, user_id, episode_title, episode_url)
     return {"episode_in_db": episode_exists}
 
 class LoginInitiateData(BaseModel):
@@ -2340,14 +2556,14 @@ class LoginInitiateData(BaseModel):
 async def initiate_nextcloud_login(data: LoginInitiateData, api_key: str = Depends(get_api_key_from_header)):
     import requests
 
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2376,7 +2592,7 @@ class GpodderSettings(BaseModel):
 @app.post("/api/data/add_gpodder_settings")
 async def add_gpodder_settings(data: GpodderSettings, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2384,7 +2600,7 @@ async def add_gpodder_settings(data: GpodderSettings, cnx=Depends(get_database_c
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2400,7 +2616,7 @@ class RemoveGpodderSettings(BaseModel):
 @app.post("/api/data/remove_gpodder_settings")
 async def remove_gpodder_settings(data: RemoveGpodderSettings, cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2408,7 +2624,7 @@ async def remove_gpodder_settings(data: RemoveGpodderSettings, cnx=Depends(get_d
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2418,34 +2634,10 @@ async def remove_gpodder_settings(data: RemoveGpodderSettings, cnx=Depends(get_d
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
 
-# class CheckGpodderSettings(BaseModel):
-#     user_id: int
-
-# @app.get("/api/data/get_gpodder_settings")
-# async def get_gpodder_settings(data: CheckGpodderSettings, cnx=Depends(get_database_connection),
-#                               api_key: str = Depends(get_api_key_from_header)):
-#     is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
-#     if not is_valid_key:
-#         raise HTTPException(status_code=403,
-#                             detail="Your API key is either invalid or does not have correct permission")
-
-#     # Check if the provided API key is the web key
-#     is_web_key = api_key == base_webkey.web_key
-
-#     key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-
-#     # Allow the action if the API key belongs to the user or it's the web API key
-#     if key_id == data.user_id or is_web_key:
-#         result = database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id)
-#         return {"data": result}
-#     else:
-#         raise HTTPException(status_code=403,
-#                             detail="You can only remove your own gpodder data!")
-    
 @app.get("/api/data/check_gpodder_settings/{user_id}")
 async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2453,7 +2645,7 @@ async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connecti
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -2462,11 +2654,11 @@ async def check_gpodder_settings(user_id: int, cnx=Depends(get_database_connecti
     else:
         raise HTTPException(status_code=403,
                             detail="You can only remove your own gpodder data!")
-    
+
 @app.get("/api/data/get_gpodder_settings/{user_id}")
 async def get_gpodder_settings(user_id: int, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2474,7 +2666,7 @@ async def get_gpodder_settings(user_id: int, cnx=Depends(get_database_connection
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
@@ -2494,7 +2686,7 @@ class NextcloudAuthRequest(BaseModel):
 @app.post("/api/data/add_nextcloud_server")
 async def add_nextcloud_server(background_tasks: BackgroundTasks, data: NextcloudAuthRequest, cnx=Depends(get_database_connection),
                                api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403,
@@ -2504,7 +2696,7 @@ async def add_nextcloud_server(background_tasks: BackgroundTasks, data: Nextclou
 
     if not elevated_access:
         # Get user ID from API key
-        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, api_key)
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -2547,7 +2739,7 @@ async def poll_for_auth_completion(endpoint: HttpUrl, token: str):
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < timeout:
             try:
-                response = await client.post(str(endpoint), json=payload, headers={"Content-Type": "application/json"}) 
+                response = await client.post(str(endpoint), json=payload, headers={"Content-Type": "application/json"})
             except httpx.ConnectTimeout:
                 logging.info("Connection timed out, retrying...")
                 logging.info(f"endpoint: {endpoint}, token: {token}")
@@ -2606,7 +2798,7 @@ class CustomPodcast(BaseModel):
 @app.post("/api/data/add_custom_podcast")
 async def queue_bump(data: CustomPodcast, cnx=Depends(get_database_connection),
                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2614,7 +2806,7 @@ async def queue_bump(data: CustomPodcast, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2643,7 +2835,7 @@ class QueueBump(BaseModel):
 @app.post("/api/data/queue_bump")
 async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
                      api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2651,7 +2843,7 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2663,29 +2855,26 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=403,
                             detail="You can only bump the queue for yourself!")
-    
+
 @app.get("/api/data/stream/{episode_id}")
 async def stream_episode(
-    episode_id: int, 
+    episode_id: int,
     cnx=Depends(get_database_connection),
     api_key: str = Query(..., alias='api_key'),  # Change here
     user_id: int = Query(..., alias='user_id')   # Change here
 ):
-    print(f"Episode ID: {episode_id}")
-    print(f"API Key: {api_key}")
-    print(f"User ID: {user_id}")
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
-    print("About to start the episode stream")
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        file_path = database_functions.functions.get_download_location(cnx, episode_id, user_id)
+        file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+        print(file_path)
         if file_path:
             return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
         else:
@@ -2701,7 +2890,7 @@ class BackupUser(BaseModel):
 @app.post("/api/data/backup_user", response_class=PlainTextResponse)
 async def backup_user(data: BackupUser, cnx=Depends(get_database_connection),
                       api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -2709,7 +2898,7 @@ async def backup_user(data: BackupUser, cnx=Depends(get_database_connection),
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
-    key_id = database_functions.functions.id_from_api_key(cnx, api_key)
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
@@ -2732,7 +2921,7 @@ async def backup_server(request: BackupServerRequest, is_admin: bool = Depends(c
     if not is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     try:
-        dump_data = database_functions.functions.backup_server(cnx, request.database_pass)
+        dump_data = database_functions.functions.backup_server(database_type, cnx, request.database_pass)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return Response(content=dump_data, media_type="text/plain")
@@ -2744,7 +2933,7 @@ class RestoreServer(BaseModel):
 
 @app.post("/api/data/restore_server")
 async def api_restore_server(data: RestoreServer, background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-    
+
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
     logging.info(f"Restoring server with data")
@@ -2759,27 +2948,30 @@ def restore_server_fun(database_pass: str, server_restore_data: str):
         # Restore server using the provided password and data
         database_functions.functions.restore_server(cnx, database_pass, server_restore_data)
     finally:
-        cnx.close() 
+        cnx.close()
 
 
 class InitRequest(BaseModel):
     api_key: str
-    
+
 @app.post("/api/init/startup_tasks")
 async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_connection)):
     try:
         # Verify if the API key is valid
-        is_valid = database_functions.functions.verify_api_key(cnx, request.api_key)
-        
+        is_valid = database_functions.functions.verify_api_key(cnx, database_type, request.api_key)
+
         # Check if the provided API key is the web key
         is_web_key = request.api_key == base_webkey.web_key
 
         if not is_valid or not is_web_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")
-        
+
         # Execute the startup tasks
         database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
         return {"status": "Startup tasks completed successfully."}
+    except Exception as e:
+        logger.error(f"Error in startup tasks: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to complete startup tasks")
     finally:
         # The connection will automatically be closed by FastAPI's dependency system
         pass

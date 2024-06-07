@@ -784,16 +784,16 @@ pub fn user_settings() -> Html {
                     <tbody>
                         { for users.borrow().iter().map(|user| {
                             let user_row_copy = on_user_row_click.clone();
-                            let user_row_click = user_row_copy(user.UserID, user.IsAdmin);
+                            let user_row_click = user_row_copy(user.userid, user.isadmin);
 
                             {
                                 html! {
                                     <tr class="table-row border-b cursor-pointer" onclick={user_row_click}> // Adjust this line accordingly
-                                        <td class="px-6 py-4">{ user.UserID }</td>
-                                        <td class="px-6 py-4">{ &user.Fullname }</td>
-                                        <td class="px-6 py-4">{ &user.Email }</td>
-                                        <td class="px-6 py-4">{ &user.Username }</td>
-                                        <td class="px-6 py-4">{ if user.IsAdmin == 1 { "Yes" } else { "No" } }</td>
+                                        <td class="px-6 py-4">{ user.userid }</td>
+                                        <td class="px-6 py-4">{ &user.fullname }</td>
+                                        <td class="px-6 py-4">{ &user.email }</td>
+                                        <td class="px-6 py-4">{ &user.username }</td>
+                                        <td class="px-6 py-4">{ if user.isadmin == 1 { "Yes" } else { "No" } }</td>
                                     </tr>
                                 }
                             }
