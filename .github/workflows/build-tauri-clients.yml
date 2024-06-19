@@ -107,6 +107,13 @@ jobs:
           ls -la web/src-tauri/target/release/bundle
         shell: bash
 
+      - name: list mac bundles
+        run: |
+          ls -la web/src-tauri/target/release/bundle/macos
+          ls -la web/src-tauri/target/release/bundle/dmg
+        shell: bash
+        if: ${{ matrix.os == 'macOS-latest' }}
+
       - name: Archive build 1
         uses: actions/upload-artifact@v3
         with:
