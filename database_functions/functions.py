@@ -3463,10 +3463,10 @@ def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
         cursor.execute(query, (mfa_secret, user_id))
         cnx.commit()
         cursor.close()
-        logging.info(f"Successfully saved MFA secret for user {user_id}")
+        logging.info(f"Successfully saved MFA secret for user")
         return True
     except Exception as e:
-        logging.error(f"Error saving MFA secret for user {user_id}: {e}")
+        logging.error(f"Error saving MFA secret for user")
         return False
 
 
@@ -4055,7 +4055,6 @@ def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url
 
 def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token, login_name):
     print("Adding gPodder settings")
-    print(f"User ID: {user_id}, gPodder URL: {gpodder_url}, gPodder Token: {gpodder_token}, Login Name: {login_name}")
     the_key = get_encryption_key(cnx, database_type)
 
     cursor = cnx.cursor()
@@ -4525,12 +4524,13 @@ def backup_server(database_type, cnx, database_pass):
             "-w"
         ]
     else:  # Assuming MySQL or MariaDB
+        # Using --password=<password> flag for safety
         cmd = [
             "mysqldump",
             "-h", 'db',
             "-P", '3306',
             "-u", "root",
-            "-p" + database_pass,
+            "--password=" + database_pass,
             "pypods_database"
         ]
 
