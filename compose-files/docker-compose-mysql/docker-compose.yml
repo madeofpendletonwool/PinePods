@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   db:
     image: mariadb:latest
@@ -6,10 +6,10 @@ services:
     environment:
       MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: myS3curepass
-      MYSQL_DATABASE: pypods_database
+      MYSQL_DATABASE: pinepods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
-      MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
+      MYSQL_INIT_CONNECT: "SET @@GLOBAL.max_allowed_packet=64*1024*1024;"
     volumes:
       - /home/user/pinepods/sql:/var/lib/mysql
     ports:
@@ -18,33 +18,29 @@ services:
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
-    # Pinepods Port
+      # Pinepods Main Port
       - "8040:8040"
     environment:
       # Basic Server Info
-      HOSTNAME: try.pinepods.online
-      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+      SEARCH_API_URL: "https://search.pinepods.online/api/search"
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
       FULLNAME: Pinepods Admin
       EMAIL: user@pinepods.online
       # Database Vars
-      DB_TYPE: mysql
+      DB_TYPE: mariadb
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: myS3curepass
-      DB_NAME: pypods_database
-      # Image/Audio Proxy Vars
-      PROXY_PORT: 8040
-      PROXY_PROTOCOL: https
-      REVERSE_PROXY: "True"
+      DB_NAME: pinepods_database
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
     volumes:
-    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
-    # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
+      # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
+      # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
+
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:

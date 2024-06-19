@@ -314,7 +314,6 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
 @app.get('/api/data/get_key')
 async def verify_key(cnx=Depends(get_database_connection),
                      credentials: HTTPBasicCredentials = Depends(get_current_user)):
-    logging.info(f"creds: {credentials.username}, {credentials.password}")
     is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, credentials.username, credentials.password)
     if is_password_valid:
         retrieved_key = database_functions.functions.get_api_key(cnx, database_type, credentials.username)
@@ -2034,7 +2033,6 @@ async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection)
         img.save(buffered)
         qr_code_svg = buffered.getvalue().decode("utf-8")
         logging.info(f"Generated MFA secret for user {user_id}")
-        logging.info(f"Secret: {secret}")
 
         return {
             "secret": secret,
@@ -2074,9 +2072,9 @@ async def verify_temp_mfa(body: VerifyTempMFABody, cnx=Depends(get_database_conn
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                 detail="MFA setup not initiated or expired.")
         if secret:
-            logging.info(f"Retrieved secret for user_id: {body.user_id}: {secret}")
+            logging.info(f"Retrieved secret for user_id")
         else:
-            logging.warning(f"No secret found for user_id: {body.user_id}")
+            logging.warning(f"No secret found for user_id")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MFA setup not initiated or expired.")
 
         totp = TOTP(secret)

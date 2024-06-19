@@ -102,6 +102,11 @@ jobs:
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
 
+      - name: list bundles
+        run: |
+          ls -la web/src-tauri/target/release/bundle
+        shell: bash
+
       - name: Archive build 1
         uses: actions/upload-artifact@v3
         with:
