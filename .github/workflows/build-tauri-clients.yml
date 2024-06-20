@@ -41,7 +41,7 @@ jobs:
             echo "ARTIFACT_NAME1=nsis/Pinepods_0.6.0_x64-setup.exe" >> $Env:GITHUB_ENV
             echo "ARTIFACT_NAME2=msi/Pinepods_0.6.0_x64_en-US.msi" >> $Env:GITHUB_ENV
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
-            echo "ARTIFACT_NAME1=dmg/Pinepods_0.6.0_x64.dmg" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=dmg/Pinepods_0.6.0_aarch64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=macos/Pinepods.app" >> $GITHUB_ENV
           fi
         shell: bash
