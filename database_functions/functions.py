@@ -3663,7 +3663,11 @@ def first_login_done(database_type, cnx, user_id):
         result = cursor.fetchone()
         cursor.close()
 
-        first_login = result[0] if isinstance(result, tuple) else result['firstlogin']
+        if database_type == "postgresql":
+
+            first_login = result[0] if isinstance(result, tuple) else result['firstlogin']
+        else:
+            first_login = result[0] if isinstance(result, tuple) else result['FirstLogin']
         return first_login == 1
     except Exception as e:
         print("Error fetching first login status:", e)

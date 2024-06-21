@@ -1096,6 +1096,45 @@ pub async fn call_save_mfa_secret(
     }
 }
 
+#[derive(Serialize)]
+pub struct DeleteMFARequest {
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DeleteMFAResponse {
+    pub deleted: bool,
+}
+
+#[allow(dead_code)]
+pub async fn call_disable_mfa(
+    server_name: &String,
+    api_key: &String,
+    user_id: i32,
+) -> Result<DeleteMFAResponse, anyhow::Error> {
+    let url = format!("{}/api/data/delete_mfa", server_name);
+    let api_key_ref = api_key.as_str();
+    let body = DeleteMFARequest { user_id };
+    let json_body = serde_json::to_string(&body)?;
+
+    let response = Request::delete(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(json_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<DeleteMFAResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error disabling MFA. Is the server reachable? Server Response: {}",
+            response.status()
+        )))
+    }
+}
+
 // #[derive(Deserialize, Debug, PartialEq, Clone)]
 // pub struct NextcloudInitiateResponse {
 //     pub(crate) token: String,
@@ -1181,6 +1220,46 @@ pub async fn call_add_nextcloud_server(
     auth_request: NextcloudAuthRequest,
 ) -> Result<NextcloudAuthResponse, anyhow::Error> {
     let url = format!("{}/api/data/add_nextcloud_server", server_name);
+    let api_key_ref = api_key.as_str();
+    let request_body = serde_json::to_string(&auth_request)?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<NextcloudAuthResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize)]
+pub struct GpodderAuthRequest {
+    pub(crate) user_id: i32,
+    pub(crate) username: String,
+    pub(crate) password: String,
+    pub(crate) nextcloud_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct GpodderAuthResponse {
+    // Define additional fields as needed
+}
+
+pub async fn call_add_gpodder_server(
+    server_name: &String,
+    api_key: &String,
+    auth_request: GpodderAuthRequest,
+) -> Result<NextcloudAuthResponse, anyhow::Error> {
+    let url = format!("{}/api/data/add_gpodder_server", server_name);
     let api_key_ref = api_key.as_str();
     let request_body = serde_json::to_string(&auth_request)?;
 

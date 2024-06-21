@@ -472,10 +472,32 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
+    let volume_state = audio_state.clone();
+    let volume_dispatch = _audio_dispatch.clone();
+
+    // Adjust the volume based on a slider value
+    let update_playback_volume = {
+        let audio_dispatch = volume_dispatch.clone();
+        Callback::from(move |volume: f64| {
+            audio_dispatch.reduce_mut(|audio_state| {
+                audio_state.audio_volume = volume;
+                if let Some(audio_element) = &audio_state.audio_element {
+                    audio_element.set_volume(volume / 100.0); // Set volume as a percentage
+                }
+            });
+        })
+    };
+
     let slider_visibility: UseStateHandle<bool> = use_state(|| false);
     let toggle_slider_visibility = {
         let slider_visibility = slider_visibility.clone();
         Callback::from(move |_| slider_visibility.set(!*slider_visibility))
+    };
+
+    let volume_slider: UseStateHandle<bool> = use_state(|| false);
+    let on_volume_control_click = {
+        let volume_slider = volume_slider.clone();
+        Callback::from(move |_| volume_slider.set(!*volume_slider))
     };
 
     // Skip forward
@@ -632,6 +654,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 ""
             }
         );
+        let update_volume_closure = update_playback_volume.clone();
         let update_playback_closure = update_playback_speed.clone();
         html! {
             <div class={audio_bar_class} ref={container_ref.clone()}>
@@ -729,6 +752,29 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             }
                         }
                     }
+                    <button onclick={on_volume_control_click.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center custom-volume-button">
+                        <span class="material-icons">{"volume_up"}</span>
+                    </button>
+                    <div class={classes!("volume-control-display", if *volume_slider {"visible"} else {"hidden"})}>
+                        <div class="volume-display-container">
+                            <div class="volume-text"> // Use inline styles or a class
+                                {format!("{}", audio_state.audio_volume)}
+                            </div>
+                            <input
+                                type="range"
+                                class="slider"  // Center this slider independently
+                                min="1"
+                                max="100"
+                                step="1"
+                                value={audio_state.audio_volume.to_string()}
+                                oninput={Callback::from(move |event: InputEvent| {
+                                    let input: HtmlInputElement = event.target_unchecked_into();
+                                    let volume = input.value_as_number();
+                                    update_volume_closure.emit(volume);
+                                })}
+                            />
+                        </div>
+                    </div>
                     </div>
                     </div>
 
@@ -943,6 +989,7 @@ pub fn on_play_click(
                             audio_dispatch.reduce_mut(move |audio_state| {
                                 audio_state.audio_playing = Some(true);
                                 audio_state.playback_speed = 1.0;
+                                audio_state.audio_volume = 100.0;
                                 audio_state.currently_playing = Some(AudioPlayerProps {
                                     src: src.clone(),
                                     title: episode_title_for_wasm.clone(),
