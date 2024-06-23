@@ -2829,6 +2829,7 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
             cnx.close()
 
     for user_id, gpodder_url, gpodder_token, gpodder_login in users:
+        print(f"userid: {user_id}")
         background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
 
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
