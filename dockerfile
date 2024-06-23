@@ -5,15 +5,20 @@ FROM rust:alpine3.19 as builder
 RUN apk update && apk upgrade && \
     apk add --no-cache musl-dev libffi-dev zlib-dev jpeg-dev
 
+RUN apk update && apk upgrade
+
+# Add the Edge Community repository
+RUN echo "@edge http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+
+# Update the package index
+RUN apk update
+
+# Install the desired package from the edge community repository
+RUN apk add trunk@edge
+
 # Install wasm target and build tools
 RUN rustup target add wasm32-unknown-unknown && \
     cargo install wasm-bindgen-cli
-
-RUN apk update && apk upgrade
-
-RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
-
-RUN apk add trunk@testing
 
 # Add your application files to the builder stage
 COPY ./web /app
@@ -71,4 +76,3 @@ COPY startup/nginx.conf /etc/nginx/nginx.conf
 # CMD ["nginx", "-g", "daemon off;"]
 
 ENTRYPOINT ["bash", "/startup.sh"]
-
