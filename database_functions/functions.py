@@ -21,7 +21,7 @@ from mysql.connector import ProgrammingError
 # app_root = os.environ.get('APP_ROOT')
 sys.path.append('/pinepods/'),
 # Import the functions directly from app_functions.py located in the database_functions directory
-from database_functions.app_functions import sync_subscription_change, get_podcast_values, check_valid_feed
+from database_functions.app_functions import sync_subscription_change, get_podcast_values, check_valid_feed, sync_subscription_change_gpodder
 
 
 def pascal_case(snake_str):
@@ -4385,7 +4385,42 @@ def remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login
         print(f"Response body: {response.text}")
 
 
-def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login):
+def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    encryption_key = get_encryption_key(cnx, database_type)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Adjust the URL for oPodSync
+    url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
+    data = {
+        "add": [],
+        "remove": [podcast_url]
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(url, json=data, headers=headers, auth=auth)
+    try:
+        response.raise_for_status()
+        print(f"Podcast removed from oPodSync successfully: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Failed to remove podcast from oPodSync: {e}")
+        print(f"Response body: {response.text}")
+
+
+def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
     # Fetch encryption key
@@ -4544,6 +4579,168 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
             print(f"Update episode times response: {response.status_code}")
         except RequestException as e:
             print(f"Error updating episode times in Nextcloud: {e}")
+
+def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    # Fetch encryption key
+    encryption_key = get_encryption_key(cnx, database_type)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Prepare for Basic Auth
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+    # Now, use the decrypted token in your API request
+    print(f"Decrypted gPodder token: {gpodder_token}")
+    response = requests.get(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", auth=auth)
+    response.raise_for_status()  # This will raise an exception for HTTP errors
+    print(f"Response status: {response.status_code}, Content: {response.text}")
+
+    gpodder_data = response.json()
+    gpodder_podcasts_add = set(gpodder_data.get("add", []))
+    gpodder_podcasts_remove = set(gpodder_data.get("remove", []))
+    print(f"gPodder podcasts to add: {gpodder_podcasts_add}")
+    print(f"gPodder podcasts to remove: {gpodder_podcasts_remove}")
+
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT FeedURL FROM "Podcasts" WHERE UserID = %s'
+    else:  # MySQL or MariaDB
+        query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
+
+    cursor.execute(query, (user_id,))
+    local_podcasts = set(row[0] for row in cursor.fetchall())
+    print(f"Local podcasts: {local_podcasts}")
+
+    podcasts_to_add = gpodder_podcasts_add - local_podcasts
+    podcasts_to_remove = gpodder_podcasts_remove & local_podcasts
+    print(f"Podcasts to add: {podcasts_to_add}, Podcasts to remove: {podcasts_to_remove}")
+
+    # Update local database
+    # Add new podcasts
+    print("Adding new podcasts...")
+    for feed_url in podcasts_to_add:
+        podcast_values = get_podcast_values(feed_url, user_id)
+        return_value = add_podcast(cnx, database_type, podcast_values, user_id)
+        if return_value:
+            print(f"{feed_url} added!")
+        else:
+            print(f"Error adding {feed_url}")
+
+    # Remove podcasts no longer in the subscription
+    print("Removing podcasts...")
+    for feed_url in podcasts_to_remove:
+        print(f"Removing {feed_url}...")
+        if database_type == "postgresql":
+            query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
+        else:  # MySQL or MariaDB
+            query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
+
+        cursor.execute(query, (feed_url,))
+        result = cursor.fetchone()
+        print(f"Result: {result}")
+        print(f"Feed URL: {feed_url}")
+        if result:
+            podcast_name = result[0]  # Unpack the tuple to get the podcast name
+            remove_podcast(cnx, database_type, podcast_name, feed_url, user_id)
+        else:
+            print(f"No podcast found with URL: {feed_url}")
+
+    cnx.commit()
+    cursor.close()
+
+    # Notify gPodder of changes made locally (if any)
+    print("Syncing subscription changes...")
+    if podcasts_to_add or podcasts_to_remove:
+        sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, list(podcasts_to_add), list(podcasts_to_remove))
+
+    # Fetch episode actions from gPodder
+    print("Fetching episode actions from gPodder...")
+    try:
+        episode_actions_response = requests.get(
+            f"{gpodder_url}/api/2/episodes/{gpodder_login}.json",
+            auth=auth
+        )
+        episode_actions_response.raise_for_status()  # This will raise an exception for HTTP errors
+        episode_actions = episode_actions_response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching gPodder episode actions: {e}")
+        episode_actions = []
+
+    # Process episode actions from gPodder
+    print("Processing episode actions...")
+    for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
+        try:
+            # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
+            print(f"Processing action: {action}")
+            if action["action"].lower() in ["play", "update_time"]:
+                print(f"Action details - Podcast: {action['podcast']}, Episode: {action['episode']}, Position: {action.get('position')}")
+                if "position" in action and action["position"] != -1:
+                    episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
+                    if episode_id:
+                        print(f"Recording listen duration for episode ID {episode_id} with position {action['position']}")
+                        record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+                    else:
+                        print(f"No episode ID found for URL {action['episode']}")
+                else:
+                    print(f"Skipping action due to invalid position: {action}")
+
+        except Exception as e:
+            print(f"Error processing episode action {action}: {e}")
+
+    # Collect local episode listen times and push to gPodder if necessary
+    print("Collecting local episode listen times...")
+    try:
+        local_episode_times = get_local_episode_times(cnx, database_type, user_id)
+    except Exception as e:
+        print(f"Error fetching local episode times: {e}")
+        local_episode_times = []
+
+    UPLOAD_BULK_SIZE = 30
+    # Send local episode listen times to gPodder
+    update_actions = []
+    for episode_time in local_episode_times:
+        update_actions.append({
+            "podcast": episode_time["podcast_url"],
+            "episode": episode_time["episode_url"],
+            "action": "play",
+            "timestamp": current_timestamp(),
+            "position": episode_time["listen_duration"],
+            "started": 0,
+            "total": episode_time["episode_duration"],
+            "guid": generate_guid(episode_time)
+        })
+    print(f"Update actions: {update_actions}")
+    # Split the list of update actions into chunks
+    update_actions_chunks = [update_actions[i:i + UPLOAD_BULK_SIZE] for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)]
+
+    from urllib.parse import urljoin
+    for chunk in update_actions_chunks:
+        try:
+            url = urljoin(gpodder_url, f"/api/2/episodes/{gpodder_login}.json")
+            response = requests.post(
+                url,
+                json=chunk,
+                auth=auth,
+                headers={"Accept": "application/json"}
+            )
+            if response.status_code != 200:
+                raise requests.exceptions.RequestException(f"Unexpected status code: {response.status_code}")
+            print(f"Update episode times response: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error updating episode times in gPodder: {e}")
+
+
 
 # database_functions.py
 

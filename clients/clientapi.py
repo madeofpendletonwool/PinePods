@@ -751,7 +751,7 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
             if gpod_type == "nextcloud":
                 database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
             else:
-                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url, "default")
+                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url, "pinepods")
         result = database_functions.functions.add_podcast(cnx, database_type, podcast_values.dict(), podcast_values.user_id)
         if result:
             return {"success": True}
@@ -1326,7 +1326,12 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
                                 detail="You are not authorized to remove podcasts for other users")
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
+        print(f"Type of podsync {gpod_type}")
+        if gpod_type == "nextcloud":
+            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        else:
+            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url, "pinepods")
     database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
     return {"success": True}
 
@@ -1359,7 +1364,12 @@ async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...), cnx
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
         logging.info('em cloud')
         podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+        print(f"Type of podsync {gpod_type}")
+        if gpod_type == "nextcloud":
+            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
+        else:
+            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed, "pinepods")
     logging.info('rm pod id')
     database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
     return {"success": True}
@@ -2806,7 +2816,11 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
 def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login):
     cnx = create_database_connection()
     try:
-        database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
+        if gpod_type == "nextcloud":
+            refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
+        else:  # Assume gPodder
+            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
     finally:
         if database_type == "postgresql":
             connection_pool.putconn(cnx)
