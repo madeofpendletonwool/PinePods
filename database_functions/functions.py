@@ -1015,6 +1015,26 @@ def get_podcast_id_by_title(cnx, database_type, podcast_title):
 
     cursor.close()
     # cnx.close()
+    #
+def get_podcast_feed_by_id(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+
+    # get the podcast ID for the specified title
+    # get the podcast ID for the specified title
+    if database_type == "postgresql":
+        cursor.execute('SELECT FeedURL FROM "Podcasts" WHERE PodcastID = %s', (podcast_id,))
+    else:  # MySQL or MariaDB
+        cursor.execute("SELECT FeedURL FROM Podcasts WHERE PodcastID = %s", (podcast_id,))
+
+    result = cursor.fetchone()
+
+    if result:
+        return result[0]
+    else:
+        return None
+
+    cursor.close()
+    # cnx.close()
 
 
 def refresh_podcast_by_title(cnx, database_type, podcast_title):
@@ -4057,7 +4077,7 @@ def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url
 
 
 
-def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token, login_name):
+def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token, login_name, pod_sync_type):
     print("Adding gPodder settings")
     the_key = get_encryption_key(cnx, database_type)
 
@@ -4077,11 +4097,46 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
         decoded_token = None
 
     query = (
-        'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s WHERE UserID = %s' if database_type == "postgresql" else
-        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s WHERE UserID = %s"
+        'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s' if database_type == "postgresql" else
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken, Pod_Sync_Type = %s WHERE UserID = %s"
     )
 
-    cursor.execute(query, (gpodder_url, login_name, decoded_token, user_id))
+    cursor.execute(query, (gpodder_url, login_name, decoded_token, pod_sync_type, user_id))
+
+    # Check if the update was successful
+    if cursor.rowcount == 0:
+        return None
+
+    cnx.commit()  # Commit changes to the database
+    cursor.close()
+
+    return True
+
+def add_gpodder_server(database_type, cnx, user_id, gpodder_url, gpodder_username, gpodder_password):
+    print("Adding gPodder settings")
+    the_key = get_encryption_key(cnx, database_type)
+
+    cursor = cnx.cursor()
+    from cryptography.fernet import Fernet
+
+    encryption_key_bytes = base64.b64decode(the_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Only encrypt password if it's not None
+    if gpodder_password is not None:
+        encrypted_password = cipher_suite.encrypt(gpodder_password.encode())
+        # Decode encrypted password back to string
+        decoded_token = encrypted_password.decode()
+    else:
+        decoded_token = None
+
+    query = (
+        'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s' if database_type == "postgresql" else
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s"
+    )
+    pod_sync_type = "gpodder"
+    cursor.execute(query, (gpodder_url, gpodder_username, decoded_token, pod_sync_type, user_id))
 
     # Check if the update was successful
     if cursor.rowcount == 0:
@@ -4144,6 +4199,20 @@ def get_nextcloud_settings(database_type, cnx, user_id):
         return result[0], result[1], result[2]
     else:
         return None, None, None
+
+def get_gpodder_type(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    query = (
+        'SELECT Pod_Sync_Type FROM "Users" WHERE UserID = %s' if database_type == "postgresql" else
+        "SELECT Pod_Sync_Type FROM Users WHERE UserID = %s"
+    )
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    if result and result[0]:
+        return result[0]
+    else:
+        return None
 
 
 
@@ -4245,6 +4314,40 @@ def add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, enc
         print(f"Podcast added to Nextcloud successfully: {response.text}")
     except requests.exceptions.HTTPError as e:
         print(f"Failed to add podcast to Nextcloud: {e}")
+        print(f"Response body: {response.text}")
+
+def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    encryption_key = get_encryption_key(cnx, database_type)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Adjust the URL for oPodSync
+    url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
+    data = {
+        "add": [podcast_url],
+        "remove": []
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(url, json=data, headers=headers, auth=auth)
+    try:
+        response.raise_for_status()
+        print(f"Podcast added to oPodSync successfully: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Failed to add podcast to oPodSync: {e}")
         print(f"Response body: {response.text}")
 
 

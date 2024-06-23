@@ -1244,9 +1244,9 @@ pub async fn call_add_nextcloud_server(
 #[derive(Serialize)]
 pub struct GpodderAuthRequest {
     pub(crate) user_id: i32,
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) nextcloud_url: String,
+    pub(crate) gpodder_url: String,
+    pub(crate) gpodder_username: String,
+    pub(crate) gpodder_password: String,
 }
 
 #[derive(Deserialize, Debug)]

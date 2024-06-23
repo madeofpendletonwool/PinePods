@@ -294,9 +294,9 @@ pub fn nextcloud_options() -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     let auth_request = GpodderAuthRequest {
                         user_id: user_id.clone().unwrap(),
-                        username: server_user_deref,
-                        password: server_pass_deref,
-                        nextcloud_url: server.clone(),
+                        gpodder_url: server.clone(),
+                        gpodder_username: server_user_deref,
+                        gpodder_password: server_pass_deref,
                     };
                     match call_add_gpodder_server(
                         &server_name.clone().unwrap(),
@@ -335,7 +335,7 @@ pub fn nextcloud_options() -> Html {
     html! {
         <div class="p-4"> // You can adjust the padding as needed
             <p class="item_container-text text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or Gpodder server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server. Such as this: https://github.com/kd2org/opodsync."}</p> // Styled paragraph
+            <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or Gpodder server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass. Such as this: https://github.com/kd2org/opodsync."}</p> // Styled paragraph
             <p class="item_container-text text-md mb-4">{"Current Nextcloud Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
             <br/>
             <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "New Nextcloud Server" }</label>

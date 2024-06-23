@@ -6,9 +6,16 @@ Next Minor Version:
 
 - [] Added Better Download support to the client versions.
 - [] Manually adjust tags for podcast in podcast settings
-- [] Volume control in the player
+
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
-- [] Add support for gpodder sync standalone container
+
+Version 0.6.1
+
+- [x] Add support for gpodder sync standalone container. You can now sync to either Nextcloud or a gpodder standalone server that supports user and passwords.
+- [x] Volume control in the player
+- [x] Fixed a couple parsing issues with mysql dbs found after implementing the new postgres support
+- [x] Fixed issue where MFA couldn't be disabled. It just tried to enable it again.
+- [x] Fixed issue with time zone parsing in postgres and mysql dbs
 
 Version 0.6.0
 

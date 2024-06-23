@@ -64,11 +64,31 @@ try:
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin TINYINT(1) DEFAULT 0,
             GpodderUrl VARCHAR(255) DEFAULT '',
+            Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT '',
             UNIQUE (Username)
         )
     """)
+
+    def add_pod_sync_if_not_exists(cursor, table_name, column_name, column_definition):
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name='{table_name}'
+            AND column_name='{column_name}';
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN {column_name} {column_definition};
+            """)
+            print(f"Column '{column_name}' added to table '{table_name}'")
+        else:
+            print(f"Column '{column_name}' already exists in table '{table_name}'")
+
+    add_pod_sync_if_not_exists(cursor, 'Users', 'Pod_Sync_Type', 'VARCHAR(50) DEFAULT \'None\'')
+
 
     logging.info("Database tables created or verified successfully.")
 
