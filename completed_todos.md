@@ -17,6 +17,7 @@ Version 0.6.1
 - [x] Fixed issue where MFA couldn't be disabled. It just tried to enable it again.
 - [x] Fixed issue with time zone parsing in postgres and mysql dbs
 - [x] Implemented a mac dmg client
+- [x] Added Current Version to User Stats Page
 
 Version 0.6.0
 

@@ -4209,10 +4209,13 @@ def get_gpodder_type(cnx, database_type, user_id):
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
-    if result and result[0]:
-        return result[0]
-    else:
-        return None
+
+    if result:
+        if isinstance(result, dict):
+            return result.get("Pod_Sync_Type")
+        elif isinstance(result, list) or isinstance(result, tuple):
+            return result[0]
+    return None
 
 
 
