@@ -56,7 +56,7 @@ def send_email(server_name, server_port, from_email, to_email, send_mode, encryp
         return 'Timeout Error: The connection to the server timed out.'
     except smtplib.SMTPException as e:
         return f'Failed to send email: {str(e)}'
-    
+
 
 
 def sync_with_nextcloud(nextcloud_url, nextcloud_token):
@@ -91,7 +91,16 @@ def sync_subscription_change(nextcloud_url, headers, add, remove):
     }
     response = requests.post(f"{nextcloud_url}/index.php/apps/gpoddersync/subscription_change/create", json=payload,
                              headers=headers)
-    # Handle the response
+
+def sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, add, remove):
+    import requests
+    payload = {
+        "add": add,
+        "remove": remove
+    }
+    response = requests.post(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", json=payload, auth=auth)
+    response.raise_for_status()
+    print(f"Subscription changes synced with gPodder: {response.text}")
 
 
 def sync_episode_actions(nextcloud_url, headers):
@@ -134,7 +143,7 @@ def get_podcast_values(feed_url, user_id):
                     podcast_values['categories'].append(subcat['text'])
 
     # Now, check if categories list is empty after attempting to populate it
-    if not podcast_values['categories']:  
+    if not podcast_values['categories']:
         podcast_values['categories'] = ""  # Set to empty string if no categories found
     else:
         categories_dict = {str(i): cat for i, cat in enumerate(podcast_values['categories'], start=1)}

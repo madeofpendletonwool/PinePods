@@ -746,7 +746,12 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
         if database_functions.functions.check_gpodder_settings(database_type, cnx, podcast_values.user_id):
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, podcast_values.user_id)
             print(f"Adding podcast to Nextcloud: {gpodder_url}, {gpodder_login}, {gpodder_token}, {podcast_values.pod_feed_url}")
-            database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
+            gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
+            print(f"Type of podsync {gpod_type}")
+            if gpod_type == "nextcloud":
+                database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
+            else:
+                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url, "pinepods")
         result = database_functions.functions.add_podcast(cnx, database_type, podcast_values.dict(), podcast_values.user_id)
         if result:
             return {"success": True}
@@ -1321,7 +1326,12 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
                                 detail="You are not authorized to remove podcasts for other users")
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
+        print(f"Type of podsync {gpod_type}")
+        if gpod_type == "nextcloud":
+            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        else:
+            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url, "pinepods")
     database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
     return {"success": True}
 
@@ -1353,7 +1363,13 @@ async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...), cnx
         logging.info('get cloud vals')
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
         logging.info('em cloud')
-        database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+        podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+        print(f"Type of podsync {gpod_type}")
+        if gpod_type == "nextcloud":
+            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
+        else:
+            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed, "pinepods")
     logging.info('rm pod id')
     database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
     return {"success": True}
@@ -2580,7 +2596,27 @@ async def initiate_nextcloud_login(data: LoginInitiateData, api_key: str = Depen
     else:
         raise HTTPException(status_code=403, detail="You are not authorized to initiate this action.")
 
+class GpodderAuthRequest(BaseModel):
+    gpodder_url: str
+    gpodder_username: str
+    gpodder_password: str
 
+@app.post("/api/data/verify_gpodder_auth")
+async def verify_gpodder_auth(request: GpodderAuthRequest):
+    from requests.auth import HTTPBasicAuth
+    auth = HTTPBasicAuth(request.gpodder_username, request.gpodder_password)
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(f"{request.gpodder_url}/api/2/auth/{request.gpodder_username}/login.json", auth=auth)
+            response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
+            if response.status_code == 200:
+                return {"status": "success", "message": "Logged in!"}
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Authentication failed")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail="Authentication failed")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
 
 class GpodderSettings(BaseModel):
     user_id: int
@@ -2603,6 +2639,33 @@ async def add_gpodder_settings(data: GpodderSettings, cnx=Depends(get_database_c
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, data.gpodder_url, data.gpodder_token)
+        return {"data": result}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only add your own gpodder data!")
+
+class GpodderSettings(BaseModel):
+    user_id: int
+    gpodder_url: str
+    gpodder_username: str
+    gpodder_password: str
+
+@app.post("/api/data/add_gpodder_server")
+async def add_gpodder_server(data: GpodderSettings, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        result = database_functions.functions.add_gpodder_server(database_type, cnx, data.user_id, data.gpodder_url, data.gpodder_username, data.gpodder_password)
         return {"data": result}
     else:
         raise HTTPException(status_code=403,
@@ -2720,7 +2783,7 @@ async def poll_for_auth_completion_background(data: NextcloudAuthRequest, databa
             logging.info(f"Adding Nextcloud settings for user {data.user_id}")
             logging.info(f"Database Type: {database_type}, Connection: {cnx}, User ID: {data.user_id}")
             logging.info(f"Nextcloud URL: {data.nextcloud_url}, Token: {data.token}")
-            result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, str(data.nextcloud_url), credentials["appPassword"], credentials["loginName"])
+            result = database_functions.functions.add_gpodder_settings(database_type, cnx, data.user_id, str(data.nextcloud_url), credentials["appPassword"], credentials["loginName"], "nextcloud")
             if not result:
                 logging.error("User not found")
         else:
@@ -2773,7 +2836,11 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
 def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login):
     cnx = create_database_connection()
     try:
-        database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
+        if gpod_type == "nextcloud":
+            refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
+        else:  # Assume gPodder
+            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
     finally:
         if database_type == "postgresql":
             connection_pool.putconn(cnx)

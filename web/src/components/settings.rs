@@ -258,7 +258,7 @@ pub fn settings() -> Html {
                             <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title="Connect Nextcloud Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Connect Nextcloud/Gpodder Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Api Keys" content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
                         </div>
                         }

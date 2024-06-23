@@ -131,6 +131,7 @@ pub struct UIState {
     pub is_expanded: bool,
     pub episode_in_db: Option<bool>,
     pub playback_speed: f64,
+    pub audio_volume: f64,
     pub start_skip_sec: f64,
     pub end_skip_sec: f64,
 }

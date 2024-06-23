@@ -79,6 +79,7 @@ try:
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin BOOLEAN DEFAULT false,
             GpodderUrl VARCHAR(255) DEFAULT '',
+            Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT ''
         )
