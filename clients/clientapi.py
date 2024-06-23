@@ -2596,7 +2596,27 @@ async def initiate_nextcloud_login(data: LoginInitiateData, api_key: str = Depen
     else:
         raise HTTPException(status_code=403, detail="You are not authorized to initiate this action.")
 
+class GpodderAuthRequest(BaseModel):
+    gpodder_url: str
+    gpodder_username: str
+    gpodder_password: str
 
+@app.post("/api/data/verify_gpodder_auth")
+async def verify_gpodder_auth(request: GpodderAuthRequest):
+    from requests.auth import HTTPBasicAuth
+    auth = HTTPBasicAuth(request.gpodder_username, request.gpodder_password)
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(f"{request.gpodder_url}/api/2/auth/{request.gpodder_username}/login.json", auth=auth)
+            response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
+            if response.status_code == 200:
+                return {"status": "success", "message": "Logged in!"}
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Authentication failed")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail="Authentication failed")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
 
 class GpodderSettings(BaseModel):
     user_id: int

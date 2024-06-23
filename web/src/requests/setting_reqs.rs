@@ -1242,6 +1242,43 @@ pub async fn call_add_nextcloud_server(
 }
 
 #[derive(Serialize)]
+pub struct GpodderCheckRequest {
+    pub gpodder_url: String,
+    pub gpodder_username: String,
+    pub gpodder_password: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct GpodderCheckResponse {
+    pub status: String,
+    pub message: String,
+}
+
+pub async fn call_verify_gpodder_auth(
+    server_name: &String,
+    auth_request: GpodderCheckRequest,
+) -> Result<GpodderCheckResponse, Error> {
+    let url = format!("{}/api/data/verify_gpodder_auth", server_name);
+    let request_body = serde_json::to_string(&auth_request)?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<GpodderCheckResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error verifying gPodder auth. Is the server reachable? Server Response: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize)]
 pub struct GpodderAuthRequest {
     pub(crate) user_id: i32,
     pub(crate) gpodder_url: String,

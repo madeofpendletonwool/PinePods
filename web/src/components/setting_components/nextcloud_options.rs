@@ -1,8 +1,8 @@
 use crate::components::context::{AppState, UIState};
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
-    call_get_nextcloud_server, initiate_nextcloud_login, GpodderAuthRequest, NextcloudAuthRequest,
-    NextcloudInitiateResponse,
+    call_get_nextcloud_server, call_verify_gpodder_auth, initiate_nextcloud_login,
+    GpodderAuthRequest, GpodderCheckRequest, NextcloudAuthRequest, NextcloudInitiateResponse,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -287,7 +287,9 @@ pub fn nextcloud_options() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
+            let server_user_check_deref = (*server_user).clone();
             let server_user_deref = (*server_user).clone();
+            let server_pass_check_deref = (*server_pass).clone();
             let server_pass_deref = (*server_pass).clone();
 
             if !server.trim().is_empty() {
@@ -298,25 +300,76 @@ pub fn nextcloud_options() -> Html {
                         gpodder_username: server_user_deref,
                         gpodder_password: server_pass_deref,
                     };
-                    match call_add_gpodder_server(
-                        &server_name.clone().unwrap(),
-                        &api_key.clone().unwrap().unwrap(),
-                        auth_request,
-                    )
-                    .await
+                    let check_request = GpodderCheckRequest {
+                        gpodder_url: server.clone(),
+                        gpodder_username: server_user_check_deref,
+                        gpodder_password: server_pass_check_deref,
+                    };
+                    match call_verify_gpodder_auth(&server_name.clone().unwrap(), check_request)
+                        .await
                     {
-                        Ok(_) => {
-                            log::info!("Gpodder server now added and podcasts syncing!");
-                            // Start polling the check_gpodder_settings endpoint
+                        Ok(auth_response) => {
+                            if auth_response.status == "success" {
+                                match call_add_gpodder_server(
+                                    &server_name.clone().unwrap(),
+                                    &api_key.clone().unwrap().unwrap(),
+                                    auth_request,
+                                )
+                                .await
+                                {
+                                    Ok(_) => {
+                                        log::info!(
+                                            "Gpodder server now added and podcasts syncing!"
+                                        );
+                                        audio_dispatch.reduce_mut(|audio_state| {
+                                            audio_state.info_message = Option::from(
+                                                "Gpodder server now added and podcasts syncing!"
+                                                    .to_string(),
+                                            )
+                                        });
+                                        // Start polling the check_gpodder_settings endpoint
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(&JsValue::from_str(&format!(
+                                            "Failed to add Gpodder server: {:?}",
+                                            e
+                                        )));
+                                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
+                                        auth_status.set(
+                                            format!("Failed to add Gpodder server. Please check the server URL and credentials. {:?}", e)
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            } else {
+                                web_sys::console::log_1(&JsValue::from_str(
+                                    "Authentication failed.",
+                                ));
+                                audio_dispatch.reduce_mut(|audio_state| {
+                                    audio_state.error_message = Option::from(
+                                        "Authentication failed. Please check your credentials."
+                                            .to_string(),
+                                    )
+                                });
+                                auth_status.set(
+                                    "Authentication failed. Please check your credentials."
+                                        .to_string(),
+                                );
+                            }
                         }
                         Err(e) => {
                             web_sys::console::log_1(&JsValue::from_str(&format!(
-                                "Failed to initiate Nextcloud login: {:?}",
+                                "Failed to verify Gpodder auth: {:?}",
                                 e
                             )));
-                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Gpodder login. Please check the server URL.".to_string()));
+                            audio_dispatch.reduce_mut(|audio_state| {
+                                audio_state.error_message = Option::from(
+                                    "Failed to verify Gpodder auth. Please check the server URL."
+                                        .to_string(),
+                                )
+                            });
                             auth_status.set(
-                                "Failed to initiate Gpodder login. Please check the server URL."
+                                "Failed to verify Gpodder auth. Please check the server URL."
                                     .to_string(),
                             );
                         }
@@ -336,7 +389,7 @@ pub fn nextcloud_options() -> Html {
         <div class="p-4"> // You can adjust the padding as needed
             <p class="item_container-text text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
             <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or Gpodder server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass. Such as this: https://github.com/kd2org/opodsync."}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{"Current Nextcloud Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
+            <p class="item_container-text text-md mb-4">{"Current Podcast Sync Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
             <br/>
             <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "New Nextcloud Server" }</label>
             <div class="flex items-center">

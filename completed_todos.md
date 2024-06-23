@@ -16,6 +16,7 @@ Version 0.6.1
 - [x] Fixed a couple parsing issues with mysql dbs found after implementing the new postgres support
 - [x] Fixed issue where MFA couldn't be disabled. It just tried to enable it again.
 - [x] Fixed issue with time zone parsing in postgres and mysql dbs
+- [x] Implemented a mac dmg client
 
 Version 0.6.0
 

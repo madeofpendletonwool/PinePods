@@ -270,8 +270,8 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 
 ## ToDo
 
-- [ ] Additional Downloads Page organization - Organize by Podcast
-- [ ] Download entire podcast button. For episode archival
+- [x] Additional Downloads Page organization - Organize by Podcast
+- [x] Download entire podcast button. For episode archival
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
@@ -300,7 +300,7 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Chapter Image Support
 - [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [ ] Side load audio from the web
-- [ ] Custom Podcast Start Position
+- [x] Custom Podcast Start and End Position
 
 ### Clients to support
 
