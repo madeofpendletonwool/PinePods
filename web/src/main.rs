@@ -6,6 +6,7 @@ use components::routes::Route;
 // use components::login::Login;
 // use components::login::ChangeServer;
 // use components::login::LogOut;
+use components::downloads::Downloads;
 use components::episode::Episode;
 use components::episodes_layout::EpisodeLayout;
 use components::history::PodHistory;
@@ -20,15 +21,13 @@ use components::settings::Settings;
 use components::user_stats::UserStats;
 
 #[cfg(feature = "server_build")]
-use {
-    components::downloads::Downloads, components::login::ChangeServer, components::login::LogOut,
-    components::login::Login,
-};
+use {components::login::ChangeServer, components::login::LogOut, components::login::Login};
 
 #[cfg(not(feature = "server_build"))]
 use {
-    components::downloads_tauri::Downloads, components::login_tauri::ChangeServer,
-    components::login_tauri::LogOut, components::login_tauri::Login,
+    components::downloads_tauri::Downloads as LocalDownloads,
+    components::login_tauri::ChangeServer, components::login_tauri::LogOut,
+    components::login_tauri::Login,
 };
 
 // Yew Imports
@@ -47,7 +46,6 @@ pub fn not_found() -> Html {
         </>
     }
 }
-
 fn switch(route: Route) -> Html {
     match route {
         Route::Login => html! { <Login /> },
@@ -67,6 +65,8 @@ fn switch(route: Route) -> Html {
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Podcasts => html! { <Podcasts /> },
         Route::Episode => html! { <Episode /> },
+        #[cfg(not(feature = "server_build"))]
+        Route::LocalDownloads => html! { <LocalDownloads /> },
     }
 }
 

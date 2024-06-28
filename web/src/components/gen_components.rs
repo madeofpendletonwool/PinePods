@@ -633,6 +633,33 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             // dropdown_open.set(false);
         })
     };
+    let download_local_post = audio_dispatch.clone();
+    let on_local_episode_download = {
+        let episode = props.episode.clone();
+        Callback::from(move |_| {
+            let post_state = download_local_post.clone();
+            let episode_id = episode.get_episode_id().to_string();
+            let filename = format!("episode_{}.mp3", episode_id);
+            let url = episode.get_audio_url().unwrap().to_string(); // Replace with the actual URL of the episode
+            let future = async move {
+                match download_file(url, filename.clone()).await {
+                    Ok(_) => {
+                        post_state.reduce_mut(|state| {
+                            state.info_message =
+                                Option::from(format!("Episode {} downloaded locally!", filename))
+                        });
+                    }
+                    Err(e) => {
+                        post_state.reduce_mut(|state| {
+                            state.error_message =
+                                Option::from(format!("Failed to download episode: {}", e))
+                        });
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+        })
+    };
 
     let remove_download_api_key = api_key.clone();
     let remove_download_server_name = server_name.clone();
@@ -752,12 +779,27 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         .unwrap_or(&vec![])
         .contains(&check_episode_id);
 
+    #[cfg(feature = "server_build")]
+    let download_button = html! {
+        <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+    };
+
+    #[cfg(not(feature = "server_build"))]
+    let download_button = html! {
+        <>
+            <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Server Download" }</li>
+            <li class="dropdown-option" onclick={on_local_episode_download.clone()}>{ "Local Download" }</li>
+        </>
+    };
+
     let action_buttons = match props.page_type.as_str() {
         "saved" => html! {
             <>
                 <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
                 <li class="dropdown-option" onclick={on_remove_saved_episode.clone()}>{ "Remove Saved Episode" }</li>
-                <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+                {
+                    download_button.clone()
+                }
                 <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
@@ -765,7 +807,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <>
                 <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
                 <li class="dropdown-option" onclick={on_remove_queued_episode.clone()}>{ "Remove from Queue" }</li>
-                <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+                {
+                    download_button.clone()
+                }
                 <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
@@ -783,7 +827,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <>
                 <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
                 <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
-                <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+                {
+                    download_button.clone()
+                }
                 <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
