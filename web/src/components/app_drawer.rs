@@ -31,6 +31,20 @@ pub fn app_drawer() -> Html {
         }
     };
 
+    #[cfg(not(feature = "server_build"))]
+    let local_download_link = html! {
+        <div class="flex items-center space-x-3">
+            <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
+                <Link<Route> to={Route::LocalDownloads}>
+                    <span class="material-icons icon-space">{"folder_open"}</span>
+                    <span class="text-lg">{"Local Downloads"}</span>
+                </Link<Route>>
+            </div>
+        </div>
+    };
+    #[cfg(feature = "server_build")]
+    let local_download_link = html! {};
+
     html! {
         <div class="relative min-h-screen">
             // Drawer
@@ -107,18 +121,8 @@ pub fn app_drawer() -> Html {
                             </div>
                         </div>
                         {
-                            #[cfg(not(feature = "server_build"))]
                             {
-                                html! {
-                                    <div class="flex items-center space-x-3">
-                                        <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                            <Link<Route> to={Route::LocalDownloads}>
-                                                <span class="material-icons icon-space">{"folder_open"}</span>
-                                                <span class="text-lg">{"Local Downloads"}</span>
-                                            </Link<Route>>
-                                        </div>
-                                    </div>
-                                }
+                                local_download_link
                             }
                         }
                             <div class="flex items-center space-x-3">

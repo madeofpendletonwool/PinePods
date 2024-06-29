@@ -1,7 +1,6 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    download_episode_item, empty_message, episode_item, on_shownotes_click, Search_nav,
-    UseScrollToTop,
+    download_episode_item, empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
 };
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
@@ -13,8 +12,7 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::pod_req::{
     call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
-    DownloadAllPodcastRequest, DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse,
-    Podcast, PodcastResponse,
+    DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse, Podcast, PodcastResponse,
 };
 use yew::prelude::*;
 use yew::{function_component, html, Html};
@@ -45,7 +43,6 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let effect_dispatch = dispatch.clone();
-    let history = BrowserHistory::new();
 
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
@@ -358,10 +355,6 @@ pub fn downloads() -> Html {
                     {
                     if let Some(download_eps) = state.downloaded_episodes.clone() {
                         let int_download_eps = download_eps.clone();
-                            let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-                            let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-                            let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-                            let history_clone = history.clone();
                             let render_state = post_state.clone();
                             let dispatch_cloned = dispatch.clone();
 
@@ -492,7 +485,7 @@ pub fn render_podcast_with_episodes(
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
                             let episode_listened_clone = episode.listenduration.clone();
-                            let completed = episode.completed;
+                            let _completed = episode.completed;
 
                             let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
 

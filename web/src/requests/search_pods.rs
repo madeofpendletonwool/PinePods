@@ -1,13 +1,9 @@
 use anyhow::Error;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::DateTime;
 use gloo_net::http::Request;
 use rss::Channel;
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
-use wasm_bindgen::JsValue;
-use yew::Properties;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -15,6 +11,7 @@ pub struct RecentEps {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+#[allow(non_snake_case)]
 pub struct PodcastSearchResult {
     pub status: Option<String>,              // for PodcastIndex
     pub resultCount: Option<i32>,            // for iTunes
@@ -23,6 +20,7 @@ pub struct PodcastSearchResult {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+#[allow(non_snake_case)]
 pub struct UnifiedPodcast {
     pub(crate) id: i64,
     pub(crate) title: String,
@@ -127,6 +125,7 @@ pub struct Podcast {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+#[allow(non_snake_case)]
 pub struct ITunesPodcast {
     pub wrapperType: String,
     pub kind: String,
@@ -140,6 +139,7 @@ pub struct ITunesPodcast {
     pub(crate) releaseDate: String,
     pub(crate) genres: Vec<String>,
     pub(crate) collectionExplicitness: String,
+    #[allow(non_snake_case)]
     pub(crate) trackCount: Option<i32>,
     // add other fields as needed
 }
@@ -148,7 +148,7 @@ fn deserialize_string_or_int<'de, D>(deserializer: D) -> Result<Option<String>, 
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::de::{self, Unexpected, Visitor};
+    use serde::de::{self, Visitor};
     use std::fmt;
 
     struct StringOrIntVisitor;
@@ -560,8 +560,6 @@ pub async fn call_search_database(
 
     // Extract the vector of episodes from the SearchResponse
     let results = search_response.data;
-
-    let results_jsvalue = JsValue::from_serde(&results).unwrap();
 
     Ok(results)
 }

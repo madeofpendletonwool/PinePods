@@ -1,21 +1,20 @@
-use yew::prelude::*;
-use web_sys::{console, window};
+use crate::components::context::{AppState, UIState};
+use crate::components::episodes_layout::UIStateMsg;
+use crate::requests::login_requests::{self, call_check_mfa_enabled};
+use crate::requests::login_requests::{
+    call_first_login_done, call_get_time_info, call_self_service_login_status,
+    call_setup_timezone_info, call_verify_key, call_verify_mfa, TimeZoneInfo,
+};
+use crate::requests::setting_reqs::call_get_theme;
+use chrono_tz::{Tz, TZ_VARIANTS};
+use md5;
+use rand::Rng;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use web_sys::{console, window};
+use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-use crate::requests::login_requests::{self, call_check_mfa_enabled};
-use crate::requests::login_requests::{TimeZoneInfo, call_first_login_done, call_setup_timezone_info, call_verify_mfa, call_self_service_login_status, call_reset_password_create_code, ResetCodePayload, ResetForgotPasswordPayload, call_verify_and_reset_password, call_get_time_info, call_verify_key};
-use crate::components::context::{AppState, UIState};
-use md5;
 use yewdux::prelude::*;
-use crate::requests::login_requests::{AddUserRequest, call_add_login_user};
-use crate::requests::setting_reqs::call_get_theme;
-use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
-use crate::components::episodes_layout::UIStateMsg;
-use chrono_tz::{TZ_VARIANTS, Tz};
-use rand::Rng;
-
-
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -32,14 +31,6 @@ pub fn login() -> Html {
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
-    let new_username = use_state(|| "".to_string());
-    let forgot_email = use_state(|| "".to_string());
-    let forgot_username = use_state(|| "".to_string());
-    let reset_password = use_state(|| "".to_string());
-    let reset_code = use_state(|| "".to_string());
-    let new_password = use_state(|| "".to_string());
-    let email = use_state(|| "".to_string());
-    let fullname = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let _error_message = app_state.error_message.clone();
@@ -66,7 +57,11 @@ pub fn login() -> Html {
                 // Example server_name retrieval, adjust according to your needs
                 let window = web_sys::window().expect("no global `window` exists");
                 let location = window.location();
-                let server_name = location.href().expect("should have a href").trim_end_matches('/').to_string();
+                let server_name = location
+                    .href()
+                    .expect("should have a href")
+                    .trim_end_matches('/')
+                    .to_string();
                 match call_self_service_login_status(server_name).await {
                     Ok(status) => {
                         self_service_enabled.set(status);
@@ -82,7 +77,6 @@ pub fn login() -> Html {
         },
     );
 
-
     {
         let ui_dispatch = _dispatch.clone();
         use_effect(move || {
@@ -94,11 +88,15 @@ pub fn login() -> Html {
                 ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
             }) as Box<dyn Fn(_)>);
 
-            document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+            document
+                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                .unwrap();
 
             // Return cleanup function
             move || {
-                document.remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref()).unwrap();
+                document
+                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+                    .unwrap();
                 closure.forget(); // Prevents the closure from being dropped
             }
         });
@@ -114,7 +112,9 @@ pub fn login() -> Html {
                     if let Some(storage) = local_storage {
                         if let Ok(Some(stored_theme)) = storage.get_item("selected_theme") {
                             // Set the theme using your existing theme change function
-                            crate::components::setting_components::theme_options::changeTheme(&stored_theme);
+                            crate::components::setting_components::theme_options::changeTheme(
+                                &stored_theme,
+                            );
                         }
 
                         if let Ok(Some(user_state)) = storage.get_item("userState") {
@@ -122,53 +122,87 @@ pub fn login() -> Html {
 
                             if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
                                 match AppState::deserialize(&auth_state) {
-                                    Ok(auth_details) => { // Successful deserialization of auth state
-                                        if let Ok(Some(server_state)) = storage.get_item("serverState") {
-                                            let server_details_result = AppState::deserialize(&server_state);
+                                    Ok(auth_details) => {
+                                        // Successful deserialization of auth state
+                                        if let Ok(Some(server_state)) =
+                                            storage.get_item("serverState")
+                                        {
+                                            let server_details_result =
+                                                AppState::deserialize(&server_state);
 
-                                            if let Ok(app_state) = app_state_result { // Successful deserialization of user state
-                                                if let Ok(server_details) = server_details_result { // Successful deserialization of server state
+                                            if let Ok(app_state) = app_state_result {
+                                                // Successful deserialization of user state
+                                                if let Ok(server_details) = server_details_result {
+                                                    // Successful deserialization of server state
                                                     // Check if the deserialized state contains valid data
-                                                    if app_state.user_details.is_some() && auth_details.auth_details.is_some() && server_details.server_details.is_some() {
-
+                                                    if app_state.user_details.is_some()
+                                                        && auth_details.auth_details.is_some()
+                                                        && server_details.server_details.is_some()
+                                                    {
                                                         let auth_state_clone = auth_details.clone();
-                                                        let email = &app_state.user_details.as_ref().unwrap().Email;
-                                                        let user_id = app_state.user_details.as_ref().unwrap().UserID.clone();
+                                                        let email = &app_state
+                                                            .user_details
+                                                            .as_ref()
+                                                            .unwrap()
+                                                            .Email;
+                                                        let user_id = app_state
+                                                            .user_details
+                                                            .as_ref()
+                                                            .unwrap()
+                                                            .UserID
+                                                            .clone();
                                                         // Safely access server_name and api_key
-                                                        let auth_details_clone = auth_state_clone.auth_details.clone();
-                                                        if let Some(auth_details) = auth_details_clone.as_ref() {
-                                                            let server_name = auth_details.server_name.clone();
-                                                            let api_key = auth_details.api_key.clone().unwrap_or_default();
-                                                            
+                                                        let auth_details_clone =
+                                                            auth_state_clone.auth_details.clone();
+                                                        if let Some(auth_details) =
+                                                            auth_details_clone.as_ref()
+                                                        {
+                                                            let server_name =
+                                                                auth_details.server_name.clone();
+                                                            let api_key = auth_details
+                                                                .api_key
+                                                                .clone()
+                                                                .unwrap_or_default();
+
                                                             // Now verify the API key
                                                             // let wasm_user_id = user_id.clone();
                                                             let wasm_app_state = app_state.clone();
                                                             let wasm_auth_details: login_requests::LoginServerRequest = auth_details.clone();
                                                             let wasm_email = email.clone();
                                                             let wasm_user_id = user_id.clone();
-                                                            wasm_bindgen_futures::spawn_local(async move {
-                                                                match call_verify_key(&server_name.clone(), &api_key.clone()).await {
-                                                                    Ok(_) => {
-                                                                        // API key is valid, user can stay logged in
-                                                                        let final_dispatch = effect_displatch.clone();
-                                                                        let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
-                                                                        // Auto login logic here
-                                                                        final_dispatch.reduce_mut(move |state| {
+                                                            wasm_bindgen_futures::spawn_local(
+                                                                async move {
+                                                                    match call_verify_key(
+                                                                        &server_name.clone(),
+                                                                        &api_key.clone(),
+                                                                    )
+                                                                    .await
+                                                                    {
+                                                                        Ok(_) => {
+                                                                            // API key is valid, user can stay logged in
+                                                                            let final_dispatch =
+                                                                                effect_displatch
+                                                                                    .clone();
+                                                                            let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
+                                                                            // Auto login logic here
+                                                                            final_dispatch.reduce_mut(move |state| {
                                                                             state.user_details = wasm_app_state.user_details;
                                                                             state.auth_details = Some(wasm_auth_details.clone());
                                                                             state.server_details = server_details.server_details;
                                                                             state.gravatar_url = Some(gravatar_url);
-                
+
                                                                         });
-                                                                        // let mut error_message = app_state.error_message;
-                                                                        // Retrieve the originally requested route, if any
-                                                                        let session_storage = window.session_storage().unwrap().unwrap();
-                                                                        session_storage.set_item("isAuthenticated", "true").unwrap();
-                                                                        let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
-                                                                        // Get Theme
-                                                                        let theme_api = api_key.clone();
-                                                                        let theme_server = server_name.clone();
-                                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                                            // let mut error_message = app_state.error_message;
+                                                                            // Retrieve the originally requested route, if any
+                                                                            let session_storage = window.session_storage().unwrap().unwrap();
+                                                                            session_storage.set_item("isAuthenticated", "true").unwrap();
+                                                                            let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
+                                                                            // Get Theme
+                                                                            let theme_api =
+                                                                                api_key.clone();
+                                                                            let theme_server =
+                                                                                server_name.clone();
+                                                                            wasm_bindgen_futures::spawn_local(async move {
                                                                             match call_get_theme(theme_server, theme_api, &wasm_user_id).await{
                                                                                 Ok(theme) => {
                                                                                     crate::components::setting_components::theme_options::changeTheme(&theme);
@@ -186,7 +220,7 @@ pub fn login() -> Html {
                                                                                 }
                                                                             }
                                                                         });
-                                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                                            wasm_bindgen_futures::spawn_local(async move {
                                                                             match call_get_time_info(server_name, api_key, &wasm_user_id).await{
                                                                                 Ok(tz_response) => {
                                                                                     effect_displatch.reduce_mut(move |state| {
@@ -200,26 +234,33 @@ pub fn login() -> Html {
                                                                                 }
                                                                             }
                                                                         });
-                                                                        let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
-                                                                        history.push(&redirect_route); // Redirect to the requested or home page
+                                                                            let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                                            history.push(
+                                                                                &redirect_route,
+                                                                            ); // Redirect to the requested or home page
+                                                                        }
+                                                                        Err(_) => {
+                                                                            // API key is not valid, redirect to login
+                                                                            history.push("/");
+                                                                        }
                                                                     }
-                                                                    Err(_) => {
-                                                                        // API key is not valid, redirect to login
-                                                                        history.push("/");
-                                                                    }
-                                                                }
-                                                            });
-
+                                                                },
+                                                            );
                                                         } else {
-                                                            console::log_1(&"Auth details are None".into());
+                                                            console::log_1(
+                                                                &"Auth details are None".into(),
+                                                            );
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                    },
+                                    }
                                     Err(e) => {
-                                        web_sys::console::log_1(&format!("Error deserializing auth state: {:?}", e).into());
+                                        web_sys::console::log_1(
+                                            &format!("Error deserializing auth state: {:?}", e)
+                                                .into(),
+                                        );
                                     }
                                 }
                             }
@@ -240,32 +281,43 @@ pub fn login() -> Html {
         (), // Dependencies, an empty tuple here signifies no dependencies.
         move |_| {
             let background_number = rand::thread_rng().gen_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
-            effect_background_image.set(format!("static/assets/backgrounds/{}.jpg", background_number));
-    
+            effect_background_image.set(format!(
+                "static/assets/backgrounds/{}.jpg",
+                background_number
+            ));
+
             // Return the cleanup function, which is required but can be empty if no cleanup is needed.
             || {}
         },
     );
-    
 
     let on_server_name_change = {
         let server_name = server_name.clone();
         Callback::from(move |e: InputEvent| {
-            server_name.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            server_name.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
     let on_username_change = {
         let username = username.clone();
         Callback::from(move |e: InputEvent| {
-            username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            username.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
     let on_password_change = {
         let password = password.clone();
         Callback::from(move |e: InputEvent| {
-            password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            password.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
@@ -293,7 +345,13 @@ pub fn login() -> Html {
                 // let server_name = location.href().expect("should have a href");
                 let server_name = server_name.clone();
                 let page_state = page_state.clone();
-                match login_requests::login_new_server(server_name.to_string(), username.to_string(), password.to_string()).await {
+                match login_requests::login_new_server(
+                    server_name.to_string(),
+                    username.to_string(),
+                    password.to_string(),
+                )
+                .await
+                {
                     Ok((user_details, login_request, server_details)) => {
                         // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
@@ -304,11 +362,11 @@ pub fn login() -> Html {
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
                             state.gravatar_url = Some(gravatar_url); // Store the Gravatar URL
-    
+
                             state.store_app_state();
                         });
 
-                                    // Extract server_name, api_key, and user_id
+                        // Extract server_name, api_key, and user_id
                         let server_name = key_copy.server_name;
                         let api_key = key_copy.api_key;
                         let user_id = user_copy.UserID;
@@ -317,10 +375,22 @@ pub fn login() -> Html {
                         temp_api_key.set(api_key.clone().unwrap());
                         temp_user_id.set(user_id.clone());
 
-                        match call_first_login_done(server_name.clone(), api_key.clone().unwrap(), &user_id).await {
+                        match call_first_login_done(
+                            server_name.clone(),
+                            api_key.clone().unwrap(),
+                            &user_id,
+                        )
+                        .await
+                        {
                             Ok(first_login_done) => {
                                 if first_login_done {
-                                    match call_check_mfa_enabled(server_name.clone(), api_key.clone().unwrap(), &user_id).await {
+                                    match call_check_mfa_enabled(
+                                        server_name.clone(),
+                                        api_key.clone().unwrap(),
+                                        &user_id,
+                                    )
+                                    .await
+                                    {
                                         Ok(response) => {
                                             if response.mfa_enabled {
                                                 page_state.set(PageState::MFAPrompt);
@@ -328,11 +398,20 @@ pub fn login() -> Html {
                                                 let theme_api = api_key.clone();
                                                 let theme_server = server_name.clone();
                                                 wasm_bindgen_futures::spawn_local(async move {
-                                                    match call_get_theme(theme_server, theme_api.unwrap(), &user_id).await{
+                                                    match call_get_theme(
+                                                        theme_server,
+                                                        theme_api.unwrap(),
+                                                        &user_id,
+                                                    )
+                                                    .await
+                                                    {
                                                         Ok(theme) => {
                                                             crate::components::setting_components::theme_options::changeTheme(&theme);
-                                                            if let Some(window) = web_sys::window() {
-                                                                if let Ok(Some(local_storage)) = window.local_storage() {
+                                                            if let Some(window) = web_sys::window()
+                                                            {
+                                                                if let Ok(Some(local_storage)) =
+                                                                    window.local_storage()
+                                                                {
                                                                     match local_storage.set_item("selected_theme", &theme) {
                                                                         Ok(_) => console::log_1(&"Updated theme in local storage".into()),
                                                                         Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
@@ -346,12 +425,21 @@ pub fn login() -> Html {
                                                     }
                                                 });
                                                 wasm_bindgen_futures::spawn_local(async move {
-                                                    match call_get_time_info(server_name, api_key.unwrap(), &user_id).await{
+                                                    match call_get_time_info(
+                                                        server_name,
+                                                        api_key.unwrap(),
+                                                        &user_id,
+                                                    )
+                                                    .await
+                                                    {
                                                         Ok(tz_response) => {
                                                             dispatch.reduce_mut(move |state| {
-                                                                state.user_tz = Some(tz_response.timezone);
-                                                                state.hour_preference = Some(tz_response.hour_pref);
-                                                                state.date_format = Some(tz_response.date_format);
+                                                                state.user_tz =
+                                                                    Some(tz_response.timezone);
+                                                                state.hour_preference =
+                                                                    Some(tz_response.hour_pref);
+                                                                state.date_format =
+                                                                    Some(tz_response.date_format);
                                                             });
                                                         }
                                                         Err(_e) => {
@@ -361,24 +449,34 @@ pub fn login() -> Html {
                                                 });
                                                 history.push("/home"); // Use the route path
                                             }
-
-                                        },
+                                        }
                                         Err(_) => {
-                                            post_state.reduce_mut(|state| state.error_message = Option::from("Error Checking MFA Status".to_string()));
+                                            post_state.reduce_mut(|state| {
+                                                state.error_message = Option::from(
+                                                    "Error Checking MFA Status".to_string(),
+                                                )
+                                            });
                                         }
                                     }
                                 } else {
                                     page_state.set(PageState::TimeZone);
                                 }
-                            },
+                            }
                             Err(_) => {
-                                post_state.reduce_mut(|state| state.error_message = Option::from("Error checking first login status".to_string()));
+                                post_state.reduce_mut(|state| {
+                                    state.error_message = Option::from(
+                                        "Error checking first login status".to_string(),
+                                    )
+                                });
                             }
                         }
-                    },
+                    }
                     Err(_) => {
                         // console::log_1(&format!("Error logging into server: {}", server_name).into());
-                        post_state.reduce_mut(|state| state.error_message = Option::from("Your credentials appear to be incorrect".to_string()));
+                        post_state.reduce_mut(|state| {
+                            state.error_message =
+                                Option::from("Your credentials appear to be incorrect".to_string())
+                        });
                         // Handle error
                     }
                 }
@@ -392,15 +490,13 @@ pub fn login() -> Html {
         })
     };
 
-        // Define the state of the application
-        #[derive(Clone, PartialEq)]
-        enum PageState {
-            Default,
-            TimeZone,
-            MFAPrompt
-        }
-
-    let history_clone = history.clone();
+    // Define the state of the application
+    #[derive(Clone, PartialEq)]
+    enum PageState {
+        Default,
+        TimeZone,
+        MFAPrompt,
+    }
 
     let handle_key_press = {
         let on_submit = on_submit.clone(); // Clone the on_submit callback
@@ -441,7 +537,9 @@ pub fn login() -> Html {
             if let Ok(value_int) = value_str.parse::<i32>() {
                 time_pref.set(value_int);
             } else {
-                time_state_error.reduce_mut(|state| state.error_message = Option::from("Error parsing time preference".to_string()));
+                time_state_error.reduce_mut(|state| {
+                    state.error_message = Option::from("Error parsing time preference".to_string())
+                });
             }
         })
     };
@@ -465,7 +563,7 @@ pub fn login() -> Html {
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();
-            let user_id = *temp_user_id; 
+            let user_id = *temp_user_id;
             let page_state = page_state.clone();
             let history = history.clone();
             // let error_message_clone = error_message_create.clone();
@@ -478,34 +576,51 @@ pub fn login() -> Html {
                 hour_pref: *time_pref,
                 date_format: (*date_format).clone(),
             };
-            
+
             wasm_bindgen_futures::spawn_local(async move {
                 // Directly use timezone_info without checking it against time_zone_setup
-                match call_setup_timezone_info(server_name.clone(), api_key.clone(), timezone_info).await {
+                match call_setup_timezone_info(server_name.clone(), api_key.clone(), timezone_info)
+                    .await
+                {
                     Ok(success) => {
                         if success.success {
                             page_state.set(PageState::Default);
-                            match call_check_mfa_enabled(server_name.clone(), api_key.clone(), &user_id).await {
+                            match call_check_mfa_enabled(
+                                server_name.clone(),
+                                api_key.clone(),
+                                &user_id,
+                            )
+                            .await
+                            {
                                 Ok(response) => {
                                     if response.mfa_enabled {
                                         page_state.set(PageState::MFAPrompt);
                                     } else {
                                         history.push("/home"); // Use the route path
                                     }
-                                },
+                                }
                                 Err(_) => {
-                                    post_state.reduce_mut(|state| state.error_message = Option::from("Error Checking MFA Status".to_string()));
+                                    post_state.reduce_mut(|state| {
+                                        state.error_message =
+                                            Option::from("Error Checking MFA Status".to_string())
+                                    });
                                 }
                             }
                         } else {
-                            post_state.reduce_mut(|state| state.error_message = Option::from("Error Setting up Time Zone".to_string()));
+                            post_state.reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from("Error Setting up Time Zone".to_string())
+                            });
                             page_state.set(PageState::Default);
                         }
-                    },
+                    }
                     Err(e) => {
                         page_state.set(PageState::Default);
                         // dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
-                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                        post_state.reduce_mut(|state| {
+                            state.error_message =
+                                Option::from(format!("Error setting up time zone: {:?}", e))
+                        });
                     }
                 }
             });
@@ -575,9 +690,12 @@ pub fn login() -> Html {
     let on_mfa_change = {
         let mfa_code = mfa_code.clone();
         Callback::from(move |e: InputEvent| {
-            mfa_code.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            mfa_code.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
-    };    
+    };
     let post_state = _dispatch.clone();
     let on_mfa_submit = {
         let (state, dispatch) = use_store::<AppState>();
@@ -602,18 +720,32 @@ pub fn login() -> Html {
             e.prevent_default();
 
             wasm_bindgen_futures::spawn_local(async move {
-                match call_verify_mfa(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.clone().unwrap(), (*mfa_code).clone()).await {
+                match call_verify_mfa(
+                    &server_name.clone().unwrap(),
+                    &api_key.clone().unwrap().unwrap(),
+                    user_id.clone().unwrap(),
+                    (*mfa_code).clone(),
+                )
+                .await
+                {
                     Ok(response) => {
                         if response.verified {
                             page_state.set(PageState::Default);
                             let theme_api = api_key.clone();
                             let theme_server = server_name.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                match call_get_theme(theme_server.unwrap(), theme_api.unwrap().unwrap(), &user_id.unwrap()).await{
+                                match call_get_theme(
+                                    theme_server.unwrap(),
+                                    theme_api.unwrap().unwrap(),
+                                    &user_id.unwrap(),
+                                )
+                                .await
+                                {
                                     Ok(theme) => {
                                         crate::components::setting_components::theme_options::changeTheme(&theme);
                                         if let Some(window) = web_sys::window() {
-                                            if let Ok(Some(local_storage)) = window.local_storage() {
+                                            if let Ok(Some(local_storage)) = window.local_storage()
+                                            {
                                                 match local_storage.set_item("selected_theme", &theme) {
                                                     Ok(_) => console::log_1(&"Updated theme in local storage".into()),
                                                     Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
@@ -627,7 +759,13 @@ pub fn login() -> Html {
                                 }
                             });
                             wasm_bindgen_futures::spawn_local(async move {
-                                match call_get_time_info(server_name.unwrap(), api_key.unwrap().unwrap(), &user_id.unwrap()).await{
+                                match call_get_time_info(
+                                    server_name.unwrap(),
+                                    api_key.unwrap().unwrap(),
+                                    &user_id.unwrap(),
+                                )
+                                .await
+                                {
                                     Ok(tz_response) => {
                                         dispatch.reduce_mut(move |state| {
                                             state.user_tz = Some(tz_response.timezone);
@@ -643,14 +781,18 @@ pub fn login() -> Html {
                             history.push("/home"); // Use the route path
                         } else {
                             page_state.set(PageState::Default);
-                            post_state.reduce_mut(|state| state.error_message = Option::from(format!("Error validating MFA Code")));
-
+                            post_state.reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from(format!("Error validating MFA Code"))
+                            });
                         }
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
-                        post_state.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
-
+                        post_state.reduce_mut(|state| {
+                            state.error_message =
+                                Option::from(format!("Error setting up time zone: {:?}", e))
+                        });
                     }
                 }
             });
@@ -685,7 +827,6 @@ pub fn login() -> Html {
             </div>
         </div>
     };
-
 
     html! {
         <>
@@ -740,7 +881,6 @@ pub fn login() -> Html {
         </div>
         </>
     }
-
 }
 
 #[function_component(ChangeServer)]
@@ -756,19 +896,31 @@ pub fn logout() -> Html {
 
     // Clear local and session storage except for 'user_theme'
     let window = web_sys::window().expect("no global `window` exists");
-    let local_storage = window.local_storage().expect("localStorage not enabled").expect("localStorage is null");
-    let session_storage = window.session_storage().expect("sessionStorage not enabled").expect("sessionStorage is null");
+    let local_storage = window
+        .local_storage()
+        .expect("localStorage not enabled")
+        .expect("localStorage is null");
+    let session_storage = window
+        .session_storage()
+        .expect("sessionStorage not enabled")
+        .expect("sessionStorage is null");
 
     // Save 'user_theme' value
-    let selected_theme = local_storage.get_item("selected_theme").expect("failed to get 'selected_theme'");
+    let selected_theme = local_storage
+        .get_item("selected_theme")
+        .expect("failed to get 'selected_theme'");
 
     // Clear storages
     local_storage.clear().expect("failed to clear localStorage");
-    session_storage.clear().expect("failed to clear sessionStorage");
+    session_storage
+        .clear()
+        .expect("failed to clear sessionStorage");
 
     // Restore 'user_theme' value
     if let Some(theme) = selected_theme {
-        local_storage.set_item("selected_theme", &theme).expect("failed to set 'selected_theme'");
+        local_storage
+            .set_item("selected_theme", &theme)
+            .expect("failed to set 'selected_theme'");
     }
 
     // Redirect to root path

@@ -1,4 +1,8 @@
 use crate::components::context::{AppState, UIState};
+#[cfg(not(feature = "server_build"))]
+use crate::components::downloads_tauri::{
+    download_file, update_local_database, update_podcast_database,
+};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_time;
 use crate::requests::pod_req::{
@@ -7,6 +11,10 @@ use crate::requests::pod_req::{
     call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest,
     SavedEpisode,
+};
+#[cfg(not(feature = "server_build"))]
+use crate::requests::pod_req::{
+    call_get_episode_metadata, call_get_podcast_details, EpisodeRequest,
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
@@ -115,23 +123,16 @@ pub fn search_bar() -> Html {
             let search_value = podcast_value_clone.clone();
             let search_index = search_index_clone.clone();
             let dispatch = dispatch.clone();
-            // Assuming `search_index` is a String
-            let search_index_test = search_index.clone(); // Example assignment
-
-            // Convert the Rust String to JsValue
-            let js_value = JsValue::from_str(&*search_index_test);
 
             wasm_bindgen_futures::spawn_local(async move {
                 dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let cloned_api_url = &api_url.clone();
                 match test_connection(&cloned_api_url.clone().unwrap()).await {
                     Ok(_) => {
-                        let js_value = JsValue::from_str("running call");
                         match call_get_podcast_info(&search_value, &api_url.unwrap(), &search_index)
                             .await
                         {
                             Ok(search_results) => {
-                                let js_value = JsValue::from_str("pulled response");
                                 dispatch.reduce_mut(move |state| {
                                     state.search_results = Some(search_results);
                                     state.podcast_added = Some(false);
@@ -139,11 +140,7 @@ pub fn search_bar() -> Html {
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/pod_layout"); // Use the route path
                             }
-                            Err(e) => {
-                                let js_value = JsValue::from_str(&format!(
-                                    "Error getting data connection: {}",
-                                    e
-                                ));
+                            Err(_) => {
                                 dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
                         }
@@ -633,30 +630,102 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             // dropdown_open.set(false);
         })
     };
-    let download_local_post = audio_dispatch.clone();
+    #[cfg(not(feature = "server_build"))]
     let on_local_episode_download = {
         let episode = props.episode.clone();
+        let download_local_post = audio_dispatch.clone();
+        let server_name_copy = server_name.clone();
+        let api_key_copy = api_key.clone();
+        let user_id_copy = user_id.clone();
+
         Callback::from(move |_| {
             let post_state = download_local_post.clone();
-            let episode_id = episode.get_episode_id().to_string();
-            let filename = format!("episode_{}.mp3", episode_id);
-            let url = episode.get_audio_url().unwrap().to_string(); // Replace with the actual URL of the episode
+            let episode_id = episode.get_episode_id();
+            let request = EpisodeRequest {
+                episode_id,
+                user_id: user_id_copy.unwrap(),
+            };
+            let server_name = server_name_copy.clone().unwrap();
+            let ep_api_key = api_key_copy.clone().flatten();
+            let api_key = api_key_copy.clone().flatten();
+
             let future = async move {
-                match download_file(url, filename.clone()).await {
-                    Ok(_) => {
-                        post_state.reduce_mut(|state| {
-                            state.info_message =
-                                Option::from(format!("Episode {} downloaded locally!", filename))
-                        });
+                match call_get_episode_metadata(&server_name, ep_api_key, &request).await {
+                    Ok(episode_info) => {
+                        let audio_url = episode_info.episodeurl.clone();
+                        let artwork_url = episode_info.episodeartwork.clone();
+                        let podcast_id = episode_info.podcastid.clone();
+                        let filename = format!("episode_{}.mp3", episode_id);
+                        let artwork_filename = format!("artwork_{}.jpg", episode_id);
+
+                        // Download audio
+                        match download_file(audio_url, filename.clone()).await {
+                            Ok(_) => {
+                                post_state.reduce_mut(|state| {
+                                    state.info_message =
+                                        Some(format!("Episode {} downloaded locally!", filename))
+                                });
+                            }
+                            Err(e) => {
+                                post_state.reduce_mut(|state| {
+                                    state.error_message =
+                                        Some(format!("Failed to download episode audio: {:?}", e))
+                                });
+                            }
+                        }
+
+                        // Download artwork
+                        if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
+                            post_state.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Failed to download episode artwork: {:?}", e))
+                            });
+                        }
+
+                        // Update local JSON database
+                        if let Err(e) = update_local_database(episode_info).await {
+                            post_state.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Failed to update local database: {:?}", e))
+                            });
+                        }
+
+                        // Fetch and update local podcast metadata
+                        match call_get_podcast_details(
+                            &server_name,
+                            &api_key.unwrap(),
+                            user_id_copy.unwrap(),
+                            &podcast_id,
+                        )
+                        .await
+                        {
+                            Ok(podcast_details) => {
+                                if let Err(e) = update_podcast_database(podcast_details).await {
+                                    post_state.reduce_mut(|state| {
+                                        state.error_message = Some(format!(
+                                            "Failed to update podcast database: {:?}",
+                                            e
+                                        ))
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                post_state.reduce_mut(|state| {
+                                    state.error_message =
+                                        Some(format!("Failed to fetch podcast metadata: {:?}", e))
+                                });
+                            }
+                        }
                     }
                     Err(e) => {
                         post_state.reduce_mut(|state| {
                             state.error_message =
-                                Option::from(format!("Failed to download episode: {}", e))
+                                Some(format!("Failed to fetch episode metadata: {:?}", e))
                         });
                     }
                 }
             };
+
             wasm_bindgen_futures::spawn_local(future);
         })
     };
@@ -1100,7 +1169,6 @@ pub fn episode_item(
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
-    let episode_guid = episode.get_episode_id().to_string();
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
@@ -1245,7 +1313,6 @@ pub fn download_episode_item(
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
-    let episode_guid = episode.get_episode_id().to_string();
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
             (ld as f64 / episode_duration as f64) * 100.0

@@ -208,7 +208,6 @@ pub fn queue() -> Html {
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
                             let episode_listened_clone = episode.listenduration.clone();
-                            let completed = episode.completed.clone();
 
                             let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
 

@@ -257,7 +257,6 @@ pub fn podcasts() -> Html {
                             }
                             let toggle_expanded = {
                                 let desc_dispatch = desc_dispatch.clone();
-                                let desc_state = desc_state.clone();
                                 let episode_guid = podcast.podcastid.clone().to_string();
 
                                 Callback::from(move |_: MouseEvent| {

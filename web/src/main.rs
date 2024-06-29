@@ -67,6 +67,8 @@ fn switch(route: Route) -> Html {
         Route::Episode => html! { <Episode /> },
         #[cfg(not(feature = "server_build"))]
         Route::LocalDownloads => html! { <LocalDownloads /> },
+        #[cfg(feature = "server_build")]
+        Route::LocalDownloads => html! { <div>{"Local downloads not available on the web"}</div> },
     }
 }
 

@@ -18,7 +18,6 @@ use crate::requests::pod_req::{
 };
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
-use js_sys::encode_uri_component;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
@@ -92,7 +91,7 @@ fn sanitize_html(html: &str) -> String {
     let decoded_data = decode(cleaned_html.as_bytes());
     match decoded_data.to_string() {
         Ok(decoded_html) => decoded_html,
-        Err(e) => String::from("Invalid HTML content"),
+        Err(_) => String::from("Invalid HTML content"),
     }
 }
 
@@ -213,8 +212,6 @@ pub fn episode_layout() -> Html {
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
     let effect_api_key = api_key.clone();
-    let ep_name_effect = episode_name_pre.clone();
-    let ep_url_effect = episode_url_pre.clone();
 
     {
         let is_added = is_added.clone();
@@ -245,7 +242,6 @@ pub fn episode_layout() -> Html {
 
     let download_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
-    let podcast_id_effect = podcast_id.clone();
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
 
@@ -428,7 +424,6 @@ pub fn episode_layout() -> Html {
         let api_key_clone = api_key.clone();
         let server_name_clone = server_name.clone();
         let user_id_clone = user_id.clone();
-        let dispatch = add_dispatch.clone();
         let app_dispatch = _search_dispatch.clone();
 
         let is_added = is_added.clone();
@@ -564,14 +559,12 @@ pub fn episode_layout() -> Html {
         }
     };
 
-    let download_post = state.clone();
     let download_server_name = server_name.clone();
     let download_api_key = api_key.clone();
     let download_dispatch = _dispatch.clone();
     let app_state = search_state.clone();
 
     let download_all_click = {
-        let post_state = download_post.clone();
         let call_dispatch = download_dispatch.clone();
         let server_name_copy = download_server_name.clone();
         let api_key_copy = download_api_key.clone();
@@ -579,7 +572,6 @@ pub fn episode_layout() -> Html {
         let search_call_state = app_state.clone();
 
         Callback::from(move |_: MouseEvent| {
-            let post_state = post_state.clone();
             let server_name = server_name_copy.clone();
             let api_key = api_key_copy.clone();
             let search_state = search_call_state.clone();
@@ -861,12 +853,6 @@ pub fn episode_layout() -> Html {
         })
     };
 
-    let button_class = if *is_added {
-        "bg-red-500"
-    } else {
-        "bg-blue-500"
-    };
-
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -888,23 +874,23 @@ pub fn episode_layout() -> Html {
             if let Some(podcast_info) = clicked_podcast_info {
                 let sanitized_title = podcast_info.podcast_title.replace(|c: char| !c.is_alphanumeric(), "-");
                 let desc_id = format!("desc-{}", sanitized_title);
-                let toggle_description = {
-                    let desc_id = desc_id.clone();
-                    Callback::from(move |_: MouseEvent| {
-                        let desc_id = desc_id.clone();
-                        wasm_bindgen_futures::spawn_local(async move {
-                            let window = web_sys::window().expect("no global `window` exists");
-                            let function = window
-                                .get("toggle_description")
-                                .expect("should have `toggle_description` as a function")
-                                .dyn_into::<js_sys::Function>()
-                                .unwrap();
-                            let this = JsValue::NULL;
-                            let guid = JsValue::from_str(&desc_id);
-                            function.call1(&this, &guid).unwrap();
-                        });
-                    })
-                };
+                // let toggle_description = {
+                //     let desc_id = desc_id.clone();
+                //     Callback::from(move |_: MouseEvent| {
+                //         let desc_id = desc_id.clone();
+                //         wasm_bindgen_futures::spawn_local(async move {
+                //             let window = web_sys::window().expect("no global `window` exists");
+                //             let function = window
+                //                 .get("toggle_description")
+                //                 .expect("should have `toggle_description` as a function")
+                //                 .dyn_into::<js_sys::Function>()
+                //                 .unwrap();
+                //             let this = JsValue::NULL;
+                //             let guid = JsValue::from_str(&desc_id);
+                //             function.call1(&this, &guid).unwrap();
+                //         });
+                //     })
+                // };
 
 
 

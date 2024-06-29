@@ -1,4 +1,3 @@
-use crate::components::misc_func::deserialize_with_lowercase;
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -1382,9 +1381,6 @@ pub async fn call_get_nextcloud_server(
     if response.ok() {
         match serde_json::from_str::<NextcloudGetResponse>(&response_text) {
             Ok(response_body) => {
-                // Check if the data fields are not empty
-                let response_body_str = serde_json::to_string(&response_body).unwrap_or_default();
-
                 if !response_body.data.gpodderurl.trim().is_empty() {
                     Ok(response_body.data.gpodderurl.clone())
                 } else {

@@ -2,7 +2,6 @@ use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -1035,7 +1034,7 @@ pub async fn call_remove_downloaded_episode(
 
 // Get Single Epsiode
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
 pub struct EpisodeInfo {
     pub episodetitle: String,

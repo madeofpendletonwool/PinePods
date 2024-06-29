@@ -198,7 +198,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                         // Calculate progress as a percentage
                         let progress_percentage = if duration > 0.0 {
-                            (time_in_seconds / duration * 100.0)
+                            time_in_seconds / duration * 100.0
                         } else {
                             0.0
                         };
@@ -456,12 +456,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         })
     };
-    let speed_state = audio_state.clone();
     let speed_dispatch = _audio_dispatch.clone();
 
     // Adjust the playback speed based on a slider value
     let update_playback_speed = {
-        let audio_dispatch = speed_dispatch.clone();
         Callback::from(move |speed: f64| {
             speed_dispatch.reduce_mut(|speed_state| {
                 speed_state.playback_speed = speed;
@@ -472,7 +470,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
-    let volume_state = audio_state.clone();
     let volume_dispatch = _audio_dispatch.clone();
 
     // Adjust the volume based on a slider value
@@ -831,24 +828,6 @@ pub fn on_play_click(
     is_local: Option<bool>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
-        fn parse_duration_to_seconds(duration_convert: &i32) -> f64 {
-            let dur_string = duration_convert.to_string();
-            let parts: Vec<&str> = dur_string.split(':').collect();
-            let parts: Vec<f64> = parts
-                .iter()
-                .map(|part| part.parse::<f64>().unwrap_or(0.0))
-                .collect();
-
-            let seconds = match parts.len() {
-                3 => parts[0] * 3600.0 + parts[1] * 60.0 + parts[2],
-                2 => parts[0] * 60.0 + parts[1],
-                1 => parts[0],
-                _ => 0.0,
-            };
-
-            seconds
-        }
-
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
@@ -860,7 +839,6 @@ pub fn on_play_click(
         let server_name = server_name.clone();
         let audio_dispatch = audio_dispatch.clone();
 
-        let formatted_duration = parse_duration_to_seconds(&episode_duration_for_closure);
         let episode_pos: f32 = 0.0;
         let episode_id = episode_id_for_closure.clone();
 

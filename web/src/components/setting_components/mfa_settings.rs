@@ -110,14 +110,24 @@ pub fn mfa_options() -> Html {
                 {
                     Ok(response) => {
                         if *mfa_status {
-                            call_disable_mfa(
+                            let result = call_disable_mfa(
                                 &server_name.unwrap(),
                                 &api_key.unwrap().unwrap(),
                                 user_id.unwrap(),
                             )
                             .await;
-                            page_state.set(PageState::Hidden); // Hide the modal
-                            mfa_status.set(false);
+
+                            match result {
+                                Ok(_) => {
+                                    // Handle success
+                                    page_state.set(PageState::Hidden); // Hide the modal
+                                    mfa_status.set(false);
+                                }
+                                Err(e) => {
+                                    // Handle error
+                                    eprintln!("Error disabling MFA: {:?}", e);
+                                }
+                            }
                         } else {
                             mfa_secret.set(response.secret);
                             mfa_code.set(response.qr_code_svg); // Directly use the SVG QR code

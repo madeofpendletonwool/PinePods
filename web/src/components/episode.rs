@@ -18,11 +18,10 @@ use crate::requests::pod_req::{
 use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
 use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
 #[function_component(Episode)]

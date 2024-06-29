@@ -2,15 +2,12 @@ use crate::components::context::{AppState, UIState};
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
     call_get_nextcloud_server, call_verify_gpodder_auth, initiate_nextcloud_login,
-    GpodderAuthRequest, GpodderCheckRequest, NextcloudAuthRequest, NextcloudInitiateResponse,
+    GpodderAuthRequest, GpodderCheckRequest, NextcloudAuthRequest,
 };
 use serde::Deserialize;
 use serde::Serialize;
-use serde_wasm_bindgen;
-use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{console, HtmlInputElement, Request, RequestInit, RequestMode, Response};
+use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::use_store;
 // use wasm_timer;

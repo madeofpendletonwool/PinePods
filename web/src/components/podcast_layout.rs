@@ -8,7 +8,7 @@ use crate::requests::pod_req::{
     call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastValues,
     RemovePodcastValuesName,
 };
-use crate::requests::search_pods::{call_parse_podcast_url, Podcast, UnifiedPodcast};
+use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -38,7 +38,7 @@ pub fn pod_layout() -> Html {
     // let dispatch = Dispatch::<AppState>::global();
     // let state: Rc<AppState> = dispatch.get();
     let (state, dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
 
     let search_results = state.search_results.clone();
 
@@ -426,7 +426,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
     let toggle_expanded = {
         let desc_dispatch = desc_dispatch.clone();
-        let desc_state = desc_state.clone();
         let episode_guid = podcast.id.clone().to_string();
 
         Callback::from(move |_: MouseEvent| {
