@@ -2,6 +2,7 @@ use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -1047,6 +1048,7 @@ pub struct EpisodeInfo {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1315,26 +1317,17 @@ where
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
-    #[serde(rename = "PodcastName")]
-    pub podcast_name: String,
-    #[serde(rename = "ArtworkURL")]
-    pub artwork_url: String,
-    #[serde(rename = "Author")]
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: String,
     pub author: String,
-    #[serde(rename = "Categories")]
     pub categories: String,
-    #[serde(rename = "Description")]
     pub description: String,
-    #[serde(rename = "EpisodeCount")]
-    pub episode_count: i32,
-    #[serde(rename = "FeedURL")]
-    pub feed_url: String,
-    #[serde(rename = "WebsiteURL")]
-    pub website_url: String,
-    #[serde(rename = "Explicit", deserialize_with = "explicit_from_int")]
+    pub episodecount: i32,
+    pub feedurl: String,
+    pub websiteurl: String,
     pub explicit: bool,
-    #[serde(rename = "UserID")]
-    pub user_id: i32,
+    pub userid: i32,
 }
 
 #[derive(Deserialize)]
@@ -1365,6 +1358,11 @@ pub async fn call_get_podcast_details(
             .json()
             .await
             .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
+
+        // Convert to JsValue and print to console
+        let js_value = JsValue::from_serde(&response_data.details)
+            .map_err(|e| Error::msg(format!("Failed to convert to JsValue: {}", e)))?;
+        web_sys::console::log_1(&js_value);
         Ok(response_data.details)
     } else {
         Err(Error::msg(format!(

@@ -22,6 +22,7 @@ directories = "5.0.1"
 dirs = "5.0.1"
 reqwest = { version = "0.12.5", features = ["blocking", "json"] }
 tokio = { version = "1.38.0", features = ["full"] }
+warp = "0.3.7"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

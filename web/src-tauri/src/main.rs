@@ -8,7 +8,10 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 use tauri::command;
+use warp::{reply::Response, Filter, Rejection};
 
 // Define the structure for the file entries
 #[derive(Serialize, Deserialize)]
@@ -60,10 +63,14 @@ async fn download_file(url: String, filename: String) -> Result<(), String> {
         fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
     }
 
-    let response = get(&url).map_err(|e| e.to_string())?;
-    let mut file = fs::File::create(app_dir.join(filename)).map_err(|e| e.to_string())?;
-    let content = response.bytes().map_err(|e| e.to_string())?;
-    file.write_all(&content).map_err(|e| e.to_string())?;
+    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let content = response.bytes().await.map_err(|e| e.to_string())?;
+
+    tokio::task::block_in_place(|| {
+        let mut file = fs::File::create(app_dir.join(&filename)).map_err(|e| e.to_string())?;
+        file.write_all(&content).map_err(|e| e.to_string())
+    })?;
+
     Ok(())
 }
 
@@ -79,12 +86,20 @@ pub struct EpisodeInfo {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub episodeid: i32,
+    pub completed: bool,
+    pub downloadedlocation: Option<String>,
 }
 
 #[command]
-async fn update_local_db(episode_info: EpisodeInfo) -> Result<(), String> {
+async fn update_local_db(mut episode_info: EpisodeInfo) -> Result<(), String> {
     let proj_dirs = get_project_dirs().map_err(|e| e.to_string())?;
     let db_path = proj_dirs.data_dir().join("local_episodes.json");
+
+    // Calculate the downloaded location
+    let download_dir = proj_dirs
+        .data_dir()
+        .join(format!("episode_{}.mp3", episode_info.episodeid));
+    episode_info.downloadedlocation = Some(download_dir.to_string_lossy().into_owned());
 
     let mut episodes = if db_path.exists() {
         let data = std::fs::read_to_string(&db_path).map_err(|e| e.to_string())?;
@@ -175,26 +190,17 @@ fn list_app_files() -> Result<Vec<FileEntry>, String> {
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
-    #[serde(rename = "PodcastName")]
-    pub podcast_name: String,
-    #[serde(rename = "ArtworkURL")]
-    pub artwork_url: String,
-    #[serde(rename = "Author")]
+    pub podcastid: i32,
+    pub artworkurl: String,
     pub author: String,
-    #[serde(rename = "Categories")]
     pub categories: String,
-    #[serde(rename = "Description")]
     pub description: String,
-    #[serde(rename = "EpisodeCount")]
-    pub episode_count: i32,
-    #[serde(rename = "FeedURL")]
-    pub feed_url: String,
-    #[serde(rename = "WebsiteURL")]
-    pub website_url: String,
-    #[serde(rename = "Explicit")]
+    pub episodecount: i32,
     pub explicit: bool,
-    #[serde(rename = "UserID")]
-    pub user_id: i32,
+    pub feedurl: String,
+    pub podcastname: String,
+    pub userid: i32,
+    pub websiteurl: String,
 }
 
 #[command]
@@ -209,10 +215,7 @@ async fn update_podcast_db(podcast_details: PodcastDetails) -> Result<(), String
         Vec::new()
     };
 
-    if !podcasts
-        .iter()
-        .any(|p| p.user_id == podcast_details.user_id)
-    {
+    if !podcasts.iter().any(|p| p.userid == podcast_details.userid) {
         podcasts.push(podcast_details);
     }
 
@@ -257,6 +260,49 @@ async fn get_local_podcasts() -> Result<Vec<Podcast>, String> {
     Ok(podcasts)
 }
 
+#[tauri::command]
+async fn get_local_file(filepath: String) -> Result<Vec<u8>, String> {
+    use std::fs::File;
+    use std::io::Read;
+    use std::path::PathBuf;
+
+    let mut path = PathBuf::from(filepath);
+    let mut file = File::open(&path).map_err(|e| e.to_string())?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+    Ok(buffer)
+}
+
+#[tauri::command]
+async fn start_file_server(filepath: String) -> Result<String, String> {
+    // Log the file path to ensure it's correct
+    println!("Starting file server with path: {}", filepath);
+
+    // Ensure the path exists and is accessible
+    if !std::path::Path::new(&filepath).exists() {
+        return Err(format!("File path does not exist: {}", filepath));
+    }
+
+    // Get the directory of the file
+    let file_dir = std::path::Path::new(&filepath)
+        .parent()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // Log the directory being served
+    println!("Serving files from directory: {}", file_dir);
+
+    // Create the warp filter to serve the directory containing the file
+    let file_route = warp::fs::dir(file_dir);
+
+    // Start the warp server
+    tokio::spawn(warp::serve(file_route).run(([127, 0, 0, 1], 3030)));
+
+    Ok("http://127.0.0.1:3030".to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -269,7 +315,9 @@ fn main() {
             update_podcast_db,
             get_local_podcasts,
             get_local_episodes,
-            list_app_files
+            list_app_files,
+            get_local_file,
+            start_file_server
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

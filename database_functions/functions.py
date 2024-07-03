@@ -34,7 +34,20 @@ def lowercase_keys(data):
         return [lowercase_keys(item) for item in data]
     return data
 
+def convert_bools(data, database_type):
+    def convert_value(k, v):
+        if k.lower() == 'explicit':
+            if database_type == 'postgresql':
+                return v == True
+            else:
+                return bool(v)
+        return v
 
+    if isinstance(data, dict):
+        return {k: convert_value(k, v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_bools(item, database_type) for item in data]
+    return data
 
 def capitalize_keys(data):
     if isinstance(data, dict):
@@ -715,7 +728,10 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
     details = cursor.fetchone()
     cursor.close()
 
-    return details
+    lower_row = lowercase_keys(details)
+    bool_fix = convert_bools(lower_row, database_type)
+
+    return bool_fix
 
 
 def get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_name):
@@ -3438,7 +3454,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         query = (
             'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
-            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration '
+            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
             'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "Podcasts".UserID = "UserEpisodeHistory".UserID '
@@ -3449,7 +3465,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         query = (
             "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
-            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
+            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND Podcasts.UserID = UserEpisodeHistory.UserID "
@@ -3465,8 +3481,9 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         raise ValueError(f"No episode found with ID {episode_id} for user {user_id}")
 
     lower_row = lowercase_keys(row)
+    bool_fix = convert_bools(lower_row, database_type)
 
-    return lower_row
+    return bool_fix
 
 
 import logging

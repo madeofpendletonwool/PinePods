@@ -1,14 +1,17 @@
 use crate::components::context::{AppState, UIState};
+#[cfg(not(feature = "server_build"))]
+use crate::components::downloads_tauri::{fetch_local_file, start_local_file_server};
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_get_auto_skip_times,
     call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
     call_increment_played, call_mark_episode_completed, call_queue_episode,
-    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
+    call_record_listen_duration, call_remove_queued_episode, EpisodeDownload, HistoryAddRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
 };
 use futures_util::stream::StreamExt;
 use gloo_timers::callback::Interval;
 use std::cell::Cell;
+use std::path::Path;
 use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
@@ -998,6 +1001,66 @@ pub fn on_play_click(
                     web_sys::console::log_1(&format!("Error getting podcast ID: {}", e).into());
                 }
             };
+        });
+    })
+}
+
+#[cfg(not(feature = "server_build"))]
+pub fn on_play_click_offline(
+    episode_info: EpisodeDownload,
+    audio_dispatch: Dispatch<UIState>,
+) -> Callback<MouseEvent> {
+    Callback::from(move |_: MouseEvent| {
+        let episode_info_for_closure = episode_info.clone();
+        let audio_dispatch = audio_dispatch.clone();
+
+        let file_path = episode_info_for_closure.downloadedlocation.clone();
+        let episode_title_for_wasm = episode_info_for_closure.episodetitle.clone();
+        let episode_artwork_for_wasm = episode_info_for_closure.episodeartwork.clone();
+        let episode_duration_for_wasm = episode_info_for_closure.episodeduration.clone();
+        let episode_id_for_wasm = episode_info_for_closure.episodeid.clone();
+        let listen_duration_for_closure = episode_info_for_closure.listenduration.clone();
+
+        wasm_bindgen_futures::spawn_local(async move {
+            match start_local_file_server(&file_path).await {
+                Ok(server_url) => {
+                    let file_name = Path::new(&file_path)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(""); // Extract the file name from the path
+
+                    web_sys::console::log_1(&format!("Server URL: {}", server_url).into());
+                    web_sys::console::log_1(&format!("{}/{}", server_url, file_name).into());
+                    let src = format!("{}/{}", server_url, file_name);
+
+                    audio_dispatch.reduce_mut(move |audio_state| {
+                        audio_state.audio_playing = Some(true);
+                        audio_state.playback_speed = 1.0;
+                        audio_state.audio_volume = 100.0;
+                        audio_state.currently_playing = Some(AudioPlayerProps {
+                            src: src.clone(),
+                            title: episode_title_for_wasm.clone(),
+                            artwork_url: episode_artwork_for_wasm.clone(),
+                            duration: episode_duration_for_wasm.clone().to_string(),
+                            episode_id: episode_id_for_wasm.clone(),
+                            duration_sec: episode_duration_for_wasm.clone() as f64,
+                            start_pos_sec: listen_duration_for_closure.unwrap_or(0) as f64,
+                            end_pos_sec: episode_duration_for_wasm.clone() as f64,
+                        });
+                        audio_state.set_audio_source(src.to_string());
+                        if let Some(audio) = &audio_state.audio_element {
+                            audio.set_current_time(listen_duration_for_closure.unwrap_or(0) as f64);
+                            let _ = audio.play();
+                        }
+                        audio_state.audio_playing = Some(true);
+                    });
+                }
+                Err(e) => {
+                    web_sys::console::log_1(
+                        &format!("Error starting local file server: {:?}", e).into(),
+                    );
+                }
+            }
         });
     })
 }

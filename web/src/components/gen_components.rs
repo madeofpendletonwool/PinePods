@@ -718,10 +718,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         }
                     }
                     Err(e) => {
-                        post_state.reduce_mut(|state| {
-                            state.error_message =
-                                Some(format!("Failed to fetch episode metadata: {:?}", e))
-                        });
+                        post_state
+                            .reduce_mut(|state| state.error_message = Some(format!("s {:?}", e)));
                     }
                 }
             };
