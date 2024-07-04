@@ -2,12 +2,32 @@
 
 This is the list of previous todos that are now completed
 
+Major Version:
+
+- [] Android App
+- [] iOS App
+
 Next Minor Version:
 
-- [] Added Better Download support to the client versions.
 - [] Manually adjust tags for podcast in podcast settings
-
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
+- [] Installable PWA
+- [] Jump to clicked timestamp
+- [] Timestamps in playing page
+
+Version 0.6.2
+
+- [] Added Better Download support to the client versions
+  - [x] Local Downloads and Server Downloads tabs in client versions
+  - [x] Created logic to keep track of locally downloaded episodes
+  - [x] Episodes download using tauri function
+  - [x] Episodes play using tauri functions
+  - [] Episodes delete using tauri functions
+- [] Added offline support to the client versions.
+- [x] Fixed bug where some requests would queue instead of clearing on continued episode plays. For example, if you played an episode and then played another episode, the first episode would still make reqeuests for updating certain values.
+- [] Fixed issue with postgres dbs not adding episodes after addding a Nextcloud sync server
+- [] Fixed issue with manually completion where it only could complete, but not uncomplete
+- [] Fixed issue in downloads page where see more button didn't work on episodes
 
 Version 0.6.1
 
@@ -80,6 +100,9 @@ Version 0.5.2
 
 
 Version 0.5.1
+
+- [x] Fixed Nextcloud cors issues that were appearing due to requests being made from the client side
+- [x] Fixed Docker auto uploads in actions CI/CD
 
 Version 0.5.0
 

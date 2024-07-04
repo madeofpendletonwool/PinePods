@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
 use web_sys::{window, HtmlAudioElement, HtmlInputElement};
@@ -34,6 +35,7 @@ pub struct AudioPlayerProps {
     pub duration_sec: f64,
     pub start_pos_sec: f64,
     pub end_pos_sec: f64,
+    pub offline: bool,
 }
 
 #[function_component(AudioPlayer)]
@@ -48,6 +50,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         .currently_playing
         .as_ref()
         .map(|props| props.episode_id);
+    web_sys::console::log_1(&JsValue::from_str(&format!("Episode ID: {:?}", episode_id)));
     let end_pos = audio_state
         .currently_playing
         .as_ref()
@@ -56,6 +59,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let history_clone = history.clone();
     let episode_in_db = audio_state.episode_in_db.unwrap_or_default();
     let progress: UseStateHandle<f64> = use_state(|| 0.0);
+    let offline_status = audio_state
+        .currently_playing
+        .as_ref()
+        .map(|props| props.offline);
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "Offline Status: {:?}",
+        offline_status
+    )));
     let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
         classes!("artwork", "playing")
     } else {
@@ -126,17 +137,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     // Effect for setting up an interval to update the current playback time
     // Clone `audio_ref` for `use_effect_with`
     let state_clone = audio_state.clone();
-    use_effect_with((), {
+    use_effect_with((offline_status.clone(), episode_id.clone()), {
         let audio_dispatch = _audio_dispatch.clone();
         let progress = progress.clone(); // Clone for the interval closure
         let closure_api_key = api_key.clone();
         let closure_server_name = server_name.clone();
         let closure_user_id = user_id.clone();
         let closure_episode_id = episode_id.clone();
+        let offline_status = offline_status.clone();
         move |_| {
             let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
             let interval_handle_clone = interval_handle.clone();
-
             let interval = Interval::new(1000, move || {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
@@ -146,47 +157,58 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let complete_server_name = closure_server_name.clone();
                     let complete_user_id = closure_user_id.clone();
                     let complete_episode_id = closure_episode_id.clone();
+                    let offline_status_loop = offline_status.unwrap_or(false);
                     if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
                         audio_element.pause().unwrap_or(());
                         // Manually trigger the `ended` event
                         let event = web_sys::Event::new("ended").unwrap();
                         audio_element.dispatch_event(&event).unwrap();
                         // Call the endpoint to mark episode as completed
-                        wasm_bindgen_futures::spawn_local(async move {
-                            if let (
-                                Some(complete_api_key),
-                                Some(complete_server_name),
-                                Some(complete_user_id),
-                                Some(complete_episode_id),
-                            ) = (
-                                complete_api_key.as_ref(),
-                                complete_server_name.as_ref(),
-                                complete_user_id.as_ref(),
-                                complete_episode_id.as_ref(),
-                            ) {
-                                let request = MarkEpisodeCompletedRequest {
-                                    episode_id: *complete_episode_id, // Dereference the option
-                                    user_id: *complete_user_id,       // Dereference the option
-                                };
+                        if offline_status_loop {
+                            // If offline, store the episode in the local database
+                            web_sys::console::log_1(
+                                &"Offline mode enabled. Not recording completion status.".into(),
+                            );
+                        } else {
+                            // If online, call the endpoint
+                            wasm_bindgen_futures::spawn_local(async move {
+                                if let (
+                                    Some(complete_api_key),
+                                    Some(complete_server_name),
+                                    Some(complete_user_id),
+                                    Some(complete_episode_id),
+                                ) = (
+                                    complete_api_key.as_ref(),
+                                    complete_server_name.as_ref(),
+                                    complete_user_id.as_ref(),
+                                    complete_episode_id.as_ref(),
+                                ) {
+                                    let request = MarkEpisodeCompletedRequest {
+                                        episode_id: *complete_episode_id, // Dereference the option
+                                        user_id: *complete_user_id,       // Dereference the option
+                                    };
 
-                                match call_mark_episode_completed(
-                                    &complete_server_name,
-                                    &complete_api_key,
-                                    &request,
-                                )
-                                .await
-                                {
-                                    Ok(message) => {
-                                        web_sys::console::log_1(
-                                            &format!("Success: {}", message).into(),
-                                        );
-                                    }
-                                    Err(e) => {
-                                        web_sys::console::log_1(&format!("Error: {}", e).into());
+                                    match call_mark_episode_completed(
+                                        &complete_server_name,
+                                        &complete_api_key,
+                                        &request,
+                                    )
+                                    .await
+                                    {
+                                        Ok(message) => {
+                                            web_sys::console::log_1(
+                                                &format!("Success: {}", message).into(),
+                                            );
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(
+                                                &format!("Error: {}", e).into(),
+                                            );
+                                        }
                                     }
                                 }
-                            }
-                        });
+                            });
+                        }
 
                         // Stop the interval
                         if let Some(handle) = interval_handle.take() {
@@ -229,96 +251,131 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     });
 
     // Effect for recording the listen duration
-
-    let state_clone_the_squeakuel = audio_state.clone();
-    use_effect_with((), {
+    let audio_state_clone = audio_state.clone();
+    use_effect_with((offline_status.clone(), episode_id.clone()), {
         let server_name = server_name.clone(); // Assuming this is defined elsewhere in your component
         let api_key = api_key.clone(); // Assuming this is defined elsewhere in your component
-        let episode_id = episode_id.clone(); // Assuming this is defined elsewhere in your component
         let user_id = user_id.clone(); // Assuming this is defined elsewhere in your component
-                                       // let episode_in_db_effect = audio_state.episode_in_db.unwrap_or_default();
+        let offline_status = offline_status.clone();
+        let episode_id = episode_id.clone();
 
         move |_| {
-            // Spawn a new async task
-            let future = async move {
-                let mut interval = gloo_timers::future::IntervalStream::new(30_000);
-                loop {
-                    interval.next().await; // Wait for the next interval tick
-                                           // Check if audio is playing before proceeding
-                    if state_clone_the_squeakuel.audio_playing.unwrap_or_default() {
-                        if let Some(audio_element) =
-                            state_clone_the_squeakuel.audio_element.as_ref()
-                        {
-                            // Use the local_current_seconds here
-                            // let listen_duration = (*local_current_seconds); // Dereference and get the value
-                            let listen_duration = audio_element.current_time();
+            // Create an interval task
+            let interval_handle = Rc::new(Cell::new(None));
+            let interval_handle_clone = interval_handle.clone();
 
+            let interval = gloo_timers::callback::Interval::new(30_000, move || {
+                let state_clone = audio_state_clone.clone(); // Access the latest state
+                let offline_status_loop = offline_status.unwrap_or(false);
+                let episode_id_loop = episode_id.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+
+                if offline_status_loop {
+                    web_sys::console::log_1(
+                        &"Offline mode enabled. Not recording listen duration.".into(),
+                    );
+                    web_sys::console::log_1(&JsValue::from_str(&format!(
+                        "Offline Status in task: {:?}",
+                        offline_status_loop
+                    )));
+                } else {
+                    web_sys::console::log_1(&"Online mode enabled. ".into());
+                    web_sys::console::log_1(&JsValue::from_str(&format!(
+                        "Offline Status in task: {:?}",
+                        offline_status_loop
+                    )));
+                    web_sys::console::log_1(&JsValue::from_str(&format!(
+                        "ep id Status in task: {:?}",
+                        episode_id_loop
+                    )));
+                    if state_clone.audio_playing.unwrap_or_default() {
+                        if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                            let listen_duration = audio_element.current_time();
                             let request_data = RecordListenDurationRequest {
-                                episode_id: episode_id.unwrap().clone(),
+                                episode_id: episode_id_loop.unwrap().clone(),
                                 user_id: user_id.unwrap().clone(),
                                 listen_duration,
                             };
 
-                            // Perform the API call to record the listen duration
-                            match call_record_listen_duration(
-                                &server_name.clone().unwrap(),
-                                &api_key.clone().unwrap().unwrap(),
-                                request_data,
+                            wasm_bindgen_futures::spawn_local(async move {
+                                match call_record_listen_duration(
+                                    &server_name.clone().unwrap(),
+                                    &api_key.clone().unwrap().unwrap(),
+                                    request_data,
+                                )
+                                .await
+                                {
+                                    Ok(_response) => {}
+                                    Err(_e) => {}
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+
+            interval_handle_clone.set(Some(interval));
+
+            // Cleanup function to cancel the interval task when dependencies change
+            move || {
+                if let Some(interval) = interval_handle.take() {
+                    interval.cancel();
+                }
+            }
+        }
+    });
+
+    // Effect for incrementing user listen time
+    let state_increment_clone = audio_state.clone();
+    use_effect_with((offline_status.clone(), episode_id.clone()), {
+        let server_name = server_name.clone(); // Make sure `server_name` is cloned from the parent scope
+        let api_key = api_key.clone(); // Make sure `api_key` is cloned from the parent scope
+        let user_id = user_id.clone(); // Make sure `user_id` is cloned from the parent scope
+        let offline_status = offline_status.clone();
+
+        move |_| {
+            let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
+            let interval_handle_clone = interval_handle.clone();
+
+            let interval = Interval::new(60000, move || {
+                let offline_status_loop = offline_status.unwrap_or(false);
+                // Check if audio is playing before making the API call
+                if offline_status_loop {
+                    web_sys::console::log_1(
+                        &"Offline mode enabled. Not incrementing listen time.".into(),
+                    );
+                } else {
+                    if state_increment_clone.audio_playing.unwrap_or_default() {
+                        let server_name = server_name.clone();
+                        let api_key = api_key.clone();
+                        let user_id = user_id.clone();
+
+                        // Spawn a new async task for the API call
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_increment_listen_time(
+                                &server_name.unwrap(),
+                                &api_key.unwrap().unwrap(),
+                                user_id.unwrap(),
                             )
                             .await
                             {
                                 Ok(_response) => {}
                                 Err(_e) => {}
                             }
-                        }
+                        });
                     }
-                }
-            };
-
-            // Using wasm_bindgen_futures to spawn the local future
-            wasm_bindgen_futures::spawn_local(future);
-
-            // Cleanup function (currently no cleanup required for this future)
-            || ()
-        }
-    });
-
-    // Effect for incrementing user listen time
-    // Effect for incrementing user listen time
-    let state_increment_clone = audio_state.clone();
-    use_effect_with((), {
-        let server_name = server_name.clone(); // Make sure `server_name` is cloned from the parent scope
-        let api_key = api_key.clone(); // Make sure `api_key` is cloned from the parent scope
-        let user_id = user_id.clone(); // Make sure `user_id` is cloned from the parent scope
-
-        move |_| {
-            let interval_handle = Interval::new(60000, move || {
-                // Check if audio is playing before making the API call
-                if state_increment_clone.audio_playing.unwrap_or_default() {
-                    let server_name = server_name.clone();
-                    let api_key = api_key.clone();
-                    let user_id = user_id.clone();
-
-                    // Spawn a new async task for the API call
-                    wasm_bindgen_futures::spawn_local(async move {
-                        match call_increment_listen_time(
-                            &server_name.unwrap(),
-                            &api_key.unwrap().unwrap(),
-                            user_id.unwrap(),
-                        )
-                        .await
-                        {
-                            Ok(_response) => {}
-                            Err(_e) => {}
-                        }
-                    });
-                } else {
-                    // Optionally log that the audio is not playing and thus listen time was not incremented
                 }
             });
 
+            interval_handle_clone.set(Some(interval));
+            let interval_handle = interval_handle_clone;
             // Return a cleanup function that will be run when the component unmounts or the dependencies of the effect change
-            move || drop(interval_handle)
+            move || {
+                if let Some(handle) = interval_handle.take() {
+                    handle.cancel();
+                }
+            }
         }
     });
 
@@ -331,6 +388,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let current_episode_id = episode_id.clone(); // Assuming this is correctly obtained elsewhere
         let audio_state = audio_state.clone();
         let audio_state_cloned = audio_state.clone();
+        let offline_status = offline_status.clone();
 
         move |_| {
             if let Some(audio_element) = audio_state_cloned.audio_element.clone() {
@@ -344,71 +402,79 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let audio_dispatch = audio_dispatch.clone();
                     let current_episode_id = current_episode_id.clone();
                     let audio_state = audio_state.clone();
+                    let offline_status_loop = offline_status.unwrap_or(false);
                     // Closure::wrap(Box::new(move |_| {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        let queued_episodes_result = call_get_queued_episodes(
-                            &server_name.clone().unwrap(),
-                            &api_key.clone().unwrap(),
-                            &user_id.clone().unwrap(),
-                        )
-                        .await;
-                        match queued_episodes_result {
-                            Ok(episodes) => {
-                                if let Some(current_episode) = episodes
-                                    .iter()
-                                    .find(|ep| ep.episodeid == current_episode_id.unwrap())
-                                {
-                                    let current_queue_position =
-                                        current_episode.queueposition.unwrap_or_default();
-                                    // Remove the currently playing episode from the queue
-                                    let request = QueuePodcastRequest {
-                                        episode_id: current_episode_id.clone().unwrap(),
-                                        user_id: user_id.clone().unwrap(), // replace with the actual user ID
-                                    };
-                                    let remove_result = call_remove_queued_episode(
-                                        &server_name.clone().unwrap(),
-                                        &api_key.clone().unwrap(),
-                                        &request,
-                                    )
-                                    .await;
-                                    match remove_result {
-                                        Ok(_) => {
-                                            // web_sys::console::log_1(&"Successfully removed episode from queue".into());
-                                        }
-                                        Err(_e) => {
-                                            // web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
-                                        }
-                                    }
-                                    if let Some(next_episode) = episodes.iter().find(|ep| {
-                                        ep.queueposition == Some(current_queue_position + 1)
-                                    }) {
-                                        on_play_click(
-                                            next_episode.episodeurl.clone(),
-                                            next_episode.episodetitle.clone(),
-                                            next_episode.episodeartwork.clone(),
-                                            next_episode.episodeduration,
-                                            next_episode.episodeid,
-                                            next_episode.listenduration,
-                                            api_key.clone().unwrap().unwrap(),
-                                            user_id.unwrap(),
-                                            server_name.clone().unwrap(),
-                                            audio_dispatch.clone(),
-                                            audio_state.clone(),
-                                            None,
+                    if offline_status_loop {
+                        // If offline, do not perform any action
+                        web_sys::console::log_1(
+                            &"Offline mode enabled. Not managing queue.".into(),
+                        );
+                    } else {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let queued_episodes_result = call_get_queued_episodes(
+                                &server_name.clone().unwrap(),
+                                &api_key.clone().unwrap(),
+                                &user_id.clone().unwrap(),
+                            )
+                            .await;
+                            match queued_episodes_result {
+                                Ok(episodes) => {
+                                    if let Some(current_episode) = episodes
+                                        .iter()
+                                        .find(|ep| ep.episodeid == current_episode_id.unwrap())
+                                    {
+                                        let current_queue_position =
+                                            current_episode.queueposition.unwrap_or_default();
+                                        // Remove the currently playing episode from the queue
+                                        let request = QueuePodcastRequest {
+                                            episode_id: current_episode_id.clone().unwrap(),
+                                            user_id: user_id.clone().unwrap(), // replace with the actual user ID
+                                        };
+                                        let remove_result = call_remove_queued_episode(
+                                            &server_name.clone().unwrap(),
+                                            &api_key.clone().unwrap(),
+                                            &request,
                                         )
-                                        .emit(MouseEvent::new("click").unwrap());
-                                    } else {
-                                        audio_dispatch.reduce_mut(|state| {
-                                            state.audio_playing = Some(false);
-                                        });
+                                        .await;
+                                        match remove_result {
+                                            Ok(_) => {
+                                                // web_sys::console::log_1(&"Successfully removed episode from queue".into());
+                                            }
+                                            Err(_e) => {
+                                                // web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
+                                            }
+                                        }
+                                        if let Some(next_episode) = episodes.iter().find(|ep| {
+                                            ep.queueposition == Some(current_queue_position + 1)
+                                        }) {
+                                            on_play_click(
+                                                next_episode.episodeurl.clone(),
+                                                next_episode.episodetitle.clone(),
+                                                next_episode.episodeartwork.clone(),
+                                                next_episode.episodeduration,
+                                                next_episode.episodeid,
+                                                next_episode.listenduration,
+                                                api_key.clone().unwrap().unwrap(),
+                                                user_id.unwrap(),
+                                                server_name.clone().unwrap(),
+                                                audio_dispatch.clone(),
+                                                audio_state.clone(),
+                                                None,
+                                            )
+                                            .emit(MouseEvent::new("click").unwrap());
+                                        } else {
+                                            audio_dispatch.reduce_mut(|state| {
+                                                state.audio_playing = Some(false);
+                                            });
+                                        }
                                     }
                                 }
+                                Err(_e) => {
+                                    // web_sys::console::log_1(&format!("Failed to fetch queued episodes: {:?}", e).into());
+                                }
                             }
-                            Err(_e) => {
-                                // web_sys::console::log_1(&format!("Failed to fetch queued episodes: {:?}", e).into());
-                            }
-                        }
-                    });
+                        });
+                    }
                     // }) as Box<dyn FnMut()>);
                 }) as Box<dyn FnMut()>);
                 // Setting and forgetting the closure must be done within the same scope
@@ -831,6 +897,7 @@ pub fn on_play_click(
     is_local: Option<bool>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
+        web_sys::console::log_1(&JsValue::from_str("Play button clicked"));
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
@@ -971,6 +1038,7 @@ pub fn on_play_click(
                                 audio_state.audio_playing = Some(true);
                                 audio_state.playback_speed = 1.0;
                                 audio_state.audio_volume = 100.0;
+                                audio_state.offline = Some(false);
                                 audio_state.currently_playing = Some(AudioPlayerProps {
                                     src: src.clone(),
                                     title: episode_title_for_wasm.clone(),
@@ -980,6 +1048,7 @@ pub fn on_play_click(
                                     duration_sec: episode_duration_for_wasm.clone() as f64,
                                     start_pos_sec,
                                     end_pos_sec: end_pos_sec as f64,
+                                    offline: false,
                                 });
                                 audio_state.set_audio_source(src.to_string());
                                 if let Some(audio) = &audio_state.audio_element {
@@ -1011,6 +1080,7 @@ pub fn on_play_click_offline(
     audio_dispatch: Dispatch<UIState>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
+        web_sys::console::log_1(&JsValue::from_str("Play button clicked offline"));
         let episode_info_for_closure = episode_info.clone();
         let audio_dispatch = audio_dispatch.clone();
 
@@ -1037,6 +1107,7 @@ pub fn on_play_click_offline(
                         audio_state.audio_playing = Some(true);
                         audio_state.playback_speed = 1.0;
                         audio_state.audio_volume = 100.0;
+                        audio_state.offline = Some(true);
                         audio_state.currently_playing = Some(AudioPlayerProps {
                             src: src.clone(),
                             title: episode_title_for_wasm.clone(),
@@ -1045,7 +1116,8 @@ pub fn on_play_click_offline(
                             episode_id: episode_id_for_wasm.clone(),
                             duration_sec: episode_duration_for_wasm.clone() as f64,
                             start_pos_sec: listen_duration_for_closure.unwrap_or(0) as f64,
-                            end_pos_sec: episode_duration_for_wasm.clone() as f64,
+                            end_pos_sec: 0.0,
+                            offline: true,
                         });
                         audio_state.set_audio_source(src.to_string());
                         if let Some(audio) = &audio_state.audio_element {
