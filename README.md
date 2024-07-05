@@ -231,7 +231,7 @@ Create a my-values.yaml file to override default values:
 ```
 replicaCount: 3
 image:
-  repository: pinepods
+  repository: madeofpendletonwool/pinepods
   tag: latest
   pullPolicy: IfNotPresent
 service:
@@ -263,6 +263,21 @@ env:
   DB_NAME: "pinepods"
   DEBUG_MODE: "false"
 ```
+
+#### Create a namespace for Pinepods:
+
+Create a namespace to hold the deployment:
+```
+kubectl create namespace pinepods-namespace
+```
+
+#### Create a database secret:
+
+This secret is used to store the database password. Create a secret with the database password in the pinepods-namespace namespace:
+```
+kubectl create secret generic db-secret --namespace pinepods-namespace --from-literal=DB_PASSWORD=supersecretpassword
+```
+
 #### Starting Helm
 
 Once you have everything set up, install the Helm chart:

@@ -1,15 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: { { include "pinepods.fullname" . } }
+  name: {{ .Release.Name }}
   labels:
-    app: { { include "pinepods.name" . } }
+    app: {{ .Chart.Name }}
 spec:
-  type: { { .Values.service.type } }
+  type: {{ .Values.service.type }}
   ports:
     - protocol: TCP
-      port: { { .Values.service.port } }
-      targetPort: { { .Values.service.port } }
-      nodePort: { { .Values.service.nodePort } }
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.port }}
+      nodePort: {{ .Values.service.nodePort }}
   selector:
-    app: { { include "pinepods.name" . } }
+    app: {{ .Chart.Name }}
+

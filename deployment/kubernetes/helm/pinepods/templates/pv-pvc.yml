@@ -34,7 +34,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /path/on/host/downloads # Adjust to the appropriate path on your host
+    path: /home/user/downloads # Adjust to the appropriate path on your host
 
 ---
 apiVersion: v1
@@ -59,7 +59,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /path/on/host/backups # Adjust to the appropriate path on your host
+    path: /home/user/backups # Adjust to the appropriate path on your host
 
 ---
 apiVersion: v1
