@@ -17,16 +17,17 @@ Next Minor Version:
 
 Version 0.6.2
 
-- [] Added Better Download support to the client versions
+- [x] Added Local Download support to the client versions
   - [x] Local Downloads and Server Downloads tabs in client versions
   - [x] Created logic to keep track of locally downloaded episodes
   - [x] Episodes download using tauri function
   - [x] Episodes play using tauri functions
-  - [] Episodes delete using tauri functions
-- [] Added offline support to the client versions.
+  - [x] Episodes delete using tauri functions
+  - [x] Create a system to queue the local download jobs so that you don't need to wait for the downloads to complete
+- [x] Added offline support to the client versions.
 - [x] Fixed bug where some requests would queue instead of clearing on continued episode plays. For example, if you played an episode and then played another episode, the first episode would still make reqeuests for updating certain values.
-- [] Fixed issue with postgres dbs not adding episodes after addding a Nextcloud sync server
-- [] Fixed issue with manually completion where it only could complete, but not uncomplete
+- [x] Fixed issue with postgres dbs not adding episodes after addding a Nextcloud sync server (It was calling the refresh nextcloud function in the wrong file)
+- [x] Fixed issue with manual completion where it only could complete, but not uncomplete
 - [] Fixed issue in downloads page where see more button didn't work on episodes
 
 Version 0.6.1

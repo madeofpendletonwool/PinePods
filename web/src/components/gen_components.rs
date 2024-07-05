@@ -1,16 +1,16 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
-    download_file, update_local_database, update_podcast_database,
+    download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_time;
 use crate::requests::pod_req::{
-    call_download_episode, call_mark_episode_completed, call_queue_episode,
-    call_remove_downloaded_episode, call_remove_queued_episode, call_remove_saved_episode,
-    call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload, HistoryEpisode,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, QueuedEpisode, SavePodcastRequest,
-    SavedEpisode,
+    call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
+    call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
+    call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload,
+    HistoryEpisode, MarkEpisodeCompletedRequest, QueuePodcastRequest, QueuedEpisode,
+    SavePodcastRequest, SavedEpisode,
 };
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::{
@@ -657,15 +657,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         let podcast_id = episode_info.podcastid.clone();
                         let filename = format!("episode_{}.mp3", episode_id);
                         let artwork_filename = format!("artwork_{}.jpg", episode_id);
-
+                        post_state.reduce_mut(|state| {
+                            state.info_message = Some(format!("Episode download queued!"))
+                        });
                         // Download audio
                         match download_file(audio_url, filename.clone()).await {
-                            Ok(_) => {
-                                post_state.reduce_mut(|state| {
-                                    state.info_message =
-                                        Some(format!("Episode {} downloaded locally!", filename))
-                                });
-                            }
+                            Ok(_) => {}
                             Err(e) => {
                                 post_state.reduce_mut(|state| {
                                     state.error_message =
@@ -728,6 +725,55 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    #[cfg(not(feature = "server_build"))]
+    let on_remove_locally_downloaded_episode = {
+        let episode = props.episode.clone();
+        let download_local_post = audio_dispatch.clone();
+        let server_name_copy = server_name.clone();
+        let api_key_copy = api_key.clone();
+        let user_id_copy = user_id.clone();
+
+        Callback::from(move |_| {
+            let post_state = download_local_post.clone();
+            let episode_id = episode.get_episode_id();
+            let request = EpisodeRequest {
+                episode_id,
+                user_id: user_id_copy.unwrap(),
+            };
+            let server_name = server_name_copy.clone().unwrap();
+            let ep_api_key = api_key_copy.clone().flatten();
+            let api_key = api_key_copy.clone().flatten();
+
+            let future = async move {
+                let filename = format!("episode_{}.mp3", episode_id);
+                let artwork_filename = format!("artwork_{}.jpg", episode_id);
+
+                // Download audio
+                match remove_episode_from_local_db(episode_id).await {
+                    Ok(_) => {
+                        post_state.reduce_mut(|state| {
+                            state.info_message =
+                                Some(format!("Episode {} downloaded locally!", filename));
+                            if let Some(increment) = state.local_download_increment.as_mut() {
+                                *increment += 1;
+                            } else {
+                                state.local_download_increment = Some(1);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        post_state.reduce_mut(|state| {
+                            state.error_message =
+                                Some(format!("Failed to download episode audio: {:?}", e))
+                        });
+                    }
+                }
+            };
+
+            wasm_bindgen_futures::spawn_local(future);
+        })
+    };
+
     let remove_download_api_key = api_key.clone();
     let remove_download_server_name = server_name.clone();
     let remove_download_post = audio_dispatch.clone();
@@ -767,6 +813,64 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             }
                             // Optionally, you can update the info_message with success message
                             state.info_message = Some(format!("{}", success_message).to_string());
+                        });
+                    }
+                    Err(e) => {
+                        post_state.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", e))
+                        });
+                        // Handle error, e.g., display the error message
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
+    let uncomplete_api_key = api_key.clone();
+    let uncomplete_server_name = server_name.clone();
+    let uncomplete_download_post = audio_dispatch.clone();
+    let uncomplete_dispatch_clone = post_dispatch.clone();
+    let on_uncomplete_episode = {
+        let episode = props.episode.clone();
+        let episode_id = props.episode.get_episode_id();
+        Callback::from(move |_| {
+            let post_dispatch = uncomplete_dispatch_clone.clone();
+            let post_state = uncomplete_download_post.clone();
+            let server_name_copy = uncomplete_server_name.clone();
+            let api_key_copy = uncomplete_api_key.clone();
+            let request = MarkEpisodeCompletedRequest {
+                episode_id: episode.get_episode_id(),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                match call_mark_episode_uncompleted(
+                    &server_name.unwrap(),
+                    &api_key.flatten(),
+                    &request,
+                )
+                .await
+                {
+                    Ok(success_message) => {
+                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                        post_dispatch.reduce_mut(|state| {
+                            if let Some(completed_episodes) = state.completed_episodes.as_mut() {
+                                if let Some(pos) =
+                                    completed_episodes.iter().position(|&id| id == episode_id)
+                                {
+                                    completed_episodes.remove(pos);
+                                } else {
+                                    completed_episodes.push(episode_id);
+                                }
+                            } else {
+                                state.completed_episodes = Some(vec![episode_id]);
+                            }
+                            state.info_message = Some(format!("{}", success_message));
                         });
                     }
                     Err(e) => {
@@ -839,12 +943,27 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             // dropdown_open.set(false);
         })
     };
+
     let check_episode_id = props.episode.get_episode_id();
     let is_completed = post_state
         .completed_episodes
         .as_ref()
         .unwrap_or(&vec![])
         .contains(&check_episode_id);
+
+    let on_toggle_complete = {
+        let on_complete_episode = on_complete_episode.clone();
+        let on_uncomplete_episode = on_uncomplete_episode.clone();
+        let is_completed = is_completed.clone();
+
+        Callback::from(move |_| {
+            if is_completed {
+                on_uncomplete_episode.emit(());
+            } else {
+                on_complete_episode.emit(());
+            }
+        })
+    };
 
     #[cfg(feature = "server_build")]
     let download_button = html! {
@@ -859,6 +978,19 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         </>
     };
 
+    #[cfg(not(feature = "server_build"))]
+    let local_download_options = html! {
+        <>
+            <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
+            <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
+            <li class="dropdown-option" onclick={on_remove_locally_downloaded_episode.clone()}>{ "Remove Downloaded Episode" }</li>
+            <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+        </>
+    };
+
+    #[cfg(feature = "server_build")]
+    let local_download_options = html! {};
+
     let action_buttons = match props.page_type.as_str() {
         "saved" => html! {
             <>
@@ -867,7 +999,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         "queue" => html! {
@@ -877,7 +1009,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         "downloads" => html! {
@@ -885,8 +1017,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
                 <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
                 <li class="dropdown-option" onclick={on_remove_downloaded_episode.clone()}>{ "Remove Downloaded Episode" }</li>
-                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
+        },
+        "local_downloads" => html! {
+            local_download_options
         },
         // Add more page types and their respective button sets as needed
         _ => html! {
@@ -897,7 +1032,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={on_complete_episode.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
     };

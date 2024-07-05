@@ -490,6 +490,24 @@ pub fn login() -> Html {
         })
     };
 
+    let offline_hist = history.clone();
+    let offline_post_state = _dispatch.clone();
+    let on_offline = {
+        let submit_dispatch = dispatch.clone();
+        Callback::from(move |_| {
+            let history = offline_hist.clone();
+            offline_post_state.reduce_mut(|state| state.app_offline_mode = Option::from(true));
+            history.push("/local_downloads");
+        })
+    };
+
+    let on_offline_mode = {
+        let on_offline = on_offline.clone(); // Clone the existing on_submit logic
+        Callback::from(move |_: MouseEvent| {
+            on_offline.emit(()); // Invoke the existing on_submit logic
+        })
+    };
+
     // Define the state of the application
     #[derive(Clone, PartialEq)]
     enum PageState {
@@ -868,6 +886,9 @@ pub fn login() -> Html {
                 />
                 <button onclick={on_submit_click} class="p-2 download-button rounded">
                     {"Login"}
+                </button>
+                <button onclick={on_offline_mode} class="p-2 download-button rounded">
+                    {"Offline Mode"}
                 </button>
             </div>
             // Conditional rendering for the error banner

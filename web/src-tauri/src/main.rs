@@ -122,7 +122,7 @@ async fn update_local_db(mut episode_info: EpisodeInfo) -> Result<(), String> {
 }
 
 #[command]
-async fn remove_from_local_db(episode_id: i32) -> Result<(), String> {
+async fn remove_from_local_db(episodeid: i32) -> Result<(), String> {
     let proj_dirs = get_project_dirs().map_err(|e| e.to_string())?;
     let db_path = proj_dirs.data_dir().join("local_episodes.json");
 
@@ -133,7 +133,7 @@ async fn remove_from_local_db(episode_id: i32) -> Result<(), String> {
         return Ok(()); // No episodes to remove if file doesn't exist
     };
 
-    episodes.retain(|episode| episode.episodeid != episode_id);
+    episodes.retain(|episode| episode.episodeid != episodeid);
 
     let file = OpenOptions::new()
         .write(true)
@@ -142,6 +142,22 @@ async fn remove_from_local_db(episode_id: i32) -> Result<(), String> {
         .open(&db_path)
         .map_err(|e| e.to_string())?;
     serde_json::to_writer(file, &episodes).map_err(|e| e.to_string())?;
+
+    // Delete the audio file and artwork
+    let audio_file_path = proj_dirs
+        .data_dir()
+        .join(format!("episode_{}.mp3", episodeid));
+    let artwork_file_path = proj_dirs
+        .data_dir()
+        .join(format!("artwork_{}.jpg", episodeid));
+
+    if audio_file_path.exists() {
+        std::fs::remove_file(audio_file_path).map_err(|e| e.to_string())?;
+    }
+
+    if artwork_file_path.exists() {
+        std::fs::remove_file(artwork_file_path).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

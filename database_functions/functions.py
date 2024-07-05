@@ -1524,6 +1524,19 @@ def mark_episode_completed(cnx, database_type, episode_id, user_id):
     finally:
         cursor.close()
 
+def mark_episode_uncompleted(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Episodes" SET Completed = FALSE WHERE EpisodeID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Episodes SET Completed = 0 WHERE EpisodeID = %s"
+
+        cursor.execute(query, (episode_id,))
+        cnx.commit()
+    finally:
+        cursor.close()
+
 
 def enable_auto_download(cnx, database_type, podcast_id, user_id, auto_download):
     cursor = cnx.cursor()
