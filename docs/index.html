@@ -4,27 +4,65 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Pinepods Helm Chart</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                color: #333;
+                margin: 0;
+                padding: 20px;
+            }
+            .container {
+                max-width: 800px;
+                margin: auto;
+                background: white;
+                padding: 20px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+                text-align: center;
+            }
+            img {
+                display: block;
+                margin: 0 auto;
+            }
+            pre {
+                background: #eee;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            code {
+                background: #f9f9f9;
+                padding: 2px 4px;
+                border-radius: 3px;
+            }
+            a {
+                color: #1a73e8;
+            }
+        </style>
     </head>
     <body>
-        <h1>Pinepods Helm Chart</h1>
-        <p>
-            Welcome to the Pinepods Helm chart repository. Follow the
-            instructions below to use the Helm chart.
-        </p>
+        <div class="container">
+            <h1>Pinepods Helm Chart</h1>
+            <img src="pinepods.png" alt="Pinepods Logo" width="200" />
+            <p>
+                Welcome to the Pinepods Helm chart repository. Follow the
+                instructions below to use the Helm chart.
+            </p>
 
-        <h2>Adding the Repository</h2>
-        <pre><code>helm repo add pinepods https://madeofpendletonwool.github.io/pinepods
+            <h2>Adding the Repository</h2>
+            <pre><code>helm repo add pinepods https://madeofpendletonwool.github.io/pinepods
 helm repo update</code></pre>
 
-        <h2>Installing the Chart</h2>
-        <pre><code>helm install pinepods pinepods/Pinepods -f my-values.yaml</code></pre>
+            <h2>Installing the Chart</h2>
+            <pre><code>helm install pinepods pinepods/Pinepods -f my-values.yaml</code></pre>
 
-        <h2>Customizing Values</h2>
-        <p>
-            Create a <code>my-values.yaml</code> file to override default
-            values:
-        </p>
-        <pre><code>replicaCount: 3
+            <h2>Customizing Values</h2>
+            <p>
+                Create a <code>my-values.yaml</code> file to override default
+                values:
+            </p>
+            <pre><code>replicaCount: 3
 image:
   repository: pinepods
   tag: latest
@@ -58,12 +96,13 @@ env:
   DB_NAME: "pinepods"
   DEBUG_MODE: "false"</code></pre>
 
-        <h2>More Information</h2>
-        <p>
-            For more information, visit the
-            <a href="https://github.com/madeofpendletonwool/pinepods"
-                >GitHub repository</a
-            >.
-        </p>
+            <h2>More Information</h2>
+            <p>
+                For more information, visit the
+                <a href="https://github.com/madeofpendletonwool/pinepods"
+                    >GitHub repository</a
+                >.
+            </p>
+        </div>
     </body>
 </html>
