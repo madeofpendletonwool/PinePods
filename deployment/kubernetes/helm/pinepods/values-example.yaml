@@ -1,0 +1,38 @@
+replicaCount: 2
+
+image:
+  repository: pinepods
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 8040
+  nodePort: 30007
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+postgresql:
+  enabled: true
+  postgresqlUsername: postgres
+  postgresqlPassword: supersecretpassword
+  postgresqlDatabase: pinepods
+  persistence:
+    enabled: true
+    existingClaim: postgres-pvc
+
+env:
+  SEARCH_API_URL: "https://api.example.com/search"
+  USERNAME: "admin"
+  PASSWORD: "password"
+  FULLNAME: "Admin User"
+  EMAIL: "admin@example.com"
+  DB_TYPE: "postgres"
+  DB_HOST: "postgresql"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "pinepods"
+  DEBUG_MODE: "false"
