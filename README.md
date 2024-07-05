@@ -214,7 +214,7 @@ Adding the Helm Repository
 First, add the Pinepods Helm repository:
 
 ```
-helm repo add pinepods https://madeofpendletonwool.github.io/pinepods
+helm repo add pinepods http://helm.pinepods.online/PinePods
 helm repo update
 ```
 #### Installing the Chart
