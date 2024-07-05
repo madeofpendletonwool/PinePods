@@ -56,8 +56,8 @@ There's potentially a few steps to getting Pinepods fully installed. After you g
 
 First, the server. You have multiple options for deploying Pinepods:
 
-  - [Using Docker Compose :evergreen\_tree:](#docker-compose)
-  - [Using Helm for Kubernetes](#helm-deployment)
+  - [Using Docker Compose :whale:](#docker-compose)
+  - [Using Helm for Kubernetes :anchor:](#helm-deployment)
 
 You can also choose to use mysql/mariaDB or Postgres as your database. Examples for both are provided below.
 
