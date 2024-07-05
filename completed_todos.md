@@ -11,9 +11,9 @@ Next Minor Version:
 
 - [] Manually adjust tags for podcast in podcast settings
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
-- [] Installable PWA
 - [] Jump to clicked timestamp
 - [] Timestamps in playing page
+- [ ] Chapter Image Support
 
 Version 0.6.2
 
@@ -25,6 +25,7 @@ Version 0.6.2
   - [x] Episodes delete using tauri functions
   - [x] Create a system to queue the local download jobs so that you don't need to wait for the downloads to complete
 - [x] Added offline support to the client versions.
+- [x] Installable PWA
 - [x] Fixed bug where some requests would queue instead of clearing on continued episode plays. For example, if you played an episode and then played another episode, the first episode would still make reqeuests for updating certain values.
 - [x] Fixed issue with postgres dbs not adding episodes after addding a Nextcloud sync server (It was calling the refresh nextcloud function in the wrong file)
 - [x] Fixed issue with manual completion where it only could complete, but not uncomplete

@@ -272,15 +272,16 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 
 - [x] Additional Downloads Page organization - Organize by Podcast
 - [x] Download entire podcast button. For episode archival
+- [x] Offline mode for playing locally downloaded episodes
+- [x] Installable PWA
+- [x] Custom Podcast Start and End Position
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
-- [ ] Installable PWA
 - [ ] Add Fyyd as searching index
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
-- [ ] Offline mode for playing locally downloaded episodes
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
 - [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
 - [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
@@ -300,7 +301,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Chapter Image Support
 - [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [ ] Side load audio from the web
-- [x] Custom Podcast Start and End Position
 
 ### Clients to support
 
