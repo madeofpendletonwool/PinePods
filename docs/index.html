@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Pinepods Helm Chart</title>
+    </head>
+    <body>
+        <h1>Pinepods Helm Chart</h1>
+        <p>
+            Welcome to the Pinepods Helm chart repository. Follow the
+            instructions below to use the Helm chart.
+        </p>
+
+        <h2>Adding the Repository</h2>
+        <pre><code>helm repo add pinepods https://madeofpendletonwool.github.io/pinepods
+helm repo update</code></pre>
+
+        <h2>Installing the Chart</h2>
+        <pre><code>helm install pinepods pinepods/Pinepods -f my-values.yaml</code></pre>
+
+        <h2>Customizing Values</h2>
+        <p>
+            Create a <code>my-values.yaml</code> file to override default
+            values:
+        </p>
+        <pre><code>replicaCount: 3
+image:
+  repository: pinepods
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: NodePort
+  port: 8040
+  nodePort: 30007
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 10Gi
+postgresql:
+  enabled: true
+  postgresqlUsername: postgres
+  postgresqlPassword: supersecretpassword
+  postgresqlDatabase: pinepods
+  persistence:
+    enabled: true
+    existingClaim: postgres-pvc
+env:
+  SEARCH_API_URL: "https://api.example.com/search"
+  USERNAME: "admin"
+  PASSWORD: "password"
+  FULLNAME: "Admin User"
+  EMAIL: "admin@example.com"
+  DB_TYPE: "postgres"
+  DB_HOST: "postgresql"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "pinepods"
+  DEBUG_MODE: "false"</code></pre>
+
+        <h2>More Information</h2>
+        <p>
+            For more information, visit the
+            <a href="https://github.com/madeofpendletonwool/pinepods"
+                >GitHub repository</a
+            >.
+        </p>
+    </body>
+</html>
