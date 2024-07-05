@@ -54,7 +54,14 @@ There's potentially a few steps to getting Pinepods fully installed. After you g
 
 ### Server Installation :floppy_disk:
 
-First, the server. It's hightly recommended you run the server using docker compose. Here's a template compose file to start with. You can also choose to use mysql/mariaDB or Postgres as your database. Examples for both are provided below.
+First, the server. You have multiple options for deploying Pinepods:
+
+  - [Using Docker Compose :evergreen\_tree:](#docker-compose)
+  - [Using Helm for Kubernetes](#helm-deployment)
+
+You can also choose to use mysql/mariaDB or Postgres as your database. Examples for both are provided below.
+
+### Docker Compose
 
 #### Compose File - mariadb
 
@@ -196,7 +203,75 @@ Either way, once you have everything all setup and your compose file created go 
 sudo docker-compose up
 ```
 
-To pull the container images and get started. Once fully started up you'll be able to access pinepods at the port you configured and you'll be able to start connecting clients as well. Check out the Tutorials on the documentation site for more information on how to do basic things.
+To pull the container images and get started. Once fully started up you'll be able to access pinepods at the port you configured and you'll be able to start connecting clients as well.
+
+
+### Helm Deployment
+
+Alternatively, you can deploy Pinepods using Helm on a Kubernetes cluster. Helm is a package manager for Kubernetes that simplifies deployment.
+Adding the Helm Repository
+
+First, add the Pinepods Helm repository:
+
+```
+helm repo add pinepods https://madeofpendletonwool.github.io/pinepods
+helm repo update
+```
+#### Installing the Chart
+
+To install the Pinepods Helm chart, run:
+
+```
+helm install pinepods pinepods/Pinepods -f my-values.yaml
+```
+#### Customizing Values
+
+Create a my-values.yaml file to override default values:
+
+```
+replicaCount: 3
+image:
+  repository: pinepods
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: NodePort
+  port: 8040
+  nodePort: 30007
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 10Gi
+postgresql:
+  enabled: true
+  postgresqlUsername: postgres
+  postgresqlPassword: supersecretpassword
+  postgresqlDatabase: pinepods
+  persistence:
+    enabled: true
+    existingClaim: postgres-pvc
+env:
+  SEARCH_API_URL: "https://api.example.com/search"
+  USERNAME: "admin"
+  PASSWORD: "password"
+  FULLNAME: "Admin User"
+  EMAIL: "admin@example.com"
+  DB_TYPE: "postgres"
+  DB_HOST: "postgresql"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "pinepods"
+  DEBUG_MODE: "false"
+```
+#### Starting Helm
+
+Once you have everything set up, install the Helm chart:
+```
+helm install pinepods pinepods/Pinepods -f my-values.yaml
+```
+This will deploy Pinepods on your Kubernetes cluster with a postgres database. Mysql/mariadb is not supported with the kubernetes setup. The service will be accessible at the specified NodePort.
+
+Check out the Tutorials on the documentation site for more information on how to do basic things.
 
 https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
