@@ -61,11 +61,11 @@ jobs:
         run: |
           helm repo index docs --url https://madeofpendletonwool.github.io/pinepods
 
-          - name: Commit and push changes
-            uses: EndBug/add-and-commit@v9
-            with:
-              author_name: github-actions[bot]
-              author_email: github-actions[bot]@users.noreply.github.com
-              message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
-              add: "docs"
-              push: true
+      - name: Commit and push changes
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions[bot]
+          author_email: github-actions[bot]@users.noreply.github.com
+          message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
+          add: "docs"
+          push: true
