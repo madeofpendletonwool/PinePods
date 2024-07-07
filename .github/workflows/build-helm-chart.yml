@@ -25,6 +25,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false # This prevents the default token from being persisted in the local git config
+
+      - name: Setup Git for push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.PUSH_PAT }}@github.com/${{ github.repository }}.git
 
       - name: Setup Helm
         uses: Azure/setup-helm@v4.2.0
@@ -61,11 +69,10 @@ jobs:
         run: |
           helm repo index docs --url https://madeofpendletonwool.github.io/pinepods
 
-      - name: Commit and push changes
-        uses: EndBug/add-and-commit@v9
+      - uses: EndBug/add-and-commit@v9
         with:
-          author_name: github-actions[bot]
-          author_email: github-actions[bot]@users.noreply.github.com
+          committer_name: GitHub Actions
+          committer_email: actions@github.com
           message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
           add: "docs"
           push: true
