@@ -226,41 +226,48 @@ helm install pinepods pinepods/Pinepods -f my-values.yaml
 ```
 #### Customizing Values
 
-Create a my-values.yaml file to override default values:
+Create a my-values.yaml file to override default values - Leave DB_HOST as it is unless you package your own helm chart:
 
 ```
-replicaCount: 3
+replicaCount: 2
+
 image:
-  repository: madeofpendletonwool/pinepods
+  repository: pinepods
   tag: latest
   pullPolicy: IfNotPresent
+
 service:
   type: NodePort
   port: 8040
   nodePort: 30007
+
 persistence:
   enabled: true
   accessMode: ReadWriteOnce
   size: 10Gi
+
 postgresql:
   enabled: true
-  postgresqlUsername: postgres
-  postgresqlPassword: supersecretpassword
-  postgresqlDatabase: pinepods
-  persistence:
-    enabled: true
-    existingClaim: postgres-pvc
+  auth:
+    username: postgres
+    password: "supersecretpassword"
+    database: pinepods_database
+  primary:
+    persistence:
+      enabled: true
+      existingClaim: postgres-pvc
+
 env:
-  SEARCH_API_URL: "https://api.example.com/search"
+  SEARCH_API_URL: "https://search.pinepods.online/api/search"
   USERNAME: "admin"
   PASSWORD: "password"
   FULLNAME: "Admin User"
   EMAIL: "admin@example.com"
-  DB_TYPE: "postgres"
-  DB_HOST: "postgresql"
+  DB_TYPE: "postgresql"
+  DB_HOST: "pinepods-postgresql.pinepods-namespace.svc.cluster.local"
   DB_PORT: "5432"
   DB_USER: "postgres"
-  DB_NAME: "pinepods"
+  DB_NAME: "pinepods_database"
   DEBUG_MODE: "false"
 ```
 
@@ -269,13 +276,6 @@ env:
 Create a namespace to hold the deployment:
 ```
 kubectl create namespace pinepods-namespace
-```
-
-#### Create a database secret:
-
-This secret is used to store the database password. Create a secret with the database password in the pinepods-namespace namespace:
-```
-kubectl create secret generic db-secret --namespace pinepods-namespace --from-literal=DB_PASSWORD=supersecretpassword
 ```
 
 #### Starting Helm
