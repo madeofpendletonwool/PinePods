@@ -14,11 +14,12 @@ Next Minor Version:
 - [] Jump to clicked timestamp
 - [] Timestamps in playing page
 - [] Chapter Image Support
-- [] Kubernetes deployment with helm
 - [] A route to get the version of the app. This will allow dynamic displaying of the current version. Just one more area to futher automation as changes get made.
 
 Version 0.6.2
 
+- [x] Kubernetes deployment option with helm
+- [x] Easy to use helm repo setup and active https://helm.pinepods.online
 - [x] Added Local Download support to the client versions
   - [x] Local Downloads and Server Downloads tabs in client versions
   - [x] Created logic to keep track of locally downloaded episodes
