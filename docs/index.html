@@ -57,50 +57,54 @@ helm repo update</code></pre>
             <h2>Create the namespace</h2>
             <pre><code>kubectl create namespace pinepods-namespace</code></pre>
 
-            <h2>Create a database secret</h2>
-            <pre><code>kubectl create secret generic db-secret --namespace pinepods-namespace --from-literal=DB_PASSWORD=supersecretpassword</code></pre>
-
-            <h2>Installing the Chart</h2>
-            <pre><code>helm install pinepods pinepods/Pinepods -f my-values.yaml</code></pre>
-
             <h2>Customizing Values</h2>
             <p>
                 Create a <code>my-values.yaml</code> file to override default
                 values:
             </p>
-            <pre><code>replicaCount: 3
-image:
-  repository: madeofpendletonwool/pinepods
-  tag: latest
-  pullPolicy: IfNotPresent
-service:
-  type: NodePort
-  port: 8040
-  nodePort: 30007
-persistence:
-  enabled: true
-  accessMode: ReadWriteOnce
-  size: 10Gi
-postgresql:
-  enabled: true
-  postgresqlUsername: postgres
-  postgresqlPassword: supersecretpassword
-  postgresqlDatabase: pinepods
-  persistence:
-    enabled: true
-    existingClaim: postgres-pvc
-env:
-  SEARCH_API_URL: "https://api.example.com/search"
-  USERNAME: "admin"
-  PASSWORD: "password"
-  FULLNAME: "Admin User"
-  EMAIL: "admin@example.com"
-  DB_TYPE: "postgres"
-  DB_HOST: "postgresql"
-  DB_PORT: "5432"
-  DB_USER: "postgres"
-  DB_NAME: "pinepods"
-  DEBUG_MODE: "false"</code></pre>
+            <pre><code>replicaCount: 2
+
+            image:
+              repository: pinepods
+              tag: latest
+              pullPolicy: IfNotPresent
+
+            service:
+              type: NodePort
+              port: 8040
+              nodePort: 30007
+
+            persistence:
+              enabled: true
+              accessMode: ReadWriteOnce
+              size: 10Gi
+
+            postgresql:
+              enabled: true
+              auth:
+                username: postgres
+                password: "supersecretpassword"
+                database: pinepods_database
+              primary:
+                persistence:
+                  enabled: true
+                  existingClaim: postgres-pvc
+
+            env:
+              SEARCH_API_URL: "https://search.pinepods.online/api/search"
+              USERNAME: "admin"
+              PASSWORD: "password"
+              FULLNAME: "Admin User"
+              EMAIL: "admin@example.com"
+              DB_TYPE: "postgresql"
+              DB_HOST: "pinepods-postgresql.pinepods-namespace.svc.cluster.local"
+              DB_PORT: "5432"
+              DB_USER: "postgres"
+              DB_NAME: "pinepods_database"
+              DEBUG_MODE: "false"</code></pre>
+
+            <h2>Installing the Chart</h2>
+            <pre><code>helm install pinepods pinepods/Pinepods -f my-values.yaml</code></pre>
 
             <h2>More Information</h2>
             <p>
