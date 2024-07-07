@@ -37,7 +37,7 @@ jobs:
       - name: Update Chart.yaml version
         run: |
           version=${{ github.event.release.tag_name }}
-          yq e ".version = \"$version\"" -i ./path/to/your/chart/Chart.yaml
+          yq e ".version = \"$version\"" -i ./deployments/kubernetes/helm/pinepods/Chart.yaml
 
       - name: Package Helm chart
         run: |
