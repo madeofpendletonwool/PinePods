@@ -222,7 +222,7 @@ helm repo update
 To install the Pinepods Helm chart, run:
 
 ```
-helm install pinepods pinepods/pinepods -f my-values.yaml
+helm install pinepods pinepods/pinepods -f my-values.yaml --namespace pinepods-namespace
 ```
 #### Customizing Values
 
