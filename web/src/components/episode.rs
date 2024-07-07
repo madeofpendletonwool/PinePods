@@ -18,11 +18,10 @@ use crate::requests::pod_req::{
 use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
 use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
 #[function_component(Episode)]
@@ -345,15 +344,15 @@ pub fn epsiode() -> Html {
                                             server_name.unwrap(),
                                             api_key,
                                             &history,
-                                            details.podcast_name,
-                                            details.feed_url,
+                                            details.podcastname,
+                                            details.feedurl,
                                             details.description,
                                             details.author,
-                                            details.artwork_url,
+                                            details.artworkurl,
                                             details.explicit,
-                                            details.episode_count,
+                                            details.episodecount,
                                             Some(categories_map),
-                                            details.website_url,
+                                            details.websiteurl,
                                             user_id.unwrap(),
                                         );
 
@@ -437,7 +436,7 @@ pub fn epsiode() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }

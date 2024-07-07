@@ -1,8 +1,8 @@
+use super::routes::Route;
+use crate::components::context::AppState;
 use yew::prelude::*;
 use yew_router::prelude::Link;
-use yewdux::{use_store};
-use crate::components::context::AppState;
-use super::routes::Route;
+use yewdux::use_store;
 
 #[allow(non_camel_case_types)]
 #[function_component(App_drawer)]
@@ -12,7 +12,10 @@ pub fn app_drawer() -> Html {
 
     let is_drawer_open = use_state(|| false);
     let (state, _dispatch) = use_store::<AppState>();
-    let username = state.user_details.as_ref().map_or("Guest".to_string(), |ud| ud.Username.clone().unwrap());
+    let username = state
+        .user_details
+        .as_ref()
+        .map_or("Guest".to_string(), |ud| ud.Username.clone().unwrap());
     let toggle_drawer = {
         let is_drawer_open = is_drawer_open.clone();
         move |_event: MouseEvent| {
@@ -27,6 +30,20 @@ pub fn app_drawer() -> Html {
             }
         }
     };
+
+    #[cfg(not(feature = "server_build"))]
+    let local_download_link = html! {
+        <div class="flex items-center space-x-3">
+            <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
+                <Link<Route> to={Route::LocalDownloads}>
+                    <span class="material-icons icon-space">{"folder_open"}</span>
+                    <span class="text-lg">{"Local Downloads"}</span>
+                </Link<Route>>
+            </div>
+        </div>
+    };
+    #[cfg(feature = "server_build")]
+    let local_download_link = html! {};
 
     html! {
         <div class="relative min-h-screen">
@@ -99,10 +116,15 @@ pub fn app_drawer() -> Html {
                             <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                 <Link<Route> to={Route::Downloads}>
                                     <span class="material-icons icon-space">{"download"}</span>
-                                    <span class="text-lg">{"Downloads"}</span>
+                                    <span class="text-lg">{"Server Downloads"}</span>
                                 </Link<Route>>
                             </div>
                         </div>
+                        {
+                            {
+                                local_download_link
+                            }
+                        }
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Podcasts}>
@@ -177,6 +199,4 @@ pub fn app_drawer() -> Html {
             // />
         </div>
     }
-
-
 }

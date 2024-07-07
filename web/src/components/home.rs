@@ -5,9 +5,8 @@ use super::gen_components::{
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
-use crate::components::desc_impl::AppStateMsg;
 use crate::components::gen_funcs::{
-    format_datetime, parse_date, sanitize_html_with_blank_target, truncate_description, DateFormat,
+    format_datetime, parse_date, sanitize_html_with_blank_target, DateFormat,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::Episode as EpisodeData;
@@ -207,7 +206,7 @@ pub fn home() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }
@@ -241,7 +240,6 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let id_string = &props.episode.episodeid.to_string();
-    let completed = props.episode.completed.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
 
@@ -271,10 +269,8 @@ pub fn episode(props: &EpisodeProps) -> Html {
         fn toggleDescription(guid: &str, expanded: bool);
     }
 
-    let episode_guid = props.episode.episodeid.clone().to_string();
     let toggle_expanded = {
         let desc_dispatch = desc_dispatch.clone();
-        let desc_state = desc_state.clone();
         let episode_guid = props.episode.episodeid.clone().to_string();
 
         Callback::from(move |_: MouseEvent| {

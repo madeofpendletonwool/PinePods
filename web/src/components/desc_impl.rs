@@ -1,7 +1,8 @@
+use crate::components::context::ExpandedDescriptions;
 use std::rc::Rc;
 use yewdux::prelude::*;
-use crate::components::context::ExpandedDescriptions;
 
+#[allow(dead_code)]
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
@@ -14,10 +15,10 @@ impl Reducer<ExpandedDescriptions> for AppStateMsg {
         match self {
             AppStateMsg::ExpandEpisode(guid) => {
                 state_mut.expanded_descriptions.insert(guid);
-            },
+            }
             AppStateMsg::CollapseEpisode(guid) => {
                 state_mut.expanded_descriptions.remove(&guid);
-            },
+            }
         }
 
         // Return the Rc itself, not a reference to it
