@@ -1,0 +1,62 @@
+name: Build Helm Chart
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: madeofpendletonwool/pinepods
+  CHART_NAME: Pinepods
+
+jobs:
+  build-helm-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Helm
+        uses: Azure/setup-helm@v4.2.0
+
+      - name: Install yq
+        run: |
+          apt install yq -y
+
+      - name: Update Chart.yaml version
+        run: |
+          version=${{ github.event.release.tag_name }}
+          yq e ".version = \"$version\"" -i ./path/to/your/chart/Chart.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm dependency update ./deployments/kubernetes/helm/pinepods
+          helm package ./deployments/kubernetes/helm/pinepods --destination ./docs
+
+      - name: Remove old Helm chart
+        run: |
+          ls docs/
+          find docs/ -type f -name "${CHART_NAME}-*.tgz" ! -name "${CHART_NAME}-${{ github.event.release.tag_name }}.tgz" -exec rm {} +
+
+      - name: Update Helm repo index
+        run: |
+          helm repo index docs --url https://madeofpendletonwool.github.io/pinepods
+
+          - name: Commit and push changes
+            uses: EndBug/add-and-commit@v9
+            with:
+              author_name: github-actions[bot]
+              author_email: github-actions[bot]@users.noreply.github.com
+              message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
+              add: "docs"
+              push: true

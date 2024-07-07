@@ -1,0 +1,8 @@
+apiVersion: v2
+name: Pinepods
+version: version
+description: A Helm chart for deploying Pinepods - A complete podcast management system and allows you to play, download, and keep track of podcasts you enjoy. All self hosted and enjoyed on your own server!
+dependencies:
+  - name: postgresql
+    version: 15.5.14
+    repository: https://charts.bitnami.com/bitnami

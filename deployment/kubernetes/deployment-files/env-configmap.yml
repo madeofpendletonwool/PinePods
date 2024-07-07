@@ -1,0 +1,16 @@
+# env-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pinepods-config
+data:
+  SEARCH_API_URL: "https://search.pinepods.online/api/search"
+  USERNAME: "myadminuser01"
+  PASSWORD: "myS3curepass"
+  FULLNAME: "Pinepods Admin"
+  EMAIL: "user@pinepods.online"
+  DB_TYPE: "postgresql"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "pypods_database"
+  DEBUG_MODE: "False"

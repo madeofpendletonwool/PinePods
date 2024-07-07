@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pinepods.fullname" . }}
+  labels:
+    app: {{ include "pinepods.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "pinepods.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "pinepods.name" . }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          env:
+            - name: SEARCH_API_URL
+              value: {{ .Values.env.SEARCH_API_URL | quote }}
+            - name: USERNAME
+              value: {{ .Values.env.USERNAME | quote }}
+            - name: PASSWORD
+              value: {{ .Values.env.PASSWORD | quote }}
+            - name: FULLNAME
+              value: {{ .Values.env.FULLNAME | quote }}
+            - name: EMAIL
+              value: {{ .Values.env.EMAIL | quote }}
+            - name: DB_TYPE
+              value: {{ .Values.env.DB_TYPE | quote }}
+            - name: DB_HOST
+              value: {{ .Values.env.DB_HOST | quote }}
+            - name: DB_PORT
+              value: {{ .Values.env.DB_PORT | quote }}
+            - name: DB_USER
+              value: {{ .Values.env.DB_USER | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              value: {{ .Values.env.DB_NAME | quote }}
+            - name: DEBUG_MODE
+              value: {{ .Values.env.DEBUG_MODE | quote }}
+          volumeMounts:
+            - name: downloads
+              mountPath: /opt/pypods/downloads
+            - name: backups
+              mountPath: /opt/pinepods/backups
+          livenessProbe:
+            httpGet:
+              path: /api/pinepods_check
+              port: {{ .Values.service.port }}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/pinepods_check
+              port: {{ .Values.service.port }}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: downloads
+          persistentVolumeClaim:
+            claimName: downloads-pvc
+        - name: backups
+          persistentVolumeClaim:
+            claimName: backups-pvc
+
