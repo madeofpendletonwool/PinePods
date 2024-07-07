@@ -31,7 +31,7 @@ jobs:
 
       - name: Install yq
         run: |
-          apt install yq -y
+          sudo apt install yq -y
 
       - name: Update Chart.yaml version
         run: |
