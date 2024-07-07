@@ -34,10 +34,17 @@ jobs:
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq &&\
               sudo chmod +x /usr/bin/yq
 
-      - name: Update Chart.yaml version
+      - name: Set Chart Version
         run: |
-          version=${{ github.event.release.tag_name }}
-          ls -la
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            version=${{ github.event.release.tag_name }}
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            version=${{ github.event.inputs.version }}
+          else
+            echo "No version provided. Exiting."
+            exit 1
+          fi
+          echo "Setting chart version to $version"
           yq e ".version = \"$version\"" -i deployment/kubernetes/helm/pinepods/Chart.yaml
 
       - name: Package Helm chart
