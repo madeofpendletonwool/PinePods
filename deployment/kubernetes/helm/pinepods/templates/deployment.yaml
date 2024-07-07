@@ -42,8 +42,8 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: db-secret
-                  key: DB_PASSWORD
+                  name: {{ .Release.Name }}-postgresql
+                  key: postgres-password
             - name: DB_NAME
               value: {{ .Values.env.DB_NAME | quote }}
             - name: DEBUG_MODE

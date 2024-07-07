@@ -15,6 +15,7 @@ Next Minor Version:
 - [] Timestamps in playing page
 - [] Chapter Image Support
 - [] Kubernetes deployment with helm
+- [] A route to get the version of the app. This will allow dynamic displaying of the current version. Just one more area to futher automation as changes get made.
 
 Version 0.6.2
 
