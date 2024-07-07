@@ -38,12 +38,12 @@ jobs:
         run: |
           version=${{ github.event.release.tag_name }}
           ls -la
-          yq e ".version = \"$version\"" -i deployments/kubernetes/helm/pinepods/Chart.yaml
+          yq e ".version = \"$version\"" -i deployment/kubernetes/helm/pinepods/Chart.yaml
 
       - name: Package Helm chart
         run: |
-          helm dependency update ./deployments/kubernetes/helm/pinepods
-          helm package ./deployments/kubernetes/helm/pinepods --destination ./docs
+          helm dependency update ./deployment/kubernetes/helm/pinepods
+          helm package ./deployment/kubernetes/helm/pinepods --destination ./docs
 
       - name: Remove old Helm chart
         run: |
