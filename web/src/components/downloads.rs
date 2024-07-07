@@ -4,11 +4,9 @@ use super::gen_components::{
 };
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::AppStateMsg;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-    truncate_description,
 };
 use crate::requests::pod_req::{
     call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
@@ -25,6 +23,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 
@@ -42,6 +41,7 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
 
     let session_dispatch = effect_dispatch.clone();
@@ -286,7 +286,7 @@ pub fn downloads() -> Html {
 
     let is_delete_mode = **page_state.borrow() == PageState::Delete; // Add this line
 
-    let toggle_expanded = {
+    let toggle_pod_expanded = {
         let expanded_state = expanded_state.clone();
         Callback::from(move |podcast_id: i32| {
             expanded_state.set({
@@ -377,7 +377,7 @@ pub fn downloads() -> Html {
                                                 let is_expanded = *expanded_state.get(&podcast.podcastid).unwrap_or(&false);
                                                 let toggle_expanded_closure = {
                                                     let podcast_id = podcast.podcastid;
-                                                    toggle_expanded.reform(move |_| podcast_id)
+                                                    toggle_pod_expanded.reform(move |_| podcast_id)
                                                 };
 
                                                 let render_state_cloned = render_state.clone();
@@ -395,6 +395,8 @@ pub fn downloads() -> Html {
                                                     dispatch_cloned_cloned,
                                                     is_delete_mode,
                                                     audio_state_cloned,
+                                                    desc_state.clone(),
+                                                    desc_dispatch.clone(),
                                                     audio_dispatch_cloned,
                                                     on_checkbox_change_cloned,
                                                 ))
@@ -438,11 +440,13 @@ pub fn render_podcast_with_episodes(
     podcast: &Podcast,
     episodes: Vec<EpisodeDownload>,
     is_expanded: bool,
-    toggle_expanded: Callback<MouseEvent>,
+    toggle_pod_expanded: Callback<MouseEvent>,
     state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     is_delete_mode: bool,
     audio_state: Rc<UIState>,
+    desc_rc: Rc<ExpandedDescriptions>,
+    desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
     on_checkbox_change: Callback<i32>,
 ) -> Html {
@@ -453,7 +457,7 @@ pub fn render_podcast_with_episodes(
 
     html! {
         <div key={podcast.podcastid}>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_expanded}>
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_pod_expanded}>
                 <div class="flex flex-col w-auto object-cover pl-4">
                     <img
                         src={podcast.artworkurl.clone()}
@@ -475,8 +479,6 @@ pub fn render_podcast_with_episodes(
                         { for episodes.into_iter().map(|episode| {
                             let id_string = &episode.episodeid.to_string();
 
-                            let is_expanded = state.expanded_descriptions.contains(id_string);
-
                             let dispatch = dispatch.clone();
 
                             let episode_url_clone = episode.episodeurl.clone();
@@ -486,29 +488,27 @@ pub fn render_podcast_with_episodes(
                             let episode_id_clone = episode.episodeid.clone();
                             let episode_listened_clone = episode.listenduration.clone();
                             let _completed = episode.completed;
-
-                            let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
-
-                            let (description, _is_truncated) = if is_expanded {
-                                (sanitized_description, false)
-                            } else {
-                                truncate_description(sanitized_description, 300)
-                            };
-
+                            let desc_expanded = desc_rc.expanded_descriptions.contains(id_string);
+                            #[wasm_bindgen]
+                            extern "C" {
+                                #[wasm_bindgen(js_namespace = window)]
+                                fn toggleDescription(guid: &str, expanded: bool);
+                            }
                             let toggle_expanded = {
-                                let search_dispatch_clone = dispatch.clone();
-                                let state_clone = state.clone();
-                                let episode_guid = episode.episodeid.clone();
+                                let desc_dispatch = desc_state.clone();
+                                let episode_guid = episode.episodeid.clone().to_string();
 
                                 Callback::from(move |_: MouseEvent| {
-                                    let guid_clone = episode_guid.to_string().clone();
-                                    let search_dispatch_call = search_dispatch_clone.clone();
-
-                                    if state_clone.expanded_descriptions.contains(&guid_clone) {
-                                        search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                                    } else {
-                                        search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                                    }
+                                    let guid = episode_guid.clone();
+                                    desc_dispatch.reduce_mut(move |state| {
+                                        if state.expanded_descriptions.contains(&guid) {
+                                            state.expanded_descriptions.remove(&guid); // Collapse the description
+                                            toggleDescription(&guid, false); // Call JavaScript function
+                                        } else {
+                                            state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                                            toggleDescription(&guid, true); // Call JavaScript function
+                                        }
+                                    });
                                 })
                             };
 
@@ -550,6 +550,9 @@ pub fn render_podcast_with_episodes(
                             let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                             let on_checkbox_change_cloned = on_checkbox_change.clone();
                             let episode_url_for_ep_item = episode_url_clone.clone();
+                            let sanitized_description =
+                                sanitize_html_with_blank_target(&episode.episodedescription.clone());
+
                             let check_episode_id = &episode.episodeid.clone();
                             let is_completed = state
                                 .completed_episodes
@@ -558,8 +561,8 @@ pub fn render_podcast_with_episodes(
                                 .contains(&check_episode_id);
                             download_episode_item(
                                 Box::new(episode),
-                                description.clone(),
-                                is_expanded,
+                                sanitized_description.clone(),
+                                desc_expanded,
                                 &format_release,
                                 on_play_click,
                                 on_shownotes_click,

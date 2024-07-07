@@ -13,7 +13,8 @@ Next Minor Version:
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
 - [] Jump to clicked timestamp
 - [] Timestamps in playing page
-- [ ] Chapter Image Support
+- [] Chapter Image Support
+- [] Kubernetes deployment with helm
 
 Version 0.6.2
 
@@ -29,7 +30,7 @@ Version 0.6.2
 - [x] Fixed bug where some requests would queue instead of clearing on continued episode plays. For example, if you played an episode and then played another episode, the first episode would still make reqeuests for updating certain values.
 - [x] Fixed issue with postgres dbs not adding episodes after addding a Nextcloud sync server (It was calling the refresh nextcloud function in the wrong file)
 - [x] Fixed issue with manual completion where it only could complete, but not uncomplete
-- [] Fixed issue in downloads page where see more button didn't work on episodes
+- [x] Fixed issue in downloads page where see more button didn't work on episodes
 
 Version 0.6.1
 

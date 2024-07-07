@@ -2,16 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use directories::ProjectDirs;
-use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
 use tauri::command;
-use warp::{reply::Response, Filter, Rejection};
 
 // Define the structure for the file entries
 #[derive(Serialize, Deserialize)]
@@ -231,7 +227,10 @@ async fn update_podcast_db(podcast_details: PodcastDetails) -> Result<(), String
         Vec::new()
     };
 
-    if !podcasts.iter().any(|p| p.userid == podcast_details.userid) {
+    if !podcasts
+        .iter()
+        .any(|p| p.podcastid == podcast_details.podcastid)
+    {
         podcasts.push(podcast_details);
     }
 
@@ -282,7 +281,7 @@ async fn get_local_file(filepath: String) -> Result<Vec<u8>, String> {
     use std::io::Read;
     use std::path::PathBuf;
 
-    let mut path = PathBuf::from(filepath);
+    let path = PathBuf::from(filepath);
     let mut file = File::open(&path).map_err(|e| e.to_string())?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).map_err(|e| e.to_string())?;

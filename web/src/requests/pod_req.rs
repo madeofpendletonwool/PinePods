@@ -1,8 +1,8 @@
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_wasm_bindgen::to_value;
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -1307,14 +1307,6 @@ pub async fn call_get_podcast_id_from_ep_name(
     Ok(response_data.podcast_id)
 }
 
-fn explicit_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let val: i32 = Deserialize::deserialize(deserializer)?;
-    Ok(val == 1) // 1 = true, 0 = false
-}
-
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
     pub podcastid: i32,
@@ -1360,7 +1352,7 @@ pub async fn call_get_podcast_details(
             .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
 
         // Convert to JsValue and print to console
-        let js_value = JsValue::from_serde(&response_data.details)
+        let js_value = to_value(&response_data.details)
             .map_err(|e| Error::msg(format!("Failed to convert to JsValue: {}", e)))?;
         web_sys::console::log_1(&js_value);
         Ok(response_data.details)

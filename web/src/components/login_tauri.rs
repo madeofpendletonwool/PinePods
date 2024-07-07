@@ -493,7 +493,6 @@ pub fn login() -> Html {
     let offline_hist = history.clone();
     let offline_post_state = _dispatch.clone();
     let on_offline = {
-        let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
             let history = offline_hist.clone();
             offline_post_state.reduce_mut(|state| state.app_offline_mode = Option::from(true));

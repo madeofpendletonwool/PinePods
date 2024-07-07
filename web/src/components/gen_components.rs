@@ -729,24 +729,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let on_remove_locally_downloaded_episode = {
         let episode = props.episode.clone();
         let download_local_post = audio_dispatch.clone();
-        let server_name_copy = server_name.clone();
-        let api_key_copy = api_key.clone();
-        let user_id_copy = user_id.clone();
 
         Callback::from(move |_| {
             let post_state = download_local_post.clone();
             let episode_id = episode.get_episode_id();
-            let request = EpisodeRequest {
-                episode_id,
-                user_id: user_id_copy.unwrap(),
-            };
-            let server_name = server_name_copy.clone().unwrap();
-            let ep_api_key = api_key_copy.clone().flatten();
-            let api_key = api_key_copy.clone().flatten();
 
             let future = async move {
                 let filename = format!("episode_{}.mp3", episode_id);
-                let artwork_filename = format!("artwork_{}.jpg", episode_id);
 
                 // Download audio
                 match remove_episode_from_local_db(episode_id).await {

@@ -1,16 +1,18 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
-use crate::components::downloads_tauri::{fetch_local_file, start_local_file_server};
+use crate::components::downloads_tauri::start_local_file_server;
+#[cfg(not(feature = "server_build"))]
+use crate::requests::pod_req::EpisodeDownload;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_get_auto_skip_times,
     call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
     call_increment_played, call_mark_episode_completed, call_queue_episode,
-    call_record_listen_duration, call_remove_queued_episode, EpisodeDownload, HistoryAddRequest,
+    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
 };
-use futures_util::stream::StreamExt;
 use gloo_timers::callback::Interval;
 use std::cell::Cell;
+#[cfg(not(feature = "server_build"))]
 use std::path::Path;
 use std::rc::Rc;
 use std::string::String;

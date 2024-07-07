@@ -1,20 +1,16 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    download_episode_item, empty_message, episode_item, on_shownotes_click, Search_nav,
-    UseScrollToTop,
+    download_episode_item, empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
 };
 use crate::components::audio::on_play_click_offline;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::AppStateMsg;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-    truncate_description,
 };
 use crate::requests::pod_req::{
-    call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
-    DownloadAllPodcastRequest, DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse,
-    EpisodeInfo, Podcast, PodcastDetails, PodcastResponse,
+    call_remove_downloaded_episode, DownloadEpisodeRequest, EpisodeDownload,
+    EpisodeDownloadResponse, EpisodeInfo, Podcast, PodcastDetails, PodcastResponse,
 };
 use yew::prelude::*;
 use yew::{function_component, html, Html};
@@ -24,7 +20,6 @@ use yewdux::prelude::*;
 use crate::components::episodes_layout::UIStateMsg;
 use crate::requests::login_requests::use_check_authentication;
 use serde::{Deserialize, Serialize};
-use serde_wasm_bindgen::from_value;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -33,8 +28,6 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-#[cfg(feature = "default")]
-use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 
 fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec<EpisodeDownload>> {
@@ -68,22 +61,6 @@ pub async fn download_file(url: String, filename: String) -> Result<(), JsValue>
         .map_err(|e| JsValue::from_str(&format!("Failed to invoke download: {}", e)))
 }
 
-pub async fn fetch_local_file(file_path: &str) -> Result<Vec<u8>, JsValue> {
-    #[derive(Serialize)]
-    struct GetLocalFileArgs {
-        filepath: String,
-    }
-
-    let args = GetLocalFileArgs {
-        filepath: file_path.to_string(),
-    };
-
-    let response = tauri::invoke::<_, Vec<u8>>("get_local_file", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to fetch local file: {}", e)))?;
-    Ok(response)
-}
-
 pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue> {
     #[derive(Serialize)]
     struct StartFileServerArgs {
@@ -102,6 +79,7 @@ pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue>
 pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsValue> {
     // Create a wrapper struct to explicitly define the argument name
     #[derive(Serialize)]
+    #[allow(non_snake_case)]
     struct UpdateLocalDbArgs {
         episodeInfo: EpisodeInfo,
     }
@@ -144,6 +122,7 @@ pub async fn fetch_local_episodes() -> Result<Vec<EpisodeDownload>, JsValue> {
 pub async fn update_podcast_database(podcast_details: PodcastDetails) -> Result<(), JsValue> {
     // Create a wrapper struct to explicitly define the argument name
     #[derive(Serialize)]
+    #[allow(non_snake_case)]
     struct UpdatePodcastDbArgs {
         podcastDetails: PodcastDetails,
     }
@@ -177,28 +156,15 @@ struct ListDirArgs<'a> {
 // Define the structure for the file entries
 #[derive(Deserialize)]
 struct FileEntry {
+    #[allow(dead_code)]
     path: String,
-}
-
-// Function to invoke the Tauri command and get the result
-async fn invoke_list_home_dir() -> Result<Vec<FileEntry>, JsValue> {
-    let args = ListDirArgs { path: "~" };
-    tauri::invoke::<_, Vec<FileEntry>>("list_dir", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&e.to_string()))
-}
-
-fn deserialize_js_value<T: for<'de> serde::Deserialize<'de>>(
-    value: wasm_bindgen::JsValue,
-) -> Result<T, serde_wasm_bindgen::Error> {
-    serde_wasm_bindgen::from_value(value)
 }
 
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
-    let history = BrowserHistory::new();
 
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
@@ -599,10 +565,6 @@ pub fn downloads() -> Html {
                     {
                     if let Some(download_eps) = state.downloaded_episodes.clone() {
                         let int_download_eps = download_eps.clone();
-                            let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-                            let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-                            let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-                            let history_clone = history.clone();
                             let render_state = post_state.clone();
                             let dispatch_cloned = dispatch.clone();
 
@@ -630,7 +592,6 @@ pub fn downloads() -> Html {
 
                                                 let render_state_cloned = render_state.clone();
                                                 let dispatch_cloned_cloned = dispatch_cloned.clone();
-                                                let audio_state_cloned = audio_state.clone();
                                                 let audio_dispatch_cloned = audio_dispatch.clone();
                                                 let on_checkbox_change_cloned = on_checkbox_change.clone();
 
@@ -642,7 +603,8 @@ pub fn downloads() -> Html {
                                                     render_state_cloned,
                                                     dispatch_cloned_cloned,
                                                     is_delete_mode,
-                                                    audio_state_cloned,
+                                                    desc_state.clone(),
+                                                    desc_dispatch.clone(),
                                                     audio_dispatch_cloned,
                                                     on_checkbox_change_cloned,
                                                 ))
@@ -690,14 +652,12 @@ pub fn render_podcast_with_episodes(
     state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     is_delete_mode: bool,
-    audio_state: Rc<UIState>,
+    desc_rc: Rc<ExpandedDescriptions>,
+    desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
     on_checkbox_change: Callback<i32>,
 ) -> Html {
     let history_clone = BrowserHistory::new();
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
     html! {
         <div key={podcast.podcastid}>
@@ -723,54 +683,39 @@ pub fn render_podcast_with_episodes(
                         { for episodes.into_iter().map(|episode| {
                             let id_string = &episode.episodeid.to_string();
 
-                            let is_expanded = state.expanded_descriptions.contains(id_string);
-
                             let dispatch = dispatch.clone();
 
                             let episode_url_clone = episode.episodeurl.clone();
-                            let episode_title_clone = episode.episodetitle.clone();
-                            let episode_artwork_clone = episode.episodeartwork.clone();
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
                             let episode_listened_clone = episode.listenduration.clone();
-                            let completed = episode.completed;
+                            let desc_expanded = desc_rc.expanded_descriptions.contains(id_string);
 
-                            let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
-
-                            let (description, _is_truncated) = if is_expanded {
-                                (sanitized_description, false)
-                            } else {
-                                truncate_description(sanitized_description, 300)
-                            };
-
+                            #[wasm_bindgen]
+                            extern "C" {
+                                #[wasm_bindgen(js_namespace = window)]
+                                fn toggleDescription(guid: &str, expanded: bool);
+                            }
                             let toggle_expanded = {
-                                let search_dispatch_clone = dispatch.clone();
-                                let state_clone = state.clone();
-                                let episode_guid = episode.episodeid.clone();
+                                let desc_dispatch = desc_state.clone();
+                                let episode_guid = episode.episodeid.clone().to_string();
 
                                 Callback::from(move |_: MouseEvent| {
-                                    let guid_clone = episode_guid.to_string().clone();
-                                    let search_dispatch_call = search_dispatch_clone.clone();
-
-                                    if state_clone.expanded_descriptions.contains(&guid_clone) {
-                                        search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                                    } else {
-                                        search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                                    }
+                                    let guid = episode_guid.clone();
+                                    desc_dispatch.reduce_mut(move |state| {
+                                        if state.expanded_descriptions.contains(&guid) {
+                                            state.expanded_descriptions.remove(&guid); // Collapse the description
+                                            toggleDescription(&guid, false); // Call JavaScript function
+                                        } else {
+                                            state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                                            toggleDescription(&guid, true); // Call JavaScript function
+                                        }
+                                    });
                                 })
                             };
 
-                            let episode_url_for_closure = episode_url_clone.clone();
-                            let episode_title_for_closure = episode_title_clone.clone();
-                            let episode_artwork_for_closure = episode_artwork_clone.clone();
-                            let episode_duration_for_closure = episode_duration_clone.clone();
-                            let listener_duration_for_closure = episode_listened_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();
-                            let user_id_play = user_id.clone();
-                            let server_name_play = server_name.clone();
-                            let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
-                            let is_local = Option::from(true);
 
                             let on_play_click = on_play_click_offline(episode.clone(), audio_dispatch);
 
@@ -785,6 +730,9 @@ pub fn render_podcast_with_episodes(
                             let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                             let on_checkbox_change_cloned = on_checkbox_change.clone();
                             let episode_url_for_ep_item = episode_url_clone.clone();
+                            let sanitized_description =
+                                sanitize_html_with_blank_target(&episode.episodedescription.clone());
+
                             let check_episode_id = &episode.episodeid.clone();
                             let is_completed = state
                                 .completed_episodes
@@ -793,8 +741,8 @@ pub fn render_podcast_with_episodes(
                                 .contains(&check_episode_id);
                             download_episode_item(
                                 Box::new(episode),
-                                description.clone(),
-                                is_expanded,
+                                sanitized_description.clone(),
+                                desc_expanded,
                                 &format_release,
                                 on_play_click,
                                 on_shownotes_click,
