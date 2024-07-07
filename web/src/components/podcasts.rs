@@ -257,7 +257,6 @@ pub fn podcasts() -> Html {
                             }
                             let toggle_expanded = {
                                 let desc_dispatch = desc_dispatch.clone();
-                                let desc_state = desc_state.clone();
                                 let episode_guid = podcast.podcastid.clone().to_string();
 
                                 Callback::from(move |_: MouseEvent| {
@@ -341,7 +340,7 @@ pub fn podcasts() -> Html {
         </div>
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }

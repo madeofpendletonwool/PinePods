@@ -1,8 +1,8 @@
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_wasm_bindgen::to_value;
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -1035,7 +1035,7 @@ pub async fn call_remove_downloaded_episode(
 
 // Get Single Epsiode
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
 pub struct EpisodeInfo {
     pub episodetitle: String,
@@ -1048,6 +1048,7 @@ pub struct EpisodeInfo {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub episodeid: i32,
+    pub completed: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1306,36 +1307,19 @@ pub async fn call_get_podcast_id_from_ep_name(
     Ok(response_data.podcast_id)
 }
 
-fn explicit_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let val: i32 = Deserialize::deserialize(deserializer)?;
-    Ok(val == 1) // 1 = true, 0 = false
-}
-
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
-    #[serde(rename = "PodcastName")]
-    pub podcast_name: String,
-    #[serde(rename = "ArtworkURL")]
-    pub artwork_url: String,
-    #[serde(rename = "Author")]
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: String,
     pub author: String,
-    #[serde(rename = "Categories")]
     pub categories: String,
-    #[serde(rename = "Description")]
     pub description: String,
-    #[serde(rename = "EpisodeCount")]
-    pub episode_count: i32,
-    #[serde(rename = "FeedURL")]
-    pub feed_url: String,
-    #[serde(rename = "WebsiteURL")]
-    pub website_url: String,
-    #[serde(rename = "Explicit", deserialize_with = "explicit_from_int")]
+    pub episodecount: i32,
+    pub feedurl: String,
+    pub websiteurl: String,
     pub explicit: bool,
-    #[serde(rename = "UserID")]
-    pub user_id: i32,
+    pub userid: i32,
 }
 
 #[derive(Deserialize)]
@@ -1366,6 +1350,11 @@ pub async fn call_get_podcast_details(
             .json()
             .await
             .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
+
+        // Convert to JsValue and print to console
+        let js_value = to_value(&response_data.details)
+            .map_err(|e| Error::msg(format!("Failed to convert to JsValue: {}", e)))?;
+        web_sys::console::log_1(&js_value);
         Ok(response_data.details)
     } else {
         Err(Error::msg(format!(
@@ -1392,6 +1381,43 @@ pub async fn call_mark_episode_completed(
     request_data: &MarkEpisodeCompletedRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/mark_episode_completed", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: MarkEpisodeCompletedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to mark episode completed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_mark_episode_uncompleted(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &MarkEpisodeCompletedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/mark_episode_uncompleted", server_name);
 
     let api_key_ref = api_key
         .as_deref()

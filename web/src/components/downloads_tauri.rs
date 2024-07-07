@@ -2,15 +2,15 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{
     download_episode_item, empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
 };
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_click_offline;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::pod_req::{
-    call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
-    DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse, Podcast, PodcastResponse,
+    call_remove_downloaded_episode, DownloadEpisodeRequest, EpisodeDownload,
+    EpisodeDownloadResponse, EpisodeInfo, Podcast, PodcastDetails, PodcastResponse,
 };
 use yew::prelude::*;
 use yew::{function_component, html, Html};
@@ -19,12 +19,15 @@ use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use crate::requests::login_requests::use_check_authentication;
+use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
+use tauri_sys::tauri;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use web_sys::window;
 
 fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec<EpisodeDownload>> {
@@ -36,6 +39,125 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
             .push(episode);
     }
     grouped
+}
+
+pub async fn download_file(url: String, filename: String) -> Result<(), JsValue> {
+    // Create a wrapper struct to explicitly define the argument names
+    #[derive(Serialize)]
+    struct DownloadFileArgs {
+        url: String,
+        filename: String,
+    }
+
+    // Wrap the parameters in the struct with the expected argument names
+    let args = DownloadFileArgs { url, filename };
+
+    // Serialize and invoke the Tauri command
+    let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
+    web_sys::console::log_1(&serialized_data); // Debug print
+
+    tauri::invoke::<_, ()>("download_file", &args)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to invoke download: {}", e)))
+}
+
+pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue> {
+    #[derive(Serialize)]
+    struct StartFileServerArgs {
+        filepath: String,
+    }
+
+    let args = StartFileServerArgs {
+        filepath: file_path.to_string(),
+    };
+
+    tauri::invoke::<_, String>("start_file_server", &args)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {}", e)))
+}
+
+pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsValue> {
+    // Create a wrapper struct to explicitly define the argument name
+    #[derive(Serialize)]
+    #[allow(non_snake_case)]
+    struct UpdateLocalDbArgs {
+        episodeInfo: EpisodeInfo,
+    }
+
+    // Wrap the episode_info in the struct with the expected argument name
+    let args = UpdateLocalDbArgs {
+        episodeInfo: episode_info,
+    };
+
+    // Serialize and invoke the Tauri command
+    let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
+    web_sys::console::log_1(&serialized_data); // Debug print
+
+    tauri::invoke::<_, ()>("update_local_db", &args)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to update local DB: {}", e)))
+}
+
+pub async fn remove_episode_from_local_db(episode_id: i32) -> Result<(), JsValue> {
+    #[derive(Serialize)]
+    struct RemoveEpisodeFromLocalDbArgs {
+        episodeid: i32,
+    }
+
+    let args = RemoveEpisodeFromLocalDbArgs {
+        episodeid: episode_id,
+    };
+
+    tauri::invoke::<_, ()>("remove_from_local_db", &args)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {}", e)))
+}
+
+pub async fn fetch_local_episodes() -> Result<Vec<EpisodeDownload>, JsValue> {
+    tauri::invoke::<_, Vec<EpisodeDownload>>("get_local_episodes", &())
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to fetch local episodes: {:?}", e)))
+}
+
+pub async fn update_podcast_database(podcast_details: PodcastDetails) -> Result<(), JsValue> {
+    // Create a wrapper struct to explicitly define the argument name
+    #[derive(Serialize)]
+    #[allow(non_snake_case)]
+    struct UpdatePodcastDbArgs {
+        podcastDetails: PodcastDetails,
+    }
+
+    // Wrap the podcast_details in the struct with the expected argument name
+    let args = UpdatePodcastDbArgs {
+        podcastDetails: podcast_details,
+    };
+
+    // Serialize and invoke the Tauri command
+    let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
+    web_sys::console::log_1(&serialized_data); // Debug print
+
+    tauri::invoke::<_, ()>("update_podcast_db", &args)
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to update podcast DB: {:?}", e)))
+}
+
+pub async fn fetch_local_podcasts() -> Result<Vec<Podcast>, JsValue> {
+    tauri::invoke::<_, Vec<Podcast>>("get_local_podcasts", &())
+        .await
+        .map_err(|e| JsValue::from_str(&format!("Failed to fetch local podcasts: {:?}", e)))
+}
+
+// Define the arguments for the Tauri command
+#[derive(Serialize, Deserialize)]
+struct ListDirArgs<'a> {
+    path: &'a str,
+}
+
+// Define the structure for the file entries
+#[derive(Deserialize)]
+struct FileEntry {
+    #[allow(dead_code)]
+    path: String,
 }
 
 #[function_component(Downloads)]
@@ -85,6 +207,7 @@ pub fn downloads() -> Html {
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
+    let app_offline_mode = audio_state.app_offline_mode;
     let page_state = use_state(|| PageState::Normal);
     let api_key = post_state
         .auth_details
@@ -124,72 +247,135 @@ pub fn downloads() -> Html {
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
+    let local_download_increment = audio_state.local_download_increment;
     {
         let error = error.clone();
-        let api_key = post_state
-            .auth_details
-            .as_ref()
-            .map(|ud| ud.api_key.clone());
-        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = post_state
-            .auth_details
-            .as_ref()
-            .map(|ud| ud.server_name.clone());
-
         let effect_dispatch = dispatch.clone();
 
-        // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
+        use_effect_with((local_download_increment,), move |_| {
+            let error_clone = error.clone();
+            let dispatch = effect_dispatch.clone();
 
-        use_effect_with(
-            (api_key.clone(), user_id.clone(), server_name.clone()),
-            move |_| {
-                let error_clone = error.clone();
-                if let (Some(api_key), Some(user_id), Some(server_name)) =
-                    (api_key.clone(), user_id.clone(), server_name.clone())
-                {
-                    let dispatch = effect_dispatch.clone();
-
-                    wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_podcasts(&server_name, &api_key, &user_id).await {
-                            Ok(fetched_podcasts) => {
-                                dispatch.reduce_mut(move |state| {
-                                    state.podcast_feed_return = Some(PodcastResponse {
-                                        pods: Some(fetched_podcasts),
-                                    });
-                                });
-                            }
-                            Err(e) => web_sys::console::log_1(
-                                &format!("Unable to parse Podcasts: {:?}", &e).into(),
-                            ),
-                        }
-
-                        match call_get_episode_downloads(&server_name, &api_key, &user_id).await {
-                            Ok(fetched_episodes) => {
-                                let completed_episode_ids: Vec<i32> = fetched_episodes
-                                    .iter()
-                                    .filter(|ep| ep.completed)
-                                    .map(|ep| ep.episodeid)
-                                    .collect();
-                                dispatch.reduce_mut(move |state| {
-                                    state.downloaded_episodes = Some(EpisodeDownloadResponse {
-                                        episodes: fetched_episodes,
-                                    });
-                                    state.completed_episodes = Some(completed_episode_ids);
-                                });
-                                loading_ep.set(false);
-                                // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
-                            }
-                            Err(e) => {
-                                error_clone.set(Some(e.to_string()));
-                                loading_ep.set(false);
-                            }
-                        }
-                    });
+            wasm_bindgen_futures::spawn_local(async move {
+                match fetch_local_podcasts().await {
+                    Ok(fetched_podcasts) => {
+                        web_sys::console::log_1(
+                            &format!("Fetched Podcasts: {:?}", fetched_podcasts).into(),
+                        );
+                        dispatch.reduce_mut(move |state| {
+                            state.podcast_feed_return = Some(PodcastResponse {
+                                pods: Some(fetched_podcasts),
+                            });
+                        });
+                    }
+                    Err(e) => {
+                        web_sys::console::log_1(
+                            &format!("Unable to parse Podcasts: {:?}", e).into(),
+                        );
+                    }
                 }
-                || ()
-            },
-        );
+                web_sys::console::log_1(&"Fetching Episodes".into());
+
+                match fetch_local_episodes().await {
+                    Ok(fetched_episodes) => {
+                        web_sys::console::log_1(
+                            &format!("Fetched Episodes: {:?}", fetched_episodes).into(),
+                        );
+                        let completed_episode_ids: Vec<i32> = fetched_episodes
+                            .iter()
+                            .filter(|ep| ep.listenduration.is_some())
+                            .map(|ep| ep.episodeid)
+                            .collect();
+                        dispatch.reduce_mut(move |state| {
+                            state.downloaded_episodes = Some(EpisodeDownloadResponse {
+                                episodes: fetched_episodes,
+                            });
+                            state.completed_episodes = Some(completed_episode_ids);
+                        });
+                        loading_ep.set(false);
+                    }
+                    Err(e) => {
+                        web_sys::console::log_1(
+                            &format!("Unable to parse Episodes: {:?}", e).into(),
+                        );
+                        error_clone.set(Some(format!("{:?}", e)));
+                        loading_ep.set(false);
+                    }
+                }
+            });
+
+            || ()
+        });
     }
+
+    // // Fetch episodes on component mount
+    // let loading_ep = loading.clone();
+    // {
+    //     let error = error.clone();
+    //     let api_key = post_state
+    //         .auth_details
+    //         .as_ref()
+    //         .map(|ud| ud.api_key.clone());
+    //     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    //     let server_name = post_state
+    //         .auth_details
+    //         .as_ref()
+    //         .map(|ud| ud.server_name.clone());
+
+    //     let effect_dispatch = dispatch.clone();
+
+    //     // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
+
+    //     use_effect_with(
+    //         (api_key.clone(), user_id.clone(), server_name.clone()),
+    //         move |_| {
+    //             let error_clone = error.clone();
+    //             if let (Some(api_key), Some(user_id), Some(server_name)) =
+    //                 (api_key.clone(), user_id.clone(), server_name.clone())
+    //             {
+    //                 let dispatch = effect_dispatch.clone();
+
+    //                 wasm_bindgen_futures::spawn_local(async move {
+    //                     match call_get_podcasts(&server_name, &api_key, &user_id).await {
+    //                         Ok(fetched_podcasts) => {
+    //                             dispatch.reduce_mut(move |state| {
+    //                                 state.podcast_feed_return = Some(PodcastResponse {
+    //                                     pods: Some(fetched_podcasts),
+    //                                 });
+    //                             });
+    //                         }
+    //                         Err(e) => web_sys::console::log_1(
+    //                             &format!("Unable to parse Podcasts: {:?}", &e).into(),
+    //                         ),
+    //                     }
+
+    //                     match call_get_episode_downloads(&server_name, &api_key, &user_id).await {
+    //                         Ok(fetched_episodes) => {
+    //                             let completed_episode_ids: Vec<i32> = fetched_episodes
+    //                                 .iter()
+    //                                 .filter(|ep| ep.completed)
+    //                                 .map(|ep| ep.episodeid)
+    //                                 .collect();
+    //                             dispatch.reduce_mut(move |state| {
+    //                                 state.downloaded_episodes = Some(EpisodeDownloadResponse {
+    //                                     episodes: fetched_episodes,
+    //                                 });
+    //                                 state.completed_episodes = Some(completed_episode_ids);
+    //                             });
+    //                             loading_ep.set(false);
+    //                             // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
+    //                         }
+    //                         Err(e) => {
+    //                             error_clone.set(Some(e.to_string()));
+    //                             loading_ep.set(false);
+    //                         }
+    //                     }
+    //                 });
+    //             }
+    //             || ()
+    //         },
+    //     );
+    // }
 
     // Define the state of the application
     #[derive(Clone, PartialEq)]
@@ -286,7 +472,7 @@ pub fn downloads() -> Html {
 
     let is_delete_mode = **page_state.borrow() == PageState::Delete; // Add this line
 
-    let toggle_pod_expanded = {
+    let toggle_expanded = {
         let expanded_state = expanded_state.clone();
         Callback::from(move |podcast_id: i32| {
             expanded_state.set({
@@ -297,10 +483,34 @@ pub fn downloads() -> Html {
         })
     };
 
+    let search_options = if app_offline_mode.unwrap_or(false) {
+        html! {}
+    } else {
+        html! {
+            <Search_nav />
+        }
+    };
+    let drawer_options = if app_offline_mode.unwrap_or(false) {
+        html! {}
+    } else {
+        html! {
+            <App_drawer />
+        }
+    };
+    let h1_top = if app_offline_mode.unwrap_or(false) {
+        html! {
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6 pt-6">{"Locally Downloaded Episodes"}</h1>
+        }
+    } else {
+        html! {
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Locally Downloaded Episodes"}</h1>
+        }
+    };
+
     html! {
         <>
         <div class="main-container">
-            <Search_nav />
+            {search_options}
             <UseScrollToTop />
                 if *loading { // If loading is true, display the loading animation
                     {
@@ -319,7 +529,7 @@ pub fn downloads() -> Html {
                     {
                         html! {
                             <div>
-                                <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Downloaded Episodes"}</h1>
+                                {h1_top}
                                 <div class="flex justify-between">
                                     {
                                         if **page_state.borrow() == PageState::Normal {
@@ -377,12 +587,11 @@ pub fn downloads() -> Html {
                                                 let is_expanded = *expanded_state.get(&podcast.podcastid).unwrap_or(&false);
                                                 let toggle_expanded_closure = {
                                                     let podcast_id = podcast.podcastid;
-                                                    toggle_pod_expanded.reform(move |_| podcast_id)
+                                                    toggle_expanded.reform(move |_| podcast_id)
                                                 };
 
                                                 let render_state_cloned = render_state.clone();
                                                 let dispatch_cloned_cloned = dispatch_cloned.clone();
-                                                let audio_state_cloned = audio_state.clone();
                                                 let audio_dispatch_cloned = audio_dispatch.clone();
                                                 let on_checkbox_change_cloned = on_checkbox_change.clone();
 
@@ -394,7 +603,6 @@ pub fn downloads() -> Html {
                                                     render_state_cloned,
                                                     dispatch_cloned_cloned,
                                                     is_delete_mode,
-                                                    audio_state_cloned,
                                                     desc_state.clone(),
                                                     desc_dispatch.clone(),
                                                     audio_dispatch_cloned,
@@ -431,7 +639,7 @@ pub fn downloads() -> Html {
             <div class="info-snackbar">{ info }</div>
         }
         </div>
-        <App_drawer />
+        {drawer_options}
         </>
     }
 }
@@ -440,24 +648,20 @@ pub fn render_podcast_with_episodes(
     podcast: &Podcast,
     episodes: Vec<EpisodeDownload>,
     is_expanded: bool,
-    toggle_pod_expanded: Callback<MouseEvent>,
+    toggle_expanded: Callback<MouseEvent>,
     state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     is_delete_mode: bool,
-    audio_state: Rc<UIState>,
     desc_rc: Rc<ExpandedDescriptions>,
     desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
     on_checkbox_change: Callback<i32>,
 ) -> Html {
     let history_clone = BrowserHistory::new();
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
     html! {
         <div key={podcast.podcastid}>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_pod_expanded}>
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_expanded}>
                 <div class="flex flex-col w-auto object-cover pl-4">
                     <img
                         src={podcast.artworkurl.clone()}
@@ -482,13 +686,11 @@ pub fn render_podcast_with_episodes(
                             let dispatch = dispatch.clone();
 
                             let episode_url_clone = episode.episodeurl.clone();
-                            let episode_title_clone = episode.episodetitle.clone();
-                            let episode_artwork_clone = episode.episodeartwork.clone();
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
                             let episode_listened_clone = episode.listenduration.clone();
-                            let _completed = episode.completed;
                             let desc_expanded = desc_rc.expanded_descriptions.contains(id_string);
+
                             #[wasm_bindgen]
                             extern "C" {
                                 #[wasm_bindgen(js_namespace = window)]
@@ -512,32 +714,10 @@ pub fn render_podcast_with_episodes(
                                 })
                             };
 
-                            let episode_url_for_closure = episode_url_clone.clone();
-                            let episode_title_for_closure = episode_title_clone.clone();
-                            let episode_artwork_for_closure = episode_artwork_clone.clone();
-                            let episode_duration_for_closure = episode_duration_clone.clone();
-                            let listener_duration_for_closure = episode_listened_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();
-                            let user_id_play = user_id.clone();
-                            let server_name_play = server_name.clone();
-                            let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
-                            let is_local = Option::from(true);
 
-                            let on_play_click = on_play_click(
-                                episode_url_for_closure.clone(),
-                                episode_title_for_closure.clone(),
-                                episode_artwork_for_closure.clone(),
-                                episode_duration_for_closure.clone(),
-                                episode_id_for_closure.clone(),
-                                listener_duration_for_closure.clone(),
-                                api_key_play.unwrap().unwrap(),
-                                user_id_play.unwrap(),
-                                server_name_play.unwrap(),
-                                audio_dispatch.clone(),
-                                audio_state.clone(),
-                                is_local,
-                            );
+                            let on_play_click = on_play_click_offline(episode.clone(), audio_dispatch);
 
                             let on_shownotes_click = on_shownotes_click(
                                 history_clone.clone(),
@@ -569,7 +749,7 @@ pub fn render_podcast_with_episodes(
                                 toggle_expanded,
                                 episode_duration_clone,
                                 episode_listened_clone,
-                                "downloads",
+                                "local_downloads",
                                 on_checkbox_change_cloned, // Add this line
                                 is_delete_mode, // Add this line
                                 episode_url_for_ep_item,

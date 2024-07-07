@@ -231,7 +231,7 @@ Create a my-values.yaml file to override default values:
 ```
 replicaCount: 3
 image:
-  repository: pinepods
+  repository: madeofpendletonwool/pinepods
   tag: latest
   pullPolicy: IfNotPresent
 service:
@@ -263,6 +263,21 @@ env:
   DB_NAME: "pinepods"
   DEBUG_MODE: "false"
 ```
+
+#### Create a namespace for Pinepods:
+
+Create a namespace to hold the deployment:
+```
+kubectl create namespace pinepods-namespace
+```
+
+#### Create a database secret:
+
+This secret is used to store the database password. Create a secret with the database password in the pinepods-namespace namespace:
+```
+kubectl create secret generic db-secret --namespace pinepods-namespace --from-literal=DB_PASSWORD=supersecretpassword
+```
+
 #### Starting Helm
 
 Once you have everything set up, install the Helm chart:
@@ -347,15 +362,16 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 
 - [x] Additional Downloads Page organization - Organize by Podcast
 - [x] Download entire podcast button. For episode archival
+- [x] Offline mode for playing locally downloaded episodes
+- [x] Installable PWA
+- [x] Custom Podcast Start and End Position
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
-- [ ] Installable PWA
 - [ ] Add Fyyd as searching index
 - [ ] Jump to clicked timestamp
 - [ ] Timestamps in playing page
-- [ ] Offline mode for playing locally downloaded episodes
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
 - [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
 - [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
@@ -375,13 +391,12 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Chapter Image Support
 - [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [ ] Side load audio from the web
-- [x] Custom Podcast Start and End Position
 
 ### Clients to support
 
 - [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
 - [ ] Nix Package
-- [ ] Helm Chart for kubernetes deployment
+- [x] Helm Chart and repo for kubernetes deployment
 - [ ] Mobile Apps
   - [ ] Android App
     - [ ] Android Auto support

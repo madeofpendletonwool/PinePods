@@ -17,22 +17,24 @@ persistence:
 
 postgresql:
   enabled: true
-  postgresqlUsername: postgres
-  postgresqlPassword: supersecretpassword
-  postgresqlDatabase: pinepods
-  persistence:
-    enabled: true
-    existingClaim: postgres-pvc
+  auth:
+    username: postgres
+    password: "supersecretpassword"
+    database: pinepods_database
+  primary:
+    persistence:
+      enabled: true
+      existingClaim: postgres-pvc
 
 env:
-  SEARCH_API_URL: "https://api.example.com/search"
+  SEARCH_API_URL: "https://search.pinepods.online/api/search"
   USERNAME: "admin"
   PASSWORD: "password"
   FULLNAME: "Admin User"
   EMAIL: "admin@example.com"
-  DB_TYPE: "postgres"
-  DB_HOST: "postgresql"
+  DB_TYPE: "postgresql"
+  DB_HOST: "pinepods-postgresql.pinepods-namespace.svc.cluster.local"
   DB_PORT: "5432"
   DB_USER: "postgres"
-  DB_NAME: "pinepods"
+  DB_NAME: "pinepods_database"
   DEBUG_MODE: "false"

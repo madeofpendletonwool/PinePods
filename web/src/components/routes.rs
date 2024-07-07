@@ -21,6 +21,8 @@ pub enum Route {
     PodHistory,
     #[at("/downloads")]
     Downloads,
+    #[at("/local_downloads")]
+    LocalDownloads,
     #[at("/search")]
     Search,
     #[at("/user_stats")]

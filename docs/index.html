@@ -54,6 +54,12 @@
             <pre><code>helm repo add pinepods http://helm.pinepods.online/
 helm repo update</code></pre>
 
+            <h2>Create the namespace</h2>
+            <pre><code>kubectl create namespace pinepods-namespace</code></pre>
+
+            <h2>Create a database secret</h2>
+            <pre><code>kubectl create secret generic db-secret --namespace pinepods-namespace --from-literal=DB_PASSWORD=supersecretpassword</code></pre>
+
             <h2>Installing the Chart</h2>
             <pre><code>helm install pinepods pinepods/Pinepods -f my-values.yaml</code></pre>
 
@@ -64,7 +70,7 @@ helm repo update</code></pre>
             </p>
             <pre><code>replicaCount: 3
 image:
-  repository: pinepods
+  repository: madeofpendletonwool/pinepods
   tag: latest
   pullPolicy: IfNotPresent
 service:

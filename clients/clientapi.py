@@ -1007,6 +1007,27 @@ async def api_mark_episode_completed(data: MarkEpisodeCompletedData, cnx=Depends
         raise HTTPException(status_code=403,
                             detail="You can only mark episodes as completed for yourself.")
 
+@app.post("/api/data/mark_episode_uncompleted")
+async def api_mark_episode_uncompleted(data: MarkEpisodeCompletedData, cnx=Depends(get_database_connection),
+                                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.mark_episode_uncompleted(cnx, database_type, data.episode_id, data.user_id)
+        return {"detail": "Episode marked as completed."}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only mark episodes as completed for yourself.")
+
 class AutoDownloadRequest(BaseModel):
     podcast_id: int
     auto_download: bool
@@ -2839,7 +2860,7 @@ def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url,
     try:
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
         if gpod_type == "nextcloud":
-            refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
+            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
         else:  # Assume gPodder
             database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
     finally:

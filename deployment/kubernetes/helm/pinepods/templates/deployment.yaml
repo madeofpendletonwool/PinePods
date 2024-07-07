@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "pinepods.fullname" . }}
+  name: {{ .Release.Name }}
   labels:
-    app: {{ include "pinepods.name" . }}
+    app: {{ .Chart.Name }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "pinepods.name" . }}
+      app: {{ .Chart.Name }}
   template:
     metadata:
       labels:
-        app: {{ include "pinepods.name" . }}
+        app: {{ .Chart.Name }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
@@ -42,15 +42,15 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: db-secret
-                  key: DB_PASSWORD
+                  name: {{ .Release.Name }}-postgresql
+                  key: postgres-password
             - name: DB_NAME
               value: {{ .Values.env.DB_NAME | quote }}
             - name: DEBUG_MODE
               value: {{ .Values.env.DEBUG_MODE | quote }}
           volumeMounts:
             - name: downloads
-              mountPath: /opt/pypods/downloads
+              mountPath: /opt/pinepods/downloads
             - name: backups
               mountPath: /opt/pinepods/backups
           livenessProbe:

@@ -134,6 +134,9 @@ pub struct UIState {
     pub audio_volume: f64,
     pub start_skip_sec: f64,
     pub end_skip_sec: f64,
+    pub offline: Option<bool>,
+    pub app_offline_mode: Option<bool>,
+    pub local_download_increment: Option<i32>,
 }
 
 impl UIState {

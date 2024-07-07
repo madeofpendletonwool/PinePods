@@ -1,6 +1,6 @@
 apiVersion: v2
-name: Pinepods
-version: version
+name: pinepods
+version: 0.1.0
 description: A Helm chart for deploying Pinepods - A complete podcast management system and allows you to play, download, and keep track of podcasts you enjoy. All self hosted and enjoyed on your own server!
 dependencies:
   - name: postgresql
