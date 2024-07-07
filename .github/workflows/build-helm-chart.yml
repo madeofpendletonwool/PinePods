@@ -67,7 +67,7 @@ jobs:
 
       - name: Update Helm repo index
         run: |
-          helm repo index docs --url https://madeofpendletonwool.github.io/pinepods
+          helm repo index docs --url https://helm.pinepods.online
 
       - uses: EndBug/add-and-commit@v9
         with:
