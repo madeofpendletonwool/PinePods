@@ -1,19 +1,18 @@
 apiVersion: v1
 entries:
-  Pinepods:
-    - apiVersion: v2
-      created: "2024-07-05T12:38:23.453853183-05:00"
-      dependencies:
-        - name: postgresql
-          repository: https://charts.bitnami.com/bitnami
-          version: 15.5.14
-      description:
-        A Helm chart for deploying Pinepods - A complete podcast management
-        system and allows you to play, download, and keep track of podcasts you enjoy.
-        All self hosted and enjoyed on your own server!
-      digest: 86ed06e5825d537cd957a97453b23ef569ce664b0e7a059c107d2be4eaccdd8d
-      name: Pinepods
-      urls:
-        - https://helm.pinepods.online/Pinepods-0.6.2.tgz
-      version: 0.6.2
-generated: "2024-07-05T12:38:23.447823131-05:00"
+  pinepods:
+  - apiVersion: v2
+    created: "2024-07-07T22:42:57.762804206Z"
+    dependencies:
+    - name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 15.5.14
+    description: A Helm chart for deploying Pinepods - A complete podcast management
+      system and allows you to play, download, and keep track of podcasts you enjoy.
+      All self hosted and enjoyed on your own server!
+    digest: 920a1a0843bd9575e9f2d71fff59df8f8588ac6e2466b0498bca86bdb088bd86
+    name: pinepods
+    urls:
+    - https://madeofpendletonwool.github.io/pinepods/pinepods-0.6.2.tgz
+    version: 0.6.2
+generated: "2024-07-07T22:42:57.757778118Z"
