@@ -75,4 +75,4 @@ jobs:
           committer_email: actions@github.com
           message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
           add: "docs"
-          push: true
+          push: "origin main"
