@@ -384,6 +384,10 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
+- [ ] Chapter images
+- [ ] Implement Podroll to Podcast page when offered
+- [ ] Allow for reading transcrips
+- [ ] Add Funding Links when offered
 - [ ] Sharing System
 - [ ] Option to use login images as background throughout app.
 - [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
