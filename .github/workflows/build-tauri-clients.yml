@@ -37,6 +37,7 @@ jobs:
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             echo "ARTIFACT_NAME1=deb/pinepods_0.6.2_amd64.deb" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=appimage/pinepods_0.6.2_amd64.AppImage" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME3=rpm/pinepods-0.6.2-1.x86_64.rpm"
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "ARTIFACT_NAME1=nsis/Pinepods_0.6.2_x64-setup.exe" >> $Env:GITHUB_ENV
             echo "ARTIFACT_NAME2=msi/Pinepods_0.6.2_x64_en-US.msi" >> $Env:GITHUB_ENV
@@ -125,6 +126,13 @@ jobs:
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME2 }}
+
+      - name: Archive build 3
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build
+          path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME3 }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
 
   # release:
   #   needs: compile
