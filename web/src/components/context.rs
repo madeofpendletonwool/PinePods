@@ -5,13 +5,13 @@ use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::{
-    Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, HistoryDataResponse, Podcast,
-    PodcastResponse, QueuedEpisodesResponse, RecentEps, SavedEpisodesResponse,
+    Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, HistoryDataResponse,
+    Podcast, PodcastResponse, QueuedEpisodesResponse, RecentEps, SavedEpisodesResponse,
 };
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::stat_reqs::UserStats;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -137,6 +137,7 @@ pub struct UIState {
     pub offline: Option<bool>,
     pub app_offline_mode: Option<bool>,
     pub local_download_increment: Option<i32>,
+    pub episode_chapters: Option<Vec<Chapter>>,
 }
 
 impl UIState {

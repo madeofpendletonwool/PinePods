@@ -3,11 +3,12 @@ use crate::components::context::{AppState, UIState};
 use crate::components::downloads_tauri::start_local_file_server;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
+use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
-    call_add_history, call_check_episode_in_db, call_get_auto_skip_times,
-    call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
-    call_increment_played, call_mark_episode_completed, call_queue_episode,
-    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
+    call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
+    call_get_auto_skip_times, call_get_podcast_id_from_ep, call_get_queued_episodes,
+    call_increment_listen_time, call_increment_played, call_mark_episode_completed,
+    call_queue_episode, call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
@@ -104,6 +105,62 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             || ()
         }
     });
+
+    // Get episode chapters if available
+    use_effect_with(
+        (
+            episode_id.clone(),
+            user_id.clone(),
+            api_key.clone(),
+            server_name.clone(),
+        ),
+        {
+            let dispatch = _audio_dispatch.clone();
+            move |(episode_id, user_id, api_key, server_name)| {
+                if let (Some(episode_id), Some(user_id), Some(api_key), Some(server_name)) =
+                    (episode_id, user_id, api_key, server_name)
+                {
+                    let episode_id = *episode_id; // Dereference the option
+                    let user_id = *user_id; // Dereference the option
+                    let api_key = api_key.clone(); // Clone to make it owned
+                    let server_name = server_name.clone(); // Clone to make it owned
+
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let chap_request = FetchPodcasting2DataRequest {
+                            episode_id,
+                            user_id,
+                        };
+                        match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request)
+                            .await
+                        {
+                            Ok(response) => {
+                                let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
+                                dispatch.reduce_mut(|state| {
+                                    state.episode_chapters = Some(chapters);
+                                });
+                                web_sys::console::log_1(
+                                    &format!("Chapters: {:?}", response.chapters).into(),
+                                );
+                                web_sys::console::log_1(
+                                    &format!("transcript: {:?}", response.transcripts).into(),
+                                );
+                                web_sys::console::log_1(
+                                    &format!("people: {:?}", response.people).into(),
+                                );
+                            }
+                            Err(e) => {
+                                web_sys::console::log_1(
+                                    &format!("Error fetching chapters: {}", e).into(),
+                                );
+                            }
+                        }
+                    });
+                }
+                || ()
+            }
+        },
+    );
+
     // Update playing state when Spacebar is pressed
     let audio_dispatch_effect = _audio_dispatch.clone();
     use_effect_with((), move |_| {

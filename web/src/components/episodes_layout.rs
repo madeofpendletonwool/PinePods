@@ -11,10 +11,10 @@ use crate::components::gen_funcs::{
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
-    call_enable_auto_download, call_get_auto_download_status, call_get_auto_skip_times,
-    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name, call_remove_podcasts_name,
-    AutoDownloadRequest, DownloadAllPodcastRequest, PodcastValues, RemovePodcastValuesName,
-    SkipTimesRequest,
+    call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_get_auto_skip_times, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_remove_podcasts_name, AutoDownloadRequest, DownloadAllPodcastRequest,
+    FetchPodcasting2PodDataRequest, PodcastValues, RemovePodcastValuesName, SkipTimesRequest,
 };
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
@@ -317,6 +317,41 @@ pub fn episode_layout() -> Html {
                                     Err(e) => {
                                         web_sys::console::log_1(
                                             &format!("Error getting auto-skip times: {}", e).into(),
+                                        );
+                                    }
+                                }
+                                let chap_request = FetchPodcasting2PodDataRequest {
+                                    podcast_id: id,
+                                    user_id,
+                                };
+                                match call_fetch_podcasting_2_pod_data(
+                                    &server_name,
+                                    &api_key,
+                                    &chap_request,
+                                )
+                                .await
+                                {
+                                    Ok(response) => {
+                                        // let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
+                                        // dispatch.reduce_mut(|state| {
+                                        //     state.episode_chapters = Some(chapters);
+                                        // });
+                                        web_sys::console::log_1(
+                                            &format!("value: {:?}", response.value).into(),
+                                        );
+                                        web_sys::console::log_1(
+                                            &format!("funding: {:?}", response.funding).into(),
+                                        );
+                                        web_sys::console::log_1(
+                                            &format!("podroll: {:?}", response.podroll).into(),
+                                        );
+                                        web_sys::console::log_1(
+                                            &format!("people: {:?}", response.people).into(),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Error fetching chapters: {}", e).into(),
                                         );
                                     }
                                 }
