@@ -5,8 +5,9 @@ use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::{
-    Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, HistoryDataResponse,
-    Podcast, PodcastResponse, QueuedEpisodesResponse, RecentEps, SavedEpisodesResponse,
+    Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
+    HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
+    RecentEps, SavedEpisodesResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
@@ -138,6 +139,11 @@ pub struct UIState {
     pub app_offline_mode: Option<bool>,
     pub local_download_increment: Option<i32>,
     pub episode_chapters: Option<Vec<Chapter>>,
+    pub podcast_people: Option<Vec<Person>>,
+    pub episode_transcript: Option<Vec<Transcript>>,
+    pub podcast_funding: Option<Vec<Funding>>,
+    pub podcast_podroll: Option<Vec<PodrollItem>>,
+    pub podcast_value4value: Option<Vec<Value>>,
 }
 
 impl UIState {

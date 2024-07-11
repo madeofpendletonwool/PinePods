@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::start_local_file_server;
+use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
@@ -106,6 +107,46 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         }
     });
 
+    let current_chapter_image = use_state(|| {
+        audio_state
+            .currently_playing
+            .as_ref()
+            .map(|props| props.artwork_url.clone())
+            .unwrap_or_else(|| props.artwork_url.clone())
+    });
+
+    {
+        let current_chapter_image = current_chapter_image.clone();
+        let audio_state = audio_state.clone();
+        let original_image_url = props.artwork_url.clone();
+
+        use_effect_with(
+            audio_state.current_time_seconds,
+            move |&current_time_seconds| {
+                if let Some(chapters) = &audio_state.episode_chapters {
+                    let mut image_updated = false;
+                    for chapter in chapters.iter().rev() {
+                        if let Some(start_time) = chapter.startTime {
+                            if start_time as f64 <= current_time_seconds {
+                                if let Some(img) = &chapter.img {
+                                    current_chapter_image.set(img.clone());
+                                    image_updated = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if !image_updated {
+                        current_chapter_image.set(original_image_url.clone());
+                    }
+                } else {
+                    current_chapter_image.set(original_image_url.clone());
+                }
+                || ()
+            },
+        );
+    }
+
     // Get episode chapters if available
     use_effect_with(
         (
@@ -135,6 +176,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         {
                             Ok(response) => {
                                 let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
+                                let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
+                                let people = response.people.clone(); // Clone people to avoid move issue
                                 dispatch.reduce_mut(|state| {
                                     state.episode_chapters = Some(chapters);
                                 });
@@ -713,6 +756,91 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
+    let on_chapter_click = {
+        let audio_dispatch = _audio_dispatch.clone();
+        Callback::from(move |start_time: i32| {
+            if let start_time = start_time as f64 {
+                audio_dispatch.reduce_mut(|state| {
+                    if let Some(audio_element) = state.audio_element.as_ref() {
+                        audio_element.set_current_time(start_time);
+                        state.current_time_seconds = start_time;
+
+                        // Update formatted time
+                        let hours = (start_time / 3600.0).floor() as i32;
+                        let minutes = ((start_time % 3600.0) / 60.0).floor() as i32;
+                        let seconds = (start_time % 60.0).floor() as i32;
+                        state.current_time_formatted =
+                            format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+                    }
+                });
+            }
+        })
+    };
+
+    #[derive(Clone, PartialEq)]
+    enum PageState {
+        Hidden,
+        Shown,
+    }
+
+    let page_state = use_state(|| PageState::Hidden);
+
+    let on_close_modal = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Hidden);
+        })
+    };
+
+    let on_chapter_select = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Shown);
+        })
+    };
+
+    // Define the modal components
+    let chapter_select_modal = html! {
+        <div id="chapter-select-modal" tabindex="-1" aria-hidden="true" class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
+                            {"Chapters"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <ul class="chapters-list">
+                            { if let Some(chapters) = &audio_state.episode_chapters {
+                                chapters.iter().map(|chapter| {
+                                    let start_time_click = chapter.startTime.clone().unwrap_or_default();
+                                    let start_time = format_time_rm_hour(chapter.startTime.clone().unwrap_or_default() as f64);
+                                    let click_start_time = start_time_click.clone();
+                                    let on_chapter_click = on_chapter_click.clone();
+                                    html! {
+                                        <li onclick={Callback::from(move |_| {
+                                            on_chapter_click.emit(click_start_time.clone());
+                                        })}>
+                                            { format!("{} - {}", start_time, chapter.title) }
+                                        </li>
+                                    }
+                                }).collect::<Html>()
+                            } else {
+                                html! {}
+                            }}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
     let audio_state = _audio_dispatch.get();
 
     // Check if there is an audio player prop set in AppState
@@ -782,6 +910,13 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let update_volume_closure = update_playback_volume.clone();
         let update_playback_closure = update_playback_speed.clone();
         html! {
+            <>
+            {
+                match *page_state {
+                PageState::Shown => chapter_select_modal,
+                _ => html! {},
+                }
+            }
             <div class={audio_bar_class} ref={container_ref.clone()}>
                 <div class="top-section">
                     <div>
@@ -789,7 +924,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <span class="material-icons">{"expand_more"}</span>
                     </button>
                     <div class="audio-image-container">
-                    <img onclick={title_click.clone()} src={audio_props.artwork_url.clone()} />
+                        <img onclick={title_click.clone()} src={(*current_chapter_image).clone()} />
                     </div>
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
@@ -862,12 +997,31 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     {
                         if episode_in_db {
                             html! {
+                                <>
                                 <button onclick={Callback::from(move |e: MouseEvent| {
                                     on_shownotes_click.emit(e.clone());
                                     title_click_emit.emit(e);
                                 })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
                                     { "Shownotes" }
                                 </button>
+                                {
+                                    if let Some(chapters) = &audio_state.episode_chapters {
+                                        if !chapters.is_empty() {
+                                            html! {
+                                                <button onclick={Callback::from(move |e: MouseEvent| {
+                                                    on_chapter_select.emit(());
+                                                })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
+                                                    { "Chapters" }
+                                                </button>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    } else {
+                                        html! {}
+                                    }
+                                }
+                                </>
                             }
                         } else {
                             html! {
@@ -935,6 +1089,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 </div>
             </div>
             </div>
+            </>
         }
     } else {
         html! {}

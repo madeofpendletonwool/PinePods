@@ -282,6 +282,8 @@ def add_user(cnx, database_type, user_values):
     #     user_id = result[0]
     if database_type == "postgresql":
         result = cursor.fetchone()
+        print(f'debug result: {result}')
+        logging.debug(f'debug result: {result}')
         user_id = result['userid'] if isinstance(result, dict) else result[0]
     else:  # MySQL or MariaDB
         user_id = cursor.lastrowid

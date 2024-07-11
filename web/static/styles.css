@@ -278,6 +278,16 @@ body {
     padding-bottom: 0 !important;
 }
 
+.chapter-select-modal {
+    z-index: 1000; /* Ensure it's on top */
+}
+
+.chapters-list li {
+    cursor: pointer;
+    color: var(--link-color);
+    text-decoration: underline;
+}
+
 .audio-player {
     position: fixed;
     bottom: 0;
@@ -288,7 +298,7 @@ body {
     color: white;
     display: flex;
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 1000; /* Ensure it's on top */
+    z-index: 500; /* Ensure it's on top */
 
     /* Animate the height */
     transition: height 0.5s ease-in-out;

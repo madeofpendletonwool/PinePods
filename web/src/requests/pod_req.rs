@@ -1101,8 +1101,10 @@ pub async fn call_get_episode_metadata(
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct Chapter {
-    pub start_time: Option<String>, // Changed to Option<String>
+    pub startTime: Option<i32>, // Changed to Option<String>
     pub title: String,
+    pub url: Option<String>,
+    pub img: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
