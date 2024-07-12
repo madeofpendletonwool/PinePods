@@ -259,6 +259,8 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
 
 def add_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
+    print(f'user func')
+    logging.debug(f'user func')
 
     if database_type == "postgresql":
         add_user_query = """
@@ -280,6 +282,8 @@ def add_user(cnx, database_type, user_values):
     #     user_id = result['userid']
     # else:
     #     user_id = result[0]
+    print(f'in postgres {database_type}')
+    logging.debug(f'in postgres {database_type}')
     if database_type == "postgresql":
         result = cursor.fetchone()
         print(f'debug result: {result}')
@@ -949,9 +953,16 @@ def check_self_service(cnx, database_type):
     result = cursor.fetchone()
     cursor.close()
 
-    if result and result[0] == 1:
+    if database_type == "postgresql":
+        print(f'debug result: {result}')
+        logging.debug(f'debug result: {result}')
+        self_service = result['selfserviceuser'] if isinstance(result, dict) else result[0]
+    else:  # MySQL or MariaDB
+        self_service = result[0]
+
+    if self_service == 1:
         return True
-    elif result and result[0] == 0:
+    elif self_service == 0:
         return False
     else:
         return None
