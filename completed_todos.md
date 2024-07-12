@@ -11,10 +11,17 @@ Next Minor Version:
 
 - [] Manually adjust tags for podcast in podcast settings
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
-- [] Jump to clicked timestamp
-- [] Timestamps in playing page
-- [] Chapter Image Support
 - [] A route to get the version of the app. This will allow dynamic displaying of the current version. Just one more area to futher automation as changes get made.
+
+Version 0.6.3
+
+- [x] Jump to clicked timestamp
+- [] Full Capter Support
+- [x] Chapter Image Support
+- [] Basic Support for People Tags (Host and Guest)
+- [] Support for Funding Tags
+- [] Draggable Queue placement
+- [x] Fixed issue with self service user creation when using a postgres db
 
 Version 0.6.2
 
