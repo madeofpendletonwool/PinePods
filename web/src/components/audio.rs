@@ -180,6 +180,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 let people = response.people.clone(); // Clone people to avoid move issue
                                 dispatch.reduce_mut(|state| {
                                     state.episode_chapters = Some(chapters);
+                                    state.episode_transcript = Some(transcripts);
+                                    state.episode_people = Some(people);
                                 });
                                 web_sys::console::log_1(
                                     &format!("Chapters: {:?}", response.chapters).into(),

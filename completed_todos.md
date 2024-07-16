@@ -12,16 +12,33 @@ Next Minor Version:
 - [] Manually adjust tags for podcast in podcast settings
 - [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
 - [] A route to get the version of the app. This will allow dynamic displaying of the current version. Just one more area to futher automation as changes get made.
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
+- [] Push completion status to Nextcloud/gpodder
+- [] Test with LXC containers
+- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+
 
 Version 0.6.3
 
 - [x] Jump to clicked timestamp
-- [] Full Capter Support
+- [x] Full Chapter Support
 - [x] Chapter Image Support
-- [] Basic Support for People Tags (Host and Guest)
-- [] Support for Funding Tags
+- [x] Basic Support for People Tags (Host and Guest)
+- [x] Support for Funding Tags
 - [] Draggable Queue placement
 - [x] Fixed issue with self service user creation when using a postgres db
+- [z] Rebuilt the Podcast Episode Layout display page so that on small screens everything fits on screen and looks much nicer
+- [] Rebuilt the Single Episode display page so that on small screens everything fits on screen and looks much nicer
+- [] Fixed Issue with Episodes on small screens where if a word in the title was long enough it would overflow the container
+- [] Adjusted the Podcast Episode Layout display page so that you can click and episode title and view the description
+- [x] Removed Unneeded space between First episode/podcast container and the title bar at the top on multiple pages - Just cleans things up a bit
+- [] Fixed image layout issue where if episode had wide image it would overflow the container and title text
+- [] Fixed issue with categories where it showed them as part of a dictionary
+- [x] Added verification before downloading all episodes since this is quite a weighty process
+- [x] Added Complete Episode Option to Episode Page
+- [x] Added Episode Completion Status to Episode Page
+- [x] Fixed Issue with Postgres DBs where sometimes it would return dictionaries and try to refresh episodes using :podcastid as the podcast id. Now it always refreshes correctly
 
 Version 0.6.2
 

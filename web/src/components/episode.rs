@@ -5,15 +5,17 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::episodes_layout::UIStateMsg;
+use crate::components::episodes_layout::{HostDropdown, UIStateMsg};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
-    call_download_episode, call_queue_episode, call_save_episode, DownloadEpisodeRequest,
-    EpisodeMetadataResponse, EpisodeRequest, QueuePodcastRequest, SavePodcastRequest,
+    call_download_episode, call_fetch_podcasting_2_data, call_mark_episode_completed,
+    call_mark_episode_uncompleted, call_queue_episode, call_save_episode, DownloadEpisodeRequest,
+    EpisodeMetadataResponse, EpisodeRequest, FetchPodcasting2DataRequest,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest,
 };
 use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
@@ -78,6 +80,7 @@ pub fn epsiode() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
+    let episode_id = state.selected_episode_id.clone();
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -161,6 +164,84 @@ pub fn epsiode() -> Html {
                 || ()
             },
         );
+    }
+
+    // Get pocasting 2.0 data if available
+    {
+        let episode_id = use_effect_with(
+            (
+                episode_id.clone(),
+                user_id.clone(),
+                api_key.clone(),
+                server_name.clone(),
+            ),
+            {
+                let dispatch = audio_dispatch.clone();
+                move |(episode_id, user_id, api_key, server_name)| {
+                    if let (Some(episode_id), Some(user_id), Some(api_key), Some(server_name)) =
+                        (episode_id, user_id, api_key, server_name)
+                    {
+                        let episode_id = *episode_id; // Dereference the option
+                        let user_id = *user_id; // Dereference the option
+                        let api_key = api_key.clone(); // Clone to make it owned
+                        let server_name = server_name.clone(); // Clone to make it owned
+
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let chap_request = FetchPodcasting2DataRequest {
+                                episode_id,
+                                user_id,
+                            };
+                            match call_fetch_podcasting_2_data(
+                                &server_name,
+                                &api_key,
+                                &chap_request,
+                            )
+                            .await
+                            {
+                                Ok(response) => {
+                                    let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
+                                    let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
+                                    let people = response.people.clone(); // Clone people to avoid move issue
+                                    dispatch.reduce_mut(|state| {
+                                        state.episode_page_transcript = Some(transcripts);
+                                        state.episode_page_people = Some(people);
+                                    });
+                                    web_sys::console::log_1(
+                                        &format!("transcript: {:?}", response.transcripts).into(),
+                                    );
+                                    web_sys::console::log_1(
+                                        &format!("people: {:?}", response.people).into(),
+                                    );
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Error fetching chapters: {}", e).into(),
+                                    );
+                                }
+                            }
+                        });
+                    }
+                    || ()
+                }
+            },
+        );
+    }
+
+    let completion_status = use_state(|| false); // State to track completion status
+
+    {
+        let state = state.clone();
+        let completion_status = completion_status.clone();
+
+        // Update the completion status when the fetched episode changes
+        use_effect_with(state.fetched_episode.clone(), move |_| {
+            web_sys::console::log_1(&"effect run.".into());
+            if let Some(episode) = &state.fetched_episode {
+                web_sys::console::log_1(&format!("Episode: {:?}", episode).into());
+                completion_status.set(episode.episode.completed);
+            }
+            || ()
+        });
     }
 
     html! {
@@ -310,6 +391,136 @@ pub fn epsiode() -> Html {
                         })
                     };
 
+                    let complete_server_name = server_name.clone();
+                    let complete_api_key = api_key.clone();
+                    let complete_post = dispatch.clone();
+                    let complete_status_clone = completion_status.clone();
+                    let user_id_complete = user_id.clone();
+
+                    let on_complete_episode = {
+                        Callback::from(move |_| {
+                            let completion_status = complete_status_clone.clone();
+                            let post_dispatch = complete_post.clone();
+                            let server_name_copy = complete_server_name.clone();
+                            let api_key_copy = complete_api_key.clone();
+                            let request = MarkEpisodeCompletedRequest {
+                                episode_id: episode_id_for_closure,
+                                user_id: user_id_complete.unwrap(), // replace with the actual user ID
+                            };
+                            let server_name = server_name_copy; // replace with the actual server name
+                            let api_key = api_key_copy; // replace with the actual API key
+                            let future = async move {
+                                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                                match call_mark_episode_completed(
+                                    &server_name.unwrap(),
+                                    &api_key.flatten(),
+                                    &request,
+                                )
+                                .await
+                                {
+                                    Ok(success_message) => {
+                                        completion_status.set(true);
+                                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                                        post_dispatch.reduce_mut(|state| {
+                                            if let Some(completed_episodes) = state.completed_episodes.as_mut() {
+                                                if let Some(pos) =
+                                                    completed_episodes.iter().position(|&id| id == episode_id_for_closure)
+                                                {
+                                                    completed_episodes.remove(pos);
+                                                } else {
+                                                    completed_episodes.push(episode_id_for_closure);
+                                                }
+                                            } else {
+                                                state.completed_episodes = Some(vec![episode_id_for_closure]);
+                                            }
+                                            state.info_message = Some(format!("{}", success_message));
+                                        });
+                                    }
+                                    Err(e) => {
+                                        post_dispatch.reduce_mut(|state| {
+                                            state.error_message = Option::from(format!("{}", e))
+                                        });
+                                        // Handle error, e.g., display the error message
+                                    }
+                                }
+                            };
+                            wasm_bindgen_futures::spawn_local(future);
+                            // dropdown_open.set(false);
+                        })
+                    };
+
+                    let uncomplete_server_name = server_name.clone();
+                    let uncomplete_api_key = api_key.clone();
+                    let uncomplete_post = dispatch.clone();
+                    let user_id_uncomplete = user_id.clone();
+                    let uncomplete_status_clone = completion_status.clone();
+
+                    let on_uncomplete_episode = {
+                        Callback::from(move |_| {
+                            let completion_status = uncomplete_status_clone.clone();
+                            let post_dispatch = uncomplete_post.clone();
+                            let server_name_copy = uncomplete_server_name.clone();
+                            let api_key_copy = uncomplete_api_key.clone();
+                            let request = MarkEpisodeCompletedRequest {
+                                episode_id: episode_id_for_closure,
+                                user_id: user_id_uncomplete.unwrap(), // replace with the actual user ID
+                            };
+                            let server_name = server_name_copy; // replace with the actual server name
+                            let api_key = api_key_copy; // replace with the actual API key
+                            let future = async move {
+                                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                                match call_mark_episode_uncompleted(
+                                    &server_name.unwrap(),
+                                    &api_key.flatten(),
+                                    &request,
+                                )
+                                .await
+                                {
+                                    Ok(success_message) => {
+                                        completion_status.set(false);
+                                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                                        post_dispatch.reduce_mut(|state| {
+                                            if let Some(completed_episodes) = state.completed_episodes.as_mut() {
+                                                if let Some(pos) =
+                                                    completed_episodes.iter().position(|&id| id == episode_id_for_closure)
+                                                {
+                                                    completed_episodes.remove(pos);
+                                                } else {
+                                                    completed_episodes.push(episode_id_for_closure);
+                                                }
+                                            } else {
+                                                state.completed_episodes = Some(vec![episode_id_for_closure]);
+                                            }
+                                            state.info_message = Some(format!("{}", success_message));
+                                        });
+                                    }
+                                    Err(e) => {
+                                        post_dispatch.reduce_mut(|state| {
+                                            state.error_message = Option::from(format!("{}", e))
+                                        });
+                                        // Handle error, e.g., display the error message
+                                    }
+                                }
+                            };
+                            wasm_bindgen_futures::spawn_local(future);
+                            // dropdown_open.set(false);
+                        })
+                    };
+
+                    let toggle_completion = {
+                        let completion_status = completion_status.clone();
+                        Callback::from(move |_| {
+                            // Toggle the completion status
+                            if *completion_status {
+                                on_uncomplete_episode.emit(());
+                            } else {
+                                on_complete_episode.emit(());
+                            }
+                        })
+                    };
+
                     let datetime = parse_date(&episode.episode.episodepubdate, &state.user_tz);
                     let date_format = match_date_format(state.date_format.as_deref());
                     let format_duration = format_time(episode.episode.episodeduration as f64);
@@ -371,6 +582,11 @@ pub fn epsiode() -> Html {
                     };
                     let episode_url_check = episode_url_clone;
                     let should_show_buttons = !episode_url_check.is_empty();
+
+                    let open_in_new_tab = Callback::from(move |url: String| {
+                        let window = web_sys::window().unwrap();
+                        window.open_with_url_and_target(&url, "_blank").unwrap();
+                    });
                     // let format_duration = format!("Duration: {} minutes", e / 60); // Assuming duration is in seconds
                     // let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
                     html! {
@@ -379,9 +595,66 @@ pub fn epsiode() -> Html {
                                 <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
                                 <div class="episode-details">
                                     <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
-                                    <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                    <div class="flex items-center space-x-2 cursor-pointer">
+                                        <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                        {
+                                            if *completion_status.clone() {
+                                                html! {
+                                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                    </div>
+                                    // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
                                     <p class="episode-duration">{ format_duration }</p>
                                     <p class="episode-release-date">{ format_release }</p>
+                                    {
+                                        if let Some(transcript) = &audio_state.episode_page_transcript {
+                                            if !transcript.is_empty() {
+                                                let transcript_clone = transcript.clone();
+                                                html! {
+                                                    <>
+                                                    { for transcript_clone.iter().map(|transcript| {
+                                                        let open_in_new_tab = open_in_new_tab.clone();
+                                                        let url = transcript.url.clone();
+                                                        html! {
+                                                            <div class="header-info pb-2 pt-2">
+                                                                <button
+                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                    title={"Transcript"}
+                                                                    class="font-bold item-container-button"
+                                                                >
+                                                                    { "Episode Transcript" }
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                    })}
+                                                    </>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                    {
+                                        if let Some(people) = &audio_state.episode_page_people {
+                                            if !people.is_empty() {
+                                                html! {
+                                                    <div class="header-info">
+                                                        <HostDropdown title="In This Episode" hosts={people.clone()} />
+                                                    </div>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
                                 </div>
                             </div>
                             <div class="episode-action-buttons">
@@ -404,6 +677,10 @@ pub fn epsiode() -> Html {
                                         <button onclick={on_download_episode} class="download-button-ep">
                                             <i class="material-icons">{ "download" }</i>
                                             {"Download"}
+                                        </button>
+                                        <button onclick={toggle_completion} class="download-button-ep">
+                                            <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                            { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
                                         </button>
                                         </>
                                     }

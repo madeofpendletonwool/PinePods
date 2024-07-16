@@ -161,6 +161,10 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             cursor.close()
             return False
 
+        # Extract category names and convert to comma-separated string
+        categories = podcast_values['categories']
+        category_list = ', '.join(categories.values())
+
         # Insert the podcast into the database
         if database_type == "postgresql":
             add_podcast_query = """
@@ -181,7 +185,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
         print(podcast_values['pod_title'])
         print(podcast_values['pod_artwork'])
         print(podcast_values['pod_author'])
-        print(str(podcast_values['categories']))
+        print(category_list)
         print(podcast_values['pod_description'])
         print(podcast_values['pod_episode_count'])
         print(podcast_values['pod_feed_url'])
@@ -193,7 +197,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 podcast_values['pod_title'],
                 podcast_values['pod_artwork'],
                 podcast_values['pod_author'],
-                str(podcast_values['categories']),
+                category_list,
                 podcast_values['pod_description'],
                 podcast_values['pod_episode_count'],
                 podcast_values['pod_feed_url'],
@@ -978,16 +982,26 @@ def refresh_pods(cnx, database_type):
     else:  # MySQL or MariaDB
         select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM Podcasts"
 
-
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall()  # fetch the result set
 
-    for (podcast_id, feed_url, artwork_url, auto_download) in result_set:
+    for result in result_set:
+        if isinstance(result, tuple):
+            podcast_id, feed_url, artwork_url, auto_download = result
+        elif isinstance(result, dict):
+            podcast_id = result["PodcastID"]
+            feed_url = result["FeedURL"]
+            artwork_url = result["ArtworkURL"]
+            auto_download = result["AutoDownload"]
+        else:
+            raise ValueError(f"Unexpected result type: {type(result)}")
+
         print(f'Running for :{podcast_id}')
         add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download)
 
     cursor.close()
     # cnx.close()
+
 
 
 def remove_unavailable_episodes(cnx, database_type):

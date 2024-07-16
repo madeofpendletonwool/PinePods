@@ -140,10 +140,14 @@ pub struct UIState {
     pub local_download_increment: Option<i32>,
     pub episode_chapters: Option<Vec<Chapter>>,
     pub podcast_people: Option<Vec<Person>>,
+    pub episode_people: Option<Vec<Person>>,
     pub episode_transcript: Option<Vec<Transcript>>,
+    pub episode_page_people: Option<Vec<Person>>,
+    pub episode_page_transcript: Option<Vec<Transcript>>,
     pub podcast_funding: Option<Vec<Funding>>,
     pub podcast_podroll: Option<Vec<PodrollItem>>,
     pub podcast_value4value: Option<Vec<Value>>,
+    pub is_mobile: Option<bool>,
 }
 
 impl UIState {

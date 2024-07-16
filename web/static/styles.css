@@ -1016,6 +1016,85 @@ body {
     }
 }
 
+@media (max-width: 768px) {
+    .mobile-layout .button-container {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+    }
+
+    .mobile-layout .item-header-mobile-cover-container {
+        display: flex;
+        justify-content: center; /* Center horizontally */
+        align-items: center; /* Center vertically */
+    }
+
+    .mobile-layout .item-header-mobile-cover {
+        margin-top: 10px;
+        flex-shrink: 0; /* Prevent the image from shrinking */
+        flex-basis: 40%; /* Set a base width */
+        min-width: 150px; /* Prevent the image from becoming too small */
+        max-width: 250px; /* Prevent the image from becoming too large */
+        object-fit: cover;
+        border-radius: 5px;
+        margin-right: 20px;
+        height: auto; /* Adjust height automatically */
+    }
+
+    .categories-container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center; /* Center horizontally */
+        align-items: center; /* Center vertically */
+        padding-bottom: 10px;
+    }
+
+    .mobile-layout .category-box {
+        padding-bottom: 10px;
+    }
+
+    .mobile-layout .item-header-title,
+    .mobile-layout .item-header-description,
+    .header-text {
+        text-align: center;
+        margin: 10px 0;
+    }
+    .mobile-layout .header-info {
+        text-align: left;
+        margin: 10px 0;
+        padding-left: 4rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: var(--text-color);
+    }
+
+    .mobile-layout .item-header-description {
+        padding: 0 20px;
+    }
+
+    .mobile-layout .icon-button {
+        margin: 0 auto;
+    }
+
+    .mobile-layout .item-header-info {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+}
+
+.podcast-icon-button {
+    padding: 0;
+    margin: 0 4px; /* Adjust as needed for spacing between buttons */
+    width: 40px; /* Adjust as needed */
+    height: 40px; /* Adjust as needed */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%; /* To ensure the buttons remain round */
+}
+
 .item-container-alert-button {
     color: var(--text-color);
     background-color: var(--alert-color);
@@ -1239,6 +1318,11 @@ button.item-container-action-button.item-container-action-button {
     position: relative; /* Relative position */
     width: 24px; /* Define width */
     height: 24px; /* Define height */
+}
+
+.hosts-arrow {
+    margin-bottom: 0.2rem;
+    margin-left: 0.5rem;
 }
 
 /* Hover background color for accordion arrow */
