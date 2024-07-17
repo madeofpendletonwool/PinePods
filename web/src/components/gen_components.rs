@@ -1028,7 +1028,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     html! {
         <>
-        <div class="relative inline-block">
+            <div class="relative show-on-large">
             <button
                 id="dropdown-button"
                 onclick={toggle_dropdown.clone()}
@@ -1327,12 +1327,12 @@ pub fn episode_item(
                     <img
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="episode-image"
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
-                        <p class="item_container-text text-xl font-semibold">
+                        <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
                         {
@@ -1545,7 +1545,9 @@ pub fn download_episode_item(
                                 >
                                     <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                                 </button>
-                                <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                <div class="show-on-large">
+                                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                </div>
                             }
                         </div>
                     }

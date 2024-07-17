@@ -963,10 +963,64 @@ body {
 @media (max-width: 768px) {
     /* Adjust breakpoint as needed */
     .item-container img {
-        max-width: 150px; /* Smaller max width for smaller screens */
-        max-height: 150px; /* Smaller max height for smaller screens */
-        width: 150px;
-        height: 150px;
+        max-width: 125px; /* Smaller max width for smaller screens */
+        max-height: 125px; /* Smaller max height for smaller screens */
+        width: 125px;
+        height: 125px;
+    }
+}
+@media (max-width: 530px) {
+    /* Adjust breakpoint as needed */
+    .item-container img {
+        max-width: 100px; /* Smaller max width for smaller screens */
+        max-height: 100px; /* Smaller max height for smaller screens */
+        width: 100px;
+        height: 100px;
+    }
+}
+
+@media (max-width: 530px) {
+    .show-on-large {
+        display: none;
+    }
+}
+
+@media (min-width: 531px) {
+    .show-on-large {
+        display: block;
+    }
+}
+
+/* Base styles */
+.item-container-text {
+    font-size: 1.25rem; /* example base size */
+}
+
+@media (max-width: 530px) {
+    .flex-col.space-y-2 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+    }
+}
+
+.episode-image {
+    width: 100%;
+    max-width: 200px;
+    max-height: 200px;
+    object-fit: cover;
+    align-self: flex-start;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+}
+
+@media (max-width: 768px) {
+    /* Adjust breakpoint as needed */
+    .episode-image {
+        max-width: 100px; /* Smaller max width for smaller screens */
+        max-height: 100px; /* Smaller max height for smaller screens */
+        width: 100px;
+        height: 100px;
     }
 }
 
@@ -978,6 +1032,24 @@ body {
 
 .item_container-text {
     color: var(--text-color);
+}
+
+.item_container-text.episode-title {
+    font-size: 1.25rem; /* Base font size for larger screens */
+}
+
+@media (max-width: 768px) {
+    /* Adjust breakpoint as needed */
+    .item_container-text.episode-title {
+        font-size: 1rem; /* Smaller font size for smaller screens */
+    }
+}
+
+@media (max-width: 480px) {
+    /* Further adjustment for even smaller screens if needed */
+    .item_container-text.episode-title {
+        font-size: 0.875rem; /* Even smaller font size for very small screens */
+    }
 }
 
 .item-container-text-link {
@@ -1249,6 +1321,12 @@ button.item-container-action-button.item-container-action-button {
 @media (max-width: 768px) {
     .search-page-input {
         width: 90%; /* Increase width to 90% of the viewport */
+    }
+}
+
+@media (max-width: 520px) {
+    .search-page-input {
+        width: 100%; /* Increase width to 90% of the viewport */
     }
 }
 
@@ -1533,18 +1611,6 @@ button.item-container-action-button.item-container-action-button {
     display: flex;
     align-items: start;
     margin-bottom: 20px;
-}
-
-@media (max-width: 768px) {
-    .episode-layout-container {
-        padding-top: 70px; /* Increase padding for smaller screens if necessary */
-    }
-}
-
-@media (max-height: 500px) {
-    .episode-layout-container {
-        padding-top: 80px; /* Increase padding for very small height screens */
-    }
 }
 
 .episode-artwork {

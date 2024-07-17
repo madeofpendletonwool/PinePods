@@ -163,6 +163,7 @@ pub fn podcasts() -> Html {
                             let api_key_iter = api_key.clone();
                             let server_name_iter = server_name.clone().unwrap();
                             let history = history_clone.clone();
+                            web_sys::console::log_1(&format!("Podcast categories: {:?}", podcast.categories.clone()).into());
 
                             // let id_string = &podcast.PodcastID.to_string();
 
@@ -228,8 +229,8 @@ pub fn podcasts() -> Html {
                                     }
                                 })
                             };
-                            let categories: HashMap<String, String> = serde_json::from_str(&podcast.categories)
-                                .unwrap_or_else(|_| HashMap::new());
+                            web_sys::console::log_1(&format!("Podcast categories direct before pass to hash: {:?}", podcast.categories.clone()).into());
+
                             let on_title_click = create_on_title_click(
                                 dispatch.clone(),
                                 server_name_iter,
@@ -242,7 +243,7 @@ pub fn podcasts() -> Html {
                                 podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                                 podcast.explicit.clone(),
                                 podcast.episodecount.clone(),
-                                Some(categories),
+                                Some(podcast.categories.clone()),
                                 podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
 
                                 user_id.unwrap(),

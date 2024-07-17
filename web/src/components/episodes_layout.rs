@@ -1104,7 +1104,7 @@ pub fn episode_layout() -> Html {
                         <div class="mobile-layout">
                             <div class="button-container">
                                 <button onclick={Callback::from(move |_| web_link.emit(podcast_info.podcast_link.clone()))}
-                                    title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-8">
+                                    title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-4">
                                     { website_icon }
                                 </button>
                                 {
@@ -1121,7 +1121,7 @@ pub fn episode_layout() -> Html {
                                                         <button
                                                             onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
                                                             title={funding.description.clone()}
-                                                            class="item-container-button font-bold rounded-full self-center mr-8"
+                                                            class="item-container-button font-bold rounded-full self-center mr-4"
                                                         >
                                                             { payment_icon } // Replace with your payment_icon component
                                                         </button>
@@ -1136,13 +1136,13 @@ pub fn episode_layout() -> Html {
                                         html! {}
                                     }
                                 }
-                                <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-8">
+                                <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
                                     { download_all }
                                 </button>
-                                <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-8">
+                                <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
                                     { button_content }
                                 </button>
-                                <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-8">
+                                <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
                                     { setting_content }
                                 </button>
                             </div>

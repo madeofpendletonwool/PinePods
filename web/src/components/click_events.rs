@@ -20,7 +20,7 @@ pub fn create_on_title_click(
     podcast_artwork: String,
     podcast_explicit: bool,
     podcast_episode_count: i32,
-    podcast_categories: Option<HashMap<String, String>>,
+    podcast_categories: Option<String>,
     podcast_link: String,
     user_id: i32,
     // ... other podcast-specific parameters ...
@@ -28,6 +28,7 @@ pub fn create_on_title_click(
     let history = history.clone();
     Callback::from(move |e: MouseEvent| {
         e.prevent_default(); // Prevent default anchor behavior
+        web_sys::console::log_1(&"Title clicked".into());
         dispatch.reduce_mut(|state| {
             state.is_loading = Some(true);
             state.podcast_added = Some(false); // Set podcast_added to false here
@@ -36,6 +37,22 @@ pub fn create_on_title_click(
         let server_clone = server_name.clone();
         let api_clone = api_key.clone().unwrap();
         let podcast_url_call = podcast_url.clone();
+        // Convert the categories string to a HashMap with integer keys
+        let podcast_categories_map: Option<HashMap<String, String>> =
+            podcast_categories.as_ref().map(|cats| {
+                cats.split(", ")
+                    .enumerate()
+                    .map(|(i, cat)| (i.to_string(), cat.to_string()))
+                    .collect()
+            });
+
+        web_sys::console::log_1(
+            &format!(
+                "Podcast categories in click events: {:?}",
+                podcast_categories_map
+            )
+            .into(),
+        );
         let podcast_values = ClickedFeedURL {
             podcast_title: podcast_title.clone(),
             podcast_url: podcast_url.clone(),
@@ -44,7 +61,7 @@ pub fn create_on_title_click(
             podcast_artwork: podcast_artwork.clone(),
             podcast_explicit: podcast_explicit.clone(),
             podcast_episode_count: podcast_episode_count.clone(),
-            podcast_categories: podcast_categories.clone(),
+            podcast_categories: podcast_categories_map.clone(),
             podcast_link: podcast_link.clone(),
         };
 

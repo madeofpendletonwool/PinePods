@@ -33,8 +33,8 @@ Version 0.6.3
 - [] Fixed Issue with Episodes on small screens where if a word in the title was long enough it would overflow the container
 - [] Adjusted the Podcast Episode Layout display page so that you can click and episode title and view the description
 - [x] Removed Unneeded space between First episode/podcast container and the title bar at the top on multiple pages - Just cleans things up a bit
-- [] Fixed image layout issue where if episode had wide image it would overflow the container and title text
-- [] Fixed issue with categories where it showed them as part of a dictionary
+- [x] Fixed image layout issue where if episode had wide image it would overflow the container and title text
+- [x] Fixed issue with categories where it showed them as part of a dictionary and sometimes didn't show them at all
 - [x] Added verification before downloading all episodes since this is quite a weighty process
 - [x] Added Complete Episode Option to Episode Page
 - [x] Added Episode Completion Status to Episode Page

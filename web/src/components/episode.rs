@@ -545,10 +545,6 @@ pub fn epsiode() -> Html {
                             wasm_bindgen_futures::spawn_local(async move {
                                 match pod_req::call_get_podcast_details(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.unwrap(), &podcast_id).await {
                                     Ok(details) => {
-                                        let mut categories_map: HashMap<String, String> = HashMap::new();
-                                        for (index, category) in details.categories.split(',').enumerate() {
-                                            categories_map.insert(index.to_string(), category.trim().to_string());
-                                        }
                                         // Assuming details contain all necessary podcast info
                                         let final_click_action = create_on_title_click(
                                             dispatch.clone(),
@@ -562,7 +558,7 @@ pub fn epsiode() -> Html {
                                             details.artworkurl,
                                             details.explicit,
                                             details.episodecount,
-                                            Some(categories_map),
+                                            Some(details.categories),
                                             details.websiteurl,
                                             user_id.unwrap(),
                                         );
