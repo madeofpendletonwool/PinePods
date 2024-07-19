@@ -1,6 +1,6 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    empty_message, episode_item, on_shownotes_click, Search_nav, UseScrollToTop,
+    empty_message, on_shownotes_click, queue_episode_item, Search_nav, UseScrollToTop,
 };
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
@@ -19,9 +19,10 @@ use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use crate::requests::login_requests::use_check_authentication;
+use js_sys::{Object, Reflect};
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
-use web_sys::window;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{window, AddEventListenerOptions, DragEvent, HtmlElement};
 
 #[function_component(Queue)]
 pub fn queue() -> Html {
@@ -39,6 +40,17 @@ pub fn queue() -> Html {
     let session_dispatch = _post_dispatch.clone();
     let session_state = post_state.clone();
     let loading = use_state(|| true);
+    let dragging = use_state(|| None);
+    let dragging_style = use_state(|| "".to_string());
+    // let dragging_index = use_state(|| None);
+    let element_ref_drag = use_node_ref();
+    let container_ref = use_node_ref();
+
+    let items = vec!["Item 1", "Item 2", "Item 3", "Item 4"];
+
+    let container_ref = use_node_ref();
+    let start_x = use_state(|| 0.0);
+    let scroll_left = use_state(|| 0.0);
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -191,6 +203,101 @@ pub fn queue() -> Html {
                                     "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
                                 )
                             } else {
+                                let ondragstart = {
+                                    let dragging = dragging.clone();
+                                    Callback::from(move |e: DragEvent| {
+                                        let target = e.target().unwrap();
+                                        let id = target
+                                            .dyn_ref::<HtmlElement>()
+                                            .unwrap()
+                                            .get_attribute("data-id")
+                                            .unwrap();
+                                        dragging.set(Some(id.parse::<i32>().unwrap()));
+                                        e.data_transfer()
+                                            .unwrap()
+                                            .set_data("text/plain", &id)
+                                            .unwrap();
+                                        e.data_transfer().unwrap().set_effect_allowed("move");
+                                        web_sys::console::log_1(&"drag start".into());
+                                    })
+                                };
+
+
+
+                                let ondragenter = Callback::from(|e: DragEvent| {
+                                    e.prevent_default();
+                                    e.data_transfer().unwrap().set_drop_effect("move");
+                                    web_sys::console::log_1(&"drag enter".into());
+                                });
+
+
+                                let ondragover = Callback::from(move |e: DragEvent| {
+                                    e.prevent_default();
+                                    let y = e.client_y();
+                                    let scroll_speed = 20;
+
+                                    let window = web_sys::window().expect("should have a Window");
+
+                                    // Scroll up if the cursor is near the top of the viewport
+                                    if y < 50 {
+                                        window.scroll_by_with_x_and_y(0.0, -scroll_speed as f64);
+                                    }
+
+                                    // Scroll down if the cursor is near the bottom of the viewport
+                                    let window_height = window.inner_height().unwrap().as_f64().unwrap();
+                                    if y > (window_height - 50.0) as i32 {
+                                        window.scroll_by_with_x_and_y(0.0, scroll_speed as f64);
+                                    }
+
+                                    web_sys::console::log_1(&"drag over".into());
+                                });
+
+
+                                let drop_eps = queued_eps.clone();
+                                let ondrop = {
+                                    let dragging = dragging.clone();
+                                    let dispatch = dispatch.clone();
+                                    let episodes = queued_eps.clone();
+                                    Callback::from(move |e: DragEvent| {
+                                        e.prevent_default();
+                                        let mut target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
+                                        while !target.has_attribute("data-id") {
+                                            target = target.parent_element().unwrap();
+                                        }
+                                        let target_id = target
+                                            .get_attribute("data-id")
+                                            .unwrap()
+                                            .parse::<i32>()
+                                            .unwrap();
+
+                                        if let Some(dragged_id) = *dragging {
+                                            let mut episodes_vec = episodes.episodes.clone();
+                                            let dragged_index = episodes_vec
+                                                .iter()
+                                                .position(|x| x.episodeid == dragged_id)
+                                                .unwrap();
+                                            let target_index = episodes_vec
+                                                .iter()
+                                                .position(|x| x.episodeid == target_id)
+                                                .unwrap();
+
+                                            // Remove the dragged item and reinsert it at the target position
+                                            let dragged_item = episodes_vec.remove(dragged_index);
+                                            episodes_vec.insert(target_index, dragged_item);
+
+                                            dispatch.reduce_mut(|state| {
+                                                state.queued_episodes = Some(QueuedEpisodesResponse {
+                                                    episodes: episodes_vec,
+                                                });
+                                            });
+                                            // web_sys::console::log_1(format!("dragged: {}, target: {}", dragged_id, target_id).into()
+                                        }
+
+                                        dragging.set(None);
+                                        web_sys::console::log_1(&"drop".into());
+                                    })
+                                };
+
                                 queued_eps.episodes.into_iter().map(|episode| {
                             let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
                             let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -276,7 +383,7 @@ pub fn queue() -> Html {
                                 .as_ref()
                                 .unwrap_or(&vec![])
                                 .contains(&check_episode_id);
-                            let item = episode_item(
+                            let item = queue_episode_item(
                                 Box::new(episode),
                                 description.clone(),
                                 is_expanded,
@@ -290,13 +397,16 @@ pub fn queue() -> Html {
                                 Callback::from(|_| {}),
                                 false,
                                 episode_url_for_ep_item,
-                                is_completed
+                                is_completed,
+                                ondragstart.clone(),
+                                ondragenter.clone(),
+                                ondragover.clone(),
+                                ondrop.clone(),
                             );
 
                             item
                         }).collect::<Html>()
                         }
-
                     } else {
                         empty_message(
                             "No Queued Episodes Found - State is None",

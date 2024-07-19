@@ -1030,6 +1030,36 @@ body {
     justify-content: center; /* Center items horizontally */
 }
 
+.item-container {
+    touch-action: none;
+}
+
+.dragging {
+    opacity: 0.5;
+    background-color: #f0f0f0;
+    border: 1px dashed #ccc;
+}
+
+.sliding-rail-container {
+    display: flex;
+    overflow-x: scroll;
+    scrollbar-width: none; /* Hide scrollbar in Firefox */
+}
+
+.sliding-rail-container::-webkit-scrollbar {
+    display: none; /* Hide scrollbar in WebKit browsers */
+}
+
+.sliding-rail-item {
+    min-width: 100px;
+    margin: 0 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    text-align: center;
+    cursor: grab;
+}
+
 .item_container-text {
     color: var(--text-color);
 }
@@ -1067,6 +1097,12 @@ body {
     background-color: var(
         --hover-color
     ); /* Replace #your-hover-color with your desired color */
+}
+
+.drag-handle {
+    color: var(--text-secondary-color);
+    background-color: var(--container-button-color);
+    border-color: var(--text-secondary-color);
 }
 
 .item-container-button {
