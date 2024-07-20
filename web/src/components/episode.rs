@@ -19,7 +19,7 @@ use crate::requests::pod_req::{
 };
 use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
@@ -81,6 +81,56 @@ pub fn epsiode() -> Html {
     let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
     let episode_id = state.selected_episode_id.clone();
+
+    let width_state = audio_state.clone();
+    {
+        let audio_dispatch = audio_dispatch.clone();
+
+        // Initial check when the component is mounted
+        {
+            let window = window().unwrap();
+            let width = window.inner_width().unwrap().as_f64().unwrap();
+            let new_is_mobile = width < 768.0;
+            audio_dispatch.reduce_mut(|state| state.is_mobile = Some(new_is_mobile));
+            web_sys::console::log_1(&JsValue::from_str(&format!("Width: {}", width)));
+            web_sys::console::log_1(&JsValue::from_str(&format!(
+                "New is_mobile: {}",
+                new_is_mobile
+            )));
+            web_sys::console::log_1(&JsValue::from_str(&format!(
+                "State is_mobile: {}",
+                width_state.is_mobile.unwrap_or(false)
+            )));
+        }
+
+        // Resize event listener
+        use_effect_with((), move |_| {
+            let window = window().unwrap();
+            let closure_window = window.clone();
+            let closure = Closure::wrap(Box::new(move || {
+                let width = closure_window.inner_width().unwrap().as_f64().unwrap();
+                let new_is_mobile = width < 768.0;
+                audio_dispatch.reduce_mut(|state| state.is_mobile = Some(new_is_mobile));
+                web_sys::console::log_1(&JsValue::from_str(&format!("Width: {}", width)));
+                web_sys::console::log_1(&JsValue::from_str(&format!(
+                    "New is_mobile: {}",
+                    new_is_mobile
+                )));
+                web_sys::console::log_1(&JsValue::from_str(&format!(
+                    "State is_mobile: {}",
+                    width_state.is_mobile.unwrap_or(false)
+                )));
+            }) as Box<dyn Fn()>);
+
+            window
+                .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
+                .unwrap();
+
+            closure.forget(); // Ensure the closure is not dropped prematurely
+
+            || ()
+        });
+    }
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -250,6 +300,7 @@ pub fn epsiode() -> Html {
             <Search_nav />
             <UseScrollToTop />
             {
+
                 if let Some(episode) = state.fetched_episode.clone() {
                     let episode_url_clone = episode.episode.episodeurl.clone();
                     let episode_title_clone = episode.episode.episodetitle.clone();
@@ -585,121 +636,251 @@ pub fn epsiode() -> Html {
                     });
                     // let format_duration = format!("Duration: {} minutes", e / 60); // Assuming duration is in seconds
                     // let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
-                    html! {
-                        <div class="episode-layout-container">
-                            <div class="episode-top-info">
-                                <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
-                                <div class="episode-details">
-                                    <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
-                                    <div class="flex items-center space-x-2 cursor-pointer">
-                                        <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                    let layout = if audio_state.is_mobile.unwrap_or(false) {
+                        html! {
+                            <div class="mobile-layout">
+                            <div class="episode-layout-container">
+                                    <div class="item-header-mobile-cover-container">
+                                    <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
+                                    </div>
+                                        <div class="episode-details">
+                                        <p class="item-header-pod justify-center items-center" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</p>
+                                        <div class="items-center space-x-2 cursor-pointer">
+                                            <h2 class="episode-title item-header-title">{ &episode.episode.episodetitle }</h2>
+                                            {
+                                                if *completion_status.clone() {
+                                                    html! {
+                                                        <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
+                                        // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                        <div class="flex justify-center items-center item-header-details">
+                                            <p class="episode-duration">{ format_duration }</p>
+                                            <span class="episode-duration">{"\u{00a0}-\u{00a0}"}</span>
+                                            <p class="episode-release-date">{ format_release }</p>
+                                        </div>
+
+
+
+
                                         {
-                                            if *completion_status.clone() {
-                                                html! {
-                                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                            if let Some(transcript) = &audio_state.episode_page_transcript {
+                                                if !transcript.is_empty() {
+                                                    let transcript_clone = transcript.clone();
+                                                    html! {
+                                                        <>
+                                                        { for transcript_clone.iter().map(|transcript| {
+                                                            let open_in_new_tab = open_in_new_tab.clone();
+                                                            let url = transcript.url.clone();
+                                                            html! {
+                                                                <div class="header-info pb-2 pt-2">
+                                                                    <button
+                                                                        onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                        title={"Transcript"}
+                                                                        class="font-bold item-container-button"
+                                                                    >
+                                                                        { "Episode Transcript" }
+                                                                    </button>
+                                                                </div>
+                                                            }
+                                                        })}
+                                                        </>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                        {
+                                            if let Some(people) = &audio_state.episode_page_people {
+                                                if !people.is_empty() {
+                                                    html! {
+                                                        <div class="header-info">
+                                                            <HostDropdown title="In This Episode" hosts={people.clone()} />
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
                                                 }
                                             } else {
                                                 html! {}
                                             }
                                         }
                                     </div>
-                                    // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
-                                    <p class="episode-duration">{ format_duration }</p>
-                                    <p class="episode-release-date">{ format_release }</p>
-                                    {
-                                        if let Some(transcript) = &audio_state.episode_page_transcript {
-                                            if !transcript.is_empty() {
-                                                let transcript_clone = transcript.clone();
-                                                html! {
-                                                    <>
-                                                    { for transcript_clone.iter().map(|transcript| {
-                                                        let open_in_new_tab = open_in_new_tab.clone();
-                                                        let url = transcript.url.clone();
-                                                        html! {
-                                                            <div class="header-info pb-2 pt-2">
-                                                                <button
-                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                    title={"Transcript"}
-                                                                    class="font-bold item-container-button"
-                                                                >
-                                                                    { "Episode Transcript" }
-                                                                </button>
-                                                            </div>
-                                                        }
-                                                    })}
-                                                    </>
-                                                }
-                                            } else {
-                                                html! {}
-                                            }
-                                        } else {
-                                            html! {}
+                                <div class="episode-action-buttons">
+                                {
+                                    if should_show_buttons {
+                                        html! {
+                                            <>
+                                            <div class="button-row">
+                                                <button onclick={on_play_click} class="play-button">
+                                                    <i class="material-icons">{ "play_arrow" }</i>
+                                                    {"Play"}
+                                                </button>
+                                                <button onclick={on_add_to_queue} class="queue-button">
+                                                    <i class="material-icons">{ "playlist_add" }</i>
+                                                    {"Queue"}
+                                                </button>
+                                                <button onclick={on_save_episode} class="save-button">
+                                                    <i class="material-icons">{ "favorite" }</i>
+                                                    {"Save"}
+                                                </button>
+                                            </div>
+                                            <div class="button-row">
+                                                <button onclick={on_download_episode} class="download-button-ep">
+                                                    <i class="material-icons">{ "download" }</i>
+                                                    {"Download"}
+                                                </button>
+                                                <button onclick={toggle_completion} class="download-button-ep">
+                                                    <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                                    { if *completion_status { "Mark Incomplete" } else { "Mark Complete" } }
+                                                </button>
+                                            </div>
+                                            </>
                                         }
-                                    }
-                                    {
-                                        if let Some(people) = &audio_state.episode_page_people {
-                                            if !people.is_empty() {
-                                                html! {
-                                                    <div class="header-info">
-                                                        <HostDropdown title="In This Episode" hosts={people.clone()} />
-                                                    </div>
-                                                }
-                                            } else {
-                                                html! {}
-                                            }
-                                        } else {
-                                            html! {}
+                                    } else {
+                                        html! {
+                                            <p class="no-media-warning item_container-text play-button">
+                                                {"This item contains no media file"}
+                                            </p>
                                         }
-                                    }
-                                </div>
-                            </div>
-                            <div class="episode-action-buttons">
-                            {
-                                if should_show_buttons {
-                                    html! {
-                                        <>
-                                        <button onclick={on_play_click} class="play-button">
-                                            <i class="material-icons">{ "play_arrow" }</i>
-                                            {"Play"}
-                                        </button>
-                                        <button onclick={on_add_to_queue} class="queue-button">
-                                            <i class="material-icons">{ "playlist_add" }</i>
-                                            {"Queue"}
-                                        </button>
-                                        <button onclick={on_save_episode} class="save-button">
-                                            <i class="material-icons">{ "favorite" }</i>
-                                            {"Save"}
-                                        </button>
-                                        <button onclick={on_download_episode} class="download-button-ep">
-                                            <i class="material-icons">{ "download" }</i>
-                                            {"Download"}
-                                        </button>
-                                        <button onclick={toggle_completion} class="download-button-ep">
-                                            <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
-                                            { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
-                                        </button>
-                                        </>
-                                    }
-                                } else {
-                                    html! {
-                                        <p class="no-media-warning item_container-text play-button">
-                                            {"This item contains no media file"}
-                                        </p>
                                     }
                                 }
-                            }
+                                </div>
+                                <hr class="episode-divider" />
+                                <div class="episode-single-desc episode-description">
+                                // <p>{ description }</p>
+                                <div class="item_container-text episode-description-container">
+                                    <SafeHtml html={description} />
+                                </div>
+                                </div>
                             </div>
-                            <hr class="episode-divider" />
-                            <div class="episode-single-desc episode-description">
-                            // <p>{ description }</p>
-                            <div class="item_container-text episode-description-container">
-                                <SafeHtml html={description} />
                             </div>
+                        }
+                    } else {
+                        html! {
+                            <div class="episode-layout-container">
+                                <div class="episode-top-info">
+                                    <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
+                                    <div class="episode-details">
+                                        <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
+                                        <div class="flex items-center space-x-2 cursor-pointer">
+                                            <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                            {
+                                                if *completion_status.clone() {
+                                                    html! {
+                                                        <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
+                                        // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                        <p class="episode-duration">{ format_duration }</p>
+                                        <p class="episode-release-date">{ format_release }</p>
+                                        {
+                                            if let Some(transcript) = &audio_state.episode_page_transcript {
+                                                if !transcript.is_empty() {
+                                                    let transcript_clone = transcript.clone();
+                                                    html! {
+                                                        <>
+                                                        { for transcript_clone.iter().map(|transcript| {
+                                                            let open_in_new_tab = open_in_new_tab.clone();
+                                                            let url = transcript.url.clone();
+                                                            html! {
+                                                                <div class="header-info pb-2 pt-2">
+                                                                    <button
+                                                                        onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                        title={"Transcript"}
+                                                                        class="font-bold item-container-button"
+                                                                    >
+                                                                        { "Episode Transcript" }
+                                                                    </button>
+                                                                </div>
+                                                            }
+                                                        })}
+                                                        </>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                        {
+                                            if let Some(people) = &audio_state.episode_page_people {
+                                                if !people.is_empty() {
+                                                    html! {
+                                                        <div class="header-info">
+                                                            <HostDropdown title="In This Episode" hosts={people.clone()} />
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                                <div class="episode-action-buttons">
+                                {
+                                    if should_show_buttons {
+                                        html! {
+                                            <>
+                                            <button onclick={on_play_click} class="play-button">
+                                                <i class="material-icons">{ "play_arrow" }</i>
+                                                {"Play"}
+                                            </button>
+                                            <button onclick={on_add_to_queue} class="queue-button">
+                                                <i class="material-icons">{ "playlist_add" }</i>
+                                                {"Queue"}
+                                            </button>
+                                            <button onclick={on_save_episode} class="save-button">
+                                                <i class="material-icons">{ "favorite" }</i>
+                                                {"Save"}
+                                            </button>
+                                            <button onclick={on_download_episode} class="download-button-ep">
+                                                <i class="material-icons">{ "download" }</i>
+                                                {"Download"}
+                                            </button>
+                                            <button onclick={toggle_completion} class="download-button-ep">
+                                                <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                                { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
+                                            </button>
+                                            </>
+                                        }
+                                    } else {
+                                        html! {
+                                            <p class="no-media-warning item_container-text play-button">
+                                                {"This item contains no media file"}
+                                            </p>
+                                        }
+                                    }
+                                }
+                                </div>
+                                <hr class="episode-divider" />
+                                <div class="episode-single-desc episode-description">
+                                // <p>{ description }</p>
+                                <div class="item_container-text episode-description-container">
+                                    <SafeHtml html={description} />
+                                </div>
+                                </div>
                             </div>
-                        </div>
-                    }
+                        }
+                    };  // Add semicolon here
                     // item
 
+                    layout
                 } else {
                     empty_message(
                         "Unable to display episode",

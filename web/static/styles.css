@@ -1030,10 +1030,6 @@ body {
     justify-content: center; /* Center items horizontally */
 }
 
-.item-container {
-    touch-action: none;
-}
-
 .dragging {
     opacity: 0.5;
     background-color: #f0f0f0;
@@ -1117,6 +1113,16 @@ body {
     ); /* Replace #your-hover-color with your desired color */
 }
 
+.item-header-details {
+    text-align: center;
+    display: flex;
+}
+
+.item-header-pod {
+    text-align: center;
+    color: var(--text-color);
+}
+
 /* Media query for smaller screens */
 @media (max-width: 768px) {
     .item-container-button {
@@ -1167,6 +1173,7 @@ body {
         text-align: center;
         margin: 10px 0;
     }
+
     .mobile-layout .header-info {
         text-align: left;
         margin: 10px 0;
@@ -1174,6 +1181,19 @@ body {
         font-weight: bold;
         margin-bottom: 5px;
         color: var(--text-color);
+    }
+
+    .mobile-layout .button-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px; /* Adjust spacing as needed */
+    }
+
+    .mobile-layout .episode-action-buttons {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        gap: 10px; /* Adjust gap as needed */
     }
 
     .mobile-layout .item-header-description {
@@ -1651,10 +1671,16 @@ button.item-container-action-button.item-container-action-button {
 
 .episode-artwork {
     /* Adjust to scale with page size */
-    max-width: 30%;
+    max-width: 45%;
     height: auto;
     object-fit: cover;
     padding-right: 10px;
+}
+.episode-mobile-artwork {
+    /* Adjust to scale with page size */
+    max-width: 30%;
+    height: auto;
+    object-fit: cover;
 }
 .episode-details {
     display: flex;

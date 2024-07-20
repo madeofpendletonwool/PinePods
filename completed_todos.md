@@ -17,7 +17,7 @@ Next Minor Version:
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
 - [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
-
+- [] Queue adjmustment for mobile devices
 
 Version 0.6.3
 
@@ -28,9 +28,9 @@ Version 0.6.3
 - [x] Support for Funding Tags
 - [] Draggable Queue placement
 - [x] Fixed issue with self service user creation when using a postgres db
-- [z] Rebuilt the Podcast Episode Layout display page so that on small screens everything fits on screen and looks much nicer
+- [x] Rebuilt the Podcast Episode Layout display page so that on small screens everything fits on screen and looks much nicer
 - [] Rebuilt the Single Episode display page so that on small screens everything fits on screen and looks much nicer
-- [] Fixed Issue with Episodes on small screens where if a word in the title was long enough it would overflow the container
+- [x] Fixed Issue with Episodes on small screens where if a word in the title was long enough it would overflow the container
 - [] Adjusted the Podcast Episode Layout display page so that you can click and episode title and view the description
 - [x] Removed Unneeded space between First episode/podcast container and the title bar at the top on multiple pages - Just cleans things up a bit
 - [x] Fixed image layout issue where if episode had wide image it would overflow the container and title text
@@ -39,6 +39,7 @@ Version 0.6.3
 - [x] Added Complete Episode Option to Episode Page
 - [x] Added Episode Completion Status to Episode Page
 - [x] Fixed Issue with Postgres DBs where sometimes it would return dictionaries and try to refresh episodes using :podcastid as the podcast id. Now it always refreshes correctly
+- [] Fixed a few additional bugs with the postgres db
 
 Version 0.6.2
 
