@@ -6,7 +6,7 @@
 [![](https://dcbadge.vercel.app/api/server/bKzHRa4GNc)](https://discord.gg/bKzHRa4GNc)
 [![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#pinepods:matrix.org)
 ![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)
-![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)
+[![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)](https://github.com/madeofpendletonwool/PinePods/releases)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
@@ -32,9 +32,9 @@
 
 # Getting Started
 
-PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. It works on mobile devices and can also sync with a Nextcloud server so you can use external apps Like Antennapod as well!
+PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. It works on mobile devices and can also sync with a Nextcloud server so you can use external apps like Antennapod as well!
 
-For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/)
+For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/).
 
 <p align="center">
   <img src="./images/screenshots/homethemed.png">
@@ -42,11 +42,11 @@ For more information than what's provided in this repo visit the [documentation 
 
 ## Features
 
-Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql (alternative database support is on the roadmap) database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a MySQL or Postgres database (alternative database support is on the roadmap) including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
 
 ## Try it out! :zap:
 
-I try and maintain an instance of Pinepods that's publicly accessible for testing over at [try.pinepods.online](https://try.pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.
+I try and maintain an instance of Pinepods that's publicly accessible for testing over at [try.pinepods.online](https://try.pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanent method of using Pinepods and it's expected you run your own server; accounts will often be deleted from there.
 
 ## Installing :runner:
 
@@ -59,11 +59,11 @@ First, the server. You have multiple options for deploying Pinepods:
   - [Using Docker Compose :whale:](#docker-compose)
   - [Using Helm for Kubernetes :anchor:](#helm-deployment)
 
-You can also choose to use mysql/mariaDB or Postgres as your database. Examples for both are provided below.
+You can also choose to use MySQL/MariaDB or Postgres as your database. Examples for both are provided below.
 
 ### Docker Compose
 
-#### Compose File - mariadb
+#### Compose File - MariaDB
 
 ```
 version: '3'
@@ -108,7 +108,6 @@ services:
     volumes:
     # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
-
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
@@ -135,6 +134,7 @@ services:
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
+    # Pinepods Main Port
       - "8040:8040"
     environment:
       # Basic Server Info
@@ -151,7 +151,6 @@ services:
       DB_USER: postgres
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
-      # Port Settings
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
     volumes:
@@ -284,7 +283,7 @@ Once you have everything set up, install the Helm chart:
 ```
 helm install pinepods pinepods/Pinepods -f my-values.yaml
 ```
-This will deploy Pinepods on your Kubernetes cluster with a postgres database. Mysql/mariadb is not supported with the kubernetes setup. The service will be accessible at the specified NodePort.
+This will deploy Pinepods on your Kubernetes cluster with a postgres database. MySQL/MariaDB is not supported with the kubernetes setup. The service will be accessible at the specified NodePort.
 
 Check out the Tutorials on the documentation site for more information on how to do basic things.
 
