@@ -122,7 +122,7 @@ services:
   db:
     image: postgres:latest
     environment:
-      POSTGRES_DB: pypods_database
+      POSTGRES_DB: pinepods_database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: myS3curepass
       PGDATA: /var/lib/postgresql/data/pgdata
