@@ -374,6 +374,7 @@ pub fn downloads() -> Html {
                                             if episodes.is_empty() {
                                                 None
                                             } else {
+                                                let downloaded_episode_count = episodes.len();
                                                 let is_expanded = *expanded_state.get(&podcast.podcastid).unwrap_or(&false);
                                                 let toggle_expanded_closure = {
                                                     let podcast_id = podcast.podcastid;
@@ -389,6 +390,7 @@ pub fn downloads() -> Html {
                                                 Some(render_podcast_with_episodes(
                                                     podcast,
                                                     episodes,
+                                                    downloaded_episode_count,
                                                     is_expanded,
                                                     toggle_expanded_closure,
                                                     render_state_cloned,
@@ -439,6 +441,7 @@ pub fn downloads() -> Html {
 pub fn render_podcast_with_episodes(
     podcast: &Podcast,
     episodes: Vec<EpisodeDownload>,
+    downloaded_episode_count: usize,
     is_expanded: bool,
     toggle_pod_expanded: Callback<MouseEvent>,
     state: Rc<AppState>,
@@ -462,15 +465,15 @@ pub fn render_podcast_with_episodes(
                     <img
                         src={podcast.artworkurl.clone()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="episode-image"
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text text-xl font-semibold cursor-pointer">
+                    <p class="item_container-text episode-title font-semibold cursor-pointer">
                         { &podcast.podcastname }
                     </p>
                     <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
+                    <p class="item_container-text">{ format!("Downloaded Episode Count: {}", downloaded_episode_count) }</p>
                 </div>
             </div>
             { if is_expanded {
@@ -542,7 +545,11 @@ pub fn render_podcast_with_episodes(
                             let on_shownotes_click = on_shownotes_click(
                                 history_clone.clone(),
                                 dispatch.clone(),
-                                episode_id_for_closure.clone(),
+                                Some(episode_id_for_closure.clone()),
+                                Some(String::from("Not needed")),
+                                Some(String::from("Not needed")),
+                                Some(String::from("Not needed")),
+                                true,
                             );
 
                             let date_format = match_date_format(state.date_format.as_deref());

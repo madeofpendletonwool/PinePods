@@ -25,7 +25,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-use web_sys::{console, window, HtmlElement, HtmlInputElement, MouseEvent};
+use web_sys::{console, window, HtmlInputElement, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
@@ -1257,14 +1257,24 @@ impl EpisodeTrait for SearchNewEpisode {
 pub fn on_shownotes_click(
     history: BrowserHistory,
     dispatch: Dispatch<AppState>,
-    episode_id: i32,
+    episode_id: Option<i32>,
+    shownotes_episode_url: Option<String>,
+    episode_audio_url: Option<String>,
+    podcast_title: Option<String>,
+    _db_added: bool,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let dispatch_clone = dispatch.clone();
         let history_clone = history.clone();
+        let shownotes_episode_url_call = shownotes_episode_url.clone();
+        let episode_audio_url = episode_audio_url.clone();
+        let podcast_title = podcast_title.clone();
         wasm_bindgen_futures::spawn_local(async move {
             dispatch_clone.reduce_mut(move |state| {
-                state.selected_episode_id = Some(episode_id);
+                state.selected_episode_id = episode_id;
+                state.selected_episode_url = shownotes_episode_url_call.clone();
+                state.selected_episode_audio_url = episode_audio_url;
+                state.selected_podcast_title = podcast_title;
             });
             history_clone.push("/episode"); // Use the route path
         });
@@ -1348,7 +1358,7 @@ pub fn episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-container-text hidden md:block">
+                            <div class="item-description-text hidden md:block">
                                 <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>
@@ -1471,12 +1481,12 @@ pub fn download_episode_item(
                     <img
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="episode-image"
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
-                        <p class="item_container-text text-xl font-semibold">
+                        <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
                         {
@@ -1492,7 +1502,7 @@ pub fn download_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-container-text hidden md:block">
+                            <div class="item-description-text hidden md:block">
                                 <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>
@@ -1625,9 +1635,11 @@ pub fn queue_episode_item(
             ondrop={ondrop.clone()}
             data-id={episode.get_episode_id().to_string()}
         >
-            <button class="drag-handle" style="cursor: grab;">
-                <span class="material-icons">{"drag_indicator"}</span>
-            </button>
+            <div class="drag-handle-wrapper flex items-center h-full">
+                <button class="drag-handle" style="cursor: grab;">
+                    <span class="material-icons">{"drag_indicator"}</span>
+                </button>
+            </div>
             {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
@@ -1661,7 +1673,7 @@ pub fn queue_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-container-text hidden md:block">
+                            <div class="item-description-text hidden md:block">
                                 <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>

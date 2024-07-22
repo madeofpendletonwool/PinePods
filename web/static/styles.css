@@ -1,7 +1,9 @@
 /* static/styles.css */
 :root {
-    --button-color: #8b949e; /* Default button color */
-    --background-color: #242424; /* Default background color */
+    --button-color: #8b949e;
+    /* Default button color */
+    --background-color: #242424;
+    /* Default background color */
     --text-color: #f5f5f5;
     --button-color: #8b949e;
     --container-button-color: transparent;
@@ -24,32 +26,36 @@
 }
 
 body {
-    background-color: var(--background-color); /* Default background color */
+    background-color: var(--background-color);
+    /* Default background color */
     /* Other global styles */
 }
 
 .main-container {
-    max-width: 1200px; /* Set the maximum width you desire */
-    margin: 0 auto; /* This centers the div */
+    max-width: 1200px;
+    /* Set the maximum width you desire */
+    margin: 0 auto;
+    /* This centers the div */
     padding: 0 20px;
 }
 
 .login-link {
-    color: var(--link-color); /* Default link color */
+    color: var(--link-color);
+    /* Default link color */
 }
 
 .item_container-text.episode-description-container a {
-    color: var(
-        --link-color
-    ); /* Replace #yourColorCode with the color you want */
-    text-decoration: none; /* Example property, adjust as needed */
+    color: var(--link-color);
+    /* Replace #yourColorCode with the color you want */
+    text-decoration: none;
+    /* Example property, adjust as needed */
 }
 
 .item_container-text.episode-description-container a:hover {
-    color: var(
-        --hover-color
-    ); /* Replace #hoverColorCode with the color you want for hover state */
-    text-decoration: underline; /* Example property, adjust as needed */
+    color: var(--hover-color);
+    /* Replace #hoverColorCode with the color you want for hover state */
+    text-decoration: underline;
+    /* Example property, adjust as needed */
 }
 
 #login-page {
@@ -60,8 +66,10 @@ body {
 }
 
 .search-page-container {
-    max-width: 1200px; /* Set the maximum width you desire */
-    margin: 0 auto; /* This centers the div */
+    max-width: 1200px;
+    /* Set the maximum width you desire */
+    margin: 0 auto;
+    /* This centers the div */
     padding: 0 40px;
 }
 
@@ -75,7 +83,8 @@ body {
 
 .drawer-button {
     background-color: var(--button-color);
-    color: var(--accent-color); /* Assuming you want white text */
+    color: var(--accent-color);
+    /* Assuming you want white text */
     padding: 0.5rem 1rem;
     border-radius: 0.25rem;
     cursor: pointer;
@@ -83,7 +92,8 @@ body {
 }
 
 .drawer-icon {
-    z-index: 1100; /* Higher than the search bar's z-index */
+    z-index: 1100;
+    /* Higher than the search bar's z-index */
     position: fixed;
     top: 13px;
     left: 10px;
@@ -101,6 +111,7 @@ body {
 .drawer-text a {
     color: var(--text-color);
 }
+
 .drawer-text {
     color: var(--text-color);
 }
@@ -118,7 +129,8 @@ body {
     color: var(--text-color);
     padding: 12px 24px;
     border-radius: 4px;
-    z-index: 1000; /* Ensure it's above other elements */
+    z-index: 1000;
+    /* Ensure it's above other elements */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -133,7 +145,8 @@ body {
     color: var(--text-color);
     padding: 12px 24px;
     border-radius: 4px;
-    z-index: 1000; /* Ensure it's above other elements */
+    z-index: 1000;
+    /* Ensure it's above other elements */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -149,7 +162,8 @@ body {
 }
 
 .episodes-container {
-    padding-top: 80px; /* Adjust the value to the height of your search bar */
+    padding-top: 80px;
+    /* Adjust the value to the height of your search bar */
 }
 
 .center-text {
@@ -159,7 +173,8 @@ body {
 }
 
 .logo {
-    max-width: 100px; /* Adjust size as needed */
+    max-width: 100px;
+    /* Adjust size as needed */
     margin-bottom: 20px;
 }
 
@@ -168,14 +183,18 @@ body {
     align-items: center;
     justify-content: end;
     padding: 10px 20px;
-    background-color: var(
-        --secondary-background
-    ); /* Adjust the color as needed */
-    position: fixed; /* Fix the position relative to the viewport */
-    top: 0; /* Align to the top of the viewport */
-    left: 0; /* Align to the left of the viewport */
-    right: 0; /* Ensure it extends to the right of the viewport */
-    z-index: 1000; /* Make sure it stays on top of other content */
+    background-color: var(--secondary-background);
+    /* Adjust the color as needed */
+    position: fixed;
+    /* Fix the position relative to the viewport */
+    top: 0;
+    /* Align to the top of the viewport */
+    left: 0;
+    /* Align to the left of the viewport */
+    right: 0;
+    /* Ensure it extends to the right of the viewport */
+    z-index: 1000;
+    /* Make sure it stays on top of other content */
 }
 
 /* styles.css */
@@ -215,7 +234,8 @@ body {
 .search-btn {
     background-color: transparent;
     color: var(--text-color);
-    border-color: transparent; /* Set border color to transparent */
+    border-color: transparent;
+    /* Set border color to transparent */
     cursor: pointer;
 }
 
@@ -265,8 +285,10 @@ body {
 /* styles.css */
 
 .shorter-input {
-    max-width: 88%; /* Adjust this value to your liking */
-    margin-bottom: 1px; /* Adjust this value to create space between the input and the button */
+    max-width: 88%;
+    /* Adjust this value to your liking */
+    margin-bottom: 1px;
+    /* Adjust this value to create space between the input and the button */
 }
 
 .no-margin {
@@ -279,7 +301,8 @@ body {
 }
 
 .chapter-select-modal {
-    z-index: 1000; /* Ensure it's on top */
+    z-index: 1000;
+    /* Ensure it's on top */
 }
 
 .chapters-list li {
@@ -293,12 +316,14 @@ body {
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 60px; /* Initial height */
+    height: 60px;
+    /* Initial height */
     background-color: var(--secondary-background);
     color: white;
     display: flex;
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 500; /* Ensure it's on top */
+    z-index: 500;
+    /* Ensure it's on top */
 
     /* Animate the height */
     transition: height 0.5s ease-in-out;
@@ -339,6 +364,7 @@ body {
     display: flex;
     align-items: center;
 }
+
 .audio-player .line-content .title {
     margin-right: 10px;
 }
@@ -363,6 +389,7 @@ body {
         opacity: 0;
         visibility: hidden;
     }
+
     to {
         opacity: 1;
         visibility: visible;
@@ -421,6 +448,7 @@ body {
         opacity: 1;
         visibility: visible;
     }
+
     to {
         opacity: 0;
         visibility: hidden;
@@ -432,7 +460,8 @@ body {
 }
 
 .playback-speed-display.visible {
-    animation-name: fadeIn; /* Only change the animation name to trigger it */
+    animation-name: fadeIn;
+    /* Only change the animation name to trigger it */
 }
 
 .audio-player .line-content .right-group {
@@ -441,8 +470,10 @@ body {
 }
 
 .audio-player.expanded {
-    height: 100vh; /* Full viewport height when expanded */
-    bottom: 0; /* Keep at bottom */
+    height: 100vh;
+    /* Full viewport height when expanded */
+    bottom: 0;
+    /* Keep at bottom */
     align-items: center;
     justify-content: space-between;
 }
@@ -463,17 +494,24 @@ body {
 
 .audio-player .top-section .retract-button {
     position: absolute;
-    top: 70px; /* Adjust as needed */
-    left: 25px; /* Adjust as needed */
-    border: none; /* Remove the border */
-    background: none; /* Remove the background */
-    padding: 0; /* Remove the padding */
-    cursor: pointer; /* Cursor as pointer */
+    top: 70px;
+    /* Adjust as needed */
+    left: 25px;
+    /* Adjust as needed */
+    border: none;
+    /* Remove the border */
+    background: none;
+    /* Remove the background */
+    padding: 0;
+    /* Remove the padding */
+    cursor: pointer;
+    /* Cursor as pointer */
     font-size: 48px;
 }
 
 .audio-player .top-section .retract-button {
-    font-size: 48px; /* Adjust as needed */
+    font-size: 48px;
+    /* Adjust as needed */
 }
 
 .audio-player .top-section {
@@ -498,21 +536,32 @@ body {
 }
 
 .audio-player button {
-    background-color: transparent; /* Button background color */
-    padding: 10px 15px; /* Padding inside the button */
-    margin-right: 20px; /* Margin to the right */
-    cursor: pointer; /* Cursor as pointer */
-    border-radius: 5px; /* Rounded corners */
+    background-color: transparent;
+    /* Button background color */
+    padding: 10px 15px;
+    /* Padding inside the button */
+    margin-right: 20px;
+    /* Margin to the right */
+    cursor: pointer;
+    /* Cursor as pointer */
+    border-radius: 5px;
+    /* Rounded corners */
 }
 
 .audio-player .line-content .title {
-    text-align: left; /* Align text to the left */
+    text-align: left;
+    /* Align text to the left */
     color: var(--text-color);
-    display: -webkit-box; /* Necessary for line clamping */
-    -webkit-line-clamp: 2; /* Limit to 2 lines */
-    -webkit-box-orient: vertical; /* Necessary for line clamping */
-    overflow: hidden; /* Hide text exceeding the line limit */
-    flex-basis: 90%; /* Adjust as needed */
+    display: -webkit-box;
+    /* Necessary for line clamping */
+    -webkit-line-clamp: 2;
+    /* Limit to 2 lines */
+    -webkit-box-orient: vertical;
+    /* Necessary for line clamping */
+    overflow: hidden;
+    /* Hide text exceeding the line limit */
+    flex-basis: 90%;
+    /* Adjust as needed */
 }
 
 .audio-player .top-section {
@@ -521,34 +570,46 @@ body {
 }
 
 .audio-player .top-section .title {
-    font-size: 2em; /* Make the title larger */
+    font-size: 2em;
+    /* Make the title larger */
     text-align: center;
-    margin: 20px 0; /* Add some vertical space around the title */
+    margin: 20px 0;
+    /* Add some vertical space around the title */
 }
 
 .audio-player .top-section .scrub-bar {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%; /* Adjusted to take full width of its container */
+    width: 100%;
+    /* Adjusted to take full width of its container */
     padding: 10px 20px;
     font-size: 0.9em;
-    margin: 10px auto; /* Adjusted to auto to center within its container */
+    margin: 10px auto;
+    /* Adjusted to auto to center within its container */
 }
 
 .audio-player .top-section .scrub-bar span {
-    flex-shrink: 0; /* Prevent shrinking */
-    margin-right: 10px; /* Space before scrub bar */
-    margin-left: 10px; /* Space after scrub bar */
+    flex-shrink: 0;
+    /* Prevent shrinking */
+    margin-right: 10px;
+    /* Space before scrub bar */
+    margin-left: 10px;
+    /* Space after scrub bar */
 }
 
 .audio-player .top-section .scrub-bar input[type="range"] {
-    -webkit-appearance: none; /* Override default appearance */
-    width: 100%; /* Full width */
-    height: 4px; /* Height of the scrub bar */
+    -webkit-appearance: none;
+    /* Override default appearance */
+    width: 100%;
+    /* Full width */
+    height: 4px;
+    /* Height of the scrub bar */
     /* background-color: var(--prog-bar-color); */
-    cursor: pointer; /* Pointer cursor on hover */
-    border-radius: 2px; /* Slightly rounded corners */
+    cursor: pointer;
+    /* Pointer cursor on hover */
+    border-radius: 2px;
+    /* Slightly rounded corners */
 }
 
 /* Styles for the thumb (slider) */
@@ -557,10 +618,14 @@ body {
     .scrub-bar
     input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 15px; /* Width of the thumb */
-    height: 15px; /* Height of the thumb */
-    background: #1db954; /* Background color */
-    border-radius: 50%; /* Circular thumb */
+    width: 15px;
+    /* Width of the thumb */
+    height: 15px;
+    /* Height of the thumb */
+    background: #1db954;
+    /* Background color */
+    border-radius: 50%;
+    /* Circular thumb */
     cursor: pointer;
 }
 
@@ -593,9 +658,11 @@ body {
 }
 
 .lower-scrub input[type="range"].flex-grow {
-    -webkit-appearance: none; /* Necessary to remove default styling in WebKit browsers */
+    -webkit-appearance: none;
+    /* Necessary to remove default styling in WebKit browsers */
     width: 100%;
-    height: 5px; /* Adjust the height of the slider track */
+    height: 5px;
+    /* Adjust the height of the slider track */
     /* background: var(--prog-bar-color, #ddd); Default background color */
     cursor: pointer;
     outline: none;
@@ -644,43 +711,55 @@ body {
 }
 
 .audio-player span {
-    text-align: left; /* Align text to the left */
+    text-align: left;
+    /* Align text to the left */
     color: var(--text-color);
 }
 
 .audio-player .top-section img {
-    max-width: 100%; /* Ensure the image doesn't exceed its container */
-    height: auto; /* Maintain aspect ratio */
-    border-radius: 0; /* Remove the rounded effect */
+    max-width: 100%;
+    /* Ensure the image doesn't exceed its container */
+    height: auto;
+    /* Maintain aspect ratio */
+    border-radius: 0;
+    /* Remove the rounded effect */
 }
 
 /* Small screens */
 @media (max-width: 600px) {
     .audio-player .top-section img {
-        width: 50vw; /* 50% of the viewport width */
+        width: 50vw;
+        /* 50% of the viewport width */
     }
 }
 
 /* Medium screens */
 @media (min-width: 601px) and (max-width: 1024px) {
     .audio-player .top-section img {
-        width: 40vw; /* 40% of the viewport width */
+        width: 40vw;
+        /* 40% of the viewport width */
     }
 }
 
 /* Large screens */
 @media (min-width: 1025px) {
     .audio-player .top-section img {
-        width: 30vw; /* 30% of the viewport width */
+        width: 30vw;
+        /* 30% of the viewport width */
     }
 }
 
 .audio-player .artwork {
-    width: 40px; /* Adjust as needed */
-    height: 40px; /* Adjust as needed */
-    border-radius: 50%; /* Make the image a circle */
-    object-fit: cover; /* Resize the image to cover the element */
-    margin-right: 10px; /* Add some space to the right of the image */
+    width: 40px;
+    /* Adjust as needed */
+    height: 40px;
+    /* Adjust as needed */
+    border-radius: 50%;
+    /* Make the image a circle */
+    object-fit: cover;
+    /* Resize the image to cover the element */
+    margin-right: 10px;
+    /* Add some space to the right of the image */
 }
 
 .artwork.playing {
@@ -691,13 +770,15 @@ body {
     0% {
         transform: rotate(0deg);
     }
+
     100% {
         transform: rotate(360deg);
     }
 }
 
 .episode-description-container a {
-    color: blue; /* or any color you prefer */
+    color: blue;
+    /* or any color you prefer */
     text-decoration: underline;
 }
 
@@ -722,7 +803,8 @@ body {
 
 .item-header {
     display: flex;
-    align-items: start; /* Ensure items are centered vertically */
+    align-items: start;
+    /* Ensure items are centered vertically */
     background-color: var(--bonus-color);
     padding: 20px;
     margin-bottom: 20px;
@@ -731,29 +813,43 @@ body {
 }
 
 .item-header-cover {
-    flex-shrink: 0; /* Prevent the image from shrinking */
-    flex-basis: 25%; /* Set a base width */
-    min-width: 150px; /* Prevent the image from becoming too small */
+    flex-shrink: 0;
+    /* Prevent the image from shrinking */
+    flex-basis: 25%;
+    /* Set a base width */
+    min-width: 150px;
+    /* Prevent the image from becoming too small */
     object-fit: cover;
     border-radius: 5px;
     margin-right: 20px;
-    height: auto; /* Adjust height automatically */
+    height: auto;
+    /* Adjust height automatically */
 }
 
 .header-add-button-container {
-    display: flex; /* Use flexbox to center the button */
-    justify-content: center; /* Center button horizontally */
-    width: 100%; /* Take the full width of its parent */
-    padding: 10px 0; /* Optional: Add some vertical padding */
-    width: 150px; /* Fixed width for the button */
+    display: flex;
+    /* Use flexbox to center the button */
+    justify-content: center;
+    /* Center button horizontally */
+    width: 100%;
+    /* Take the full width of its parent */
+    padding: 10px 0;
+    /* Optional: Add some vertical padding */
+    width: 150px;
+    /* Fixed width for the button */
 }
 
 .header-add-button {
-    display: flex; /* Use flexbox to center the button */
-    justify-content: center; /* Center button horizontally */
-    width: 100%; /* Take the full width of its parent */
-    padding: 10px 0; /* Optional: Add some vertical padding */
-    width: 150px; /* Fixed width for the button */
+    display: flex;
+    /* Use flexbox to center the button */
+    justify-content: center;
+    /* Center button horizontally */
+    width: 100%;
+    /* Take the full width of its parent */
+    padding: 10px 0;
+    /* Optional: Add some vertical padding */
+    width: 150px;
+    /* Fixed width for the button */
 }
 
 .item-header-info {
@@ -761,17 +857,20 @@ body {
 }
 
 .item-header-title {
-    font-size: 1.5em; /* Larger title size */
+    font-size: 1.5em;
+    /* Larger title size */
     font-weight: bold;
     margin-bottom: 10px;
     color: var(--text-color);
-    margin-right: 20px; /* Adds space between title and button */
+    margin-right: 20px;
+    /* Adds space between title and button */
 }
 
 .title-button-container {
     display: flex;
     align-items: center;
-    width: 100%; /* Ensures the container takes full width */
+    width: 100%;
+    /* Ensures the container takes full width */
 }
 
 .item-header-description {
@@ -807,7 +906,8 @@ body {
     color: var(--bonus-color);
     padding: 5px 10px;
     margin: 5px;
-    border-radius: 4px; /* Slightly rounded corners */
+    border-radius: 4px;
+    /* Slightly rounded corners */
     font-size: 0.8em;
 }
 
@@ -833,7 +933,8 @@ body {
 
 .import-list {
     display: flex;
-    align-items: center; /* Aligns items vertically in the center */
+    align-items: center;
+    /* Aligns items vertically in the center */
     gap: 8px;
 }
 
@@ -849,8 +950,10 @@ body {
 }
 
 .mfa-code-box {
-    background-color: var(--bonus-color); /* Replace with your desired color */
-    color: var(--text-color); /* Replace with your desired color */
+    background-color: var(--bonus-color);
+    /* Replace with your desired color */
+    color: var(--text-color);
+    /* Replace with your desired color */
 }
 
 .desc-expanded {
@@ -859,7 +962,8 @@ body {
 }
 
 .desc-collapsed {
-    max-height: 50px; /* or whatever max height you determine */
+    max-height: 50px;
+    /* or whatever max height you determine */
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -867,7 +971,8 @@ body {
 .desc-pod-collapsed {
     overflow: hidden;
     display: -webkit-box;
-    -webkit-line-clamp: 5; /* Limit to 3 lines initially */
+    -webkit-line-clamp: 5;
+    /* Limit to 3 lines initially */
     -webkit-box-orient: vertical;
 }
 
@@ -880,7 +985,8 @@ body {
     border-color: var(--border-color);
     display: flex;
     justify-content: space-between;
-    align-items: center; /* Add this line */
+    align-items: center;
+    /* Add this line */
     overflow: visible;
 }
 
@@ -891,7 +997,8 @@ body {
 .button-container {
     display: flex !important;
     align-items: center !important;
-    justify-content: center; /* Centers button horizontally */
+    justify-content: center;
+    /* Centers button horizontally */
     line-height: 1;
 }
 
@@ -900,30 +1007,40 @@ body {
     /* Styling for the button container */
     .button-container {
         display: flex;
-        flex-basis: 15%; /* Adjust this percentage based on your design needs */
+        flex-basis: 15%;
+        /* Adjust this percentage based on your design needs */
         flex-grow: 0;
         flex-shrink: 0;
         flex-direction: column;
-        align-items: center; /* Center align the buttons vertically */
-        justify-content: center; /* Center align the buttons horizontally */
+        align-items: center;
+        /* Center align the buttons vertically */
+        justify-content: center;
+        /* Center align the buttons horizontally */
         padding: 8px;
-        gap: 8px; /* Space between buttons */
+        gap: 8px;
+        /* Space between buttons */
     }
+
     .button-container button {
-        width: 60px; /* Fixed width */
-        height: 60px; /* Fixed height */
-        border-radius: 30px; /* Fully rounded borders */
+        width: 60px;
+        /* Fixed width */
+        height: 60px;
+        /* Fixed height */
+        border-radius: 30px;
+        /* Fully rounded borders */
         display: flex;
         align-items: center;
         justify-content: center;
-        border: none; /* Remove border */
+        border: none;
+        /* Remove border */
     }
 }
 
 .episode-button-container {
     display: flex !important;
     align-items: center !important;
-    justify-content: center; /* Centers button horizontally */
+    justify-content: center;
+    /* Centers button horizontally */
     line-height: 1;
 }
 
@@ -932,20 +1049,27 @@ body {
     /* Styling for the button container */
     .episode-button-container {
         display: flex;
-        flex-basis: 15%; /* Adjust this percentage based on your design needs */
+        flex-basis: 15%;
+        /* Adjust this percentage based on your design needs */
         flex-grow: 0;
         flex-shrink: 0;
-        align-items: center; /* Center align the buttons vertically */
-        justify-content: center; /* Center align the buttons horizontally */
+        align-items: center;
+        /* Center align the buttons vertically */
+        justify-content: center;
+        /* Center align the buttons horizontally */
         padding: 8px;
-        gap: 8px; /* Space between buttons */
+        gap: 8px;
+        /* Space between buttons */
     }
+
     .episode-button-container button {
-        border-radius: 30px; /* Fully rounded borders */
+        border-radius: 30px;
+        /* Fully rounded borders */
         display: flex;
         align-items: center;
         justify-content: center;
-        border: none; /* Remove border */
+        border: none;
+        /* Remove border */
     }
 }
 
@@ -963,17 +1087,22 @@ body {
 @media (max-width: 768px) {
     /* Adjust breakpoint as needed */
     .item-container img {
-        max-width: 125px; /* Smaller max width for smaller screens */
-        max-height: 125px; /* Smaller max height for smaller screens */
+        max-width: 125px;
+        /* Smaller max width for smaller screens */
+        max-height: 125px;
+        /* Smaller max height for smaller screens */
         width: 125px;
         height: 125px;
     }
 }
+
 @media (max-width: 530px) {
     /* Adjust breakpoint as needed */
     .item-container img {
-        max-width: 100px; /* Smaller max width for smaller screens */
-        max-height: 100px; /* Smaller max height for smaller screens */
+        max-width: 100px;
+        /* Smaller max width for smaller screens */
+        max-height: 100px;
+        /* Smaller max height for smaller screens */
         width: 100px;
         height: 100px;
     }
@@ -993,7 +1122,13 @@ body {
 
 /* Base styles */
 .item-container-text {
-    font-size: 1.25rem; /* example base size */
+    font-size: 1.25rem;
+    /* example base size */
+}
+
+.item-description-text {
+    font-size: 0.9rem;
+    /* example base size */
 }
 
 @media (max-width: 530px) {
@@ -1017,8 +1152,10 @@ body {
 @media (max-width: 768px) {
     /* Adjust breakpoint as needed */
     .episode-image {
-        max-width: 100px; /* Smaller max width for smaller screens */
-        max-height: 100px; /* Smaller max height for smaller screens */
+        max-width: 100px;
+        /* Smaller max width for smaller screens */
+        max-height: 100px;
+        /* Smaller max height for smaller screens */
         width: 100px;
         height: 100px;
     }
@@ -1026,8 +1163,10 @@ body {
 
 /* Additional styles for better alignment and consistency */
 .item-container {
-    align-items: center; /* Align items vertically */
-    justify-content: center; /* Center items horizontally */
+    align-items: center;
+    /* Align items vertically */
+    justify-content: center;
+    /* Center items horizontally */
 }
 
 .dragging {
@@ -1039,11 +1178,13 @@ body {
 .sliding-rail-container {
     display: flex;
     overflow-x: scroll;
-    scrollbar-width: none; /* Hide scrollbar in Firefox */
+    scrollbar-width: none;
+    /* Hide scrollbar in Firefox */
 }
 
 .sliding-rail-container::-webkit-scrollbar {
-    display: none; /* Hide scrollbar in WebKit browsers */
+    display: none;
+    /* Hide scrollbar in WebKit browsers */
 }
 
 .sliding-rail-item {
@@ -1061,20 +1202,23 @@ body {
 }
 
 .item_container-text.episode-title {
-    font-size: 1.25rem; /* Base font size for larger screens */
+    font-size: 1.25rem;
+    /* Base font size for larger screens */
 }
 
 @media (max-width: 768px) {
     /* Adjust breakpoint as needed */
     .item_container-text.episode-title {
-        font-size: 1rem; /* Smaller font size for smaller screens */
+        font-size: 1rem;
+        /* Smaller font size for smaller screens */
     }
 }
 
 @media (max-width: 480px) {
     /* Further adjustment for even smaller screens if needed */
     .item_container-text.episode-title {
-        font-size: 0.875rem; /* Even smaller font size for very small screens */
+        font-size: 0.875rem;
+        /* Even smaller font size for very small screens */
     }
 }
 
@@ -1090,15 +1234,20 @@ body {
 }
 
 .audio-top-button.selector-button:hover {
-    background-color: var(
-        --hover-color
-    ); /* Replace #your-hover-color with your desired color */
+    background-color: var(--hover-color);
+    /* Replace #your-hover-color with your desired color */
 }
 
 .drag-handle {
     color: var(--text-secondary-color);
     background-color: var(--container-button-color);
     border-color: var(--text-secondary-color);
+}
+
+.drag-handle-wrapper {
+    display: flex;
+    align-items: center; /* Vertically centers the drag handle */
+    height: 100%; /* Ensure it spans the full height of the parent */
 }
 
 .item-container-button {
@@ -1108,9 +1257,8 @@ body {
 }
 
 .item-container-button.selector-button:hover {
-    background-color: var(
-        --hover-color
-    ); /* Replace #your-hover-color with your desired color */
+    background-color: var(--hover-color);
+    /* Replace #your-hover-color with your desired color */
 }
 
 .item-header-details {
@@ -1126,7 +1274,8 @@ body {
 /* Media query for smaller screens */
 @media (max-width: 768px) {
     .item-container-button {
-        border: none; /* Remove border on small screens */
+        border: none;
+        /* Remove border on small screens */
     }
 }
 
@@ -1139,27 +1288,40 @@ body {
 
     .mobile-layout .item-header-mobile-cover-container {
         display: flex;
-        justify-content: center; /* Center horizontally */
-        align-items: center; /* Center vertically */
+        justify-content: center;
+        /* Center horizontally */
+        align-items: center;
+        /* Center vertically */
+    }
+
+    .episode-title .material-icons {
+        margin-left: 8px; /* Adjust spacing as needed */
     }
 
     .mobile-layout .item-header-mobile-cover {
         margin-top: 10px;
-        flex-shrink: 0; /* Prevent the image from shrinking */
-        flex-basis: 40%; /* Set a base width */
-        min-width: 150px; /* Prevent the image from becoming too small */
-        max-width: 250px; /* Prevent the image from becoming too large */
+        flex-shrink: 0;
+        /* Prevent the image from shrinking */
+        flex-basis: 40%;
+        /* Set a base width */
+        min-width: 150px;
+        /* Prevent the image from becoming too small */
+        max-width: 250px;
+        /* Prevent the image from becoming too large */
         object-fit: cover;
         border-radius: 5px;
         margin-right: 20px;
-        height: auto; /* Adjust height automatically */
+        height: auto;
+        /* Adjust height automatically */
     }
 
     .categories-container {
         display: flex;
         flex-wrap: wrap;
-        justify-content: center; /* Center horizontally */
-        align-items: center; /* Center vertically */
+        justify-content: center;
+        /* Center horizontally */
+        align-items: center;
+        /* Center vertically */
         padding-bottom: 10px;
     }
 
@@ -1183,17 +1345,72 @@ body {
         color: var(--text-color);
     }
 
+    .mobile-layout .header-info-episode {
+        text-align: center;
+        margin: 10px 0;
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: var(--text-color);
+    }
+
     .mobile-layout .button-row {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 10px; /* Adjust spacing as needed */
+        margin-bottom: 10px;
+        /* Adjust spacing as needed */
     }
 
     .mobile-layout .episode-action-buttons {
         display: flex;
-        flex-direction: row;
-        align-items: stretch;
-        gap: 10px; /* Adjust gap as needed */
+        flex-direction: column;
+        /* Stack button rows vertically */
+        gap: 10px;
+        /* Adjust gap as needed */
+    }
+
+    .button-row button {
+        flex: 1;
+        /* Ensure buttons take equal space */
+        position: relative;
+        border: none;
+        /* Remove default button border */
+    }
+
+    .button-row button:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 1px;
+        background-color: var(--text-color);
+        /* Adjust color and transparency as needed */
+    }
+
+    .button-row {
+        position: relative;
+    }
+
+    .button-row::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background-color: var(--text-color);
+        /* Adjust color and transparency as needed */
+    }
+
+    .button-row::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background-color: var(--text-color);
+        /* Adjust color and transparency as needed */
     }
 
     .mobile-layout .item-header-description {
@@ -1214,21 +1431,27 @@ body {
 
 .podcast-icon-button {
     padding: 0;
-    margin: 0 4px; /* Adjust as needed for spacing between buttons */
-    width: 40px; /* Adjust as needed */
-    height: 40px; /* Adjust as needed */
+    margin: 0 4px;
+    /* Adjust as needed for spacing between buttons */
+    width: 40px;
+    /* Adjust as needed */
+    height: 40px;
+    /* Adjust as needed */
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%; /* To ensure the buttons remain round */
+    border-radius: 50%;
+    /* To ensure the buttons remain round */
 }
 
 .item-container-alert-button {
     color: var(--text-color);
     background-color: var(--alert-color);
     border: 1px solid var(--border-color);
-    border-radius: 5px; /* Adjust as needed */
-    padding: 10px 20px; /* Adjust as needed */
+    border-radius: 5px;
+    /* Adjust as needed */
+    padding: 10px 20px;
+    /* Adjust as needed */
     margin-left: 10px;
     margin-right: 10px;
 }
@@ -1255,16 +1478,20 @@ button.item-container-action-button.item-container-action-button {
     line-height: 1;
     /* Adjust the size if necessary */
 }
+
 .material-standard-color {
     color: var(--text-color);
 }
+
 .material-bonus-color {
     color: var(--text-secondary-color);
 }
+
 .large-material-icons {
     width: 40px;
     height: 40px;
-    font-size: 36px !important; /* Or whatever size you prefer */
+    font-size: 36px !important;
+    /* Or whatever size you prefer */
 }
 
 .icon-space {
@@ -1329,7 +1556,8 @@ button.item-container-action-button.item-container-action-button {
 
 .large-card-content {
     margin-top: 1rem;
-    text-align: center; /* Center the content */
+    text-align: center;
+    /* Center the content */
 }
 
 .large-card-link {
@@ -1341,7 +1569,8 @@ button.item-container-action-button.item-container-action-button {
 
 .large-card-paragraph {
     margin-top: 1rem;
-    text-align: center; /* Center the paragraph text */
+    text-align: center;
+    /* Center the paragraph text */
 }
 
 .search-container {
@@ -1364,39 +1593,49 @@ button.item-container-action-button.item-container-action-button {
     width: 60%;
     transition: all 1s ease-in-out;
     position: absolute;
-    top: 40%; /* Start from the center of the screen */
-    left: 50%; /* Start from the center of the screen */
-    transform: translate(
-        -50%,
-        -50%
-    ); /* Move up and left by half of its own width and height */
-    z-index: 1; /* Ensure it's on top */
+    top: 40%;
+    /* Start from the center of the screen */
+    left: 50%;
+    /* Start from the center of the screen */
+    transform: translate(-50%, -50%);
+    /* Move up and left by half of its own width and height */
+    z-index: 1;
+    /* Ensure it's on top */
 }
 
 /* Styles for smaller screens */
 @media (max-width: 768px) {
     .search-page-input {
-        width: 90%; /* Increase width to 90% of the viewport */
+        width: 90%;
+        /* Increase width to 90% of the viewport */
     }
 }
 
 @media (max-width: 520px) {
     .search-page-input {
-        width: 100%; /* Increase width to 90% of the viewport */
+        width: 100%;
+        /* Increase width to 90% of the viewport */
     }
 }
 
 .search-page-input.move-to-top {
-    top: 25px; /* Move to the top of the screen */
-    left: 50%; /* Move to the left of the screen */
-    transform: translate(-50%, 0); /* Keep the element at the top */
+    top: 25px;
+    /* Move to the top of the screen */
+    left: 50%;
+    /* Move to the left of the screen */
+    transform: translate(-50%, 0);
+    /* Keep the element at the top */
 }
 
 .episode-time-badge {
-    color: var(--text-color); /* Dark gray text */
-    font-size: 0.875rem; /* Larger text */
-    display: inline-flex; /* Keeps elements in line but allows for internal flex properties */
-    align-items: center; /* Aligns children vertically in the center */
+    color: var(--text-color);
+    /* Dark gray text */
+    font-size: 0.875rem;
+    /* Larger text */
+    display: inline-flex;
+    /* Keeps elements in line but allows for internal flex properties */
+    align-items: center;
+    /* Aligns children vertically in the center */
 }
 
 .time-icon {
@@ -1404,20 +1643,23 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .tab.active {
-    background-color: var(--secondary-background); /* Light gray background */
-    color: var(--text-color); /* Darker text color */
-    border-bottom-color: transparent; /* Hide bottom border */
+    background-color: var(--secondary-background);
+    /* Light gray background */
+    color: var(--text-color);
+    /* Darker text color */
+    border-bottom-color: transparent;
+    /* Hide bottom border */
 }
 
 /* Example background colors */
 .bg-custom-light {
-    background-color: var(
-        --secondary-background
-    ); /* Adjust the color as needed */
+    background-color: var(--secondary-background);
+    /* Adjust the color as needed */
 }
 
 .bg-custom-dark {
-    background-color: var(--background-color); /* Adjust the color as needed */
+    background-color: var(--background-color);
+    /* Adjust the color as needed */
 }
 
 .setting-box {
@@ -1429,29 +1671,36 @@ button.item-container-action-button.item-container-action-button {
 
 /* Specific targeting for first and last accordion item */
 #accordion-collapse > :first-child > button {
-    border-top-left-radius: 0.75rem; /* 12px */
-    border-top-right-radius: 0.75rem; /* 12px */
+    border-top-left-radius: 0.75rem;
+    /* 12px */
+    border-top-right-radius: 0.75rem;
+    /* 12px */
 }
 
 #accordion-collapse > :last-child > button {
-    border-bottom-left-radius: 0.75rem; /* 12px */
-    border-bottom-right-radius: 0.75rem; /* 12px */
+    border-bottom-left-radius: 0.75rem;
+    /* 12px */
+    border-bottom-right-radius: 0.75rem;
+    /* 12px */
 }
 
 /* Background color for accordion content */
 .accordion-content {
-    background-color: var(
-        --secondary-background
-    ); /* Example color, adjust as needed */
+    background-color: var(--secondary-background);
+    /* Example color, adjust as needed */
     color: --var(--text-color);
 }
 
 /* Background color for accordion arrow */
 .accordion-arrow {
-    background-color: transparent; /* Transparent background */
-    position: relative; /* Relative position */
-    width: 24px; /* Define width */
-    height: 24px; /* Define height */
+    background-color: transparent;
+    /* Transparent background */
+    position: relative;
+    /* Relative position */
+    width: 24px;
+    /* Define width */
+    height: 24px;
+    /* Define height */
 }
 
 .hosts-arrow {
@@ -1464,18 +1713,23 @@ button.item-container-action-button.item-container-action-button {
 .accordion-button:hover::before {
     content: "";
     position: absolute;
-    top: 50%; /* Center the circle vertically relative to the button */
-    left: 50%; /* Center the circle horizontally relative to the button */
-    transform: translate(
-        -50%,
-        -50%
-    ); /* Offset the centering to the exact middle */
+    top: 50%;
+    /* Center the circle vertically relative to the button */
+    left: 50%;
+    /* Center the circle horizontally relative to the button */
+    transform: translate(-50%, -50%);
+    /* Offset the centering to the exact middle */
     left: calc(100% - 26px);
-    width: 30px; /* Smaller width, adjust based on your arrow or button size */
-    height: 30px; /* Smaller height, match width for circle */
-    background-color: var(--hover-color); /* Example color, adjust as needed */
-    border-radius: 50%; /* Rounded shape */
-    z-index: 0; /* Ensure it's visible above the button background but below text/icons */
+    width: 30px;
+    /* Smaller width, adjust based on your arrow or button size */
+    height: 30px;
+    /* Smaller height, match width for circle */
+    background-color: var(--hover-color);
+    /* Example color, adjust as needed */
+    border-radius: 50%;
+    /* Rounded shape */
+    z-index: 0;
+    /* Ensure it's visible above the button background but below text/icons */
 }
 
 /* Styles for the select dropdown */
@@ -1515,21 +1769,24 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .email-input {
-    background-color: var(
-        --background-color
-    ); /* Change to your desired background color */
-    color: var(--button-text-color); /* Change to your desired text color */
-    border: 1px solid var(--border-color); /* You can change this as needed */
-    padding: 8px; /* Adjust padding as needed */
-    border-radius: 4px; /* Rounded corners */
+    background-color: var(--background-color);
+    /* Change to your desired background color */
+    color: var(--button-text-color);
+    /* Change to your desired text color */
+    border: 1px solid var(--border-color);
+    /* You can change this as needed */
+    padding: 8px;
+    /* Adjust padding as needed */
+    border-radius: 4px;
+    /* Rounded corners */
 }
 
 .email-input::placeholder {
     /* Chrome, Firefox, Opera, Safari 10.1+ */
-    color: var(
-        --accent-color
-    ); /* Change to your desired placeholder text color */
-    opacity: 1; /* Firefox */
+    color: var(--accent-color);
+    /* Change to your desired placeholder text color */
+    opacity: 1;
+    /* Firefox */
 }
 
 .email-input:-ms-input-placeholder {
@@ -1543,13 +1800,16 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .email-select {
-    background-color: var(
-        --background-color
-    ); /* Change to your desired background color */
-    color: var(--text-color); /* Change to your desired text color */
-    border: 1px solid var(--border-color); /* You can change this as needed */
-    padding: 8px; /* Adjust padding as needed */
-    border-radius: 4px; /* Rounded corners */
+    background-color: var(--background-color);
+    /* Change to your desired background color */
+    color: var(--text-color);
+    /* Change to your desired text color */
+    border: 1px solid var(--border-color);
+    /* You can change this as needed */
+    padding: 8px;
+    /* Adjust padding as needed */
+    border-radius: 4px;
+    /* Rounded corners */
 }
 
 .settings-button {
@@ -1559,9 +1819,11 @@ button.item-container-action-button.item-container-action-button {
     margin-bottom: 10px;
     margin-top: 10px;
     display: inline-block;
-    padding: 5px 10px; /* Adjust as needed */
+    padding: 5px 10px;
+    /* Adjust as needed */
     cursor: pointer;
-    border-radius: 5px; /* Adjust as needed */
+    border-radius: 5px;
+    /* Adjust as needed */
     border: 1px solid var(--button-border-color);
 }
 
@@ -1570,16 +1832,19 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .input-button {
-    display: none; /* Hide the default file input */
+    display: none;
+    /* Hide the default file input */
 }
 
 .input-button-label {
     display: inline-block;
-    padding: 10px 20px; /* Adjust as needed */
+    padding: 10px 20px;
+    /* Adjust as needed */
     background-color: var(--button-color);
     color: var(--button-text-color);
     cursor: pointer;
-    border-radius: 5px; /* Adjust as needed */
+    border-radius: 5px;
+    /* Adjust as needed */
     border: 1px solid var(--button-border-color);
 }
 
@@ -1588,16 +1853,20 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .dropdown-content-class {
-    top: 100%; /* Position just below the button */
-    right: 0; /* Align with the left edge of the button */
+    top: 100%;
+    /* Position just below the button */
+    right: 0;
+    /* Align with the left edge of the button */
     background-color: var(--background-color);
     border-color: var(--border-color);
     /* ... other styles ... */
 }
 
 .search-dropdown-content-class {
-    top: 100%; /* Position just below the button */
-    left: 0; /* Align with the left edge of the button */
+    top: 100%;
+    /* Position just below the button */
+    left: 0;
+    /* Align with the left edge of the button */
     background-color: var(--background-color);
     border-color: var(--border-color);
     /* ... other styles ... */
@@ -1615,52 +1884,58 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .dropdown-button:hover {
-    background-color: var(--hover-color); /* Add your hover color here */
+    background-color: var(--hover-color);
+    /* Add your hover color here */
 }
 
 .dropdown-button:hover {
-    background-color: var(--hover-color); /* Change background color on hover */
+    background-color: var(--hover-color);
+    /* Change background color on hover */
 }
 
 .dropdown-option {
     cursor: pointer;
     padding: 0.5rem 1rem;
-    border-bottom: 1px solid #eee; /* Border for each option */
+    border-bottom: 1px solid #eee;
+    /* Border for each option */
     transition: background-color 0.3s;
     /* Remove the background-color property */
     color: var(--text-color);
 }
 
 .dropdown-option:hover {
-    background-color: var(--hover-color); /* Add your hover color here */
+    background-color: var(--hover-color);
+    /* Add your hover color here */
 }
 
 .dropdown-option:last-child {
-    border-bottom: none; /* Remove border for the last option */
+    border-bottom: none;
+    /* Remove border for the last option */
 }
 
 .dropdown-option:hover {
-    background-color: var(--hover-color); /* Change background color on hover */
+    background-color: var(--hover-color);
+    /* Change background color on hover */
 }
 
 .table-header {
     text-transform: uppercase;
-    background-color: var(
-        --bonus-color
-    ); /* Light gray background for table header */
+    background-color: var(--bonus-color);
+    /* Light gray background for table header */
     color: var(--text-color);
 }
 
 .table-row {
     background-color: var(--secondary-background);
-    color: var(--text-color); /* Regular font color */
-    cursor: pointer; /* Change cursor to pointer */
+    color: var(--text-color);
+    /* Regular font color */
+    cursor: pointer;
+    /* Change cursor to pointer */
 }
 
 .table-row:hover {
-    background-color: var(
-        --secondary-background
-    ); /* Slightly darker background on hover */
+    background-color: var(--secondary-background);
+    /* Slightly darker background on hover */
 }
 
 .episode-top-info {
@@ -1676,42 +1951,53 @@ button.item-container-action-button.item-container-action-button {
     object-fit: cover;
     padding-right: 10px;
 }
+
 .episode-mobile-artwork {
     /* Adjust to scale with page size */
     max-width: 30%;
     height: auto;
     object-fit: cover;
 }
+
 .episode-details {
     display: flex;
     flex-direction: column;
 }
 
 .custom-volume-button {
-    margin-top: 9px; /* Adjust the value as needed */
+    margin-top: 9px;
+    /* Adjust the value as needed */
 }
 
 .podcast-title {
     /* Larger font size for podcast title */
-    font-size: 1.75rem; /* Adjust as needed */
+    font-size: 1.75rem;
+    /* Adjust as needed */
     color: var(--text-color);
-    font-weight: bold; /* Make the title bold */
-    margin-bottom: 0.5rem; /* Add some space below the title */
+    font-weight: bold;
+    /* Make the title bold */
+    margin-bottom: 0.5rem;
+    /* Add some space below the title */
 }
 
 .episode-title {
-    font-size: 1.5rem; /* Adjust as needed */
+    font-size: 1.5rem;
+    /* Adjust as needed */
     color: var(--text-color);
-    font-weight: bold; /* Make the title bold */
-    margin-bottom: 0.5rem; /* Add some space below the title */
+    font-weight: bold;
+    /* Make the title bold */
+    margin-bottom: 0.5rem;
+    /* Add some space below the title */
 }
 
 .episode-duration,
 .episode-release-date {
     /* Style for duration and release date */
-    font-size: 1rem; /* Adjust as needed */
+    font-size: 1rem;
+    /* Adjust as needed */
     color: var(--text-color);
-    font-style: italic; /* Make the text italic */
+    font-style: italic;
+    /* Make the text italic */
 }
 
 .episode-action-buttons {
@@ -1722,25 +2008,32 @@ button.item-container-action-button.item-container-action-button {
 .episode-action-buttons button {
     background-color: transparent;
     color: var(--text-color);
-    padding: 2px 5px 10px 15px; /* Add padding to the bottom */
+    padding: 2px 5px 10px 15px;
+    /* Add padding to the bottom */
     font-size: 1rem;
-    font-weight: 500; /* Equivalent to font-medium */
+    font-weight: 500;
+    /* Equivalent to font-medium */
     line-height: normal;
-    flex-grow: 1; /* Make buttons take up equal space */
+    flex-grow: 1;
+    /* Make buttons take up equal space */
     text-align: center;
     transition:
         color 0.15s ease-in-out,
-        background-color 0.15s ease-in-out; /* Add transition for background-color */
-    border-radius: 5px; /* Round the corners */
+        background-color 0.15s ease-in-out;
+    /* Add transition for background-color */
+    border-radius: 5px;
+    /* Round the corners */
 }
 
 .no-media-warning {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 3px 12px; /* Adjust padding to match your buttons */
+    padding: 3px 12px;
+    /* Adjust padding to match your buttons */
     font-weight: bold;
-    margin-bottom: 10px; /* Bottom padding as requested */
+    margin-bottom: 10px;
+    /* Bottom padding as requested */
 }
 
 .episode-action-buttons .no-media-warning {
@@ -1753,30 +2046,36 @@ button.item-container-action-button.item-container-action-button {
 
 .episode-action-buttons .play-button {
     position: relative;
-    top: -2px; /* Adjust this value as needed */
+    top: -2px;
+    /* Adjust this value as needed */
 }
 
 .episode-action-buttons i.material-icons {
     position: relative;
-    top: 7px; /* Adjust this value as needed */
-    margin-right: 5px; /* Add some space to the right of the icon */
+    top: 7px;
+    /* Adjust this value as needed */
+    margin-right: 5px;
+    /* Add some space to the right of the icon */
 }
 
 .episode-action-buttons button:hover {
     background-color: var(--hover-color);
     color: var(--text-color);
-    border-color: var(--hover-color); /* Change border color on hover */
+    border-color: var(--hover-color);
+    /* Change border color on hover */
 }
 
 .episode-action-buttons button:focus {
     color: var(--text-color);
     outline: none;
-    border-color: var(--focus-color); /* Change border color on focus */
+    border-color: var(--focus-color);
+    /* Change border color on focus */
 }
 
 .episode-action-buttons button:active {
     color: var(--text-color);
-    border-color: var(--active-color); /* Change border color on active */
+    border-color: var(--active-color);
+    /* Change border color on active */
 }
 
 .episode-description {
@@ -1785,7 +2084,8 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .episode-single-desc {
-    margin-top: 12px; /* Add space above the description */
+    margin-top: 12px;
+    /* Add space above the description */
     /* ...rest of the styles */
 }
 
@@ -1813,19 +2113,24 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .progress-bar-container {
-    height: 10px; /* Or whatever height you prefer */
-    background-color: var(
-        --prog-bar-color
-    ); /* Background of the unfulfilled part */
-    width: 100%; /* Or adjust to fit your layout */
-    border-radius: 5px; /* Optional, for rounded corners */
+    height: 10px;
+    /* Or whatever height you prefer */
+    background-color: var(--prog-bar-color);
+    /* Background of the unfulfilled part */
+    width: 100%;
+    /* Or adjust to fit your layout */
+    border-radius: 5px;
+    /* Optional, for rounded corners */
 }
 
 .progress-bar {
     height: 100%;
-    background-color: var(--link-color); /* Or any color you prefer */
-    border-radius: 5px; /* Match container's border-radius */
-    transition: width 0.5s ease-in-out; /* Smooth transition for changes, optional */
+    background-color: var(--link-color);
+    /* Or any color you prefer */
+    border-radius: 5px;
+    /* Match container's border-radius */
+    transition: width 0.5s ease-in-out;
+    /* Smooth transition for changes, optional */
 }
 
 .cursor-pointer:hover {
@@ -1834,7 +2139,8 @@ button.item-container-action-button.item-container-action-button {
 
 .time-display {
     display: inline-block;
-    width: 80px; /* Adjust this width based on the maximum expected length of the time strings */
+    width: 80px;
+    /* Adjust this width based on the maximum expected length of the time strings */
     text-align: center;
 }
 
@@ -1843,26 +2149,37 @@ button.item-container-action-button.item-container-action-button {
     100% {
         opacity: 0;
     }
+
     50% {
         opacity: 1;
     }
 }
+
 .loading-animation {
     display: flex;
     justify-content: center;
-    align-items: start; /* Align items to the start of the container */
-    width: 100%; /* Full width of the container */
-    height: 100vh; /* Full height of the viewport */
-    position: relative; /* Necessary for absolute positioning of children */
-    padding-top: 6vh; /* Adjust this value as needed to move the animation down from the top */
+    align-items: start;
+    /* Align items to the start of the container */
+    width: 100%;
+    /* Full width of the container */
+    height: 100vh;
+    /* Full height of the viewport */
+    position: relative;
+    /* Necessary for absolute positioning of children */
+    padding-top: 6vh;
+    /* Adjust this value as needed to move the animation down from the top */
 }
 
 .loading-animation div {
-    position: absolute; /* Align images directly on top of each other */
-    width: 500px; /* Set width */
-    height: 500px; /* Set height */
+    position: absolute;
+    /* Align images directly on top of each other */
+    width: 500px;
+    /* Set width */
+    height: 500px;
+    /* Set height */
     background-size: cover;
-    animation: frameAnimation 3s infinite; /* Total animation duration adjusted to 3 seconds */
+    animation: frameAnimation 3s infinite;
+    /* Total animation duration adjusted to 3 seconds */
 }
 
 /* Apply negative delays here */
@@ -1870,22 +2187,27 @@ button.item-container-action-button.item-container-action-button {
     background-image: url("./assets/images/og-same.png");
     animation-delay: -4.5s;
 }
+
 .loading-animation .frame2 {
     background-image: url("./assets/images/low5.png");
     animation-delay: -4s;
 }
+
 .loading-animation .frame3 {
     background-image: url("./assets/images/low4.png");
     animation-delay: -3.5s;
 }
+
 .loading-animation .frame4 {
     background-image: url("./assets/images/low3.png");
     animation-delay: -3s;
 }
+
 .loading-animation .frame5 {
     background-image: url("./assets/images/low2.png");
     animation-delay: -2.5s;
 }
+
 .loading-animation .frame6 {
     background-image: url("./assets/images/low1.png");
     animation-delay: -2s;

@@ -10,13 +10,28 @@ use std::str::FromStr;
 use wasm_bindgen::JsCast;
 use web_sys::{DomParser, SupportedType};
 
+// pub fn format_date(date_str: &str) -> String {
+//     let date =
+//         chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").unwrap_or_else(|_| {
+//             chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
+//                 .unwrap()
+//                 .naive_utc()
+//         }); // Fallback for parsing error
+//     date.format("%m-%d-%Y").to_string()
+// }
+
 pub fn format_date(date_str: &str) -> String {
-    let date =
-        chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").unwrap_or_else(|_| {
-            chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
-                .unwrap()
-                .naive_utc()
-        }); // Fallback for parsing error
+    // Try parsing with the MySQL format
+    let date = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+        // If that fails, try the PostgreSQL format
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S%.f"))
+        // If both parsing attempts fail, fallback to the Unix epoch
+        .unwrap_or_else(|_| {
+            DateTime::<Utc>::from_timestamp(0, 0)
+                .map(|dt| dt.naive_utc())
+                .expect("invalid timestamp")
+        });
+
     date.format("%m-%d-%Y").to_string()
 }
 

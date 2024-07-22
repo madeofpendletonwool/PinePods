@@ -1,7 +1,6 @@
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_wasm_bindgen::to_value;
 use std::collections::HashMap;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -571,6 +570,47 @@ pub async fn call_get_queued_episodes(
     Ok(response_data.data)
 }
 
+#[derive(Serialize)]
+struct ReorderPayload {
+    episode_ids: Vec<i32>,
+}
+
+pub async fn call_reorder_queue(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    episode_ids: &Vec<i32>,
+) -> Result<(), Error> {
+    // Build the URL
+    let url = format!("{}/api/data/reorder_queue?user_id={}", server_name, user_id);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    // Create the payload
+    let payload = ReorderPayload {
+        episode_ids: episode_ids.clone(),
+    };
+
+    // Send the request
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .json(&payload)?
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to reorder queue: {}",
+            response.status_text()
+        )));
+    }
+
+    Ok(())
+}
+
 // Save episode calls
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -1100,6 +1140,7 @@ pub async fn call_get_episode_metadata(
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[allow(non_snake_case)]
 pub struct Chapter {
     pub startTime: Option<i32>, // Changed to Option<String>
     pub title: String,
@@ -1172,9 +1213,6 @@ pub async fn call_fetch_podcasting_2_data(
         .text()
         .await
         .map_err(|e| Error::msg(format!("Failed to read response text: {}", e)))?;
-
-    // Print the response text to diagnose the issue
-    web_sys::console::log_1(&response_text.clone().into());
 
     let response_data: Podcasting2Data = serde_json::from_str(&response_text)
         .map_err(|e| Error::msg(format!("Deserialization Error: {}", e)))?;
@@ -1260,9 +1298,6 @@ pub async fn call_fetch_podcasting_2_pod_data(
         .text()
         .await
         .map_err(|e| Error::msg(format!("Failed to read response text: {}", e)))?;
-
-    // Print the response text to diagnose the issue
-    web_sys::console::log_1(&response_text.clone().into());
 
     let response_data: Podcasting2PodData = serde_json::from_str(&response_text)
         .map_err(|e| Error::msg(format!("Deserialization Error: {}", e)))?;
@@ -1523,10 +1558,6 @@ pub async fn call_get_podcast_details(
             .await
             .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
 
-        // Convert to JsValue and print to console
-        let js_value = to_value(&response_data.details)
-            .map_err(|e| Error::msg(format!("Failed to convert to JsValue: {}", e)))?;
-        web_sys::console::log_1(&js_value);
         Ok(response_data.details)
     } else {
         Err(Error::msg(format!(

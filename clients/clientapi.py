@@ -2808,6 +2808,29 @@ async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_databas
         raise HTTPException(status_code=403,
                             detail="You can only get episodes from your own queue!")
 
+class ReorderRequest(BaseModel):
+    episode_ids: List[int]
+
+@app.post("/api/data/reorder_queue")
+async def reorder_queue(request: ReorderRequest, user_id: int = Query(...), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        success = database_functions.functions.reorder_queued_episodes(database_type, cnx, user_id, request.episode_ids)
+        if success:
+            return {"message": "Queue reordered successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to reorder the queue")
+    else:
+        raise HTTPException(status_code=403, detail="You can only reorder your own queue!")
 
 @app.get("/api/data/check_episode_in_db/{user_id}")
 async def check_episode_in_db(user_id: int, episode_title: str = Query(...), episode_url: str = Query(...), cnx=Depends(get_database_connection),

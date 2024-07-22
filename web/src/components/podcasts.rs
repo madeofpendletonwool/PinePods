@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::app_drawer::App_drawer;
@@ -11,7 +10,6 @@ use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponse, RemovePodcastValues};
 use wasm_bindgen::prelude::*;
-use web_sys::console;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -127,7 +125,7 @@ pub fn podcasts() -> Html {
                                     });
                                 });
                             }
-                            Err(e) => console::log_1(
+                            Err(e) => web_sys::console::log_1(
                                 &format!("Unable to parse Podcasts: {:?}", &e).into(),
                             ),
                         }
@@ -163,7 +161,6 @@ pub fn podcasts() -> Html {
                             let api_key_iter = api_key.clone();
                             let server_name_iter = server_name.clone().unwrap();
                             let history = history_clone.clone();
-                            web_sys::console::log_1(&format!("Podcast categories: {:?}", podcast.categories.clone()).into());
 
                             // let id_string = &podcast.PodcastID.to_string();
 
@@ -229,7 +226,6 @@ pub fn podcasts() -> Html {
                                     }
                                 })
                             };
-                            web_sys::console::log_1(&format!("Podcast categories direct before pass to hash: {:?}", podcast.categories.clone()).into());
 
                             let on_title_click = create_on_title_click(
                                 dispatch.clone(),
@@ -287,17 +283,17 @@ pub fn podcasts() -> Html {
                                                 src={podcast.artworkurl.clone()}
                                                 onclick={on_title_click.clone()}
                                                 alt={format!("Cover for {}", podcast.podcastname.clone())}
-                                                class="object-cover align-top-cover w-full item-container img"
+                                                class="episode-image"
                                             />
                                         </div>
                                         <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                            <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click}>
+                                            <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
                                                 { &podcast.podcastname }
                                             </p>
                                             <hr class="my-2 border-t hidden md:block"/>
                                             {
                                                 html! {
-                                                    <div class="item-container-text hidden md:block">
+                                                    <div class="item-description-text hidden md:block">
                                                         <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                                             <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                                         </div>

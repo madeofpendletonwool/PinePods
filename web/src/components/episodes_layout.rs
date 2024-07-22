@@ -1,6 +1,6 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::ContextButton;
-use super::gen_components::{EpisodeTrait, Search_nav, UseScrollToTop};
+use super::gen_components::{on_shownotes_click, EpisodeTrait, Search_nav, UseScrollToTop};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::{on_play_click, AudioPlayer};
 use crate::components::context::{AppState, UIState};
@@ -270,7 +270,6 @@ pub fn episode_layout() -> Html {
         || ()
     });
 
-    let width_state = state.clone();
     {
         let audio_dispatch = _dispatch.clone();
 
@@ -280,15 +279,6 @@ pub fn episode_layout() -> Html {
             let width = window.inner_width().unwrap().as_f64().unwrap();
             let new_is_mobile = width < 768.0;
             audio_dispatch.reduce_mut(|state| state.is_mobile = Some(new_is_mobile));
-            web_sys::console::log_1(&JsValue::from_str(&format!("Width: {}", width)));
-            web_sys::console::log_1(&JsValue::from_str(&format!(
-                "New is_mobile: {}",
-                new_is_mobile
-            )));
-            web_sys::console::log_1(&JsValue::from_str(&format!(
-                "State is_mobile: {}",
-                width_state.is_mobile.unwrap_or(false)
-            )));
         }
 
         // Resize event listener
@@ -299,15 +289,6 @@ pub fn episode_layout() -> Html {
                 let width = closure_window.inner_width().unwrap().as_f64().unwrap();
                 let new_is_mobile = width < 768.0;
                 audio_dispatch.reduce_mut(|state| state.is_mobile = Some(new_is_mobile));
-                web_sys::console::log_1(&JsValue::from_str(&format!("Width: {}", width)));
-                web_sys::console::log_1(&JsValue::from_str(&format!(
-                    "New is_mobile: {}",
-                    new_is_mobile
-                )));
-                web_sys::console::log_1(&JsValue::from_str(&format!(
-                    "State is_mobile: {}",
-                    width_state.is_mobile.unwrap_or(false)
-                )));
             }) as Box<dyn Fn()>);
 
             window
@@ -455,18 +436,6 @@ pub fn episode_layout() -> Html {
                                             state.podcast_podroll = Some(podroll);
                                             state.podcast_people = Some(people);
                                         });
-                                        web_sys::console::log_1(
-                                            &format!("value: {:?}", response.value).into(),
-                                        );
-                                        web_sys::console::log_1(
-                                            &format!("funding: {:?}", response.funding).into(),
-                                        );
-                                        web_sys::console::log_1(
-                                            &format!("podroll: {:?}", response.podroll).into(),
-                                        );
-                                        web_sys::console::log_1(
-                                            &format!("people: {:?}", response.people).into(),
-                                        );
                                     }
                                     Err(e) => {
                                         web_sys::console::log_1(
@@ -494,6 +463,7 @@ pub fn episode_layout() -> Html {
     });
 
     // Function to handle link clicks
+    let history_handle = history.clone();
     let handle_click = Callback::from(move |event: MouseEvent| {
         if let Some(target) = event.target_dyn_into::<web_sys::HtmlElement>() {
             if let Some(href) = target.get_attribute("href") {
@@ -506,7 +476,7 @@ pub fn episode_layout() -> Html {
                         .unwrap();
                 } else {
                     // Internal link, use Yew Router to navigate
-                    history.push(href);
+                    history_handle.push(href);
                 }
             }
         }
@@ -560,162 +530,73 @@ pub fn episode_layout() -> Html {
         });
     }
 
-    let toggle_podcast = {
+    let delete_all_click = {
         let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
 
         let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-        let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
-        let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
-        let categories_og = pod_values
-            .clone()
-            .unwrap()
-            .podcast_categories
-            .unwrap()
-            .clone();
-        let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
-        let pod_episode_count_og = pod_values.clone().unwrap().podcast_episode_count.clone();
         let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
-        let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
-        let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
         let user_id_og = user_id.unwrap().clone();
 
         let api_key_clone = api_key.clone();
         let server_name_clone = server_name.clone();
-        let user_id_clone = user_id.clone();
         let app_dispatch = _search_dispatch.clone();
+        let call_is_added = is_added.clone();
 
-        let is_added = is_added.clone();
-
-        if *is_added == true {
-            Callback::from(move |_: MouseEvent| {
-                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
-                let is_added_inner = is_added.clone();
-                let call_dispatch = add_dispatch.clone();
-                let pod_title = pod_title_og.clone();
-                let pod_feed_url = pod_feed_url_og.clone();
-                let user_id = user_id_og.clone();
-                let podcast_values = RemovePodcastValuesName {
-                    podcast_name: pod_title,
-                    podcast_url: pod_feed_url,
-                    user_id: user_id,
-                };
-                let api_key_call = api_key_clone.clone();
-                let server_name_call = server_name_clone.clone();
-                let app_dispatch = app_dispatch.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    let dispatch_wasm = call_dispatch.clone();
-                    let api_key_wasm = api_key_call.clone().unwrap();
-                    let server_name_wasm = server_name_call.clone();
-                    let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
-                    match call_remove_podcasts_name(
-                        &server_name_wasm.unwrap(),
-                        &api_key_wasm,
-                        &pod_values_clone,
-                    )
-                    .await
-                    {
-                        Ok(success) => {
-                            if success {
-                                dispatch_wasm.reduce_mut(|state| {
-                                    state.info_message =
-                                        Option::from("Podcast successfully removed".to_string())
-                                });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                is_added_inner.set(false);
-                            } else {
-                                dispatch_wasm.reduce_mut(|state| {
-                                    state.error_message =
-                                        Option::from("Failed to add podcast".to_string())
-                                });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                            }
-                        }
-                        Err(e) => {
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            let is_added_inner = call_is_added.clone();
+            let call_dispatch = add_dispatch.clone();
+            let pod_title = pod_title_og.clone();
+            let pod_feed_url = pod_feed_url_og.clone();
+            let user_id = user_id_og.clone();
+            let podcast_values = RemovePodcastValuesName {
+                podcast_name: pod_title,
+                podcast_url: pod_feed_url,
+                user_id: user_id,
+            };
+            let api_key_call = api_key_clone.clone();
+            let server_name_call = server_name_clone.clone();
+            let app_dispatch = app_dispatch.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let dispatch_wasm = call_dispatch.clone();
+                let api_key_wasm = api_key_call.clone().unwrap();
+                let server_name_wasm = server_name_call.clone();
+                let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
+                match call_remove_podcasts_name(
+                    &server_name_wasm.unwrap(),
+                    &api_key_wasm,
+                    &pod_values_clone,
+                )
+                .await
+                {
+                    Ok(success) => {
+                        if success {
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Podcast successfully removed".to_string())
+                            });
+                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            is_added_inner.set(false);
+                        } else {
                             dispatch_wasm.reduce_mut(|state| {
                                 state.error_message =
-                                    Option::from(format!("Error adding podcast: {:?}", e))
+                                    Option::from("Failed to remove podcast".to_string())
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
-                });
-            })
-        } else {
-            Callback::from(move |_: MouseEvent| {
-                // Ensure this is triggered only by a MouseEvent
-                let app_dispatch = app_dispatch.clone();
-                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
-                let is_added_inner = is_added.clone();
-                let call_dispatch = add_dispatch.clone();
-                let pod_title = pod_title_og.clone();
-                let pod_artwork = pod_artwork_og.clone();
-                let pod_author = pod_author_og.clone();
-                let categories = categories_og.clone();
-                let pod_description = pod_description_og.clone();
-                let pod_episode_count = pod_episode_count_og.clone();
-                let pod_feed_url = pod_feed_url_og.clone();
-                let pod_website = pod_website_og.clone();
-                let pod_explicit = pod_explicit_og.clone();
-                let user_id = user_id_og.clone();
-                let podcast_values = PodcastValues {
-                    pod_title,
-                    pod_artwork,
-                    pod_author,
-                    categories,
-                    pod_description,
-                    pod_episode_count,
-                    pod_feed_url,
-                    pod_website,
-                    pod_explicit,
-                    user_id,
-                };
-                let api_key_call = api_key_clone.clone();
-                let server_name_call = server_name_clone.clone();
-                let user_id_call = user_id_clone.clone();
-
-                wasm_bindgen_futures::spawn_local(async move {
-                    let dispatch_wasm = call_dispatch.clone();
-                    let api_key_wasm = api_key_call.clone().unwrap();
-                    let user_id_wasm = user_id_call.clone().unwrap();
-                    let server_name_wasm = server_name_call.clone();
-                    let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
-
-                    match call_add_podcast(
-                        &server_name_wasm.unwrap(),
-                        &api_key_wasm,
-                        user_id_wasm,
-                        &pod_values_clone,
-                    )
-                    .await
-                    {
-                        Ok(success) => {
-                            if success {
-                                dispatch_wasm.reduce_mut(|state| {
-                                    state.info_message =
-                                        Option::from("Podcast successfully added".to_string())
-                                });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                is_added_inner.set(true);
-                            } else {
-                                dispatch_wasm.reduce_mut(|state| {
-                                    state.error_message =
-                                        Option::from("Failed to add podcast".to_string())
-                                });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                            }
-                        }
-                        Err(e) => {
-                            dispatch_wasm.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from(format!("Error adding podcast: {:?}", e))
-                            });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                        }
+                    Err(e) => {
+                        dispatch_wasm.reduce_mut(|state| {
+                            state.error_message =
+                                Option::from(format!("Error removing podcast: {:?}", e))
+                        });
+                        app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
-                });
-            })
-        }
+                }
+            });
+        })
     };
 
     let download_server_name = server_name.clone();
@@ -803,6 +684,7 @@ pub fn episode_layout() -> Html {
         Hidden,
         Shown,
         Download,
+        Delete,
     }
 
     let button_content = if *is_added { trash_icon() } else { add_icon() };
@@ -1042,6 +924,42 @@ pub fn episode_layout() -> Html {
         </div>
     };
 
+    // Define the modal components
+    let delete_pod_model = html! {
+        <div id="delete_pod_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
+                            {"Delete Podcast"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <div>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Are you sure you want to delete the podcast from the database? This will remove it from every aspect of the app. Meaning this will remove any saved, downloaded, or queued episodes for this podcast. It will also remove any history that includes it."}</label>
+                                <div class="flex justify-between space-x-4">
+                                    <button onclick={delete_all_click} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                                        {"Yes, Delete Podcast"}
+                                    </button>
+                                    <button onclick={on_close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                                        {"No, take me back"}
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
     // Define the callback functions
     let toggle_settings = {
         let page_state = page_state.clone();
@@ -1057,6 +975,119 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_delete = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Delete);
+        })
+    };
+
+    let toggle_podcast = {
+        let add_dispatch = _dispatch.clone();
+        let pod_values = clicked_podcast_info.clone();
+
+        let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
+        let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
+        let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
+        let categories_og = pod_values
+            .clone()
+            .unwrap()
+            .podcast_categories
+            .unwrap()
+            .clone();
+        let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
+        let pod_episode_count_og = pod_values.clone().unwrap().podcast_episode_count.clone();
+        let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
+        let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
+        let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
+        let user_id_og = user_id.unwrap().clone();
+
+        let api_key_clone = api_key.clone();
+        let server_name_clone = server_name.clone();
+        let user_id_clone = user_id.clone();
+        let app_dispatch = _search_dispatch.clone();
+
+        let is_added = is_added.clone();
+
+        if *is_added == true {
+            toggle_delete
+        } else {
+            Callback::from(move |_: MouseEvent| {
+                // Ensure this is triggered only by a MouseEvent
+                let app_dispatch = app_dispatch.clone();
+                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+                let is_added_inner = is_added.clone();
+                let call_dispatch = add_dispatch.clone();
+                let pod_title = pod_title_og.clone();
+                let pod_artwork = pod_artwork_og.clone();
+                let pod_author = pod_author_og.clone();
+                let categories = categories_og.clone();
+                let pod_description = pod_description_og.clone();
+                let pod_episode_count = pod_episode_count_og.clone();
+                let pod_feed_url = pod_feed_url_og.clone();
+                let pod_website = pod_website_og.clone();
+                let pod_explicit = pod_explicit_og.clone();
+                let user_id = user_id_og.clone();
+                let podcast_values = PodcastValues {
+                    pod_title,
+                    pod_artwork,
+                    pod_author,
+                    categories,
+                    pod_description,
+                    pod_episode_count,
+                    pod_feed_url,
+                    pod_website,
+                    pod_explicit,
+                    user_id,
+                };
+                let api_key_call = api_key_clone.clone();
+                let server_name_call = server_name_clone.clone();
+                let user_id_call = user_id_clone.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    let dispatch_wasm = call_dispatch.clone();
+                    let api_key_wasm = api_key_call.clone().unwrap();
+                    let user_id_wasm = user_id_call.clone().unwrap();
+                    let server_name_wasm = server_name_call.clone();
+                    let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
+
+                    match call_add_podcast(
+                        &server_name_wasm.unwrap(),
+                        &api_key_wasm,
+                        user_id_wasm,
+                        &pod_values_clone,
+                    )
+                    .await
+                    {
+                        Ok(success) => {
+                            if success {
+                                dispatch_wasm.reduce_mut(|state| {
+                                    state.info_message =
+                                        Option::from("Podcast successfully added".to_string())
+                                });
+                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                is_added_inner.set(true);
+                            } else {
+                                dispatch_wasm.reduce_mut(|state| {
+                                    state.error_message =
+                                        Option::from("Failed to add podcast".to_string())
+                                });
+                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            }
+                        }
+                        Err(e) => {
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from(format!("Error adding podcast: {:?}", e))
+                            });
+                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                        }
+                    }
+                });
+            })
+        }
+    };
+
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -1064,7 +1095,7 @@ pub fn episode_layout() -> Html {
     }
 
     let web_link = open_in_new_tab.clone();
-
+    let pod_layout_data = clicked_podcast_info.clone();
     html! {
         <div class="main-container">
             <Search_nav />
@@ -1073,11 +1104,12 @@ pub fn episode_layout() -> Html {
                 match *page_state {
                 PageState::Shown => podcast_option_model,
                 PageState::Download => download_all_model,
+                PageState::Delete => delete_pod_model,
                 _ => html! {},
                 }
             }
         {
-            if let Some(podcast_info) = clicked_podcast_info {
+            if let Some(podcast_info) = pod_layout_data {
                 let sanitized_title = podcast_info.podcast_title.replace(|c: char| !c.is_alphanumeric(), "-");
                 let desc_id = format!("desc-{}", sanitized_title);
 
@@ -1177,7 +1209,6 @@ pub fn episode_layout() -> Html {
                             <div class="categories-container">
                             {
                                 if let Some(categories) = &podcast_info.podcast_categories {
-                                    web_sys::console::log_1(&JsValue::from_str(&format!("Categories: {:?}", categories)));
                                     html! {
                                         for categories.iter().map(|(_, category_name)| {
                                             html! { <span class="category-box">{ category_name }</span> }
@@ -1295,14 +1326,19 @@ pub fn episode_layout() -> Html {
         }
         {
                 if let Some(results) = podcast_feed_results {
+                    let podcast_link_clone = clicked_podcast_info.clone().unwrap().podcast_url.clone();
+                    let podcast_title = clicked_podcast_info.clone().unwrap().podcast_title.clone();
                     html! {
                         <div>
                             { for results.episodes.iter().map(|episode| {
+                                let history_clone = history.clone();
                                 let dispatch = _dispatch.clone();
                                 let search_dispatch = _search_dispatch.clone();
                                 let search_state_clone = search_state.clone(); // Clone search_state
 
                                 // Clone the variables outside the closure
+                                let podcast_link_clone = podcast_link_clone.clone();
+                                let podcast_title = podcast_title.clone();
                                 let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
                                 let episode_title_clone = episode.title.clone().unwrap_or_default();
                                 let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
@@ -1316,6 +1352,13 @@ pub fn episode_layout() -> Html {
                                     }
                                 };
                                 let episode_id_clone = episode.episode_id.unwrap_or(0);
+                                let mut db_added = false;
+                                if episode_id_clone == 0 {
+
+                                } else {
+                                    db_added = true;
+                                }
+                                let episode_id_shownotes = episode_id_clone.clone();
                                 let server_name_play = server_name.clone();
                                 let user_id_play = user_id.clone();
                                 let api_key_play = api_key.clone();
@@ -1380,16 +1423,20 @@ pub fn episode_layout() -> Html {
                                 let formatted_duration = format_time(episode_duration_in_seconds.into());
 
                                 let episode_url_for_ep_item = episode_url_clone.clone();
+                                let shownotes_episode_url = episode_url_clone.clone();
                                 let should_show_buttons = !episode_url_for_ep_item.is_empty();
                                 html! {
                                     <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
-                                        <img src={episode.artwork.clone().unwrap_or_default()} alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())} class="object-cover align-top-cover w-full item-container img"/>
+                                        <img
+                                            src={episode.artwork.clone().unwrap_or_default()}
+                                            alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
+                                            class="episode-image"/>
                                         <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                            <p class="item_container-text text-xl font-semibold">{ &episode.title.clone().unwrap_or_default() }</p>
+                                            <p class="item_container-text episode-title font-semibold" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added)}>{ &episode.title.clone().unwrap_or_default() }</p>
                                             // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                             {
                                                 html! {
-                                                    <div class="item-container-text hidden md:block">
+                                                    <div class="item-description-text hidden md:block">
                                                         <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                                             <SafeHtml html={description} />
                                                         </div>

@@ -12,7 +12,7 @@ use crate::requests::pod_req::{
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::stat_reqs::UserStats;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{from_str, json};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -94,6 +94,9 @@ pub struct AppState {
     pub selected_theme: Option<String>,
     pub fetched_episode: Option<EpisodeMetadataResponse>,
     pub selected_episode_id: Option<i32>,
+    pub selected_episode_url: Option<String>,
+    pub selected_episode_audio_url: Option<String>,
+    pub selected_podcast_title: Option<String>,
     pub add_user_request: Option<AddUserRequest>,
     pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,

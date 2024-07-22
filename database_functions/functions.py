@@ -163,7 +163,16 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
 
         # Extract category names and convert to comma-separated string
         categories = podcast_values['categories']
-        category_list = ', '.join(categories.values())
+        print(f"Categories: {categories}")
+
+        if isinstance(categories, dict):
+            category_list = ', '.join(categories.values())
+        elif isinstance(categories, list):
+            category_list = ', '.join(categories)
+        elif isinstance(categories, str):
+            category_list = categories
+        else:
+            category_list = ''
 
         # Insert the podcast into the database
         if database_type == "postgresql":
@@ -3945,6 +3954,38 @@ def queue_pod(database_type, cnx, episode_id, user_id):
         return None
 
     return "Podcast Episode queued successfully."
+
+def reorder_queued_episodes(database_type, cnx, user_id, episode_ids):
+    if database_type == "postgresql":
+        from psycopg.rows import dict_row
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query_update_position = (
+            'UPDATE "EpisodeQueue" SET QueuePosition = %s '
+            'WHERE UserID = %s AND EpisodeID = %s'
+        )
+    else:  # MySQL or MariaDB
+        cursor = cnx.cursor(dictionary=True)
+        query_update_position = (
+            "UPDATE EpisodeQueue SET QueuePosition = %s "
+            "WHERE UserID = %s AND EpisodeID = %s"
+        )
+
+    try:
+        start = time.time()
+
+        # Update the position of each episode in the order they appear in the list
+        for position, episode_id in enumerate(episode_ids, start=1):
+            cursor.execute(query_update_position, (position, user_id, episode_id))
+
+        cnx.commit()  # Commit the changes
+        end = time.time()
+        print(f"Query executed in {end - start} seconds.")
+        return True
+    except Exception as e:
+        print("Error reordering Podcast Episodes:", e)
+        return False
+
 
 
 def check_queued(database_type, cnx, episode_id, user_id):

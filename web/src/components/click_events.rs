@@ -28,7 +28,6 @@ pub fn create_on_title_click(
     let history = history.clone();
     Callback::from(move |e: MouseEvent| {
         e.prevent_default(); // Prevent default anchor behavior
-        web_sys::console::log_1(&"Title clicked".into());
         dispatch.reduce_mut(|state| {
             state.is_loading = Some(true);
             state.podcast_added = Some(false); // Set podcast_added to false here
@@ -46,13 +45,6 @@ pub fn create_on_title_click(
                     .collect()
             });
 
-        web_sys::console::log_1(
-            &format!(
-                "Podcast categories in click events: {:?}",
-                podcast_categories_map
-            )
-            .into(),
-        );
         let podcast_values = ClickedFeedURL {
             podcast_title: podcast_title.clone(),
             podcast_url: podcast_url.clone(),
@@ -81,7 +73,6 @@ pub fn create_on_title_click(
                     if response.exists {
                         // The podcast exists in the database
                         // Get the podcast id
-                        web_sys::console::log_1(&format!("Podcast exists: {:?}", response).into());
                         match call_get_podcast_id(
                             &server_clone,
                             &api_clone,
@@ -92,10 +83,6 @@ pub fn create_on_title_click(
                         .await
                         {
                             Ok(podcast_id) => {
-                                web_sys::console::log_1(
-                                    &format!("Podcast IDs: {:?}", podcast_id).into(),
-                                );
-
                                 match call_get_podcast_episodes(
                                     &server_clone,
                                     &api_clone,

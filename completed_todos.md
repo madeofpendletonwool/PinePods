@@ -10,7 +10,6 @@ Major Version:
 Next Minor Version:
 
 - [] Manually adjust tags for podcast in podcast settings
-- [] Manual Podcast Tag Adjustment (This is in preparation for better filtering features)
 - [] A route to get the version of the app. This will allow dynamic displaying of the current version. Just one more area to futher automation as changes get made.
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
@@ -18,28 +17,37 @@ Next Minor Version:
 - [] Test with LXC containers
 - [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 - [] Queue adjmustment for mobile devices
+- [] Full Show deletion with checkbox on download page
+- [] Support floating point chapters
+
 
 Version 0.6.3
 
 - [x] Jump to clicked timestamp
-- [x] Full Chapter Support
+- [x] Full Chapter Support (Support for floating points needed yet)
 - [x] Chapter Image Support
 - [x] Basic Support for People Tags (Host and Guest)
 - [x] Support for Funding Tags
-- [] Draggable Queue placement
+- [x] Draggable Queue placement
 - [x] Fixed issue with self service user creation when using a postgres db
 - [x] Rebuilt the Podcast Episode Layout display page so that on small screens everything fits on screen and looks much nicer
-- [] Rebuilt the Single Episode display page so that on small screens everything fits on screen and looks much nicer
+- [x] Rebuilt the Single Episode display page so that on small screens everything fits on screen and looks much nicer
 - [x] Fixed Issue with Episodes on small screens where if a word in the title was long enough it would overflow the container
-- [] Adjusted the Podcast Episode Layout display page so that you can click and episode title and view the description
+- [x] Adjusted the Podcast Episode Layout display page so that you can click and episode title and view the description
 - [x] Removed Unneeded space between First episode/podcast container and the title bar at the top on multiple pages - Just cleans things up a bit
 - [x] Fixed image layout issue where if episode had wide image it would overflow the container and title text
 - [x] Fixed issue with categories where it showed them as part of a dictionary and sometimes didn't show them at all
 - [x] Added verification before downloading all episodes since this is quite a weighty process
 - [x] Added Complete Episode Option to Episode Page
+- [x] Adjusted downloads page to display the number of downloaded episodes instead of the number of episodes in the podcast
 - [x] Added Episode Completion Status to Episode Page
 - [x] Fixed Issue with Postgres DBs where sometimes it would return dictionaries and try to refresh episodes using :podcastid as the podcast id. Now it always refreshes correctly
-- [] Fixed a few additional bugs with the postgres db
+- [x] Fixed issue where when using postgres the User Created date on the user stats page would display the unix Epoch date
+- [x] Added Validations on Episode layout page to verify the user wants to delete the podcast or download all episodes
+
+Pre launch tests:
+  Check routes for mysql and postgres
+  Create self service user on mysql and postgres
 
 Version 0.6.2
 

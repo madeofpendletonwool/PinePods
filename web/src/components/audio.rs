@@ -20,7 +20,6 @@ use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
 use web_sys::{window, HtmlAudioElement, HtmlInputElement};
@@ -54,7 +53,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         .currently_playing
         .as_ref()
         .map(|props| props.episode_id);
-    web_sys::console::log_1(&JsValue::from_str(&format!("Episode ID: {:?}", episode_id)));
     let end_pos = audio_state
         .currently_playing
         .as_ref()
@@ -67,10 +65,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         .currently_playing
         .as_ref()
         .map(|props| props.offline);
-    web_sys::console::log_1(&JsValue::from_str(&format!(
-        "Offline Status: {:?}",
-        offline_status
-    )));
     let artwork_class = if audio_state.audio_playing.unwrap_or(false) {
         classes!("artwork", "playing")
     } else {
@@ -183,15 +177,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     state.episode_transcript = Some(transcripts);
                                     state.episode_people = Some(people);
                                 });
-                                web_sys::console::log_1(
-                                    &format!("Chapters: {:?}", response.chapters).into(),
-                                );
-                                web_sys::console::log_1(
-                                    &format!("transcript: {:?}", response.transcripts).into(),
-                                );
-                                web_sys::console::log_1(
-                                    &format!("people: {:?}", response.people).into(),
-                                );
                             }
                             Err(e) => {
                                 web_sys::console::log_1(
@@ -270,9 +255,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         // Call the endpoint to mark episode as completed
                         if offline_status_loop {
                             // If offline, store the episode in the local database
-                            web_sys::console::log_1(
-                                &"Offline mode enabled. Not recording completion status.".into(),
-                            );
                         } else {
                             // If online, call the endpoint
                             wasm_bindgen_futures::spawn_local(async move {
@@ -299,11 +281,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     )
                                     .await
                                     {
-                                        Ok(message) => {
-                                            web_sys::console::log_1(
-                                                &format!("Success: {}", message).into(),
-                                            );
-                                        }
+                                        Ok(_) => {}
                                         Err(e) => {
                                             web_sys::console::log_1(
                                                 &format!("Error: {}", e).into(),
@@ -376,23 +354,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 let server_name = server_name.clone();
 
                 if offline_status_loop {
-                    web_sys::console::log_1(
-                        &"Offline mode enabled. Not recording listen duration.".into(),
-                    );
-                    web_sys::console::log_1(&JsValue::from_str(&format!(
-                        "Offline Status in task: {:?}",
-                        offline_status_loop
-                    )));
                 } else {
-                    web_sys::console::log_1(&"Online mode enabled. ".into());
-                    web_sys::console::log_1(&JsValue::from_str(&format!(
-                        "Offline Status in task: {:?}",
-                        offline_status_loop
-                    )));
-                    web_sys::console::log_1(&JsValue::from_str(&format!(
-                        "ep id Status in task: {:?}",
-                        episode_id_loop
-                    )));
                     if state_clone.audio_playing.unwrap_or_default() {
                         if let Some(audio_element) = state_clone.audio_element.as_ref() {
                             let listen_duration = audio_element.current_time();
@@ -446,9 +408,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 let offline_status_loop = offline_status.unwrap_or(false);
                 // Check if audio is playing before making the API call
                 if offline_status_loop {
-                    web_sys::console::log_1(
-                        &"Offline mode enabled. Not incrementing listen time.".into(),
-                    );
                 } else {
                     if state_increment_clone.audio_playing.unwrap_or_default() {
                         let server_name = server_name.clone();
@@ -510,9 +469,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // Closure::wrap(Box::new(move |_| {
                     if offline_status_loop {
                         // If offline, do not perform any action
-                        web_sys::console::log_1(
-                            &"Offline mode enabled. Not managing queue.".into(),
-                        );
                     } else {
                         wasm_bindgen_futures::spawn_local(async move {
                             let queued_episodes_result = call_get_queued_episodes(
@@ -761,21 +717,20 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let on_chapter_click = {
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |start_time: i32| {
-            if let start_time = start_time as f64 {
-                audio_dispatch.reduce_mut(|state| {
-                    if let Some(audio_element) = state.audio_element.as_ref() {
-                        audio_element.set_current_time(start_time);
-                        state.current_time_seconds = start_time;
+            let start_time = start_time as f64;
+            audio_dispatch.reduce_mut(|state| {
+                if let Some(audio_element) = state.audio_element.as_ref() {
+                    audio_element.set_current_time(start_time);
+                    state.current_time_seconds = start_time;
 
-                        // Update formatted time
-                        let hours = (start_time / 3600.0).floor() as i32;
-                        let minutes = ((start_time % 3600.0) / 60.0).floor() as i32;
-                        let seconds = (start_time % 60.0).floor() as i32;
-                        state.current_time_formatted =
-                            format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-                    }
-                });
-            }
+                    // Update formatted time
+                    let hours = (start_time / 3600.0).floor() as i32;
+                    let minutes = ((start_time % 3600.0) / 60.0).floor() as i32;
+                    let seconds = (start_time % 60.0).floor() as i32;
+                    state.current_time_formatted =
+                        format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+                }
+            });
         })
     };
 
@@ -865,7 +820,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 .map(|audio_props| audio_props.episode_id);
 
             Callback::from(move |_: MouseEvent| {
-                web_sys::console::log_1(&format!("episode_id: {:?}", episode_id).into());
                 let dispatch_clone = dispatch.clone();
                 let history_clone = history.clone();
                 if let Some(episode_id) = episode_id {
@@ -1010,7 +964,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     if let Some(chapters) = &audio_state.episode_chapters {
                                         if !chapters.is_empty() {
                                             html! {
-                                                <button onclick={Callback::from(move |e: MouseEvent| {
+                                                <button onclick={Callback::from(move |_: MouseEvent| {
                                                     on_chapter_select.emit(());
                                                 })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
                                                     { "Chapters" }
@@ -1113,7 +1067,6 @@ pub fn on_play_click(
     is_local: Option<bool>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
-        web_sys::console::log_1(&JsValue::from_str("Play button clicked"));
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
@@ -1296,7 +1249,6 @@ pub fn on_play_click_offline(
     audio_dispatch: Dispatch<UIState>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
-        web_sys::console::log_1(&JsValue::from_str("Play button clicked offline"));
         let episode_info_for_closure = episode_info.clone();
         let audio_dispatch = audio_dispatch.clone();
 
@@ -1315,8 +1267,6 @@ pub fn on_play_click_offline(
                         .and_then(|name| name.to_str())
                         .unwrap_or(""); // Extract the file name from the path
 
-                    web_sys::console::log_1(&format!("Server URL: {}", server_url).into());
-                    web_sys::console::log_1(&format!("{}/{}", server_url, file_name).into());
                     let src = format!("{}/{}", server_url, file_name);
 
                     audio_dispatch.reduce_mut(move |audio_state| {

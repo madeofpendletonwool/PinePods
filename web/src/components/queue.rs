@@ -19,10 +19,9 @@ use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use crate::requests::login_requests::use_check_authentication;
-use js_sys::{Object, Reflect};
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{window, AddEventListenerOptions, DragEvent, HtmlElement};
+use wasm_bindgen::JsCast;
+use web_sys::{window, DragEvent, HtmlElement};
 
 #[function_component(Queue)]
 pub fn queue() -> Html {
@@ -41,16 +40,16 @@ pub fn queue() -> Html {
     let session_state = post_state.clone();
     let loading = use_state(|| true);
     let dragging = use_state(|| None);
-    let dragging_style = use_state(|| "".to_string());
-    // let dragging_index = use_state(|| None);
-    let element_ref_drag = use_node_ref();
-    let container_ref = use_node_ref();
 
-    let items = vec!["Item 1", "Item 2", "Item 3", "Item 4"];
-
-    let container_ref = use_node_ref();
-    let start_x = use_state(|| 0.0);
-    let scroll_left = use_state(|| 0.0);
+    let api_key = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
+    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -146,6 +145,7 @@ pub fn queue() -> Html {
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
                                     .collect();
+
                                 dispatch.reduce_mut(move |state| {
                                     state.queued_episodes = Some(QueuedEpisodesResponse {
                                         episodes: fetched_episodes,
@@ -218,7 +218,6 @@ pub fn queue() -> Html {
                                             .set_data("text/plain", &id)
                                             .unwrap();
                                         e.data_transfer().unwrap().set_effect_allowed("move");
-                                        web_sys::console::log_1(&"drag start".into());
                                     })
                                 };
 
@@ -227,7 +226,6 @@ pub fn queue() -> Html {
                                 let ondragenter = Callback::from(|e: DragEvent| {
                                     e.prevent_default();
                                     e.data_transfer().unwrap().set_drop_effect("move");
-                                    web_sys::console::log_1(&"drag enter".into());
                                 });
 
 
@@ -249,16 +247,16 @@ pub fn queue() -> Html {
                                         window.scroll_by_with_x_and_y(0.0, scroll_speed as f64);
                                     }
 
-                                    web_sys::console::log_1(&"drag over".into());
                                 });
 
-
-                                let drop_eps = queued_eps.clone();
                                 let ondrop = {
                                     let dragging = dragging.clone();
                                     let dispatch = dispatch.clone();
                                     let episodes = queued_eps.clone();
                                     Callback::from(move |e: DragEvent| {
+                                        let user_id = user_id.clone();
+                                        let server_name = server_name.clone();
+                                        let api_key = api_key.clone();
                                         e.prevent_default();
                                         let mut target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
                                         while !target.has_attribute("data-id") {
@@ -284,17 +282,26 @@ pub fn queue() -> Html {
                                             // Remove the dragged item and reinsert it at the target position
                                             let dragged_item = episodes_vec.remove(dragged_index);
                                             episodes_vec.insert(target_index, dragged_item);
+                                            // Extract episode IDs
+                                            let episode_ids: Vec<i32> = episodes_vec.iter().map(|ep| ep.episodeid).collect();
 
                                             dispatch.reduce_mut(|state| {
                                                 state.queued_episodes = Some(QueuedEpisodesResponse {
-                                                    episodes: episodes_vec,
+                                                    episodes: episodes_vec.clone(),
                                                 });
+                                            });
+
+                                            // Make a backend call to update the order on the server side
+                                            wasm_bindgen_futures::spawn_local(async move {
+                                                if let Err(err) = pod_req::call_reorder_queue(&server_name.unwrap(), &api_key.unwrap(), &user_id.unwrap(), &episode_ids).await {
+                                                    web_sys::console::log_1(&format!("Failed to update order on server: {:?}", err).into());
+                                                } else {
+                                                }
                                             });
                                             // web_sys::console::log_1(format!("dragged: {}, target: {}", dragged_id, target_id).into()
                                         }
 
                                         dragging.set(None);
-                                        web_sys::console::log_1(&"drop".into());
                                     })
                                 };
 
@@ -371,7 +378,11 @@ pub fn queue() -> Html {
                             let on_shownotes_click = on_shownotes_click(
                                 history_clone.clone(),
                                 dispatch.clone(),
-                                episode_id_for_closure.clone(),
+                                Some(episode_id_for_closure.clone()),
+                                Some(String::from("queue")),
+                                Some(String::from("queue")),
+                                Some(String::from("queue")),
+                                true,
                             );
                             let episode_url_for_ep_item = episode_url_clone.clone();
                             let date_format = match_date_format(state.date_format.as_deref());
