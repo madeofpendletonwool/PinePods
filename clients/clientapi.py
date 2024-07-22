@@ -2845,6 +2845,22 @@ async def check_episode_in_db(user_id: int, episode_title: str = Query(...), epi
     episode_exists = database_functions.functions.check_episode_exists(cnx, database_type, user_id, episode_title, episode_url)
     return {"episode_in_db": episode_exists}
 
+@app.get("/api/data/get_pinepods_version")
+async def get_pinepods_version(cnx=Depends(get_database_connection),
+                               api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    result = database_functions.functions.get_pinepods_version()
+    return {"data": result}
+
 class LoginInitiateData(BaseModel):
     user_id: int
     nextcloud_url: str

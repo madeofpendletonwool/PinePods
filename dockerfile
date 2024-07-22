@@ -69,6 +69,9 @@ RUN chmod +x /pinepods/startup/startup.sh
 
 ENV APP_ROOT /pinepods
 
+# Write the Pinepods version to the current_version file
+RUN echo "${PINEPODS_VERSION}" > /pinepods/current_version
+
 # Configure Nginx
 COPY startup/nginx.conf /etc/nginx/nginx.conf
 
