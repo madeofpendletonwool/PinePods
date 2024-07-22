@@ -295,8 +295,13 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let on_shownotes_click = on_shownotes_click(
                                         history_clone.clone(),
                                         dispatch.clone(),
-                                        episode_id_for_closure.clone(),
+                                        Some(episode_id_for_closure.clone()),
+                                        Some(String::from("search")),
+                                        Some(String::from("search")),
+                                        Some(String::from("search")),
+                                        true,
                                     );
+
 
                                     let date_format = match_date_format(state.date_format.as_deref());
                                     let datetime = parse_date(&episode.episodepubdate, &state.user_tz);

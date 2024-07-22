@@ -1028,7 +1028,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     html! {
         <>
-        <div class="relative inline-block">
+            <div class="relative show-on-large">
             <button
                 id="dropdown-button"
                 onclick={toggle_dropdown.clone()}
@@ -1257,14 +1257,24 @@ impl EpisodeTrait for SearchNewEpisode {
 pub fn on_shownotes_click(
     history: BrowserHistory,
     dispatch: Dispatch<AppState>,
-    episode_id: i32,
+    episode_id: Option<i32>,
+    shownotes_episode_url: Option<String>,
+    episode_audio_url: Option<String>,
+    podcast_title: Option<String>,
+    _db_added: bool,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let dispatch_clone = dispatch.clone();
         let history_clone = history.clone();
+        let shownotes_episode_url_call = shownotes_episode_url.clone();
+        let episode_audio_url = episode_audio_url.clone();
+        let podcast_title = podcast_title.clone();
         wasm_bindgen_futures::spawn_local(async move {
             dispatch_clone.reduce_mut(move |state| {
-                state.selected_episode_id = Some(episode_id);
+                state.selected_episode_id = episode_id;
+                state.selected_episode_url = shownotes_episode_url_call.clone();
+                state.selected_episode_audio_url = episode_audio_url;
+                state.selected_podcast_title = podcast_title;
             });
             history_clone.push("/episode"); // Use the route path
         });
@@ -1327,12 +1337,12 @@ pub fn episode_item(
                     <img
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="episode-image"
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
-                        <p class="item_container-text text-xl font-semibold">
+                        <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
                         {
@@ -1348,7 +1358,7 @@ pub fn episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-container-text hidden md:block">
+                            <div class="item-description-text hidden md:block">
                                 <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>
@@ -1471,12 +1481,12 @@ pub fn download_episode_item(
                     <img
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="episode-image"
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
-                        <p class="item_container-text text-xl font-semibold">
+                        <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
                         {
@@ -1492,7 +1502,178 @@ pub fn download_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-container-text hidden md:block">
+                            <div class="item-description-text hidden md:block">
+                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                    <SafeHtml html={description} />
+                                </div>
+                                <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
+                                    { if is_expanded { "See Less" } else { "See More" } }
+                                </a>
+                            </div>
+                        }
+                    }
+                    <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2" style="flex-grow: 0; flex-shrink: 0; width: auto;">
+                        <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                        </svg>
+                        { format_release }
+                    </span>
+                    {
+                        if completed {
+                            html! {
+                                <div class="flex items-center space-x-2">
+                                    <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ "-  Completed" }</span>
+                                </div>
+                            }
+                        } else {
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ formatted_duration }</span>
+                                    </div>
+                                }
+                            } else {
+                                html! {
+                                    <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                                }
+                            }
+                        }
+                    }
+                </div>
+                {
+                    html! {
+                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
+                            if should_show_buttons {
+                                <button
+                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    onclick={on_play_click}
+                                >
+                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                </button>
+                                <div class="show-on-large">
+                                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+}
+
+pub fn queue_episode_item(
+    episode: Box<dyn EpisodeTrait>,
+    description: String,
+    is_expanded: bool,
+    format_release: &str,
+    on_play_click: Callback<MouseEvent>,
+    on_shownotes_click: Callback<MouseEvent>,
+    toggle_expanded: Callback<MouseEvent>,
+    episode_duration: i32,
+    listen_duration: Option<i32>,
+    page_type: &str,
+    on_checkbox_change: Callback<i32>,
+    is_delete_mode: bool, // Add this line
+    ep_url: String,
+    completed: bool,
+    ondragstart: Callback<DragEvent>,
+    ondragenter: Callback<DragEvent>,
+    ondragover: Callback<DragEvent>,
+    ondrop: Callback<DragEvent>,
+) -> Html {
+    let span_duration = listen_duration.clone();
+    let span_episode = episode_duration.clone();
+    let formatted_duration = format_time(span_episode as f64);
+    let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+    // Calculate the percentage of the episode that has been listened to
+    let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
+        if episode_duration > 0 {
+            (ld as f64 / episode_duration as f64) * 100.0
+        } else {
+            0.0 // Avoid division by zero
+        }
+    });
+    let checkbox_ep = episode.get_episode_id();
+    let should_show_buttons = !ep_url.is_empty();
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggleDescription(guid: &str, expanded: bool);
+    }
+    let description_class = if is_expanded {
+        "desc-expanded".to_string()
+    } else {
+        "desc-collapsed".to_string()
+    };
+
+    // // Wrap ontouchend callback to ensure class is removed
+    // let wrapped_ontouchend = {
+    //     let element_ref = element_ref_drag.clone();
+    //     Callback::from(move |e: TouchEvent| {
+    //         if let Some(element) = element_ref.cast::<HtmlElement>() {
+    //             element.class_list().remove_1("dragging").unwrap();
+    //         }
+    //         ontouchend.emit(e);
+    //     })
+    // };
+
+    html! {
+        <>
+        <div
+            class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full"
+            draggable="true"
+            ondragstart={ondragstart.clone()}
+            ondragenter={ondragenter.clone()}
+            ondragover={ondragover.clone()}
+            ondrop={ondrop.clone()}
+            data-id={episode.get_episode_id().to_string()}
+        >
+            <div class="drag-handle-wrapper flex items-center h-full">
+                <button class="drag-handle" style="cursor: grab;">
+                    <span class="material-icons">{"drag_indicator"}</span>
+                </button>
+            </div>
+            {if is_delete_mode {
+                    html! {
+                        <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
+                            onchange={on_checkbox_change.reform(move |_| checkbox_ep)} /> // Modify this line
+                    }
+                } else {
+                    html! {}
+                }}
+                <div class="flex flex-col w-auto object-cover pl-4">
+                    <img
+                        src={episode.get_episode_artwork()}
+                        alt={format!("Cover for {}", episode.get_episode_title())}
+                        class="episode-image"
+                    />
+                </div>
+                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                        <p class="item_container-text episode-title font-semibold">
+                            { episode.get_episode_title() }
+                        </p>
+                        {
+                            if completed.clone() {
+                                html! {
+                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
+                    </div>
+                    <hr class="my-2 border-t hidden md:block"/>
+                    {
+                        html! {
+                            <div class="item-description-text hidden md:block">
                                 <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                     <SafeHtml html={description} />
                                 </div>
@@ -1550,7 +1731,11 @@ pub fn download_episode_item(
                         </div>
                     }
                 }
+
+
+
+
             </div>
-        </div>
+            </>
     }
 }

@@ -276,7 +276,11 @@ pub fn saved() -> Html {
                                 let on_shownotes_click = on_shownotes_click(
                                     history_clone.clone(),
                                     dispatch.clone(),
-                                    episode_id_for_closure.clone(),
+                                    Some(episode_id_for_closure.clone()),
+                                    Some(String::from("saved")),
+                                    Some(String::from("saved")),
+                                    Some(String::from("saved")),
+                                    true,
                                 );
 
                                 let date_format = match_date_format(state.date_format.as_deref());

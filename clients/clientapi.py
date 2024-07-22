@@ -19,6 +19,7 @@ import psycopg
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 import os
+import xml.etree.ElementTree as ET
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -627,6 +628,244 @@ async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_dat
         response = await client.get(podcast_feed)
         response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
         return Response(content=response.content, media_type="application/xml")
+
+
+NAMESPACE = {'podcast': 'https://podcastindex.org/namespace/1.0'}
+
+async def fetch_feed(feed_url: str) -> str:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(feed_url)
+        response.raise_for_status()
+        return response.text
+
+async def fetch_json(url: str) -> Optional[dict]:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.json()
+
+def parse_chapters(feed_content: str, audio_url: str) -> List[Dict[str, Optional[str]]]:
+    chapters = []
+    try:
+        root = ET.fromstring(feed_content)
+        episodes = root.findall('.//item')
+        for episode in episodes:
+            enclosure_element = episode.find('enclosure')
+            enclosure_url = enclosure_element.attrib.get('url') if enclosure_element is not None else None
+            if enclosure_element is not None and enclosure_url == audio_url:
+                chapters_element = episode.find('podcast:chapters', NAMESPACE)
+                if chapters_element is not None:
+                    chapters_url = chapters_element.attrib.get('url')
+                    if chapters_url:
+                        return chapters_url  # Return the chapters URL to fetch the JSON
+                    else:
+                        print(f"Chapter element with missing URL: {ET.tostring(chapters_element, encoding='unicode')}")
+                break  # Exit loop once the matching episode is found
+    except ET.ParseError as e:
+        print(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return chapters
+
+def parse_transcripts(feed_content: str, audio_url: str) -> List[Dict[str, Optional[str]]]:
+    transcripts = []
+    try:
+        root = ET.fromstring(feed_content)
+        episodes = root.findall('.//item')
+        for episode in episodes:
+            enclosure_element = episode.find('enclosure')
+            enclosure_url = enclosure_element.attrib.get('url') if enclosure_element is not None else None
+            if enclosure_element is not None and enclosure_url == audio_url:
+                transcript_elements = episode.findall('podcast:transcript', NAMESPACE)
+                for transcript_element in transcript_elements:
+                    transcript_url = transcript_element.attrib.get('url')
+                    transcript_type = transcript_element.attrib.get('type')
+                    transcript_language = transcript_element.attrib.get('language')
+                    transcript_rel = transcript_element.attrib.get('rel')
+                    transcripts.append({
+                        "url": transcript_url,
+                        "mime_type": transcript_type,
+                        "language": transcript_language,
+                        "rel": transcript_rel
+                    })
+                break  # Exit loop once the matching episode is found
+    except ET.ParseError as e:
+        print(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return transcripts
+
+def parse_people(feed_content: str, audio_url: Optional[str] = None) -> List[Dict[str, Optional[str]]]:
+    people = []
+    try:
+        root = ET.fromstring(feed_content)
+        if audio_url:
+            # Look for episode-specific people
+            episodes = root.findall('.//item')
+            for episode in episodes:
+                enclosure_element = episode.find('enclosure')
+                enclosure_url = enclosure_element.attrib.get('url') if enclosure_element is not None else None
+                if enclosure_element is not None and enclosure_url == audio_url:
+                    person_elements = episode.findall('podcast:person', NAMESPACE)
+                    if person_elements:
+                        for person_element in person_elements:
+                            people.append({
+                                "name": person_element.text,
+                                "role": person_element.attrib.get('role'),
+                                "group": person_element.attrib.get('group'),
+                                "img": person_element.attrib.get('img'),
+                                "href": person_element.attrib.get('href')
+                            })
+                    break  # Exit loop once the matching episode is found
+        if not people:
+            # Fall back to channel-wide people
+            person_elements = root.findall('.//channel/podcast:person', NAMESPACE)
+            for person_element in person_elements:
+                people.append({
+                    "name": person_element.text,
+                    "role": person_element.attrib.get('role'),
+                    "group": person_element.attrib.get('group'),
+                    "img": person_element.attrib.get('img'),
+                    "href": person_element.attrib.get('href')
+                })
+    except ET.ParseError as e:
+        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return people
+
+@app.get("/api/data/fetch_podcasting_2_data")
+async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
+
+    # Fetch the podcast feed URL and episode URL from the database using the episode_id
+    episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
+    podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+    podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
+    episode_url = episode_metadata['episodeurl']
+    podcast_feed_url = podcast_feed['feedurl']
+
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(podcast_feed_url)
+        response.raise_for_status()
+        feed_content = response.text  # Decode content to string
+
+    logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
+
+    chapters_url = parse_chapters(feed_content, episode_url)
+    transcripts = parse_transcripts(feed_content, episode_url)
+    people = parse_people(feed_content, episode_url)
+
+    chapters_data = []
+    if chapters_url:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(chapters_url)
+            response.raise_for_status()
+            chapters_data = response.json().get('chapters', [])
+
+    logging.info(f'Chapter data {chapters_data}')
+    logging.info(f'Transcripts {transcripts}')
+    logging.info(f'People {people}')
+
+    return {"chapters": chapters_data, "transcripts": transcripts, "people": people}
+
+
+
+def parse_podroll(feed_content: str) -> List[Dict[str, Optional[str]]]:
+    podroll = []
+    try:
+        root = ET.fromstring(feed_content)
+        podroll_element = root.find('.//channel/podcast:podroll', NAMESPACE)
+        if podroll_element is not None:
+            for remote_item in podroll_element.findall('podcast:remoteItem', NAMESPACE):
+                podroll.append({
+                    "feed_guid": remote_item.attrib.get('feedGuid')
+                })
+    except ET.ParseError as e:
+        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return podroll
+
+def parse_funding(feed_content: str) -> List[Dict[str, Optional[str]]]:
+    funding = []
+    try:
+        root = ET.fromstring(feed_content)
+        funding_elements = root.findall('.//channel/podcast:funding', NAMESPACE)
+        for funding_element in funding_elements:
+            funding.append({
+                "url": funding_element.attrib.get('url'),
+                "description": funding_element.text
+            })
+    except ET.ParseError as e:
+        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return funding
+
+def parse_value(feed_content: str) -> List[Dict[str, Optional[str]]]:
+    value = []
+    try:
+        root = ET.fromstring(feed_content)
+        value_elements = root.findall('.//channel/podcast:value', NAMESPACE)
+        for value_element in value_elements:
+            value_recipients = []
+            for recipient in value_element.findall('podcast:valueRecipient', NAMESPACE):
+                value_recipients.append({
+                    "name": recipient.attrib.get('name'),
+                    "type": recipient.attrib.get('type'),
+                    "address": recipient.attrib.get('address'),
+                    "split": recipient.attrib.get('split')
+                })
+            value.append({
+                "type": value_element.attrib.get('type'),
+                "method": value_element.attrib.get('method'),
+                "suggested": value_element.attrib.get('suggested'),
+                "recipients": value_recipients
+            })
+    except ET.ParseError as e:
+        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return value
+
+def parse_hosts(feed_content: str) -> List[Dict[str, Optional[str]]]:
+    people = []
+    try:
+        root = ET.fromstring(feed_content)
+        person_elements = root.findall('.//channel/podcast:person', NAMESPACE)
+        for person_element in person_elements:
+            role = person_element.attrib.get('role', 'host').lower()
+            if role == 'host':
+                people.append({
+                    "name": person_element.text,
+                    "role": role,
+                    "group": person_element.attrib.get('group'),
+                    "img": person_element.attrib.get('img'),
+                    "href": person_element.attrib.get('href')
+                })
+    except ET.ParseError as e:
+        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
+    return people
+
+@app.get("/api/data/fetch_podcasting_2_pod_data")
+async def fetch_podcasting_2_pod_data(podcast_id: int, user_id: int, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
+
+    # Fetch the podcast feed URL from the database using the podcast_id
+    podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
+    podcast_feed_url = podcast_feed['feedurl']
+
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(podcast_feed_url)
+        response.raise_for_status()
+        feed_content = response.text  # Decode content to string
+
+    logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
+
+    people = parse_hosts(feed_content)
+    podroll = parse_podroll(feed_content)
+    funding = parse_funding(feed_content)
+    value = parse_value(feed_content)
+
+    logging.info(f'People {people}')
+    logging.info(f'Podroll {podroll}')
+    logging.info(f'Funding {funding}')
+    logging.info(f'Value {value}')
+
+    return {"people": people, "podroll": podroll, "funding": funding, "value": value}
 
 
 @app.post("/api/data/check_episode_playback")
@@ -2569,6 +2808,29 @@ async def get_queued_episodes(user_id: int = Query(...), cnx=Depends(get_databas
         raise HTTPException(status_code=403,
                             detail="You can only get episodes from your own queue!")
 
+class ReorderRequest(BaseModel):
+    episode_ids: List[int]
+
+@app.post("/api/data/reorder_queue")
+async def reorder_queue(request: ReorderRequest, user_id: int = Query(...), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        success = database_functions.functions.reorder_queued_episodes(database_type, cnx, user_id, request.episode_ids)
+        if success:
+            return {"message": "Queue reordered successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to reorder the queue")
+    else:
+        raise HTTPException(status_code=403, detail="You can only reorder your own queue!")
 
 @app.get("/api/data/check_episode_in_db/{user_id}")
 async def check_episode_in_db(user_id: int, episode_title: str = Query(...), episode_url: str = Query(...), cnx=Depends(get_database_connection),

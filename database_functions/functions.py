@@ -161,6 +161,19 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             cursor.close()
             return False
 
+        # Extract category names and convert to comma-separated string
+        categories = podcast_values['categories']
+        print(f"Categories: {categories}")
+
+        if isinstance(categories, dict):
+            category_list = ', '.join(categories.values())
+        elif isinstance(categories, list):
+            category_list = ', '.join(categories)
+        elif isinstance(categories, str):
+            category_list = categories
+        else:
+            category_list = ''
+
         # Insert the podcast into the database
         if database_type == "postgresql":
             add_podcast_query = """
@@ -181,7 +194,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
         print(podcast_values['pod_title'])
         print(podcast_values['pod_artwork'])
         print(podcast_values['pod_author'])
-        print(str(podcast_values['categories']))
+        print(category_list)
         print(podcast_values['pod_description'])
         print(podcast_values['pod_episode_count'])
         print(podcast_values['pod_feed_url'])
@@ -193,7 +206,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 podcast_values['pod_title'],
                 podcast_values['pod_artwork'],
                 podcast_values['pod_author'],
-                str(podcast_values['categories']),
+                category_list,
                 podcast_values['pod_description'],
                 podcast_values['pod_episode_count'],
                 podcast_values['pod_feed_url'],
@@ -259,6 +272,8 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
 
 def add_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
+    print(f'user func')
+    logging.debug(f'user func')
 
     if database_type == "postgresql":
         add_user_query = """
@@ -280,8 +295,12 @@ def add_user(cnx, database_type, user_values):
     #     user_id = result['userid']
     # else:
     #     user_id = result[0]
+    print(f'in postgres {database_type}')
+    logging.debug(f'in postgres {database_type}')
     if database_type == "postgresql":
         result = cursor.fetchone()
+        print(f'debug result: {result}')
+        logging.debug(f'debug result: {result}')
         user_id = result['userid'] if isinstance(result, dict) else result[0]
     else:  # MySQL or MariaDB
         user_id = cursor.lastrowid
@@ -947,9 +966,16 @@ def check_self_service(cnx, database_type):
     result = cursor.fetchone()
     cursor.close()
 
-    if result and result[0] == 1:
+    if database_type == "postgresql":
+        print(f'debug result: {result}')
+        logging.debug(f'debug result: {result}')
+        self_service = result['selfserviceuser'] if isinstance(result, dict) else result[0]
+    else:  # MySQL or MariaDB
+        self_service = result[0]
+
+    if self_service == 1:
         return True
-    elif result and result[0] == 0:
+    elif self_service == 0:
         return False
     else:
         return None
@@ -965,16 +991,26 @@ def refresh_pods(cnx, database_type):
     else:  # MySQL or MariaDB
         select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM Podcasts"
 
-
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall()  # fetch the result set
 
-    for (podcast_id, feed_url, artwork_url, auto_download) in result_set:
+    for result in result_set:
+        if isinstance(result, tuple):
+            podcast_id, feed_url, artwork_url, auto_download = result
+        elif isinstance(result, dict):
+            podcast_id = result["PodcastID"]
+            feed_url = result["FeedURL"]
+            artwork_url = result["ArtworkURL"]
+            auto_download = result["AutoDownload"]
+        else:
+            raise ValueError(f"Unexpected result type: {type(result)}")
+
         print(f'Running for :{podcast_id}')
         add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download)
 
     cursor.close()
     # cnx.close()
+
 
 
 def remove_unavailable_episodes(cnx, database_type):
@@ -3918,6 +3954,38 @@ def queue_pod(database_type, cnx, episode_id, user_id):
         return None
 
     return "Podcast Episode queued successfully."
+
+def reorder_queued_episodes(database_type, cnx, user_id, episode_ids):
+    if database_type == "postgresql":
+        from psycopg.rows import dict_row
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query_update_position = (
+            'UPDATE "EpisodeQueue" SET QueuePosition = %s '
+            'WHERE UserID = %s AND EpisodeID = %s'
+        )
+    else:  # MySQL or MariaDB
+        cursor = cnx.cursor(dictionary=True)
+        query_update_position = (
+            "UPDATE EpisodeQueue SET QueuePosition = %s "
+            "WHERE UserID = %s AND EpisodeID = %s"
+        )
+
+    try:
+        start = time.time()
+
+        # Update the position of each episode in the order they appear in the list
+        for position, episode_id in enumerate(episode_ids, start=1):
+            cursor.execute(query_update_position, (position, user_id, episode_id))
+
+        cnx.commit()  # Commit the changes
+        end = time.time()
+        print(f"Query executed in {end - start} seconds.")
+        return True
+    except Exception as e:
+        print("Error reordering Podcast Episodes:", e)
+        return False
+
 
 
 def check_queued(database_type, cnx, episode_id, user_id):

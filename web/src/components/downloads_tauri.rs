@@ -54,8 +54,6 @@ pub async fn download_file(url: String, filename: String) -> Result<(), JsValue>
 
     // Serialize and invoke the Tauri command
     let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    web_sys::console::log_1(&serialized_data); // Debug print
-
     tauri::invoke::<_, ()>("download_file", &args)
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to invoke download: {}", e)))
@@ -91,8 +89,6 @@ pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsVa
 
     // Serialize and invoke the Tauri command
     let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    web_sys::console::log_1(&serialized_data); // Debug print
-
     tauri::invoke::<_, ()>("update_local_db", &args)
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to update local DB: {}", e)))
@@ -134,8 +130,6 @@ pub async fn update_podcast_database(podcast_details: PodcastDetails) -> Result<
 
     // Serialize and invoke the Tauri command
     let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    web_sys::console::log_1(&serialized_data); // Debug print
-
     tauri::invoke::<_, ()>("update_podcast_db", &args)
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to update podcast DB: {:?}", e)))
@@ -259,9 +253,6 @@ pub fn downloads() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match fetch_local_podcasts().await {
                     Ok(fetched_podcasts) => {
-                        web_sys::console::log_1(
-                            &format!("Fetched Podcasts: {:?}", fetched_podcasts).into(),
-                        );
                         dispatch.reduce_mut(move |state| {
                             state.podcast_feed_return = Some(PodcastResponse {
                                 pods: Some(fetched_podcasts),
@@ -274,13 +265,8 @@ pub fn downloads() -> Html {
                         );
                     }
                 }
-                web_sys::console::log_1(&"Fetching Episodes".into());
-
                 match fetch_local_episodes().await {
                     Ok(fetched_episodes) => {
-                        web_sys::console::log_1(
-                            &format!("Fetched Episodes: {:?}", fetched_episodes).into(),
-                        );
                         let completed_episode_ids: Vec<i32> = fetched_episodes
                             .iter()
                             .filter(|ep| ep.listenduration.is_some())
@@ -307,75 +293,6 @@ pub fn downloads() -> Html {
             || ()
         });
     }
-
-    // // Fetch episodes on component mount
-    // let loading_ep = loading.clone();
-    // {
-    //     let error = error.clone();
-    //     let api_key = post_state
-    //         .auth_details
-    //         .as_ref()
-    //         .map(|ud| ud.api_key.clone());
-    //     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    //     let server_name = post_state
-    //         .auth_details
-    //         .as_ref()
-    //         .map(|ud| ud.server_name.clone());
-
-    //     let effect_dispatch = dispatch.clone();
-
-    //     // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
-
-    //     use_effect_with(
-    //         (api_key.clone(), user_id.clone(), server_name.clone()),
-    //         move |_| {
-    //             let error_clone = error.clone();
-    //             if let (Some(api_key), Some(user_id), Some(server_name)) =
-    //                 (api_key.clone(), user_id.clone(), server_name.clone())
-    //             {
-    //                 let dispatch = effect_dispatch.clone();
-
-    //                 wasm_bindgen_futures::spawn_local(async move {
-    //                     match call_get_podcasts(&server_name, &api_key, &user_id).await {
-    //                         Ok(fetched_podcasts) => {
-    //                             dispatch.reduce_mut(move |state| {
-    //                                 state.podcast_feed_return = Some(PodcastResponse {
-    //                                     pods: Some(fetched_podcasts),
-    //                                 });
-    //                             });
-    //                         }
-    //                         Err(e) => web_sys::console::log_1(
-    //                             &format!("Unable to parse Podcasts: {:?}", &e).into(),
-    //                         ),
-    //                     }
-
-    //                     match call_get_episode_downloads(&server_name, &api_key, &user_id).await {
-    //                         Ok(fetched_episodes) => {
-    //                             let completed_episode_ids: Vec<i32> = fetched_episodes
-    //                                 .iter()
-    //                                 .filter(|ep| ep.completed)
-    //                                 .map(|ep| ep.episodeid)
-    //                                 .collect();
-    //                             dispatch.reduce_mut(move |state| {
-    //                                 state.downloaded_episodes = Some(EpisodeDownloadResponse {
-    //                                     episodes: fetched_episodes,
-    //                                 });
-    //                                 state.completed_episodes = Some(completed_episode_ids);
-    //                             });
-    //                             loading_ep.set(false);
-    //                             // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
-    //                         }
-    //                         Err(e) => {
-    //                             error_clone.set(Some(e.to_string()));
-    //                             loading_ep.set(false);
-    //                         }
-    //                     }
-    //                 });
-    //             }
-    //             || ()
-    //         },
-    //     );
-    // }
 
     // Define the state of the application
     #[derive(Clone, PartialEq)]
@@ -722,7 +639,11 @@ pub fn render_podcast_with_episodes(
                             let on_shownotes_click = on_shownotes_click(
                                 history_clone.clone(),
                                 dispatch.clone(),
-                                episode_id_for_closure.clone(),
+                                Some(episode_id_for_closure.clone()),
+                                Some(String::from("Not needed")),
+                                Some(String::from("Not needed")),
+                                Some(String::from("Not needed")),
+                                true,
                             );
 
                             let date_format = match_date_format(state.date_format.as_deref());

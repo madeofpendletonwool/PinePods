@@ -5,8 +5,9 @@ use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::{
-    Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, HistoryDataResponse, Podcast,
-    PodcastResponse, QueuedEpisodesResponse, RecentEps, SavedEpisodesResponse,
+    Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
+    HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
+    RecentEps, SavedEpisodesResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
@@ -93,6 +94,9 @@ pub struct AppState {
     pub selected_theme: Option<String>,
     pub fetched_episode: Option<EpisodeMetadataResponse>,
     pub selected_episode_id: Option<i32>,
+    pub selected_episode_url: Option<String>,
+    pub selected_episode_audio_url: Option<String>,
+    pub selected_podcast_title: Option<String>,
     pub add_user_request: Option<AddUserRequest>,
     pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
@@ -137,6 +141,16 @@ pub struct UIState {
     pub offline: Option<bool>,
     pub app_offline_mode: Option<bool>,
     pub local_download_increment: Option<i32>,
+    pub episode_chapters: Option<Vec<Chapter>>,
+    pub podcast_people: Option<Vec<Person>>,
+    pub episode_people: Option<Vec<Person>>,
+    pub episode_transcript: Option<Vec<Transcript>>,
+    pub episode_page_people: Option<Vec<Person>>,
+    pub episode_page_transcript: Option<Vec<Transcript>>,
+    pub podcast_funding: Option<Vec<Funding>>,
+    pub podcast_podroll: Option<Vec<PodrollItem>>,
+    pub podcast_value4value: Option<Vec<Value>>,
+    pub is_mobile: Option<bool>,
 }
 
 impl UIState {

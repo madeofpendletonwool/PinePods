@@ -1,21 +1,37 @@
-use std::collections::HashMap;
 use ammonia::Builder;
-use web_sys::{DomParser, SupportedType};
-use wasm_bindgen::JsCast;
 use argon2::{
-    password_hash::{
-        rand_core::OsRng,
-        PasswordHasher, SaltString
-    },
-    Argon2
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    Argon2,
 };
-use chrono::{DateTime, NaiveDateTime, Utc, TimeZone};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use std::collections::HashMap;
 use std::str::FromStr;
+use wasm_bindgen::JsCast;
+use web_sys::{DomParser, SupportedType};
+
+// pub fn format_date(date_str: &str) -> String {
+//     let date =
+//         chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").unwrap_or_else(|_| {
+//             chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
+//                 .unwrap()
+//                 .naive_utc()
+//         }); // Fallback for parsing error
+//     date.format("%m-%d-%Y").to_string()
+// }
 
 pub fn format_date(date_str: &str) -> String {
+    // Try parsing with the MySQL format
     let date = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-        .unwrap_or_else(|_| chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap().naive_utc()); // Fallback for parsing error
+        // If that fails, try the PostgreSQL format
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S%.f"))
+        // If both parsing attempts fail, fallback to the Unix epoch
+        .unwrap_or_else(|_| {
+            DateTime::<Utc>::from_timestamp(0, 0)
+                .map(|dt| dt.naive_utc())
+                .expect("invalid timestamp")
+        });
+
     date.format("%m-%d-%Y").to_string()
 }
 
@@ -52,11 +68,18 @@ pub fn parse_date(date_str: &str, user_tz: &Option<String>) -> DateTime<Tz> {
         .unwrap_or_else(|_| Utc::now().naive_utc());
 
     let datetime_utc = Utc.from_utc_datetime(&naive_datetime);
-    let tz: Tz = user_tz.as_ref().and_then(|tz| Tz::from_str(tz).ok()).unwrap_or_else(|| chrono_tz::UTC);
+    let tz: Tz = user_tz
+        .as_ref()
+        .and_then(|tz| Tz::from_str(tz).ok())
+        .unwrap_or_else(|| chrono_tz::UTC);
     datetime_utc.with_timezone(&tz)
 }
 
-pub fn format_datetime(datetime: &DateTime<Tz>, hour_preference: &Option<i16>, date_format: DateFormat) -> String {
+pub fn format_datetime(
+    datetime: &DateTime<Tz>,
+    hour_preference: &Option<i16>,
+    date_format: DateFormat,
+) -> String {
     let format_str = match date_format {
         DateFormat::MDY => "%m-%d-%Y",
         DateFormat::DMY => "%d-%m-%Y",
@@ -69,8 +92,12 @@ pub fn format_datetime(datetime: &DateTime<Tz>, hour_preference: &Option<i16>, d
     };
 
     match hour_preference {
-        Some(12) => datetime.format(&format!("{} %l:%M %p", format_str)).to_string(),
-        _ => datetime.format(&format!("{} %H:%M", format_str)).to_string(),
+        Some(12) => datetime
+            .format(&format!("{} %l:%M %p", format_str))
+            .to_string(),
+        _ => datetime
+            .format(&format!("{} %H:%M", format_str))
+            .to_string(),
     }
 }
 
@@ -85,7 +112,6 @@ pub fn truncate_description(description: String, max_length: usize) -> (String, 
 
     (truncated_html, is_truncated)
 }
-
 
 pub fn sanitize_html_with_blank_target(description: &str) -> String {
     // Create the inner HashMap for attribute "target" with value "_blank"
@@ -109,7 +135,9 @@ pub fn sanitize_html_with_blank_target(description: &str) -> String {
 pub fn encode_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(password.as_bytes(), &salt)?.to_string();
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt)?
+        .to_string();
     Ok(password_hash)
 }
 
@@ -157,7 +185,6 @@ pub fn validate_password(password: &str) -> Vec<ValidationError> {
         errors.push(ValidationError::PasswordTooShort);
     }
 
-
     errors
 }
 
@@ -169,14 +196,13 @@ pub fn validate_email(email: &str) -> Vec<ValidationError> {
         errors.push(ValidationError::InvalidEmail);
     }
 
-
     errors
 }
 
-
 pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
     let parser = DomParser::new().unwrap();
-    let doc = parser.parse_from_string(opml_content, SupportedType::TextXml)
+    let doc = parser
+        .parse_from_string(opml_content, SupportedType::TextXml)
         .unwrap()
         .dyn_into::<web_sys::Document>()
         .unwrap();
@@ -184,7 +210,10 @@ pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
     let mut podcasts = Vec::new();
     let outlines = doc.query_selector_all("outline").unwrap();
     for i in 0..outlines.length() {
-        if let Some(outline) = outlines.item(i).and_then(|o| o.dyn_into::<web_sys::Element>().ok()) {
+        if let Some(outline) = outlines
+            .item(i)
+            .and_then(|o| o.dyn_into::<web_sys::Element>().ok())
+        {
             let title = outline.get_attribute("title").unwrap_or_default();
             let xml_url = outline.get_attribute("xmlUrl").unwrap_or_default();
             podcasts.push((title, xml_url));
@@ -198,6 +227,18 @@ pub fn format_time(time_in_seconds: f64) -> String {
     let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
     let seconds = (time_in_seconds % 60.0).floor() as i32;
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+pub fn format_time_rm_hour(time_in_seconds: f64) -> String {
+    let hours = (time_in_seconds / 3600.0).floor() as i32;
+    let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
+    let seconds = (time_in_seconds % 60.0).floor() as i32;
+
+    if hours > 0 {
+        format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    } else {
+        format!("{:02}:{:02}", minutes, seconds)
+    }
 }
 
 pub fn format_time_mins(time_in_minutes: i32) -> String {

@@ -316,7 +316,11 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let on_shownotes_click = on_shownotes_click(
         history_clone.clone(),
         dispatch.clone(),
-        episode_id_for_closure.clone(),
+        Some(episode_id_for_closure.clone()),
+        Some(String::from("home")),
+        Some(String::from("home")),
+        Some(String::from("home")),
+        true,
     );
 
     let date_format = match state.date_format.as_deref() {

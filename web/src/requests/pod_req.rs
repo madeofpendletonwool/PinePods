@@ -1,7 +1,6 @@
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_wasm_bindgen::to_value;
 use std::collections::HashMap;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -571,6 +570,47 @@ pub async fn call_get_queued_episodes(
     Ok(response_data.data)
 }
 
+#[derive(Serialize)]
+struct ReorderPayload {
+    episode_ids: Vec<i32>,
+}
+
+pub async fn call_reorder_queue(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    episode_ids: &Vec<i32>,
+) -> Result<(), Error> {
+    // Build the URL
+    let url = format!("{}/api/data/reorder_queue?user_id={}", server_name, user_id);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    // Create the payload
+    let payload = ReorderPayload {
+        episode_ids: episode_ids.clone(),
+    };
+
+    // Send the request
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .json(&payload)?
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to reorder queue: {}",
+            response.status_text()
+        )));
+    }
+
+    Ok(())
+}
+
 // Save episode calls
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -1098,6 +1138,173 @@ pub async fn call_get_episode_metadata(
     Ok(response_data.episode)
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+#[allow(non_snake_case)]
+pub struct Chapter {
+    pub startTime: Option<i32>, // Changed to Option<String>
+    pub title: String,
+    pub url: Option<String>,
+    pub img: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Transcript {
+    pub url: String,
+    pub mime_type: String,
+    pub language: Option<String>,
+    pub rel: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Person {
+    pub name: String,
+    pub role: Option<String>,
+    pub group: Option<String>,
+    pub img: Option<String>,
+    pub href: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Podcasting2Data {
+    pub chapters: Vec<Chapter>,
+    pub transcripts: Vec<Transcript>,
+    pub people: Vec<Person>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FetchPodcasting2DataRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+pub async fn call_fetch_podcasting_2_data(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_request: &FetchPodcasting2DataRequest,
+) -> Result<Podcasting2Data, Error> {
+    let url = format!(
+        "{}/api/data/fetch_podcasting_2_data?episode_id={}&user_id={}",
+        server_name, episode_request.episode_id, episode_request.user_id
+    );
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Request Error: {}", e)))?;
+
+    if !response.ok() {
+        return Err(Error::msg(format!(
+            "Failed to fetch podcasting 2.0 data: {}",
+            response.status()
+        )));
+    }
+
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| Error::msg(format!("Failed to read response text: {}", e)))?;
+
+    let response_data: Podcasting2Data = serde_json::from_str(&response_text)
+        .map_err(|e| Error::msg(format!("Deserialization Error: {}", e)))?;
+
+    Ok(response_data)
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct PodrollItem {
+    pub feed_guid: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Funding {
+    pub url: String,
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct ValueRecipient {
+    pub name: String,
+    pub r#type: String,
+    pub address: String,
+    pub split: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Value {
+    pub r#type: String,
+    pub method: String,
+    pub suggested: Option<String>,
+    pub recipients: Vec<ValueRecipient>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Podcasting2PodData {
+    pub people: Vec<Person>,
+    pub podroll: Vec<PodrollItem>,
+    pub funding: Vec<Funding>,
+    pub value: Vec<Value>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FetchPodcasting2PodDataRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+pub async fn call_fetch_podcasting_2_pod_data(
+    server_name: &str,
+    api_key: &Option<String>,
+    podcast_request: &FetchPodcasting2PodDataRequest,
+) -> Result<Podcasting2PodData, Error> {
+    let url = format!(
+        "{}/api/data/fetch_podcasting_2_pod_data?podcast_id={}&user_id={}",
+        server_name, podcast_request.podcast_id, podcast_request.user_id
+    );
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Request Error: {}", e)))?;
+
+    if !response.ok() {
+        return Err(Error::msg(format!(
+            "Failed to fetch podcasting 2.0 pod data: {}",
+            response.status()
+        )));
+    }
+
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| Error::msg(format!("Failed to read response text: {}", e)))?;
+
+    let response_data: Podcasting2PodData = serde_json::from_str(&response_text)
+        .map_err(|e| Error::msg(format!("Deserialization Error: {}", e)))?;
+
+    Ok(response_data)
+}
+
 #[derive(Serialize)]
 pub struct RecordListenDurationRequest {
     pub episode_id: i32,
@@ -1351,10 +1558,6 @@ pub async fn call_get_podcast_details(
             .await
             .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
 
-        // Convert to JsValue and print to console
-        let js_value = to_value(&response_data.details)
-            .map_err(|e| Error::msg(format!("Failed to convert to JsValue: {}", e)))?;
-        web_sys::console::log_1(&js_value);
         Ok(response_data.details)
     } else {
         Err(Error::msg(format!(

@@ -145,6 +145,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // Local state to track if this particular podcast is added
     let is_added = use_state(|| false);
     let podcast = props.podcast.clone();
+    // web_sys::console::log_1(
+    //     &format!("Podcast categories: {:?}", podcast.categories.clone()).into(),
+    // );
+
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -378,6 +382,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let podcast_episode_count = podcast_episode_count_clone.clone();
             let podcast_categories = podcast_categories_clone.clone();
             let podcast_link = podcast_link_clone.clone();
+            web_sys::console::log_1(&format!("cats after click: {:?}", podcast_categories).into());
             e.prevent_default(); // Prevent the default anchor behavior
             let podcast_values = ClickedFeedURL {
                 podcast_title,

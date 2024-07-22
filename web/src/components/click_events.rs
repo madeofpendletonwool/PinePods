@@ -20,7 +20,7 @@ pub fn create_on_title_click(
     podcast_artwork: String,
     podcast_explicit: bool,
     podcast_episode_count: i32,
-    podcast_categories: Option<HashMap<String, String>>,
+    podcast_categories: Option<String>,
     podcast_link: String,
     user_id: i32,
     // ... other podcast-specific parameters ...
@@ -36,6 +36,15 @@ pub fn create_on_title_click(
         let server_clone = server_name.clone();
         let api_clone = api_key.clone().unwrap();
         let podcast_url_call = podcast_url.clone();
+        // Convert the categories string to a HashMap with integer keys
+        let podcast_categories_map: Option<HashMap<String, String>> =
+            podcast_categories.as_ref().map(|cats| {
+                cats.split(", ")
+                    .enumerate()
+                    .map(|(i, cat)| (i.to_string(), cat.to_string()))
+                    .collect()
+            });
+
         let podcast_values = ClickedFeedURL {
             podcast_title: podcast_title.clone(),
             podcast_url: podcast_url.clone(),
@@ -44,7 +53,7 @@ pub fn create_on_title_click(
             podcast_artwork: podcast_artwork.clone(),
             podcast_explicit: podcast_explicit.clone(),
             podcast_episode_count: podcast_episode_count.clone(),
-            podcast_categories: podcast_categories.clone(),
+            podcast_categories: podcast_categories_map.clone(),
             podcast_link: podcast_link.clone(),
         };
 
@@ -64,7 +73,6 @@ pub fn create_on_title_click(
                     if response.exists {
                         // The podcast exists in the database
                         // Get the podcast id
-                        web_sys::console::log_1(&format!("Podcast exists: {:?}", response).into());
                         match call_get_podcast_id(
                             &server_clone,
                             &api_clone,
@@ -75,10 +83,6 @@ pub fn create_on_title_click(
                         .await
                         {
                             Ok(podcast_id) => {
-                                web_sys::console::log_1(
-                                    &format!("Podcast IDs: {:?}", podcast_id).into(),
-                                );
-
                                 match call_get_podcast_episodes(
                                     &server_clone,
                                     &api_clone,
