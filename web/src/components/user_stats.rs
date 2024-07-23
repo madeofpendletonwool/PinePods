@@ -40,15 +40,18 @@ pub fn user_stats() -> Html {
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
                 // your async call here, using stat_dispatch to update stat_state
+                let get_server_name = server_name_effect.clone();
+                let get_api_key = api_key.clone();
+                let get_stat_dispatch = stat_dispatch.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     if let Ok(fetched_stats) = stat_reqs::call_get_stats(
-                        server_name_effect.unwrap().clone(),
-                        api_key.flatten().clone(),
+                        get_server_name.unwrap().clone(),
+                        get_api_key.flatten().clone(),
                         &user_id.unwrap(),
                     )
                     .await
                     {
-                        stat_dispatch.reduce_mut(move |state| {
+                        get_stat_dispatch.reduce_mut(move |state| {
                             state.stats = Some(fetched_stats);
                         });
                     }
@@ -58,7 +61,7 @@ pub fn user_stats() -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     if let Ok(fetched_stats) = call_get_pinepods_version(
                         server_name_effect.unwrap().clone(),
-                        api_key.flatten().clone(),
+                        &api_key.flatten().clone(),
                     )
                     .await
                     {

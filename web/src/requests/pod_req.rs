@@ -1857,9 +1857,9 @@ pub struct PinepodsVersionResponse {
 }
 
 pub async fn call_get_pinepods_version(
-    server_name: &str,
+    server_name: String,
     api_key: &Option<String>,
-) -> Result<(i32, i32), Error> {
+) -> Result<String, Error> {
     let url = format!("{}/api/data/get_pinepods_version", server_name);
     let api_key_ref = api_key
         .as_deref()
@@ -1872,8 +1872,8 @@ pub async fn call_get_pinepods_version(
         .await?;
 
     if response.ok() {
-        let response_data: data = response.json().await?;
-        Ok((response_data.data))
+        let response_text: String = response.text().await?;
+        Ok(response_text)
     } else {
         let error_text = response
             .text()
