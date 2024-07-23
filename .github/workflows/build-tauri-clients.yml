@@ -86,7 +86,12 @@ jobs:
       - name: Update Tauri version (UNIX)
         run: |
           cd web/src-tauri
-          sed -i "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          # Use different sed syntax for macOS
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          else
+            sed -i "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          fi
           cat tauri.conf.json
         shell: bash
         if: ${{ matrix.os != 'windows-latest' }}
