@@ -1849,3 +1849,39 @@ pub async fn call_get_auto_skip_times(
         )))
     }
 }
+
+#[derive(Deserialize, Debug)]
+pub struct PinepodsVersionResponse {
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+pub async fn call_get_pinepods_version(
+    server_name: &str,
+    api_key: &Option<String>,
+) -> Result<(i32, i32), Error> {
+    let url = format!("{}/api/data/get_pinepods_version", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: data = response.json().await?;
+        Ok((response_data.data))
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get Pinepods Version: {}",
+            error_text
+        )))
+    }
+}

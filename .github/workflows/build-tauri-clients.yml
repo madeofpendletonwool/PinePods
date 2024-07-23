@@ -99,7 +99,9 @@ jobs:
       - name: Update Tauri version (Windows)
         run: |
           cd web/src-tauri
-          (Get-Content tauri.conf.json) -replace '"version": ".*"', '"version": "${{ env.IMAGE_TAG }}"' | Set-Content tauri.conf.json
+          $config = Get-Content tauri.conf.json | Out-String | ConvertFrom-Json
+          $config.package.version = "${{ env.IMAGE_TAG }}"
+          $config | ConvertTo-Json -Compress | Set-Content tauri.conf.json
           Get-Content tauri.conf.json
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}

@@ -3,6 +3,7 @@ use super::gen_components::Search_nav;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::gen_funcs::{format_date, format_time_mins};
+use crate::requests::pod_req::call_get_pinepods_version;
 use crate::requests::stat_reqs;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
@@ -49,6 +50,20 @@ pub fn user_stats() -> Html {
                     {
                         stat_dispatch.reduce_mut(move |state| {
                             state.stats = Some(fetched_stats);
+                        });
+                    }
+                    // handle error case
+                });
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(fetched_stats) = call_get_pinepods_version(
+                        server_name_effect.unwrap().clone(),
+                        api_key.flatten().clone(),
+                    )
+                    .await
+                    {
+                        stat_dispatch.reduce_mut(move |state| {
+                            state.pinepods_version = Some(fetched_stats);
                         });
                     }
                     // handle error case
