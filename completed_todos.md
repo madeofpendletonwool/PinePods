@@ -19,7 +19,7 @@ Next Minor Version:
 Version 0.6.4
 
 - [x] Added a fallback to the opml import for when the opml file uses text instead of title for the podcast name key
-- [] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
+- [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
 - [] Support floating point chapters
 - [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on

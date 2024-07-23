@@ -1856,6 +1856,11 @@ pub struct PinepodsVersionResponse {
     pub end_skip: i32,
 }
 
+#[derive(Deserialize)]
+struct VersionResponse {
+    data: String,
+}
+
 pub async fn call_get_pinepods_version(
     server_name: String,
     api_key: &Option<String>,
@@ -1873,7 +1878,13 @@ pub async fn call_get_pinepods_version(
 
     if response.ok() {
         let response_text: String = response.text().await?;
-        Ok(response_text)
+        web_sys::console::log_1(&format!("version: {}", &response_text).into());
+
+        // Deserialize the JSON response
+        let version_response: VersionResponse = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow::Error::msg(format!("Failed to parse response: {}", e)))?;
+
+        Ok(version_response.data)
     } else {
         let error_text = response
             .text()

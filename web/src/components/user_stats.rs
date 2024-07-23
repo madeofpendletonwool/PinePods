@@ -15,6 +15,7 @@ pub fn user_stats() -> Html {
     let (_state, _dispatch) = use_store::<AppState>();
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
     let user_stats = stat_state.stats.as_ref();
+    let pinepods_version = stat_state.pinepods_version.as_ref();
 
     // let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -75,6 +76,10 @@ pub fn user_stats() -> Html {
             },
         );
     }
+    let display_version_value = "test_mode".to_string();
+    let display_version = pinepods_version
+        .as_deref()
+        .unwrap_or(&display_version_value);
 
     html! {
         <>
@@ -121,7 +126,7 @@ pub fn user_stats() -> Html {
                                         </div>
                                         <div class="large-card col-span-1 md:col-span-3">
                                             <img src="static/assets/favicon.png" alt="Pinepods Logo" class="large-card-image"/>
-                                                                     <p class="large-card-paragraph item_container-text">{"Current Version: 0.6.3"}</p>
+                                            <p class="large-card-paragraph item_container-text">{ format!("Current Version: {}", display_version) }</p>
                                             <p class="large-card-paragraph item_container-text">{"Thanks for using Pinepods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data. Feel free to reach out for questions and open an issue if you have ideas for new features. Pull Requests on this software are welcome and encouraged. If you feel that you've gotten use out of this software and are thankful for it's existence donations to my Buymeacoffee are welcome but never required. Lastly, this app will ALWAYS remain open source."}</p>
                                             <div class="large-card-content flex flex-col space-y-2">
                                                 <a href="https://pinepods.online" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{"Pinepods Documentation"}</a>
