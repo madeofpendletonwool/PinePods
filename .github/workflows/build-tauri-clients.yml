@@ -96,15 +96,18 @@ jobs:
         shell: bash
         if: ${{ matrix.os != 'windows-latest' }}
 
+      - name: Setup Python
+        if: ${{ matrix.os == 'windows-latest' }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+
       - name: Update Tauri version (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
         run: |
           cd web/src-tauri
-          $config = Get-Content tauri.conf.json | Out-String | ConvertFrom-Json
-          $config.package.version = "${{ env.IMAGE_TAG }}"
-          $config | ConvertTo-Json -Compress | Set-Content tauri.conf.json
-          Get-Content tauri.conf.json
-        shell: pwsh
-        if: ${{ matrix.os == 'windows-latest' }}
+          python setup-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
+          cat tauri.conf.json
 
       - name: Build | Compile (UNIX)
         run: |
