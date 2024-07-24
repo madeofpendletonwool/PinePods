@@ -114,6 +114,7 @@ pub struct AppState {
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct UserStatsStore {
     pub stats: Option<UserStats>,
+    pub pinepods_version: Option<String>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

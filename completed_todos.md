@@ -9,16 +9,22 @@ Major Version:
 
 Next Minor Version:
 
-- [] Manually adjust tags for podcast in podcast settings
-- [] A route to get the version of the app. This will allow dynamic displaying of the current version. Just one more area to futher automation as changes get made.
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
-- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 - [] Queue adjmustment for mobile devices
 - [] Full Show deletion with checkbox on download page
+
+
+Version 0.6.4
+
+- [x] Added a fallback to the opml import for when the opml file uses text instead of title for the podcast name key
+- [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
+- [] Fixed layout for podcasts when searching
 - [] Support floating point chapters
+- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Manually adjust tags for podcast in podcast settings
 
 
 Version 0.6.3

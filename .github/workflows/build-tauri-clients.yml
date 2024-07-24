@@ -1,10 +1,13 @@
 name: Build Tauri Clients
 
 on:
-  # push:
-  #   branches:
-  #     - main
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
 
 jobs:
   compile:
@@ -20,29 +23,24 @@ jobs:
     # Set an environment variable based on the OS
     env:
       DEPENDS_SETUP: ${{ matrix.os == 'ubuntu-latest' && 'true' || 'false' }}
-      # ARTIFACT_NAME1: ${{
-      #   matrix.os == 'ubuntu-latest' && 'deb/pinepods_0.5.0_amd64.deb' ||
-      #   matrix.os == 'windows-latest' && 'exe/pinepods_0.5.0_amd64.exe' ||
-      #   matrix.os == 'macOS-latest' && 'dmg/pinepods_0.5.0_amd64.dmg'
-      # }}
-      # ARTIFACT_NAME2: ${{
-      #   matrix.os == 'ubuntu-latest' && 'appimage/pinepods_0.5.0_amd64.AppImage' ||
-      #   matrix.os == 'windows-latest' && 'msi/pinepods_0.5.0_amd64.msi' ||
-      #   matrix.os == 'macOS-latest' && 'app/pinepods_0.5.0_amd64.app'
-      # }}
 
     steps:
+      - name: Set Image Tag
+        id: set_tag
+        run: |
+          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
       - name: Set environment variables
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            echo "ARTIFACT_NAME1=deb/pinepods_0.6.3_amd64.deb" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=appimage/pinepods_0.6.3_amd64.AppImage" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME3=rpm/pinepods-0.6.3-1.x86_64.rpm"
+            echo "ARTIFACT_NAME1=deb/pinepods_${{ env.IMAGE_TAG }}_amd64.deb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=appimage/pinepods_${{ env.IMAGE_TAG }}_amd64.AppImage" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME3=rpm/pinepods-${{ env.IMAGE_TAG }}.x86_64.rpm"
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "ARTIFACT_NAME1=nsis/Pinepods_0.6.3_x64-setup.exe" >> $Env:GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/Pinepods_0.6.3_x64_en-US.msi" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_${{ env.IMAGE_TAG }}_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
-            echo "ARTIFACT_NAME1=dmg/Pinepods_0.6.3_aarch64.dmg" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=dmg/Pinepods_${{ env.IMAGE_TAG }}_aarch64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=macos/Pinepods.app" >> $GITHUB_ENV
           fi
         shell: bash
@@ -51,8 +49,8 @@ jobs:
       - name: Set environment variables (Windows)
         run: |
           if ("${{ matrix.os }}" -eq "windows-latest") {
-            echo "ARTIFACT_NAME1=nsis/Pinepods_0.6.3_x64-setup.exe" >> $Env:GITHUB_ENV
-            echo "ARTIFACT_NAME2=msi/Pinepods_0.6.3_x64_en-US.msi" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME1=nsis/Pinepods_${{ env.IMAGE_TAG }}_x64-setup.exe" >> $Env:GITHUB_ENV
+            echo "ARTIFACT_NAME2=msi/Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
           }
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
@@ -85,9 +83,38 @@ jobs:
         run: |
           cargo install tauri-cli --locked
 
+      - name: Update Tauri version (UNIX)
+        run: |
+          cd web/src-tauri
+          # Use different sed syntax for macOS
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          else
+            sed -i "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          fi
+          cat tauri.conf.json
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Setup Python
+        if: ${{ matrix.os == 'windows-latest' }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+
+      - name: Verify directory and update Tauri version (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: |
+          cd web/src-tauri
+          dir
+          python .\setup-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
+          Get-Content tauri.conf.json
+        shell: pwsh
+
       - name: Build | Compile (UNIX)
         run: |
           cd web/src-tauri
+          cat tauri.conf.json
           cargo tauri build
           pwd
           ls
@@ -98,6 +125,7 @@ jobs:
       - name: Build | Compile (Windows)
         run: |
           cd web/src-tauri
+          Get-Content tauri.conf.json
           cargo tauri build
           ls target/release/bundle
         shell: pwsh
@@ -133,6 +161,33 @@ jobs:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME3 }}
         if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME1 }}
+          asset_name: ${{ env.ARTIFACT_NAME1 }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets 2
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME2 }}
+          asset_name: ${{ env.ARTIFACT_NAME2 }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload release assets 3
+        if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./web/src-tauri/target/release/bundle/${{ env.ARTIFACT_NAME3 }}
+          asset_name: ${{ env.ARTIFACT_NAME3 }}
+          asset_content_type: application/octet-stream
 
   # release:
   #   needs: compile

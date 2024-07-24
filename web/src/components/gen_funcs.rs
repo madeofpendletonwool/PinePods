@@ -215,8 +215,10 @@ pub fn parse_opml(opml_content: &str) -> Vec<(String, String)> {
             .and_then(|o| o.dyn_into::<web_sys::Element>().ok())
         {
             let title = outline.get_attribute("title").unwrap_or_default();
+            let text = outline.get_attribute("text").unwrap_or_default();
+            let final_title = if title.is_empty() { text } else { title };
             let xml_url = outline.get_attribute("xmlUrl").unwrap_or_default();
-            podcasts.push((title, xml_url));
+            podcasts.push((final_title, xml_url));
         }
     }
     podcasts

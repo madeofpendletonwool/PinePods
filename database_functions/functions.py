@@ -401,7 +401,17 @@ def get_first_episode_id(cnx, database_type, podcast_id, user_id):
     finally:
         cursor.close()
 
-
+def get_pinepods_version():
+    try:
+        with open('/pinepods/current_version', 'r') as file:
+            version = file.read().strip()
+            if not version:
+                return 'dev_mode'
+            return version
+    except FileNotFoundError:
+        return "Version file not found."
+    except Exception as e:
+        return f"An error occurred: {e}"
 
 def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download):
     import datetime

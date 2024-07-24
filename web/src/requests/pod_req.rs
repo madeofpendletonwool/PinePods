@@ -1849,3 +1849,50 @@ pub async fn call_get_auto_skip_times(
         )))
     }
 }
+
+#[derive(Deserialize, Debug)]
+pub struct PinepodsVersionResponse {
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+#[derive(Deserialize)]
+struct VersionResponse {
+    data: String,
+}
+
+pub async fn call_get_pinepods_version(
+    server_name: String,
+    api_key: &Option<String>,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_pinepods_version", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_text: String = response.text().await?;
+        web_sys::console::log_1(&format!("version: {}", &response_text).into());
+
+        // Deserialize the JSON response
+        let version_response: VersionResponse = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow::Error::msg(format!("Failed to parse response: {}", e)))?;
+
+        Ok(version_response.data)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get Pinepods Version: {}",
+            error_text
+        )))
+    }
+}
