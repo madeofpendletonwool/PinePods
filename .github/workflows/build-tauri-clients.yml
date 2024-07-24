@@ -102,12 +102,14 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Update Tauri version (Windows)
+      - name: Verify directory and update Tauri version (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
         run: |
           cd web/src-tauri
-          python setup-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
-          cat tauri.conf.json
+          dir
+          python .\setup-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
+          Get-Content tauri.conf.json
+        shell: pwsh
 
       - name: Build | Compile (UNIX)
         run: |
