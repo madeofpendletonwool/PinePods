@@ -368,6 +368,9 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [x] Timestamps in playing page
 - [x] Chapter Image Support
 - [x] Drag to reorganize queue
+- [x] Allow for reading transcrips
+- [x] Add Funding Links when offered
+- [x] Chapter images
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
@@ -385,10 +388,7 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
-- [ ] Chapter images
 - [ ] Implement Podroll to Podcast page when offered
-- [ ] Allow for reading transcrips
-- [ ] Add Funding Links when offered
 - [ ] Sharing System
 - [ ] Option to use login images as background throughout app.
 - [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
