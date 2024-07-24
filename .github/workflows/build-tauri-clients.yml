@@ -107,7 +107,7 @@ jobs:
         run: |
           cd web/src-tauri
           dir
-          python .\setup-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
+          python .\change-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
           Get-Content tauri.conf.json
         shell: pwsh
 
