@@ -1,0 +1,44 @@
+name: Notifications on release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      message_text:
+        description: "Manual override text (optional)"
+        required: false
+
+
+jobs:
+  discord_announcement:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set release description
+        id: set_description
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "::set-output name=description::${{ github.event.release.body }}"
+            echo "::set-output name=link::${{ github.event.release.html_url }}"
+          else
+            echo "::set-output name=description::${{ github.event.inputs.message_text }}"
+            echo "::set-output name=link::https://github.com/${{ github.repository }}/releases"
+          fi
+
+      - name: Discord notification to announce deployment
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        uses: Ilshidur/action-discord@master
+        with:
+          args: |
+            -- New Pinepods Version Released! --
+            ${{ steps.set_description.outputs.description }}
+            Check out the release [here](${{ steps.set_description.outputs.link }})
