@@ -9,7 +9,6 @@ on:
         description: "Manual override text (optional)"
         required: false
 
-
 jobs:
   discord_announcement:
     runs-on: ubuntu-latest
@@ -22,15 +21,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set release description
-        id: set_description
+      - name: Set release message
+        id: set_message
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "::set-output name=description::${{ github.event.release.body }}"
-            echo "::set-output name=link::${{ github.event.release.html_url }}"
+            version="${{ github.event.release.tag_name }}"
+            message="Pinepods Version $version Released!\nCheck out the release [here](${{ github.event.release.html_url }})"
+            echo "::set-output name=message::$message"
           else
-            echo "::set-output name=description::${{ github.event.inputs.message_text }}"
-            echo "::set-output name=link::https://github.com/${{ github.repository }}/releases"
+            echo "::set-output name=message::${{ github.event.inputs.message_text }}"
           fi
 
       - name: Discord notification to announce deployment
@@ -38,7 +37,4 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         uses: Ilshidur/action-discord@master
         with:
-          args: |
-            -- New Pinepods Version Released! --
-            ${{ steps.set_description.outputs.description }}
-            Check out the release [here](${{ steps.set_description.outputs.link }})
+          args: ${{ steps.set_message.outputs.message }}
