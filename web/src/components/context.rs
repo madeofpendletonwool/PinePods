@@ -1,22 +1,26 @@
-use std::collections::HashSet;
-use std::rc::Rc;
-use serde::Deserialize;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use crate::components::audio::AudioPlayerProps;
+use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::login_requests::AddUserRequest;
 use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
-use crate::components::audio::AudioPlayerProps;
-use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
+use crate::requests::pod_req::{
+    Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
+    HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
+    RecentEps, SavedEpisodesResponse, Transcript, Value,
+};
 use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
-use crate::requests::pod_req::{Episode, RecentEps, Podcast, PodcastResponse, QueuedEpisodesResponse, SavedEpisodesResponse, HistoryDataResponse, EpisodeDownloadResponse, EpisodeMetadataResponse};
-use yewdux::prelude::*;
-use web_sys::HtmlAudioElement;
-use serde_json::{json, from_str};
-use web_sys::window;
-use crate::components::podcast_layout::ClickedFeedURL;
+use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::stat_reqs::UserStats;
+use serde::Deserialize;
+use serde_json::{from_str, json};
+use std::collections::HashSet;
+use std::rc::Rc;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use web_sys::window;
+use web_sys::HtmlAudioElement;
+use yewdux::prelude::*;
 
 #[allow(dead_code)]
 #[allow(dead_code)]
@@ -25,7 +29,7 @@ pub enum AppStateMsg {
     CollapseEpisode(String),
     SetLoading(bool),
     UpdateSelectedEpisodesForDeletion(i32), // Add this line
-    DeleteSelectedEpisodes, // Add this line
+    DeleteSelectedEpisodes,                 // Add this line
 }
 
 impl Reducer<AppState> for AppStateMsg {
@@ -36,34 +40,33 @@ impl Reducer<AppState> for AppStateMsg {
         match self {
             AppStateMsg::ExpandEpisode(guid) => {
                 state_mut.expanded_descriptions.insert(guid);
-            },
+            }
             AppStateMsg::CollapseEpisode(guid) => {
                 state_mut.expanded_descriptions.remove(&guid);
-            },
+            }
             AppStateMsg::SetLoading(is_loading) => {
                 state_mut.is_loading = Option::from(is_loading);
-            },
-            AppStateMsg::UpdateSelectedEpisodesForDeletion(episode_id) => { // Add this block
+            }
+            AppStateMsg::UpdateSelectedEpisodesForDeletion(episode_id) => {
+                // Add this block
                 state_mut.selected_episodes_for_deletion.insert(episode_id);
-            },
-            AppStateMsg::DeleteSelectedEpisodes => { // Add this block
+            }
+            AppStateMsg::DeleteSelectedEpisodes => {
+                // Add this block
                 // Here you can delete the selected episodes from your state
                 // For now, let's just clear the selected episodes
                 state_mut.selected_episodes_for_deletion.clear();
-            },
+            }
         }
 
         state
     }
 }
 
-
 #[derive(Default, PartialEq, Clone, Store)]
 pub struct ExpandedDescriptions {
     pub expanded_descriptions: HashSet<String>,
 }
-
-
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct AppState {
@@ -91,6 +94,9 @@ pub struct AppState {
     pub selected_theme: Option<String>,
     pub fetched_episode: Option<EpisodeMetadataResponse>,
     pub selected_episode_id: Option<i32>,
+    pub selected_episode_url: Option<String>,
+    pub selected_episode_audio_url: Option<String>,
+    pub selected_podcast_title: Option<String>,
     pub add_user_request: Option<AddUserRequest>,
     pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
@@ -102,11 +108,13 @@ pub struct AppState {
     pub hour_preference: Option<i16>,
     pub date_format: Option<String>,
     pub podcast_added: Option<bool>,
+    pub completed_episodes: Option<Vec<i32>>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct UserStatsStore {
     pub stats: Option<UserStats>,
+    pub pinepods_version: Option<String>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
@@ -128,11 +136,25 @@ pub struct UIState {
     pub is_expanded: bool,
     pub episode_in_db: Option<bool>,
     pub playback_speed: f64,
-    // pub start_pos_sec: f64,
+    pub audio_volume: f64,
+    pub start_skip_sec: f64,
+    pub end_skip_sec: f64,
+    pub offline: Option<bool>,
+    pub app_offline_mode: Option<bool>,
+    pub local_download_increment: Option<i32>,
+    pub episode_chapters: Option<Vec<Chapter>>,
+    pub podcast_people: Option<Vec<Person>>,
+    pub episode_people: Option<Vec<Person>>,
+    pub episode_transcript: Option<Vec<Transcript>>,
+    pub episode_page_people: Option<Vec<Person>>,
+    pub episode_page_transcript: Option<Vec<Transcript>>,
+    pub podcast_funding: Option<Vec<Funding>>,
+    pub podcast_podroll: Option<Vec<PodrollItem>>,
+    pub podcast_value4value: Option<Vec<Value>>,
+    pub is_mobile: Option<bool>,
 }
 
 impl UIState {
-
     pub fn update_current_time(&mut self, new_time_seconds: f64) {
         self.current_time_seconds = new_time_seconds;
 
@@ -161,7 +183,9 @@ impl UIState {
                 let closure = Closure::wrap(Box::new(move || {
                     // Code to handle the audio being ready to play
                 }) as Box<dyn Fn()>);
-                audio.add_event_listener_with_callback("canplay", closure.as_ref().unchecked_ref()).unwrap();
+                audio
+                    .add_event_listener_with_callback("canplay", closure.as_ref().unchecked_ref())
+                    .unwrap();
                 closure.forget(); // Prevents the closure from being garbage collected
             }
         }
@@ -175,11 +199,7 @@ impl UIState {
     }
 }
 
-
-
-
 impl AppState {
-
     pub fn deserialize(serialized_state: &str) -> Result<Self, serde_json::Error> {
         from_str(serialized_state)
     }
@@ -210,5 +230,4 @@ impl AppState {
     //     }
     //     None
     // }
-
 }

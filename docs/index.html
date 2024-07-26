@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Pinepods Helm Chart</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                color: #333;
+                margin: 0;
+                padding: 20px;
+            }
+            .container {
+                max-width: 800px;
+                margin: auto;
+                background: white;
+                padding: 20px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+                text-align: center;
+            }
+            img {
+                display: block;
+                margin: 0 auto;
+            }
+            pre {
+                background: #eee;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            code {
+                background: #f9f9f9;
+                padding: 2px 4px;
+                border-radius: 3px;
+            }
+            a {
+                color: #1a73e8;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Pinepods Helm Chart</h1>
+            <img src="pinepods.png" alt="Pinepods Logo" width="200" />
+            <p>
+                Welcome to the Pinepods Helm chart repository. Follow the
+                instructions below to use the Helm chart.
+            </p>
+
+            <h2>Adding the Repository</h2>
+            <pre><code>helm repo add pinepods http://helm.pinepods.online/
+helm repo update</code></pre>
+
+            <h2>Create the namespace</h2>
+            <pre><code>kubectl create namespace pinepods-namespace</code></pre>
+
+            <h2>Customizing Values</h2>
+            <p>
+                Create a <code>my-values.yaml</code> file to override default
+                values:
+            </p>
+            <pre><code>replicaCount: 2
+
+            image:
+              repository: pinepods
+              tag: latest
+              pullPolicy: IfNotPresent
+
+            service:
+              type: NodePort
+              port: 8040
+              nodePort: 30007
+
+            persistence:
+              enabled: true
+              accessMode: ReadWriteOnce
+              size: 10Gi
+
+            postgresql:
+              enabled: true
+              auth:
+                username: postgres
+                password: "supersecretpassword"
+                database: pinepods_database
+              primary:
+                persistence:
+                  enabled: true
+                  existingClaim: postgres-pvc
+
+            env:
+              SEARCH_API_URL: "https://search.pinepods.online/api/search"
+              USERNAME: "admin"
+              PASSWORD: "password"
+              FULLNAME: "Admin User"
+              EMAIL: "admin@example.com"
+              DB_TYPE: "postgresql"
+              DB_HOST: "pinepods-postgresql.pinepods-namespace.svc.cluster.local"
+              DB_PORT: "5432"
+              DB_USER: "postgres"
+              DB_NAME: "pinepods_database"
+              DEBUG_MODE: "false"</code></pre>
+
+            <h2>Installing the Chart</h2>
+            <pre><code>helm install pinepods pinepods/pinepods -f my-values.yaml --namespace pinepods-namespace</code></pre>
+
+            <h2>More Information</h2>
+            <p>
+                For more information, visit the
+                <a href="https://github.com/madeofpendletonwool/pinepods"
+                    >GitHub repository</a
+                >.
+            </p>
+        </div>
+    </body>
+</html>

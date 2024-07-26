@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "Pinepods",
-    "version": "0.5.4"
+    "version": "1.2.4"
   },
   "tauri": {
     "systemTray": {

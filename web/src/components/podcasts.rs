@@ -1,21 +1,19 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
-use yew::{function_component, Html, html};
-use yew::prelude::*;
-use yewdux::prelude::*;
 use super::app_drawer::App_drawer;
-use crate::components::gen_components::{UseScrollToTop, Search_nav};
-use crate::requests::pod_req::{PodcastResponse, RemovePodcastValues, call_remove_podcasts};
-use crate::requests::pod_req;
-use web_sys::console;
-use crate::components::context::{AppState, UIState, ExpandedDescriptions};
-use yew_router::history::BrowserHistory;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::requests::login_requests::use_check_authentication;
+use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::SafeHtml;
+use crate::components::gen_components::{Search_nav, UseScrollToTop};
+use crate::requests::login_requests::use_check_authentication;
+use crate::requests::pod_req;
+use crate::requests::pod_req::{call_remove_podcasts, PodcastResponse, RemovePodcastValues};
 use wasm_bindgen::prelude::*;
+use yew::prelude::*;
+use yew::{function_component, html, Html};
+use yew_router::history::BrowserHistory;
+use yewdux::prelude::*;
 
 enum AppStateMsg {
     // ... other messages ...
@@ -31,13 +29,14 @@ impl Reducer<AppState> for AppStateMsg {
             AppStateMsg::RemovePodcast(podcast_id) => {
                 if let Some(podcasts) = &mut state_mut.podcast_feed_return {
                     podcasts.pods = Some(
-                        podcasts.pods
+                        podcasts
+                            .pods
                             .as_ref()
                             .unwrap_or(&vec![])
                             .iter()
                             .filter(|p| p.podcastid != podcast_id)
                             .cloned()
-                            .collect()
+                            .collect(),
                     );
                 }
             }
@@ -68,23 +67,26 @@ pub fn podcasts() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let performance = window.performance().expect("should have performance");
             let navigation_type = performance.navigation().type_();
-            
-            if navigation_type == 1 { // 1 stands for reload
+
+            if navigation_type == 1 {
+                // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage.set_item("isAuthenticated", "false").unwrap();
+                session_storage
+                    .set_item("isAuthenticated", "false")
+                    .unwrap();
             }
-    
+
             // Always check authentication status
             let current_route = window.location().href().unwrap_or_default();
             use_check_authentication(session_dispatch.clone(), &current_route);
-    
+
             // Mark that the page reload handling has occurred
             session_dispatch.reduce_mut(|state| {
                 state.reload_occured = Some(true);
                 state.clone() // Return the modified state
             });
         }
-    
+
         || ()
     });
 
@@ -109,17 +111,23 @@ pub fn podcasts() -> Html {
                 // let episodes_clone = episodes.clone();
                 // let error_clone = error.clone();
 
-                if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
                     let dispatch = effect_dispatch.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_podcasts(&server_name, &api_key, &user_id).await {
                             Ok(fetched_podcasts) => {
                                 dispatch.reduce_mut(move |state| {
-                                    state.podcast_feed_return = Some(PodcastResponse { pods: Some(fetched_podcasts) });
+                                    state.podcast_feed_return = Some(PodcastResponse {
+                                        pods: Some(fetched_podcasts),
+                                    });
                                 });
-                            },
-                            Err(e) => console::log_1(&format!("Unable to parse Podcasts: {:?}", &e).into()),
+                            }
+                            Err(e) => web_sys::console::log_1(
+                                &format!("Unable to parse Podcasts: {:?}", &e).into(),
+                            ),
                         }
                     });
                 }
@@ -155,7 +163,7 @@ pub fn podcasts() -> Html {
                             let history = history_clone.clone();
 
                             // let id_string = &podcast.PodcastID.to_string();
-    
+
                             let dispatch = dispatch.clone();
                             let podcast_id_loop = podcast.podcastid.clone();
                             // let podcast_url_clone = podcast.FeedURL.clone();
@@ -218,8 +226,7 @@ pub fn podcasts() -> Html {
                                     }
                                 })
                             };
-                            let categories: HashMap<String, String> = serde_json::from_str(&podcast.categories)
-                                .unwrap_or_else(|_| HashMap::new());
+
                             let on_title_click = create_on_title_click(
                                 dispatch.clone(),
                                 server_name_iter,
@@ -232,9 +239,9 @@ pub fn podcasts() -> Html {
                                 podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                                 podcast.explicit.clone(),
                                 podcast.episodecount.clone(),
-                                Some(categories),
+                                Some(podcast.categories.clone()),
                                 podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
-                                
+
                                 user_id.unwrap(),
                             );
 
@@ -247,9 +254,8 @@ pub fn podcasts() -> Html {
                             }
                             let toggle_expanded = {
                                 let desc_dispatch = desc_dispatch.clone();
-                                let desc_state = desc_state.clone();
                                 let episode_guid = podcast.podcastid.clone().to_string();
-                            
+
                                 Callback::from(move |_: MouseEvent| {
                                     let guid = episode_guid.clone();
                                     desc_dispatch.reduce_mut(move |state| {
@@ -263,7 +269,7 @@ pub fn podcasts() -> Html {
                                     });
                                 })
                             };
-                                               
+
                             let description_class = if desc_expanded {
                                 "desc-expanded".to_string()
                             } else {
@@ -273,21 +279,21 @@ pub fn podcasts() -> Html {
                                 <div>
                                 <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                                         <div class="flex flex-col w-auto object-cover pl-4">
-                                            <img 
+                                            <img
                                                 src={podcast.artworkurl.clone()}
                                                 onclick={on_title_click.clone()}
-                                                alt={format!("Cover for {}", podcast.podcastname.clone())} 
-                                                class="object-cover align-top-cover w-full item-container img"
+                                                alt={format!("Cover for {}", podcast.podcastname.clone())}
+                                                class="episode-image"
                                             />
-                                        </div> 
+                                        </div>
                                         <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                            <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click}>
+                                            <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
                                                 { &podcast.podcastname }
                                             </p>
                                             <hr class="my-2 border-t hidden md:block"/>
                                             {
                                                 html! {
-                                                    <div class="item-container-text hidden md:block">
+                                                    <div class="item-description-text hidden md:block">
                                                         <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                                             <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                                         </div>
@@ -302,11 +308,11 @@ pub fn podcasts() -> Html {
                                         <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                             <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
                                         </button>
-                                    
+
                                     </div>
                                 </div>
                             }
-                        
+
                         }).collect::<Html>()
                         }
                     } else {
@@ -331,7 +337,7 @@ pub fn podcasts() -> Html {
         </div>
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }

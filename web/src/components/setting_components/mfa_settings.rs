@@ -1,11 +1,12 @@
+use crate::components::context::{AppState, UIState};
+use crate::components::episodes_layout::SafeHtml;
+use crate::requests::setting_reqs::{
+    call_disable_mfa, call_generate_mfa_secret, call_mfa_settings, call_verify_temp_mfa,
+};
+use std::borrow::Borrow;
+use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use yew::platform::spawn_local;
-use crate::components::episodes_layout::SafeHtml;
-use crate::requests::setting_reqs::{call_mfa_settings, call_generate_mfa_secret, call_verify_temp_mfa};
-use std::borrow::Borrow;
-
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {
@@ -24,28 +25,36 @@ pub fn mfa_options() -> Html {
     let audio_dispatch_effect = audio_dispatch.clone();
     {
         let mfa_status = mfa_status.clone();
-        use_effect_with((effect_api_key.clone(), effect_server_name.clone()), move |(_api_key, _server_name)| {
-            let mfa_status = mfa_status.clone();
-            let api_key = effect_api_key.clone();
-            let server_name = effect_server_name.clone();
-            let user_id = effect_user_id.clone();
-            let future = async move {
-                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                    let response = call_mfa_settings(server_name, api_key.unwrap(), user_id.unwrap()).await;
-                    match response {
-                        Ok(mfa_settings_response) => {
-                            mfa_status.set(mfa_settings_response);
-                        },
-                        Err(e) => {
-                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting MFA status: {}", e)));
-                        },
+        use_effect_with(
+            (effect_api_key.clone(), effect_server_name.clone()),
+            move |(_api_key, _server_name)| {
+                let mfa_status = mfa_status.clone();
+                let api_key = effect_api_key.clone();
+                let server_name = effect_server_name.clone();
+                let user_id = effect_user_id.clone();
+                let future = async move {
+                    if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                        let response =
+                            call_mfa_settings(server_name, api_key.unwrap(), user_id.unwrap())
+                                .await;
+                        match response {
+                            Ok(mfa_settings_response) => {
+                                mfa_status.set(mfa_settings_response);
+                            }
+                            Err(e) => {
+                                audio_dispatch_effect.reduce_mut(|audio_state| {
+                                    audio_state.error_message =
+                                        Option::from(format!("Error getting MFA status: {}", e))
+                                });
+                            }
+                        }
                     }
-                }
-            };
-            spawn_local(future);
-            // Return cleanup function
-            || {}
-        });
+                };
+                spawn_local(future);
+                // Return cleanup function
+                || {}
+            },
+        );
     }
     // let html_self_service = self_service_status.clone();
     let loading = use_state(|| false);
@@ -62,7 +71,6 @@ pub fn mfa_options() -> Html {
     let mfa_code = use_state(|| String::new());
     let mfa_secret = use_state(|| String::new());
 
-
     // Define the function to close the modal
     let close_modal = {
         let page_state = page_state.clone();
@@ -78,7 +86,8 @@ pub fn mfa_options() -> Html {
         let server_name = server_name.clone(); // Replace with actual server name
         let api_key = api_key.clone(); // Replace with actual API key
         let user_id = user_id.clone(); // Replace with actual user ID
-    
+        let mfa_status = mfa_status.clone();
+
         Callback::from(move |_| {
             let mfa_code = mfa_code.clone();
             let page_state = page_state.clone();
@@ -86,15 +95,45 @@ pub fn mfa_options() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id;
-    
+            let mfa_status = mfa_status.clone();
+
             // Now call the API to generate the TOTP secret
             wasm_bindgen_futures::spawn_local(async move {
-                match call_generate_mfa_secret(server_name.unwrap(), api_key.unwrap().unwrap(), user_id.unwrap()).await {
+                // log mfa status
+                web_sys::console::log_1(&format!("MFA Status: {:?}", mfa_status).into());
+                match call_generate_mfa_secret(
+                    server_name.clone().unwrap(),
+                    api_key.clone().unwrap().unwrap(),
+                    user_id.clone().unwrap(),
+                )
+                .await
+                {
                     Ok(response) => {
-                        mfa_secret.set(response.secret);
-                        mfa_code.set(response.qr_code_svg); // Directly use the SVG QR code
-                        page_state.set(PageState::Setup); // Move to the setup page state
-                    },
+                        if *mfa_status {
+                            let result = call_disable_mfa(
+                                &server_name.unwrap(),
+                                &api_key.unwrap().unwrap(),
+                                user_id.unwrap(),
+                            )
+                            .await;
+
+                            match result {
+                                Ok(_) => {
+                                    // Handle success
+                                    page_state.set(PageState::Hidden); // Hide the modal
+                                    mfa_status.set(false);
+                                }
+                                Err(e) => {
+                                    // Handle error
+                                    eprintln!("Error disabling MFA: {:?}", e);
+                                }
+                            }
+                        } else {
+                            mfa_secret.set(response.secret);
+                            mfa_code.set(response.qr_code_svg); // Directly use the SVG QR code
+                            page_state.set(PageState::Setup); // Move to the setup page state
+                        }
+                    }
                     Err(e) => {
                         log::error!("Failed to generate TOTP secret: {}", e);
                         // Handle error appropriately
@@ -103,7 +142,7 @@ pub fn mfa_options() -> Html {
             });
         })
     };
-    
+
     // Define the function to close the modal
     let verify_code = {
         let page_state = page_state.clone();
@@ -120,33 +159,46 @@ pub fn mfa_options() -> Html {
             let code = code.clone();
             let audio_dispatch = audio_dispatch.clone();
 
-
             wasm_bindgen_futures::spawn_local(async move {
-
-                match call_verify_temp_mfa(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id.unwrap(), (*code).clone()).await {
+                match call_verify_temp_mfa(
+                    &server_name.unwrap(),
+                    &api_key.unwrap().unwrap(),
+                    user_id.unwrap(),
+                    (*code).clone(),
+                )
+                .await
+                {
                     Ok(response) => {
                         if response.verified {
                             // Handle successful verification, e.g., updating UI state or navigating
                             page_state.set(PageState::Hidden); // Example: hiding MFA prompt
                         } else {
-                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("MFA code verification failed".to_string()));
+                            audio_dispatch.reduce_mut(|audio_state| {
+                                audio_state.error_message =
+                                    Option::from("MFA code verification failed".to_string())
+                            });
                             // Handle failed verification, e.g., showing an error message
                         }
-                    },
+                    }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Failed to verify MFA code: {}", e)));
+                        audio_dispatch.reduce_mut(|audio_state| {
+                            audio_state.error_message =
+                                Option::from(format!("Failed to verify MFA code: {}", e))
+                        });
                         // Handle error appropriately, e.g., showing an error message
-                    },
+                    }
                 }
             });
         })
     };
 
-
     let on_code_change = {
         let code = code.clone();
         Callback::from(move |e: InputEvent| {
-            code.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            code.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
     // let svg_data_url = format!("data:image/svg+xml;utf8,{}", url_encode(&(*mfa_code).clone()));
@@ -193,7 +245,6 @@ pub fn mfa_options() -> Html {
             </div>
         </div>
     };
-
 
     html! {
         <>

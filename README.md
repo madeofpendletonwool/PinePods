@@ -6,7 +6,7 @@
 [![](https://dcbadge.vercel.app/api/server/bKzHRa4GNc)](https://discord.gg/bKzHRa4GNc)
 [![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#pinepods:matrix.org)
 ![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)
-![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)
+[![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)](https://github.com/madeofpendletonwool/PinePods/releases)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
@@ -32,9 +32,9 @@
 
 # Getting Started
 
-PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. It works on mobile devices and can also sync with a Nextcloud server so you can use external apps Like Antennapod as well!
+PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. It works on mobile devices and can also sync with a Nextcloud server so you can use external apps like Antennapod as well!
 
-For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/)
+For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/).
 
 <p align="center">
   <img src="./images/screenshots/homethemed.png">
@@ -42,11 +42,11 @@ For more information than what's provided in this repo visit the [documentation 
 
 ## Features
 
-Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a Mysql (alternative database support is on the roadmap) database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching new podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user managment and can be used by multiple users at once using a browser or app version. Everything is saved into a MySQL or Postgres database (alternative database support is on the roadmap) including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
 
 ## Try it out! :zap:
 
-I try and maintain an instance of Pinepods that's publicly accessible for testing over at [try.pinepods.online](https://try.pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanant method of using Pinepods and it's expected you run your own server so accounts will often be deleted from there.
+I try and maintain an instance of Pinepods that's publicly accessible for testing over at [try.pinepods.online](https://try.pinepods.online). Feel free to make an account there and try it out before making your own server instance. This is not intended as a permanent method of using Pinepods and it's expected you run your own server; accounts will often be deleted from there.
 
 ## Installing :runner:
 
@@ -54,9 +54,16 @@ There's potentially a few steps to getting Pinepods fully installed. After you g
 
 ### Server Installation :floppy_disk:
 
-First, the server. It's hightly recommended you run the server using docker compose. Here's a template compose file to start with.
+First, the server. You have multiple options for deploying Pinepods:
 
-#### Compose File
+  - [Using Docker Compose :whale:](#docker-compose)
+  - [Using Helm for Kubernetes :anchor:](#helm-deployment)
+
+You can also choose to use MySQL/MariaDB or Postgres as your database. Examples for both are provided below.
+
+### Docker Compose
+
+#### Compose File - MariaDB
 
 ```
 version: '3'
@@ -67,7 +74,7 @@ services:
     environment:
       MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: myS3curepass
-      MYSQL_DATABASE: pypods_database
+      MYSQL_DATABASE: pinepods_database
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
@@ -95,17 +102,64 @@ services:
       DB_PORT: 3306
       DB_USER: root
       DB_PASSWORD: myS3curepass
-      DB_NAME: pypods_database
+      DB_NAME: pinepods_database
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
     volumes:
-    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that. 
+    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
     # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
-
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
       - db
+```
+
+#### Compose File - postgres
+
+```
+
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: pinepods_database
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: myS3curepass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+    # Pinepods Main Port
+      - "8040:8040"
+    environment:
+      # Basic Server Info
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+      # Default Admin User Information
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
+      # Database Vars
+      DB_TYPE: postgresql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: myS3curepass
+      DB_NAME: pinepods_database
+      # Enable or Disable Debug Mode for additional Printing
+      DEBUG_MODE: False
+    volumes:
+      # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
+      - /home/user/pinepods/downloads:/opt/pinepods/downloads
+      - /home/user/pinepods/backups:/opt/pinepods/backups
+    depends_on:
+      - db
+
 ```
 
 Make sure you change these variables to variables specific to yourself.
@@ -148,7 +202,90 @@ Either way, once you have everything all setup and your compose file created go 
 sudo docker-compose up
 ```
 
-To pull the container images and get started. Once fully started up you'll be able to access pinepods at the port you configured and you'll be able to start connecting clients as well. Check out the Tutorials on the documentation site for more information on how to do basic things.
+To pull the container images and get started. Once fully started up you'll be able to access pinepods at the port you configured and you'll be able to start connecting clients as well.
+
+
+### Helm Deployment
+
+Alternatively, you can deploy Pinepods using Helm on a Kubernetes cluster. Helm is a package manager for Kubernetes that simplifies deployment.
+Adding the Helm Repository
+
+First, add the Pinepods Helm repository:
+
+```
+helm repo add pinepods http://helm.pinepods.online/PinePods
+helm repo update
+```
+#### Installing the Chart
+
+To install the Pinepods Helm chart, run:
+
+```
+helm install pinepods pinepods/pinepods -f my-values.yaml --namespace pinepods-namespace
+```
+#### Customizing Values
+
+Create a my-values.yaml file to override default values - Leave DB_HOST as it is unless you package your own helm chart:
+
+```
+replicaCount: 2
+
+image:
+  repository: pinepods
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 8040
+  nodePort: 30007
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: "supersecretpassword"
+    database: pinepods_database
+  primary:
+    persistence:
+      enabled: true
+      existingClaim: postgres-pvc
+
+env:
+  SEARCH_API_URL: "https://search.pinepods.online/api/search"
+  USERNAME: "admin"
+  PASSWORD: "password"
+  FULLNAME: "Admin User"
+  EMAIL: "admin@example.com"
+  DB_TYPE: "postgresql"
+  DB_HOST: "pinepods-postgresql.pinepods-namespace.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "pinepods_database"
+  DEBUG_MODE: "false"
+```
+
+#### Create a namespace for Pinepods:
+
+Create a namespace to hold the deployment:
+```
+kubectl create namespace pinepods-namespace
+```
+
+#### Starting Helm
+
+Once you have everything set up, install the Helm chart:
+```
+helm install pinepods pinepods/Pinepods -f my-values.yaml
+```
+This will deploy Pinepods on your Kubernetes cluster with a postgres database. MySQL/MariaDB is not supported with the kubernetes setup. The service will be accessible at the specified NodePort.
+
+Check out the Tutorials on the documentation site for more information on how to do basic things.
 
 https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
@@ -174,13 +311,13 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-There's a exe and msi windows install file. 
+There's a exe and msi windows install file.
 
-The exe will actually start an install window and allow you to properly install the program to your computer. 
+The exe will actually start an install window and allow you to properly install the program to your computer.
 
 The msi will simply run a portable version of the app.
 
-Either one does the same thing ultimately and will work just fine. 
+Either one does the same thing ultimately and will work just fine.
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
@@ -190,11 +327,11 @@ Any of the client additions are super easy to get going. First head over to the 
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-There's a dmg and pinepods_mac file. 
+There's a dmg and pinepods_mac file.
 
 Simply extract, and then go into Contents/MacOS. From there you can run the app.
 
-The dmg file will prompt you to install the Pinepods client into your applications fileter while the _mac file will just run a portable version of the app. 
+The dmg file will prompt you to install the Pinepods client into your applications fileter while the _mac file will just run a portable version of the app.
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
@@ -212,28 +349,33 @@ A CLI only client that can be used to remotely share your podcasts to is in the 
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For Android you can use AntennaPod and sync podcasts between AntennaPod and Pinepods using the Nextcloud sync App. 
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For Android you can use AntennaPod and sync podcasts between AntennaPod and Pinepods using the Nextcloud sync App.
 
 [Nextcloud Podcast Sync App](https://apps.nextcloud.com/apps/gpoddersync)
 
 [AntennaPod F-Droid AppListing](https://f-droid.org/en/packages/de.danoeh.antennapod/)
 
-ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version. 
+ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version.
 
 ## ToDo
 
-- [ ] Additional Downloads Page organization - Organize by Podcast
-- [ ] Download entire podcast button. For episode archival
+- [x] Additional Downloads Page organization - Organize by Podcast
+- [x] Download entire podcast button. For episode archival
+- [x] Offline mode for playing locally downloaded episodes
+- [x] Installable PWA
+- [x] Custom Podcast Start and End Position
+- [x] Jump to clicked timestamp
+- [x] Timestamps in playing page
+- [x] Chapter Image Support
+- [x] Drag to reorganize queue
+- [x] Allow for reading transcrips
+- [x] Add Funding Links when offered
+- [x] Chapter images
 - [ ] Restore Server via GUI
-- [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy. 
+- [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Guest User
-- [ ] Installable PWA
 - [ ] Add Fyyd as searching index
-- [ ] Jump to clicked timestamp
-- [ ] Timestamps in playing page
-- [ ] Offline mode for playing locally downloaded episodes
-- [ ] Implement Postgresql as option for database backend (Potentially other databases)
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
 - [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
 - [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
@@ -246,20 +388,18 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
+- [ ] Implement Podroll to Podcast page when offered
 - [ ] Sharing System
 - [ ] Option to use login images as background throughout app.
 - [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
-- [ ] Drag to reorganize queue
-- [ ] Chapter Image Support
 - [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [ ] Side load audio from the web
-- [ ] Custom Podcast Start Position
 
 ### Clients to support
 
 - [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
 - [ ] Nix Package
-- [ ] Helm Chart for kubernetes deployment
+- [x] Helm Chart and repo for kubernetes deployment
 - [ ] Mobile Apps
   - [ ] Android App
     - [ ] Android Auto support

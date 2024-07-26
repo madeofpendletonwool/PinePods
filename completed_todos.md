@@ -2,16 +2,103 @@
 
 This is the list of previous todos that are now completed
 
-Next edition
+Major Version:
 
-- [] Added option to podcast pages to allow for downloading every episode
-- [] Added Postgresql support
-- [] Enhanced downloads page to better display podcasts. This improves archival experience
-- [] Added Better Download support to the client versions.
+- [] Android App
+- [] iOS App
+
+Next Minor Version:
+
+- [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
+- [] Push completion status to Nextcloud/gpodder
+- [] Test with LXC containers
+- [] Queue adjmustment for mobile devices
+- [] Full Show deletion with checkbox on download page
+
+
+Version 0.6.4
+
+- [x] Added a fallback to the opml import for when the opml file uses text instead of title for the podcast name key
+- [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
+- [] Fixed layout for podcasts when searching
+- [] Support floating point chapters
+- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Manually adjust tags for podcast in podcast settings
+
+
+Version 0.6.3
+
+- [x] Jump to clicked timestamp
+- [x] Full Chapter Support (Support for floating points needed yet)
+- [x] Chapter Image Support
+- [x] Basic Support for People Tags (Host and Guest)
+- [x] Support for Funding Tags
+- [x] Draggable Queue placement
+- [x] Fixed issue with self service user creation when using a postgres db
+- [x] Rebuilt the Podcast Episode Layout display page so that on small screens everything fits on screen and looks much nicer
+- [x] Rebuilt the Single Episode display page so that on small screens everything fits on screen and looks much nicer
+- [x] Fixed Issue with Episodes on small screens where if a word in the title was long enough it would overflow the container
+- [x] Adjusted the Podcast Episode Layout display page so that you can click and episode title and view the description
+- [x] Removed Unneeded space between First episode/podcast container and the title bar at the top on multiple pages - Just cleans things up a bit
+- [x] Fixed image layout issue where if episode had wide image it would overflow the container and title text
+- [x] Fixed issue with categories where it showed them as part of a dictionary and sometimes didn't show them at all
+- [x] Added verification before downloading all episodes since this is quite a weighty process
+- [x] Added Complete Episode Option to Episode Page
+- [x] Adjusted downloads page to display the number of downloaded episodes instead of the number of episodes in the podcast
+- [x] Added Episode Completion Status to Episode Page
+- [x] Fixed Issue with Postgres DBs where sometimes it would return dictionaries and try to refresh episodes using :podcastid as the podcast id. Now it always refreshes correctly
+- [x] Fixed issue where when using postgres the User Created date on the user stats page would display the unix Epoch date
+- [x] Added Validations on Episode layout page to verify the user wants to delete the podcast or download all episodes
+
+Pre launch tests:
+  Check routes for mysql and postgres
+  Create self service user on mysql and postgres
+
+Version 0.6.2
+
+- [x] Kubernetes deployment option with helm
+- [x] Easy to use helm repo setup and active https://helm.pinepods.online
+- [x] Added Local Download support to the client versions
+  - [x] Local Downloads and Server Downloads tabs in client versions
+  - [x] Created logic to keep track of locally downloaded episodes
+  - [x] Episodes download using tauri function
+  - [x] Episodes play using tauri functions
+  - [x] Episodes delete using tauri functions
+  - [x] Create a system to queue the local download jobs so that you don't need to wait for the downloads to complete
+- [x] Added offline support to the client versions.
+- [x] Installable PWA
+- [x] Fixed bug where some requests would queue instead of clearing on continued episode plays. For example, if you played an episode and then played another episode, the first episode would still make reqeuests for updating certain values.
+- [x] Fixed issue with postgres dbs not adding episodes after addding a Nextcloud sync server (It was calling the refresh nextcloud function in the wrong file)
+- [x] Fixed issue with manual completion where it only could complete, but not uncomplete
+- [x] Fixed issue in downloads page where see more button didn't work on episodes
+
+Version 0.6.1
+
+- [x] Add support for gpodder sync standalone container. You can now sync to either Nextcloud or a gpodder standalone server that supports user and passwords.
+- [x] Volume control in the player
+- [x] Fixed a couple parsing issues with mysql dbs found after implementing the new postgres support
+- [x] Fixed issue where MFA couldn't be disabled. It just tried to enable it again.
+- [x] Fixed issue with time zone parsing in postgres and mysql dbs
+- [x] Implemented a mac dmg client
+- [x] Added Current Version to User Stats Page
+
+Version 0.6.0
+
+- [x] Added Postgresql support
+- [x] Added option to podcast pages to allow for downloading every episode
+- [x] Enhanced downloads page to better display podcasts. This improves archival experience
+- [x] Added ability to download all episodes of a podcast at once with a button
+- [x] Added Individual Podcast Settings Button
+- [x] Completed status added so podcasts can be marked as completed manually and will auto complete once finished
+- [x] Auto Download Episodes when released for given podcasts
+- [x] Added Auto Skip options for intro and outros of podcasts
+- [x] Fixed issue where episodes could be downloaded multiple times
 
 Version 0.5.4
 
 - [x] Fixed enter key to login when highlighted on username or password field of login page
+
 - [x] Created a confirmation message when a user gets created using self service user creation
 - [x] Fixed issue with viewing episodes with certain podcasts when any episodes were missing a duration
 - [x] Fixed issue where release date would show current timestamp when the podcast wasn't added to the db
@@ -42,14 +129,14 @@ Version 0.5.3
 Version 0.5.2
 
 - [x] Fixed issue with removal of podcasts when no longer in nextcloud subscription
-- [x] Fixed scrolling problems where the app would sometimes start you at the bottom of the page when scrolling to different locations. 
-- [x] Fixed issue where a very occaitional podcast is unable to open it's feed. This was due to podcast redirects. Which caused the function to not work. It will now follow a redirect. 
+- [x] Fixed scrolling problems where the app would sometimes start you at the bottom of the page when scrolling to different locations.
+- [x] Fixed issue where a very occaitional podcast is unable to open it's feed. This was due to podcast redirects. Which caused the function to not work. It will now follow a redirect.
 - [x] Fixed an issue where podcasts would be removed after adding when nextcloud sync is active
 - [x] Added Nextcloud timestamp functionality. Podcasts will now sync listen timestamps from nextcloud. Start an episode on pinepods and finish it on Antennapods!
 - [x] Added css files for material icons rather than pulling them down from Google's servers (Thanks @civilblur)
 - [x] Fixed display issue on the search bar so it correctly formats itunes and podcast index
 - [x] Added in check on the podcast page to check if the podcast has been added. This allows the podcast to have the context button if it's added to the db
-- [x] Readjusted the format of episodes on screen. This tightens them up and ensures they are all always consistently sized. It also allows more episodes to show at once. 
+- [x] Readjusted the format of episodes on screen. This tightens them up and ensures they are all always consistently sized. It also allows more episodes to show at once.
 - [x] Added loading icon when a podcast is being added. This gives some feedback to the user during a couple seconds it takes to add the feed. (Also improved the look of that button)
 - [x] Fixed date formatting issue on all pages so they format using the user's timezone preferences.
 - [x] Added notifications when saving, downloading, or queueing episode from search page.
@@ -57,6 +144,9 @@ Version 0.5.2
 
 
 Version 0.5.1
+
+- [x] Fixed Nextcloud cors issues that were appearing due to requests being made from the client side
+- [x] Fixed Docker auto uploads in actions CI/CD
 
 Version 0.5.0
 
@@ -74,15 +164,15 @@ Version 0.5.0
 - [x] Backup Server
 - [x] Allow for episodes to be played without being added
 - [x] Fix images on some podcasts that don't appear. Likely a fallback issue
-- [x] Issues occur server side when adding podcast without itunes_duration 
+- [x] Issues occur server side when adding podcast without itunes_duration
 (pinepods-1  | Error adding episodes: object has no attribute 'itunes_duration')
 - [x] Click Episode Title to Open into Episode Screen
 - [x] Duration Not showing when podcast played from episode layout screen
 - [x] Episodes not appearing in history (Issue due to recent episode in db check)
 - [x] Panic being caused when searching podcasts sometimes (due to an empty value) <- Silly Categories being empty
-- [x] Auto close queue, download, save context menu when clicking an option or clicking away from it 
-- [x] Added login screen random image selection. For some nice styling 
-- [x] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page 
+- [x] Auto close queue, download, save context menu when clicking an option or clicking away from it
+- [x] Added login screen random image selection. For some nice styling
+- [x] Check for Added Podcasts to ensure you can't add a second time. Searching a podcast already added should present with remove button instead of add < - On search results page (done), on podcasts page (done), and on podcast episode list page
 - [x] Show Currently Connected Nextcloud Server in settings
 - [x] Allow Setting and removing user admin status in settings
 - [x] Show released time of episodes - use function call_get_time_info in pod_reqs (Additional date format display implemented along with AM/PM time based on user pref)
@@ -130,7 +220,7 @@ Version 0.4.1
 Version 0.4
 
 - [x] Unlock api creation for standard users - The API has been completely re-written to follow along the permissions that users actually have. Meaning users can easily request their own api keys and sign into the client with admin consent
-- [x] Signing into the client edition is now possible with either an API key or username and password sign in. It gives the option to choose which you would prefer. 
+- [x] Signing into the client edition is now possible with either an API key or username and password sign in. It gives the option to choose which you would prefer.
 - [x] Email resets currently broken for non-admins due to lockdown on encryption key. Need to handle encryption server-side
 - [x] Client version images load a lot faster now
 - [x] Fixed issue with audio container not reappearing after entering playing fullscreen
@@ -147,7 +237,7 @@ Version 0.3
 - [x] Entire Server Backup and Import. This allows you to export and import your entire database for complete backups
 - [x] New refresh system added to automatically update podcasts in database with no user input.
 - [x] Reworked the controls displayed on the page to be components of a class. This should improve performance.
-- [x] fixed issues with logging in on small screens. (a big step for mobile version) 
+- [x] fixed issues with logging in on small screens. (a big step for mobile version)
 - [x] Bug fixing such as fixing queue bump, and fixing an audio changing issue - Along with quite a few random UI bug fixing throughout
 
 Version 0.2
@@ -216,7 +306,7 @@ Version 0.1
 - [x] Make web version utilize API Routes instead of database connections directly
 - [x] Update flet dependancy to v6 (This fixes audio routing)
 - [x] Ability to disable downloads (for public servers)
-- [x] One set of functions. Currently client and web app uses different function set. This is be changed for consistency. 
+- [x] One set of functions. Currently client and web app uses different function set. This is be changed for consistency.
 - [x] GUI Wrapper for App
   - [x] Server Hosting and client Interaction - Client interaction works via API with mariadb which is hosted on server side
   - [x] Options to create API keys on the web client as well as ability to remove them
@@ -252,7 +342,7 @@ Version 0.1
 - [x] custom timezone entry
 - [x] MFA Display totp secret
 - [x] Fix guest with timezone stuff
-- [x] 2.0 description features 
+- [x] 2.0 description features
 - [x] Mass downloading episodes. Entire podcast at once (Implemented but I'm working on getting it to display on download page to see status)
 - [x] Remove local podcasts if podcast is no longer in database - Handle this somehow - Mass delete feature added
 - [x] Speed up database queries (Indexing added to episodes and podcasts)

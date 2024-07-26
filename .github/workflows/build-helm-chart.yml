@@ -1,0 +1,78 @@
+name: Build Helm Chart
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: madeofpendletonwool/pinepods
+  CHART_NAME: Pinepods
+
+jobs:
+  build-helm-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false # This prevents the default token from being persisted in the local git config
+
+      - name: Setup Git for push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.PUSH_PAT }}@github.com/${{ github.repository }}.git
+
+      - name: Setup Helm
+        uses: Azure/setup-helm@v4.2.0
+
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq &&\
+              sudo chmod +x /usr/bin/yq
+
+      - name: Set Chart Version
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            version=${{ github.event.release.tag_name }}
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            version=${{ github.event.inputs.version }}
+          else
+            echo "No version provided. Exiting."
+            exit 1
+          fi
+          echo "Setting chart version to $version"
+          yq e ".version = \"$version\"" -i deployment/kubernetes/helm/pinepods/Chart.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm dependency update ./deployment/kubernetes/helm/pinepods
+          helm package ./deployment/kubernetes/helm/pinepods --destination ./docs
+
+      - name: Remove old Helm chart
+        run: |
+          ls docs/
+          find docs/ -type f -name "${CHART_NAME}-*.tgz" ! -name "${CHART_NAME}-${{ github.event.release.tag_name }}.tgz" -exec rm {} +
+
+      - name: Update Helm repo index
+        run: |
+          helm repo index docs --url https://helm.pinepods.online
+
+      - uses: EndBug/add-and-commit@v9
+        with:
+          committer_name: GitHub Actions
+          committer_email: actions@github.com
+          message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
+          add: "docs"
+          push: "origin main"

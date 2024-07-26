@@ -79,6 +79,7 @@ try:
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin BOOLEAN DEFAULT false,
             GpodderUrl VARCHAR(255) DEFAULT '',
+            Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT ''
         )
@@ -128,7 +129,7 @@ try:
 
     if count == 0:
         cursor.execute("""
-            INSERT INTO "AppSettings" (SelfServiceUser, DownloadEnabled, EncryptionKey) 
+            INSERT INTO "AppSettings" (SelfServiceUser, DownloadEnabled, EncryptionKey)
             VALUES (false, true, %s)
         """, (key,))
 
@@ -151,7 +152,7 @@ try:
     except Exception as e:
         logging.error(f"Failed to create EmailSettings table: {e}")
 
-    try: 
+    try:
         cursor.execute("""
             SELECT COUNT(*) FROM "EmailSettings"
         """)
@@ -195,7 +196,7 @@ try:
             logging.error("Error inserting or updating user: %s", e)
 
 
-    try: 
+    try:
         # Generate and hash the password
         random_password = generate_random_password()
         hashed_password = hash_password(random_password)
@@ -291,6 +292,9 @@ try:
                 WebsiteURL TEXT,
                 Explicit BOOLEAN,
                 UserID INT,
+                AutoDownload BOOLEAN DEFAULT FALSE,
+                StartSkip INT DEFAULT 0,
+                EndSkip INT DEFAULT 0,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -317,18 +321,19 @@ try:
                 EpisodeArtwork TEXT,
                 EpisodePubDate TIMESTAMP,
                 EpisodeDuration INT,
+                Completed BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
             )
         """)
+
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Episodes table: {e}")
-    logging.info("created episodes table.")
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"""
-            SELECT 1 
-            FROM pg_indexes 
+            SELECT 1
+            FROM pg_indexes
             WHERE lower(indexname) = lower('{index_name}') AND tablename = '{table_name}'
         """)
         if not cursor.fetchone():

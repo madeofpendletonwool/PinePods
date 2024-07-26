@@ -1,20 +1,23 @@
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
-use web_sys::MouseEvent;
-use yew::{Callback, function_component, Html, html};
-use yew::prelude::*;
-use yew_router::history::{BrowserHistory, History};
-use yewdux::use_store;
 use super::app_drawer::App_drawer;
-use super::gen_components::{UseScrollToTop, Search_nav};
-use crate::components::context::{AppState, UIState, ExpandedDescriptions};
+use super::gen_components::{Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
-use crate::requests::search_pods::{call_parse_podcast_url, Podcast, UnifiedPodcast};
-use crate::requests::pod_req::{call_check_podcast, call_add_podcast, call_remove_podcasts_name, RemovePodcastValuesName, PodcastValues};
-use std::collections::HashSet;
+use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::requests::login_requests::use_check_authentication;
+use crate::requests::pod_req::{
+    call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastValues,
+    RemovePodcastValuesName,
+};
+use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
+use web_sys::MouseEvent;
+use yew::prelude::*;
+use yew::{function_component, html, Callback, Html};
+use yew_router::history::{BrowserHistory, History};
+use yewdux::use_store;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ClickedFeedURL {
@@ -27,8 +30,7 @@ pub struct ClickedFeedURL {
     pub podcast_explicit: bool,
     pub podcast_episode_count: i32,
     pub podcast_categories: Option<HashMap<String, String>>,
-    pub podcast_link: String
-    
+    pub podcast_link: String,
 }
 
 #[function_component(PodLayout)]
@@ -36,9 +38,9 @@ pub fn pod_layout() -> Html {
     // let dispatch = Dispatch::<AppState>::global();
     // let state: Rc<AppState> = dispatch.get();
     let (state, dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
 
-    let search_results = state.search_results.clone();    
+    let search_results = state.search_results.clone();
 
     let session_dispatch = dispatch.clone();
     let session_state = state.clone();
@@ -52,23 +54,26 @@ pub fn pod_layout() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let performance = window.performance().expect("should have performance");
             let navigation_type = performance.navigation().type_();
-            
-            if navigation_type == 1 { // 1 stands for reload
+
+            if navigation_type == 1 {
+                // 1 stands for reload
                 let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage.set_item("isAuthenticated", "false").unwrap();
+                session_storage
+                    .set_item("isAuthenticated", "false")
+                    .unwrap();
             }
-    
+
             // Always check authentication status
             let current_route = window.location().href().unwrap_or_default();
             use_check_authentication(session_dispatch.clone(), &current_route);
-    
+
             // Mark that the page reload handling has occurred
             session_dispatch.reduce_mut(|state| {
                 state.reload_occured = Some(true);
                 state.clone() // Return the modified state
             });
         }
-    
+
         || ()
     });
 
@@ -84,7 +89,7 @@ pub fn pod_layout() -> Html {
                             || results.results.as_ref().map(|r| r.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>()),
                             |f| Some(f.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>())
                         );
-                
+
                         if let Some(podcasts) = podcasts {
                             html! {
                                 <div>
@@ -120,7 +125,7 @@ pub fn pod_layout() -> Html {
             </div>
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
-                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} /> }
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
                 } else {
                     html! {}
                 }
@@ -140,6 +145,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // Local state to track if this particular podcast is added
     let is_added = use_state(|| false);
     let podcast = props.podcast.clone();
+    // web_sys::console::log_1(
+    //     &format!("Podcast categories: {:?}", podcast.categories.clone()).into(),
+    // );
+
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -150,8 +159,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // let api_key_feed = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     // let server_name_feed = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
-
-        // Use a Set to track added podcast URLs for efficiency
+    // Use a Set to track added podcast URLs for efficiency
     let added_podcasts = use_state(|| HashSet::new());
 
     // On mount, check if the podcast is in the database
@@ -168,25 +176,31 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let server_name = server_name_mount.clone();
         let added_podcasts = added_clone.clone(); // Clone this for use in the effect
 
-        use_effect_with(
-            &(),
-            move |_| {
-                let is_added = is_added.clone();
-                let podcast = podcast.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    let added = call_check_podcast(&server_name.unwrap(), &api_key.unwrap().unwrap(), user_id, &podcast.title, &podcast.url).await.unwrap_or_default().exists;
-                    is_added.set(added);
-                    let mut new_set = (*added_podcasts).clone();
-                    if added {
-                        new_set.insert(podcast.url.clone());
-                    } else {
-                        new_set.remove(&podcast.url);
-                    }
-                    added_podcasts.set(new_set);
-                });
-                || ()
-            },
-        );
+        use_effect_with(&(), move |_| {
+            let is_added = is_added.clone();
+            let podcast = podcast.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let added = call_check_podcast(
+                    &server_name.unwrap(),
+                    &api_key.unwrap().unwrap(),
+                    user_id,
+                    &podcast.title,
+                    &podcast.url,
+                )
+                .await
+                .unwrap_or_default()
+                .exists;
+                is_added.set(added);
+                let mut new_set = (*added_podcasts).clone();
+                if added {
+                    new_set.insert(podcast.url.clone());
+                } else {
+                    new_set.remove(&podcast.url);
+                }
+                added_podcasts.set(new_set);
+            });
+            || ()
+        });
     }
 
     let podcast_add = podcast.clone();
@@ -225,7 +239,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let dispatch = dispatch.clone();
             let added_podcasts = added_podcasts.clone();
             let podcast_url = podcast_url.clone();
-            
+
             if current_set.contains(&podcast_url) {
                 // If the podcast was added, remove it from the set and call remove_podcast.
                 // Call remove_podcast asynchronously.
@@ -240,22 +254,30 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                     let podcast_values = RemovePodcastValuesName {
                         podcast_name: pod_title,
                         podcast_url: pod_feed_url,
-                        user_id: value_id
+                        user_id: value_id,
                     };
-                    match call_remove_podcasts_name(&server_name.unwrap(), &api_key.unwrap(), &podcast_values).await {
+                    match call_remove_podcasts_name(
+                        &server_name.unwrap(),
+                        &api_key.unwrap(),
+                        &podcast_values,
+                    )
+                    .await
+                    {
                         Ok(_) => {
                             // If successful, update the state to remove the podcast
                             let mut new_set = current_set.clone();
                             new_set.remove(&podcast_url);
                             added_podcasts.set(new_set);
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Podcast successfully removed".to_string());
+                                state.info_message =
+                                    Some("Podcast successfully removed".to_string());
                             });
                             dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                        },
+                        }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Error removing podcast: {:?}", e));
+                                state.error_message =
+                                    Some(format!("Error removing podcast: {:?}", e));
                             });
                             dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
@@ -272,7 +294,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 let pod_feed_url_og = pod_feed_url_og.clone();
                 let pod_website_og = pod_website_og.clone();
                 let pod_explicit_og = pod_explicit_og.clone();
-                
+
                 wasm_bindgen_futures::spawn_local(async move {
                     let pod_title = pod_title_og.clone();
                     let pod_artwork = pod_artwork_og.clone();
@@ -294,9 +316,16 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                         pod_feed_url,
                         pod_website,
                         pod_explicit,
-                        user_id: value_id
+                        user_id: value_id,
                     };
-                    match call_add_podcast(&server_name.unwrap(), &api_key.unwrap(), user_id.unwrap(), &podcast_values).await {
+                    match call_add_podcast(
+                        &server_name.unwrap(),
+                        &api_key.unwrap(),
+                        user_id.unwrap(),
+                        &podcast_values,
+                    )
+                    .await
+                    {
                         Ok(_) => {
                             // If successful, update the state to add the podcast
                             let mut new_set = current_set.clone();
@@ -306,10 +335,11 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                                 state.info_message = Some("Podcast successfully added".to_string());
                             });
                             dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                        },
+                        }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Error adding podcast: {:?}", e));
+                                state.error_message =
+                                    Some(format!("Error adding podcast: {:?}", e));
                             });
                             dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
@@ -334,7 +364,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
     let is_added = added_podcasts.contains(&podcast.url);
     let button_text = if is_added { "delete" } else { "add" };
-    
+
     let on_title_click = {
         let dispatch = dispatch.clone();
         let history = history.clone(); // Clone history for use inside the closure
@@ -352,6 +382,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let podcast_episode_count = podcast_episode_count_clone.clone();
             let podcast_categories = podcast_categories_clone.clone();
             let podcast_link = podcast_link_clone.clone();
+            web_sys::console::log_1(&format!("cats after click: {:?}", podcast_categories).into());
             e.prevent_default(); // Prevent the default anchor behavior
             let podcast_values = ClickedFeedURL {
                 podcast_title,
@@ -367,7 +398,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let dispatch = dispatch.clone();
             let history = history.clone(); // Clone again for use inside async block
             wasm_bindgen_futures::spawn_local(async move {
-                match call_parse_podcast_url(server_name_click.unwrap(), &api_key_click.unwrap(), &podcast_url).await {
+                match call_parse_podcast_url(
+                    server_name_click.unwrap(),
+                    &api_key_click.unwrap(),
+                    &podcast_url,
+                )
+                .await
+                {
                     Ok(podcast_feed_results) => {
                         dispatch.reduce_mut(move |state| {
                             state.podcast_feed_results = Some(podcast_feed_results);
@@ -375,7 +412,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                         });
                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         history.push("/episode_layout"); // Navigate to episode_layout
-                    },
+                    }
                     Err(_e) => {
                         // web_sys::console::log_1(&format!("Error: {}", e).into());
                     }
@@ -394,9 +431,8 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
     let toggle_expanded = {
         let desc_dispatch = desc_dispatch.clone();
-        let desc_state = desc_state.clone();
         let episode_guid = podcast.id.clone().to_string();
-    
+
         Callback::from(move |_: MouseEvent| {
             let guid = episode_guid.clone();
             desc_dispatch.reduce_mut(move |state| {
@@ -424,13 +460,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 html! {
                     <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                         <div class="flex flex-col w-auto object-cover pl-4">
-                            <img 
+                            <img
                                 src={podcast.image.clone()}
                                 onclick={on_title_click.clone()}
-                                alt={format!("Cover for {}", podcast.title.clone())} 
+                                alt={format!("Cover for {}", podcast.title.clone())}
                                 class="object-cover align-top-cover w-full item-container img"
                             />
-                        </div> 
+                        </div>
                         <div class="flex items-start flex-col p-4 space-y-2 w-11/12">
                             <p class="item_container-text text-xl font-semibold cursor-pointer" onclick={on_title_click.clone()}>
                             { &podcast.title } </p>
@@ -458,6 +494,4 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             }
         </div>
     }
-    
-    
 }

@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: pypods_database
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: myS3curepass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+      - "8040:8040"
+    environment:
+      # Basic Server Info
+      SEARCH_API_URL: "https://search.pinepods.online/api/search"
+      # Default Admin User Information
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
+      # Database Vars
+      DB_TYPE: postgresql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: myS3curepass
+      DB_NAME: pinepods_database
+      # Port Settings
+      # Enable or Disable Debug Mode for additional Printing
+      DEBUG_MODE: False
+    volumes:
+      # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
+      - /home/user/pinepods/downloads:/opt/pinepods/downloads
+      - /home/user/pinepods/backups:/opt/pinepods/backups
+    depends_on:
+      - db

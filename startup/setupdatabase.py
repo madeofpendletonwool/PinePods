@@ -64,11 +64,31 @@ try:
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin TINYINT(1) DEFAULT 0,
             GpodderUrl VARCHAR(255) DEFAULT '',
+            Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT '',
             UNIQUE (Username)
         )
     """)
+
+    def add_pod_sync_if_not_exists(cursor, table_name, column_name, column_definition):
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name='{table_name}'
+            AND column_name='{column_name}';
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN {column_name} {column_definition};
+            """)
+            print(f"Column '{column_name}' added to table '{table_name}'")
+        else:
+            print(f"Column '{column_name}' already exists in table '{table_name}'")
+
+    add_pod_sync_if_not_exists(cursor, 'Users', 'Pod_Sync_Type', 'VARCHAR(50) DEFAULT \'None\'')
+
 
     logging.info("Database tables created or verified successfully.")
 
@@ -114,7 +134,7 @@ try:
 
     if count == 0:
         cursor.execute("""
-            INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey) 
+            INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey)
             VALUES (0, 1, %s)
         """, (key,))
 
@@ -185,7 +205,7 @@ try:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)
 
-    try: 
+    try:
         # Generate and hash the password
         random_password = generate_random_password()
         hashed_password = hash_password(random_password)
@@ -196,7 +216,6 @@ try:
     except Exception as e:
         print(f"Error setting default Background Task User: {e}")
         logging.error("Error setting default Background Task User: %s", e)
-
 
     # Create the web Key
     def create_api_key(cnx, user_id=1):
@@ -256,6 +275,7 @@ try:
 
     cursor.execute("""INSERT IGNORE INTO UserStats (UserID) VALUES (2)""")
 
+    # Create the Podcasts table if it doesn't exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                         PodcastID INT AUTO_INCREMENT PRIMARY KEY,
                         PodcastName TEXT,
@@ -268,8 +288,24 @@ try:
                         WebsiteURL TEXT,
                         Explicit TINYINT(1),
                         UserID INT,
+                        AutoDownload TINYINT(1) DEFAULT 0,
+                        StartSkip INT DEFAULT 0,
+                        EndSkip INT DEFAULT 0,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
+    logging.info("Podcasts table checked/created.")
+
+    # Check if the new columns exist, and add them if they don't
+    cursor.execute("SHOW COLUMNS FROM Podcasts LIKE 'AutoDownload'")
+    result = cursor.fetchone()
+    if not result:
+        cursor.execute("""
+            ALTER TABLE Podcasts
+            ADD COLUMN AutoDownload TINYINT(1) DEFAULT 0,
+            ADD COLUMN StartSkip INT DEFAULT 0,
+            ADD COLUMN EndSkip INT DEFAULT 0
+        """)
+        logging.info("AutoDownload, StartSkip, and EndSkip columns added to Podcasts table.")
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                         EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
@@ -280,8 +316,18 @@ try:
                         EpisodeArtwork TEXT,
                         EpisodePubDate DATETIME,
                         EpisodeDuration INT,
+                        Completed TINYINT(1) DEFAULT 0,
                         FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                     )""")
+    # Check if the Completed column exists, and add it if it doesn't
+    cursor.execute("SHOW COLUMNS FROM Episodes LIKE 'Completed'")
+    result = cursor.fetchone()
+    if not result:
+        cursor.execute("""
+            ALTER TABLE Episodes
+            ADD COLUMN Completed TINYINT(1) DEFAULT 0
+        """)
+
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"SELECT COUNT(1) IndexIsThere FROM INFORMATION_SCHEMA.STATISTICS WHERE table_schema = DATABASE() AND index_name = '{index_name}'")
@@ -355,7 +401,7 @@ try:
                     expire DATETIME NOT NULL,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
-    
+
 except mysql.connector.Error as err:
     logging.error(f"Database error: {err}")
 except Exception as e:

@@ -1,0 +1,118 @@
+# pinepods-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pinepods
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pinepods
+  template:
+    metadata:
+      labels:
+        app: pinepods
+    spec:
+      containers:
+      - name: pinepods
+        image: madeofpendletonwool/pinepods:latest
+        ports:
+        - containerPort: 8040
+        env:
+        - name: SEARCH_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: SEARCH_API_URL
+        - name: USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: USERNAME
+        - name: PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: PASSWORD
+        - name: FULLNAME
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: FULLNAME
+        - name: EMAIL
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: EMAIL
+        - name: DB_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: DB_TYPE
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: DB_PORT
+        - name: DB_USER
+          value: postgres
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: DB_PASSWORD
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: DB_NAME
+        - name: DEBUG_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: pinepods-config
+              key: DEBUG_MODE
+        volumeMounts:
+        - name: downloads
+          mountPath: /opt/pypods/downloads
+        - name: backups
+          mountPath: /opt/pinepods/backups
+        livenessProbe:
+          httpGet:
+            path: /api/pinepods_check
+            port: 8040
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/pinepods_check
+            port: 8040
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: downloads
+        hostPath:
+          path: /home/collinp/wait/downloads
+      - name: backups
+        hostPath:
+          path: /home/user/pinepods/backups
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pinepods-service
+spec:
+  type: NodePort
+  selector:
+    app: pinepods
+  ports:
+  - protocol: TCP
+    port: 8040
+    targetPort: 8040
+    nodePort: 30007  # Adjust the NodePort range as needed
+

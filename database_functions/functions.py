@@ -21,7 +21,7 @@ from mysql.connector import ProgrammingError
 # app_root = os.environ.get('APP_ROOT')
 sys.path.append('/pinepods/'),
 # Import the functions directly from app_functions.py located in the database_functions directory
-from database_functions.app_functions import sync_subscription_change, get_podcast_values, check_valid_feed
+from database_functions.app_functions import sync_subscription_change, get_podcast_values, check_valid_feed, sync_subscription_change_gpodder
 
 
 def pascal_case(snake_str):
@@ -29,11 +29,25 @@ def pascal_case(snake_str):
 
 def lowercase_keys(data):
     if isinstance(data, dict):
-        return {k.lower(): v for k, v in data.items()}
+        return {k.lower(): (bool(v) if k.lower() == 'completed' else v) for k, v in data.items()}
     elif isinstance(data, list):
         return [lowercase_keys(item) for item in data]
     return data
 
+def convert_bools(data, database_type):
+    def convert_value(k, v):
+        if k.lower() == 'explicit':
+            if database_type == 'postgresql':
+                return v == True
+            else:
+                return bool(v)
+        return v
+
+    if isinstance(data, dict):
+        return {k: convert_value(k, v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_bools(item, database_type) for item in data]
+    return data
 
 def capitalize_keys(data):
     if isinstance(data, dict):
@@ -147,6 +161,19 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             cursor.close()
             return False
 
+        # Extract category names and convert to comma-separated string
+        categories = podcast_values['categories']
+        print(f"Categories: {categories}")
+
+        if isinstance(categories, dict):
+            category_list = ', '.join(categories.values())
+        elif isinstance(categories, list):
+            category_list = ', '.join(categories)
+        elif isinstance(categories, str):
+            category_list = categories
+        else:
+            category_list = ''
+
         # Insert the podcast into the database
         if database_type == "postgresql":
             add_podcast_query = """
@@ -163,12 +190,23 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             """
             explicit = 1 if podcast_values['pod_explicit'] else 0
 
+        print("Inserting into db")
+        print(podcast_values['pod_title'])
+        print(podcast_values['pod_artwork'])
+        print(podcast_values['pod_author'])
+        print(category_list)
+        print(podcast_values['pod_description'])
+        print(podcast_values['pod_episode_count'])
+        print(podcast_values['pod_feed_url'])
+        print(podcast_values['pod_website'])
+        print(explicit)
+        print(user_id)
         try:
             cursor.execute(add_podcast_query, (
                 podcast_values['pod_title'],
                 podcast_values['pod_artwork'],
                 podcast_values['pod_author'],
-                str(podcast_values['categories']),
+                category_list,
                 podcast_values['pod_description'],
                 podcast_values['pod_episode_count'],
                 podcast_values['pod_feed_url'],
@@ -178,7 +216,11 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             ))
 
             if database_type == "postgresql":
-                podcast_id = cursor.fetchone()[0]
+                podcast_id = cursor.fetchone()
+                if isinstance(podcast_id, tuple):
+                    podcast_id = podcast_id[0]
+                elif isinstance(podcast_id, dict):
+                    podcast_id = podcast_id['podcastid']
             else:  # MySQL or MariaDB
                 cnx.commit()
                 podcast_id = cursor.lastrowid
@@ -204,7 +246,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             print("stats table updated")
 
             # Add episodes to database
-            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'])
+            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False)
             print("episodes added")
 
         except Exception as e:
@@ -230,6 +272,8 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
 
 def add_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
+    print(f'user func')
+    logging.debug(f'user func')
 
     if database_type == "postgresql":
         add_user_query = """
@@ -251,8 +295,12 @@ def add_user(cnx, database_type, user_values):
     #     user_id = result['userid']
     # else:
     #     user_id = result[0]
+    print(f'in postgres {database_type}')
+    logging.debug(f'in postgres {database_type}')
     if database_type == "postgresql":
         result = cursor.fetchone()
+        print(f'debug result: {result}')
+        logging.debug(f'debug result: {result}')
         user_id = result['userid'] if isinstance(result, dict) else result[0]
     else:  # MySQL or MariaDB
         user_id = cursor.lastrowid
@@ -339,8 +387,33 @@ def add_admin_user(cnx, database_type, user_values):
     cnx.commit()
     cursor.close()
 
+def get_first_episode_id(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s LIMIT 1'
+        else:  # MySQL or MariaDB
+            query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s LIMIT 1"
 
-def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url):
+        cursor.execute(query, (podcast_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+    finally:
+        cursor.close()
+
+def get_pinepods_version():
+    try:
+        with open('/pinepods/current_version', 'r') as file:
+            version = file.read().strip()
+            if not version:
+                return 'dev_mode'
+            return version
+    except FileNotFoundError:
+        return "Version file not found."
+    except Exception as e:
+        return f"An error occurred: {e}"
+
+def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download):
     import datetime
     import feedparser
     import dateutil.parser
@@ -439,24 +512,41 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url):
 
         cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
         print('episodes inserted')
+        # Get the EpisodeID for the newly added episode
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
+            if auto_download:  # Check if auto-download is enabled
+                episode_id = get_episode_id(cnx, database_type, podcast_id, parsed_title, parsed_audio_url)
+                user_id = get_user_id_from_pod_id(cnx, database_type, podcast_id)
+                # Call your download function here
+                download_podcast(cnx, database_type, episode_id, user_id)
 
     cnx.commit()
 
 
 def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
     cursor = cnx.cursor()
+    print('got to remove')
 
     try:
+        print('getting id')
         # Get the PodcastID for the given podcast name
         if database_type == "postgresql":
             select_podcast_id = 'SELECT PodcastID FROM "Podcasts" WHERE PodcastName = %s AND FeedURL = %s'
         else:  # MySQL or MariaDB
             select_podcast_id = "SELECT PodcastID FROM Podcasts WHERE PodcastName = %s AND FeedURL = %s"
         cursor.execute(select_podcast_id, (podcast_name, podcast_url))
-        result = cursor.fetchall()  # fetch all results
-        podcast_id = result[0][0] if result else None
+        result = cursor.fetchone()  # fetch one result
+
+        if result:
+            if isinstance(result, dict):
+                podcast_id = result.get('podcastid')
+            else:
+                podcast_id = result[0]
+        else:
+            podcast_id = None
+
+        print(podcast_id)
 
         # If there's no podcast ID found, raise an error or exit the function early
         if podcast_id is None:
@@ -465,7 +555,7 @@ def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
         # Delete user episode history entries associated with the podcast
         if database_type == "postgresql":
             delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
-            delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE PodcastID = %s)'
+            delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
             delete_saved = 'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
             delete_queue = 'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
             delete_episodes = 'DELETE FROM "Episodes" WHERE PodcastID = %s'
@@ -559,7 +649,7 @@ def return_episodes(database_type, cnx, user_id):
         query = (
             'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, '
-            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID '
+            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID, "Episodes".Completed '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
             'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "UserEpisodeHistory".UserID = %s '
@@ -571,7 +661,7 @@ def return_episodes(database_type, cnx, user_id):
         query = (
             "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID "
+            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID, Episodes.Completed "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
@@ -589,8 +679,8 @@ def return_episodes(database_type, cnx, user_id):
         return []
 
     if database_type != "postgresql":
-        # Convert column names to lowercase for MySQL
-        rows = [{k.lower(): v for k, v in row.items()} for row in rows]
+        # Convert column names to lowercase for MySQL and ensure `Completed` is a boolean
+        rows = [{k.lower(): (bool(v) if k.lower() == 'completed' else v) for k, v in row.items()} for row in rows]
 
     return rows
 
@@ -667,7 +757,10 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
     details = cursor.fetchone()
     cursor.close()
 
-    return details
+    lower_row = lowercase_keys(details)
+    bool_fix = convert_bools(lower_row, database_type)
+
+    return bool_fix
 
 
 def get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_name):
@@ -883,9 +976,16 @@ def check_self_service(cnx, database_type):
     result = cursor.fetchone()
     cursor.close()
 
-    if result and result[0] == 1:
+    if database_type == "postgresql":
+        print(f'debug result: {result}')
+        logging.debug(f'debug result: {result}')
+        self_service = result['selfserviceuser'] if isinstance(result, dict) else result[0]
+    else:  # MySQL or MariaDB
+        self_service = result[0]
+
+    if self_service == 1:
         return True
-    elif result and result[0] == 0:
+    elif self_service == 0:
         return False
     else:
         return None
@@ -897,20 +997,30 @@ def refresh_pods(cnx, database_type):
     cursor = cnx.cursor()
 
     if database_type == "postgresql":
-        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL FROM "Podcasts"'
+        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM "Podcasts"'
     else:  # MySQL or MariaDB
-        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL FROM Podcasts"
-
+        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM Podcasts"
 
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall()  # fetch the result set
 
-    for (podcast_id, feed_url, artwork_url) in result_set:
+    for result in result_set:
+        if isinstance(result, tuple):
+            podcast_id, feed_url, artwork_url, auto_download = result
+        elif isinstance(result, dict):
+            podcast_id = result["PodcastID"]
+            feed_url = result["FeedURL"]
+            artwork_url = result["ArtworkURL"]
+            auto_download = result["AutoDownload"]
+        else:
+            raise ValueError(f"Unexpected result type: {type(result)}")
+
         print(f'Running for :{podcast_id}')
-        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url)
+        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download)
 
     cursor.close()
     # cnx.close()
+
 
 
 def remove_unavailable_episodes(cnx, database_type):
@@ -957,6 +1067,26 @@ def get_podcast_id_by_title(cnx, database_type, podcast_title):
         cursor.execute('SELECT PodcastID FROM "Podcasts" WHERE Title = %s', (podcast_title,))
     else:  # MySQL or MariaDB
         cursor.execute("SELECT PodcastID FROM Podcasts WHERE Title = %s", (podcast_title,))
+
+    result = cursor.fetchone()
+
+    if result:
+        return result[0]
+    else:
+        return None
+
+    cursor.close()
+    # cnx.close()
+    #
+def get_podcast_feed_by_id(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+
+    # get the podcast ID for the specified title
+    # get the podcast ID for the specified title
+    if database_type == "postgresql":
+        cursor.execute('SELECT FeedURL FROM "Podcasts" WHERE PodcastID = %s', (podcast_id,))
+    else:  # MySQL or MariaDB
+        cursor.execute("SELECT FeedURL FROM Podcasts WHERE PodcastID = %s", (podcast_id,))
 
     result = cursor.fetchone()
 
@@ -1111,6 +1241,30 @@ def get_user_id(cnx, database_type, username):
     else:
         return 1
 
+def get_user_id_from_pod_id(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT UserID FROM "Podcasts" WHERE PodcastID = %s'
+    else:
+        query = "SELECT UserID FROM Podcasts WHERE PodcastID = %s"
+
+    cursor.execute(query, (podcast_id,))
+    result = cursor.fetchone()
+
+    if result:
+        # Check if the result is a dictionary or tuple
+        if isinstance(result, dict):
+            user_id = result.get("userid")
+        elif isinstance(result, tuple):
+            user_id = result[0]
+        else:
+            user_id = None
+    else:
+        user_id = None
+
+    cursor.close()
+    return user_id
+
 
 def get_user_details(cnx, database_type, username):
     cursor = cnx.cursor()
@@ -1168,43 +1322,91 @@ def get_user_details_id(cnx, database_type, user_id):
 
 
 def user_history(cnx, database_type, user_id):
+    if not cnx:
+        logging.error("Database connection is None.")
+        return []
+
     cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = ('SELECT "Episodes".EpisodeID, "UserEpisodeHistory".ListenDate, "UserEpisodeHistory".ListenDuration, '
-                 '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
-                 '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate '
-                 'FROM "UserEpisodeHistory" '
-                 'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
-                 'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-                 'WHERE "UserEpisodeHistory".UserID = %s '
-                 'ORDER BY "UserEpisodeHistory".ListenDate DESC')
-    else:  # MySQL or MariaDB
-        query = ("SELECT Episodes.EpisodeID, UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
-                 "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-                 "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate "
-                 "FROM UserEpisodeHistory "
-                 "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
-                 "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-                 "WHERE UserEpisodeHistory.UserID = %s "
-                 "ORDER BY UserEpisodeHistory.ListenDate DESC")
+    try:
+        if database_type == "postgresql":
+            query = ('SELECT "Episodes".EpisodeID, "UserEpisodeHistory".ListenDate, "UserEpisodeHistory".ListenDuration, '
+                        '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
+                        '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate, "Episodes".Completed '
+                        'FROM "UserEpisodeHistory" '
+                        'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
+                        'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
+                        'WHERE "UserEpisodeHistory".UserID = %s '
+                        'ORDER BY "UserEpisodeHistory".ListenDate DESC')
+        else:  # MySQL or MariaDB
+            cursor = cnx.cursor(dictionary=True)  # Ensure dictionary mode
+            query = ("SELECT Episodes.EpisodeID, UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
+                        "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
+                        "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate, Episodes.Completed "
+                        "FROM UserEpisodeHistory "
+                        "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
+                        "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+                        "WHERE UserEpisodeHistory.UserID = %s "
+                        "ORDER BY UserEpisodeHistory.ListenDate DESC")
 
-    cursor.execute(query, (user_id,))
-    # results = cursor.fetchall()
-    results = [dict(zip([column[0] for column in cursor.description], row)) for row in cursor.fetchall()]
+        cursor.execute(query, (user_id,))
+        results = cursor.fetchall()
 
-    cursor.close()
-    # cnx.close()
-    history_episodes = lowercase_keys(results)
+        if not results:
+            logging.info("No results found for user history.")
+            return []
 
-    return history_episodes
+    except Exception as e:
+        logging.error(f"Error executing user_history query: {e}")
+        raise
+    finally:
+        cursor.close()
+
+    print('histing now')
+
+    # Convert results to a list of dictionaries
+    history_episodes = []
+    for row in results:
+        episode = {}
+        if isinstance(row, tuple):
+            for idx, col in enumerate(cursor.description):
+                column_name = col[0].lower()
+                value = row[idx]
+                if column_name == 'completed':
+                    value = bool(value)
+                episode[column_name] = value
+        elif isinstance(row, dict):
+            for k, v in row.items():
+                column_name = k.lower()
+                value = v
+                if column_name == 'completed':
+                    value = bool(value)
+                episode[column_name] = value
+        else:
+            logging.error(f"Unexpected row type: {type(row)}")
+        history_episodes.append(episode)
+
+    lower_hist = lowercase_keys(history_episodes)
+    print(lower_hist)
+    return lower_hist
+
+
 
 
 
 def download_podcast(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
-    print('download pod for print')
-    logging.error('download pod for log')
-    print('getting id')
+
+    # Check if the episode is already downloaded
+    if database_type == "postgresql":
+        query = 'SELECT 1 FROM "DownloadedEpisodes" WHERE EpisodeID = %s AND UserID = %s'
+    else:  # MySQL or MariaDB
+        query = "SELECT 1 FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
+    cursor.execute(query, (episode_id, user_id))
+    result = cursor.fetchone()
+    if result:
+        # Episode already downloaded
+        cursor.close()
+        return True
     # Get the EpisodeID and PodcastID from the Episodes table
     if database_type == "postgresql":
         query = 'SELECT PodcastID FROM "Episodes" WHERE EpisodeID = %s'
@@ -1212,14 +1414,11 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         query = "SELECT PodcastID FROM Episodes WHERE EpisodeID = %s"
     cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
-    print(f'here it is {result}')
-    logging.error(f'here it is {result}')
     if result is None:
         # Episode not found
         return False
 
     podcast_id = get_value(result, "PodcastID")
-    print('getting url')
     # Get the EpisodeURL from the Episodes table
     if database_type == "postgresql":
         query = 'SELECT EpisodeURL FROM "Episodes" WHERE EpisodeID = %s'
@@ -1227,14 +1426,11 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         query = "SELECT EpisodeURL FROM Episodes WHERE EpisodeID = %s"
     cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
-    print(f'here it is {result}')
-    logging.error(f'here it is {result}')
     if result is None:
         # Episode not found
         return False
 
     episode_url = get_value(result, "EpisodeURL")
-    print('getting name')
     # Get the PodcastName from the Podcasts table
     if database_type == "postgresql":
         query = 'SELECT PodcastName FROM "Podcasts" WHERE PodcastID = %s'
@@ -1242,44 +1438,27 @@ def download_podcast(cnx, database_type, episode_id, user_id):
         query = "SELECT PodcastName FROM Podcasts WHERE PodcastID = %s"
     cursor.execute(query, (podcast_id,))
     result = cursor.fetchone()
-    print(f'here it is name {result}')
-    logging.error(f'here it is name {result}')
     if result is None:
         # Podcast not found
         return False
 
     podcast_name = get_value(result, "PodcastName")
-    print('doing dir work')
-    print(f'doing dirs')
-    logging.error(f'doing dirs')
     # Create a directory named after the podcast, inside the main downloads directory
     download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
-    print(f'generate name')
-    logging.error(f'generate name')
     # Generate the episode filename based on episode ID and user ID
     filename = f"{user_id}-{episode_id}.mp3"
-    print(filename)
     file_path = os.path.join(download_dir, filename)
-    print(file_path)
     response = requests.get(episode_url, stream=True)
     response.raise_for_status()
-    print(f'get date')
-    logging.error(f'get date')
     # Get the current date and time for DownloadedDate
     downloaded_date = datetime.datetime.now()
-    print(f'size')
-    logging.error(f'size')
     # Get the file size from the Content-Length header
     file_size = int(response.headers.get("Content-Length", 0))
-    print(f'file write')
-    logging.error(f'file write')
     # Write the file to disk
     with open(file_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
             f.write(chunk)
-    print(f'insert')
-    logging.error(f'insert')
     # Insert a new row into the DownloadedEpisodes table
     if database_type == "postgresql":
         query = ('INSERT INTO "DownloadedEpisodes" '
@@ -1290,16 +1469,12 @@ def download_podcast(cnx, database_type, episode_id, user_id):
                  "(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) "
                  "VALUES (%s, %s, %s, %s, %s)")
     cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
-    print(f'download table write')
-    logging.error(f'download table write')
     # Update UserStats table to increment EpisodesDownloaded count
     if database_type == "postgresql":
         query = ('UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s')
     else:  # MySQL or MariaDB
         query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s")
     cursor.execute(query, (user_id,))
-    print(f'user stat')
-    logging.error(f'user stat')
     cnx.commit()
 
     if cursor:
@@ -1307,7 +1482,185 @@ def download_podcast(cnx, database_type, episode_id, user_id):
 
     return True
 
+def get_episode_ids_for_podcast(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s'
+    else:  # MySQL or MariaDB
+        query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s"
 
+    cursor.execute(query, (podcast_id,))
+    results = cursor.fetchall()
+    cursor.close()
+
+    # Extract episode IDs from the results
+    episode_ids = [row[0] if isinstance(row, tuple) else row.get('episodeid') for row in results]
+    return episode_ids
+
+
+
+def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = (
+                'SELECT "Episodes".PodcastID '
+                'FROM "Episodes" '
+                'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
+                'WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s'
+            )
+        else:  # MySQL or MariaDB
+            query = (
+                "SELECT Episodes.PodcastID "
+                "FROM Episodes "
+                "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+                "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s"
+            )
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            return result[0] if isinstance(result, tuple) else result.get("podcastid")
+        return None
+
+    finally:
+        cursor.close()
+
+
+def get_podcast_id_from_episode_name(cnx, database_type, episode_name, episode_url, user_id):
+    cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = (
+                'SELECT "Episodes".PodcastID '
+                'FROM "Episodes" '
+                'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
+                'WHERE "Episodes".EpisodeTitle = %s AND "Episodes".EpisodeURL = %s AND "Podcasts".UserID = %s'
+            )
+        else:  # MySQL or MariaDB
+            query = (
+                "SELECT Episodes.PodcastID "
+                "FROM Episodes "
+                "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+                "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s"
+            )
+        cursor.execute(query, (episode_name, episode_url, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            return result[0] if isinstance(result, tuple) else result.get("podcastid")
+        return None
+
+    finally:
+        cursor.close()
+
+
+def mark_episode_completed(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = %s"
+
+        cursor.execute(query, (episode_id,))
+        cnx.commit()
+    finally:
+        cursor.close()
+
+def mark_episode_uncompleted(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Episodes" SET Completed = FALSE WHERE EpisodeID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Episodes SET Completed = 0 WHERE EpisodeID = %s"
+
+        cursor.execute(query, (episode_id,))
+        cnx.commit()
+    finally:
+        cursor.close()
+
+
+def enable_auto_download(cnx, database_type, podcast_id, user_id, auto_download):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Podcasts" SET AutoDownload = %s WHERE PodcastID = %s AND UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Podcasts SET AutoDownload = %s WHERE PodcastID = %s AND UserID = %s"
+        cursor.execute(query, (auto_download, podcast_id, user_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
+
+def call_get_auto_download_status(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT AutoDownload FROM "Podcasts" WHERE PodcastID = %s AND UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "SELECT AutoDownload FROM Podcasts WHERE PodcastID = %s AND UserID = %s"
+
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            return result[0] if isinstance(result, tuple) else result.get("autodownload")
+        else:
+            return None
+    finally:
+        cursor.close()
+
+
+
+def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Podcasts" SET StartSkip = %s, EndSkip = %s WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Podcasts SET StartSkip = %s, EndSkip = %s WHERE PodcastID = %s"
+        cursor.execute(query, (start_skip, end_skip, podcast_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
+
+def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    logging.error(f"Error retrieving DownloadedLocation: {podcast_id}, {user_id}")
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT StartSkip, EndSkip
+                FROM "Podcasts"
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        else:  # MySQL or MariaDB
+            query = """
+                SELECT StartSkip, EndSkip
+                FROM Podcasts
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            if isinstance(result, dict):
+                return result.get("startskip"), result.get("endskip")
+            elif isinstance(result, tuple):
+                return result[0], result[1]
+        return None, None
+    finally:
+        cursor.close()
 
 
 def check_downloaded(cnx, database_type, user_id, episode_id):
@@ -1324,15 +1677,18 @@ def check_downloaded(cnx, database_type, user_id, episode_id):
         result = cursor.fetchone()
 
         if result:
-            return True
-        else:
-            return False
+            if isinstance(result, dict):
+                return result.get("DownloadID") is not None
+            elif isinstance(result, tuple):
+                return result[0] is not None
+        return False
 
     except mysql.connector.errors.InterfaceError:
         return False
     finally:
         if cursor:
             cursor.close()
+
 
 def get_download_value(result, key, default=None):
     """
@@ -1364,7 +1720,6 @@ def get_download_location(cnx, database_type, episode_id, user_id):
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
 
-        print(f"Query result: {result}")
 
         if result:
             location = get_download_value(result, "DownloadedLocation")
@@ -1405,7 +1760,8 @@ def download_episode_list(database_type, cnx, user_id):
             '"Episodes".EpisodeDuration, '
             '"Podcasts".WebsiteURL, '
             '"DownloadedEpisodes".DownloadedLocation, '
-            '"UserEpisodeHistory".ListenDuration '
+            '"UserEpisodeHistory".ListenDuration, '
+            '"Episodes".Completed '
             'FROM "DownloadedEpisodes" '
             'INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -1428,7 +1784,8 @@ def download_episode_list(database_type, cnx, user_id):
             "Episodes.EpisodeDuration, "
             "Podcasts.WebsiteURL, "
             "DownloadedEpisodes.DownloadedLocation, "
-            "UserEpisodeHistory.ListenDuration "
+            "UserEpisodeHistory.ListenDuration, "
+            "Episodes.Completed "
             "FROM DownloadedEpisodes "
             "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -1488,13 +1845,17 @@ def get_encryption_key(cnx, database_type):
         return None
 
     # Convert the result to a dictionary.
-    result_dict = dict(zip([column[0] for column in cursor.description], result))
+    result_dict = {}
+    if isinstance(result, tuple):
+        result_dict = {column[0].lower(): value for column, value in zip(cursor.description, result)}
+    elif isinstance(result, dict):
+        result_dict = {k.lower(): v for k, v in result.items()}
 
     cursor.close()
     # cnx.close()
 
     # Convert the bytearray to a base64 encoded string before returning.
-    return base64.b64encode(result_dict['EncryptionKey']).decode()
+    return base64.b64encode(result_dict['encryptionkey']).decode()
 
 def get_email_settings(cnx, database_type):
     if database_type == "postgresql":
@@ -2560,7 +2921,7 @@ def saved_episode_list(database_type, cnx, user_id):
         query = (
             'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeID, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, '
-            '"Episodes".EpisodeDuration, "Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration '
+            '"Episodes".EpisodeDuration, "Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "SavedEpisodes" '
             'INNER JOIN "Episodes" ON "SavedEpisodes".EpisodeID = "Episodes".EpisodeID '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -2573,7 +2934,7 @@ def saved_episode_list(database_type, cnx, user_id):
         query = (
             "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeID, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
-            "Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
+            "Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM SavedEpisodes "
             "INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -3152,7 +3513,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         query = (
             'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
-            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration '
+            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
             'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "Podcasts".UserID = "UserEpisodeHistory".UserID '
@@ -3163,7 +3524,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         query = (
             "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
-            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration "
+            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND Podcasts.UserID = UserEpisodeHistory.UserID "
@@ -3178,7 +3539,10 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
     if not row:
         raise ValueError(f"No episode found with ID {episode_id} for user {user_id}")
 
-    return row
+    lower_row = lowercase_keys(row)
+    bool_fix = convert_bools(lower_row, database_type)
+
+    return bool_fix
 
 
 import logging
@@ -3195,10 +3559,10 @@ def save_mfa_secret(database_type, cnx, user_id, mfa_secret):
         cursor.execute(query, (mfa_secret, user_id))
         cnx.commit()
         cursor.close()
-        logging.info(f"Successfully saved MFA secret for user {user_id}")
+        logging.info(f"Successfully saved MFA secret for user")
         return True
     except Exception as e:
-        logging.error(f"Error saving MFA secret for user {user_id}: {e}")
+        logging.error(f"Error saving MFA secret for user")
         return False
 
 
@@ -3395,7 +3759,11 @@ def first_login_done(database_type, cnx, user_id):
         result = cursor.fetchone()
         cursor.close()
 
-        first_login = result[0] if isinstance(result, tuple) else result['firstlogin']
+        if database_type == "postgresql":
+
+            first_login = result[0] if isinstance(result, tuple) else result['firstlogin']
+        else:
+            first_login = result[0] if isinstance(result, tuple) else result['FirstLogin']
         return first_login == 1
     except Exception as e:
         print("Error fetching first login status:", e)
@@ -3542,8 +3910,7 @@ def search_data(database_type, cnx, search_term, user_id):
             return []
 
         # Convert column names to lowercase for MySQL
-        if database_type != "postgresql":
-            result = [{k.lower(): v for k, v in row.items()} for row in result]
+        result = lowercase_keys(result)
 
         # Post-process the results to cast boolean to integer for the 'explicit' field
         if database_type == "postgresql":
@@ -3597,6 +3964,38 @@ def queue_pod(database_type, cnx, episode_id, user_id):
         return None
 
     return "Podcast Episode queued successfully."
+
+def reorder_queued_episodes(database_type, cnx, user_id, episode_ids):
+    if database_type == "postgresql":
+        from psycopg.rows import dict_row
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query_update_position = (
+            'UPDATE "EpisodeQueue" SET QueuePosition = %s '
+            'WHERE UserID = %s AND EpisodeID = %s'
+        )
+    else:  # MySQL or MariaDB
+        cursor = cnx.cursor(dictionary=True)
+        query_update_position = (
+            "UPDATE EpisodeQueue SET QueuePosition = %s "
+            "WHERE UserID = %s AND EpisodeID = %s"
+        )
+
+    try:
+        start = time.time()
+
+        # Update the position of each episode in the order they appear in the list
+        for position, episode_id in enumerate(episode_ids, start=1):
+            cursor.execute(query_update_position, (position, user_id, episode_id))
+
+        cnx.commit()  # Commit the changes
+        end = time.time()
+        print(f"Query executed in {end - start} seconds.")
+        return True
+    except Exception as e:
+        print("Error reordering Podcast Episodes:", e)
+        return False
+
 
 
 def check_queued(database_type, cnx, episode_id, user_id):
@@ -3713,7 +4112,8 @@ def get_queued_episodes(database_type, cnx, user_id):
             "Episodes".EpisodeDuration,
             "EpisodeQueue".QueueDate,
             "UserEpisodeHistory".ListenDuration,
-            "Episodes".EpisodeID
+            "Episodes".EpisodeID,
+            "Episodes".Completed
         FROM "EpisodeQueue"
         INNER JOIN "Episodes" ON "EpisodeQueue".EpisodeID = "Episodes".EpisodeID
         INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
@@ -3735,7 +4135,8 @@ def get_queued_episodes(database_type, cnx, user_id):
             Episodes.EpisodeDuration,
             EpisodeQueue.QueueDate,
             UserEpisodeHistory.ListenDuration,
-            Episodes.EpisodeID
+            Episodes.EpisodeID,
+            Episodes.Completed
         FROM EpisodeQueue
         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -3784,10 +4185,9 @@ def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url
 
 
 
-def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token, login_name):
+def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token, login_name, pod_sync_type):
     print("Adding gPodder settings")
-    print(f"User ID: {user_id}, gPodder URL: {gpodder_url}, gPodder Token: {gpodder_token}, Login Name: {login_name}")
-    the_key = get_encryption_key(cnx)
+    the_key = get_encryption_key(cnx, database_type)
 
     cursor = cnx.cursor()
     from cryptography.fernet import Fernet
@@ -3805,11 +4205,46 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
         decoded_token = None
 
     query = (
-        'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s WHERE UserID = %s' if database_type == "postgresql" else
-        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s WHERE UserID = %s"
+        'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s' if database_type == "postgresql" else
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken, Pod_Sync_Type = %s WHERE UserID = %s"
     )
 
-    cursor.execute(query, (gpodder_url, login_name, decoded_token, user_id))
+    cursor.execute(query, (gpodder_url, login_name, decoded_token, pod_sync_type, user_id))
+
+    # Check if the update was successful
+    if cursor.rowcount == 0:
+        return None
+
+    cnx.commit()  # Commit changes to the database
+    cursor.close()
+
+    return True
+
+def add_gpodder_server(database_type, cnx, user_id, gpodder_url, gpodder_username, gpodder_password):
+    print("Adding gPodder settings")
+    the_key = get_encryption_key(cnx, database_type)
+
+    cursor = cnx.cursor()
+    from cryptography.fernet import Fernet
+
+    encryption_key_bytes = base64.b64decode(the_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Only encrypt password if it's not None
+    if gpodder_password is not None:
+        encrypted_password = cipher_suite.encrypt(gpodder_password.encode())
+        # Decode encrypted password back to string
+        decoded_token = encrypted_password.decode()
+    else:
+        decoded_token = None
+
+    query = (
+        'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s' if database_type == "postgresql" else
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s"
+    )
+    pod_sync_type = "gpodder"
+    cursor.execute(query, (gpodder_url, gpodder_username, decoded_token, pod_sync_type, user_id))
 
     # Check if the update was successful
     if cursor.rowcount == 0:
@@ -3831,7 +4266,32 @@ def get_gpodder_settings(database_type, cnx, user_id):
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
-    return result
+
+    # Ensure result is consistent
+    if result:
+        if isinstance(result, tuple):
+            # Convert tuple result to a dictionary
+            if database_type == 'postgresql':
+                result = {
+                    "gpodderurl": result[0],
+                    "gpoddertoken": result[1]
+                }
+            else:
+                result = {
+                    "GpodderUrl": result[0],
+                    "GpodderToken": result[1]
+                }
+        elif isinstance(result, dict):
+            # Normalize keys to lower case if necessary
+            result = {k.lower(): v for k, v in result.items()}
+    else:
+        result = {}
+
+    lower_result = lowercase_keys(result)
+
+    return lower_result
+
+
 
 
 def get_nextcloud_settings(database_type, cnx, user_id):
@@ -3847,6 +4307,23 @@ def get_nextcloud_settings(database_type, cnx, user_id):
         return result[0], result[1], result[2]
     else:
         return None, None, None
+
+def get_gpodder_type(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    query = (
+        'SELECT Pod_Sync_Type FROM "Users" WHERE UserID = %s' if database_type == "postgresql" else
+        "SELECT Pod_Sync_Type FROM Users WHERE UserID = %s"
+    )
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        if isinstance(result, dict):
+            return result.get("Pod_Sync_Type")
+        elif isinstance(result, list) or isinstance(result, tuple):
+            return result[0]
+    return None
 
 
 
@@ -3921,7 +4398,7 @@ def add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, enc
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
 
-    encryption_key = get_encryption_key(cnx)
+    encryption_key = get_encryption_key(cnx, database_type)
     encryption_key_bytes = base64.b64decode(encryption_key)
 
     cipher_suite = Fernet(encryption_key_bytes)
@@ -3950,12 +4427,46 @@ def add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, enc
         print(f"Failed to add podcast to Nextcloud: {e}")
         print(f"Response body: {response.text}")
 
-
-def remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url):
+def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
 
-    encryption_key = get_encryption_key(cnx)
+    encryption_key = get_encryption_key(cnx, database_type)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Adjust the URL for oPodSync
+    url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
+    data = {
+        "add": [podcast_url],
+        "remove": []
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(url, json=data, headers=headers, auth=auth)
+    try:
+        response.raise_for_status()
+        print(f"Podcast added to oPodSync successfully: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Failed to add podcast to oPodSync: {e}")
+        print(f"Response body: {response.text}")
+
+
+def remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    encryption_key = get_encryption_key(cnx, database_type)
     encryption_key_bytes = base64.b64decode(encryption_key)
 
     cipher_suite = Fernet(encryption_key_bytes)
@@ -3985,11 +4496,46 @@ def remove_podcast_from_nextcloud(cnx, gpodder_url, gpodder_login, encrypted_gpo
         print(f"Response body: {response.text}")
 
 
-def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login):
+def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    encryption_key = get_encryption_key(cnx, database_type)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Adjust the URL for oPodSync
+    url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
+    data = {
+        "add": [],
+        "remove": [podcast_url]
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(url, json=data, headers=headers, auth=auth)
+    try:
+        response.raise_for_status()
+        print(f"Podcast removed from oPodSync successfully: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"Failed to remove podcast from oPodSync: {e}")
+        print(f"Response body: {response.text}")
+
+
+def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
     # Fetch encryption key
-    encryption_key = get_encryption_key(cnx)
+    encryption_key = get_encryption_key(cnx, database_type)
     encryption_key_bytes = base64.b64decode(encryption_key)
 
     cipher_suite = Fernet(encryption_key_bytes)
@@ -4043,7 +4589,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
     for feed_url in podcasts_to_remove:
         print(f"Removing {feed_url}...")
         if database_type == "postgresql":
-            query = 'SELECT PodcastName FROM "Podcasts" WHERE "FeedURL" = %s'
+            query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
         else:  # MySQL or MariaDB
             query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
 
@@ -4053,7 +4599,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
         print(f"Feed URL: {feed_url}")
         if result:
             podcast_name = result[0]  # Unpack the tuple to get the podcast name
-            remove_podcast(cnx, podcast_name, feed_url, user_id)
+            remove_podcast(cnx, database_type, podcast_name, feed_url, user_id)
         else:
             print(f"No podcast found with URL: {feed_url}")
 
@@ -4094,7 +4640,7 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
                     episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
                     if episode_id:
                         print(f"Recording listen duration for episode ID {episode_id} with position {action['position']}")
-                        record_listen_duration(cnx, episode_id, user_id, int(action["position"]))
+                        record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
                     else:
                         print(f"No episode ID found for URL {action['episode']}")
                 else:
@@ -4144,6 +4690,168 @@ def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, enc
             print(f"Update episode times response: {response.status_code}")
         except RequestException as e:
             print(f"Error updating episode times in Nextcloud: {e}")
+
+def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
+    from cryptography.fernet import Fernet
+    from requests.auth import HTTPBasicAuth
+
+    # Fetch encryption key
+    encryption_key = get_encryption_key(cnx, database_type)
+    encryption_key_bytes = base64.b64decode(encryption_key)
+
+    cipher_suite = Fernet(encryption_key_bytes)
+
+    # Decrypt the token
+    if encrypted_gpodder_token is not None:
+        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+        gpodder_token = decrypted_token_bytes.decode()
+    else:
+        gpodder_token = None
+
+    # Prepare for Basic Auth
+    auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+    # Now, use the decrypted token in your API request
+    print(f"Decrypted gPodder token: {gpodder_token}")
+    response = requests.get(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", auth=auth)
+    response.raise_for_status()  # This will raise an exception for HTTP errors
+    print(f"Response status: {response.status_code}, Content: {response.text}")
+
+    gpodder_data = response.json()
+    gpodder_podcasts_add = set(gpodder_data.get("add", []))
+    gpodder_podcasts_remove = set(gpodder_data.get("remove", []))
+    print(f"gPodder podcasts to add: {gpodder_podcasts_add}")
+    print(f"gPodder podcasts to remove: {gpodder_podcasts_remove}")
+
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT FeedURL FROM "Podcasts" WHERE UserID = %s'
+    else:  # MySQL or MariaDB
+        query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
+
+    cursor.execute(query, (user_id,))
+    local_podcasts = set(row[0] for row in cursor.fetchall())
+    print(f"Local podcasts: {local_podcasts}")
+
+    podcasts_to_add = gpodder_podcasts_add - local_podcasts
+    podcasts_to_remove = gpodder_podcasts_remove & local_podcasts
+    print(f"Podcasts to add: {podcasts_to_add}, Podcasts to remove: {podcasts_to_remove}")
+
+    # Update local database
+    # Add new podcasts
+    print("Adding new podcasts...")
+    for feed_url in podcasts_to_add:
+        podcast_values = get_podcast_values(feed_url, user_id)
+        return_value = add_podcast(cnx, database_type, podcast_values, user_id)
+        if return_value:
+            print(f"{feed_url} added!")
+        else:
+            print(f"Error adding {feed_url}")
+
+    # Remove podcasts no longer in the subscription
+    print("Removing podcasts...")
+    for feed_url in podcasts_to_remove:
+        print(f"Removing {feed_url}...")
+        if database_type == "postgresql":
+            query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
+        else:  # MySQL or MariaDB
+            query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
+
+        cursor.execute(query, (feed_url,))
+        result = cursor.fetchone()
+        print(f"Result: {result}")
+        print(f"Feed URL: {feed_url}")
+        if result:
+            podcast_name = result[0]  # Unpack the tuple to get the podcast name
+            remove_podcast(cnx, database_type, podcast_name, feed_url, user_id)
+        else:
+            print(f"No podcast found with URL: {feed_url}")
+
+    cnx.commit()
+    cursor.close()
+
+    # Notify gPodder of changes made locally (if any)
+    print("Syncing subscription changes...")
+    if podcasts_to_add or podcasts_to_remove:
+        sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, list(podcasts_to_add), list(podcasts_to_remove))
+
+    # Fetch episode actions from gPodder
+    print("Fetching episode actions from gPodder...")
+    try:
+        episode_actions_response = requests.get(
+            f"{gpodder_url}/api/2/episodes/{gpodder_login}.json",
+            auth=auth
+        )
+        episode_actions_response.raise_for_status()  # This will raise an exception for HTTP errors
+        episode_actions = episode_actions_response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching gPodder episode actions: {e}")
+        episode_actions = []
+
+    # Process episode actions from gPodder
+    print("Processing episode actions...")
+    for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
+        try:
+            # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
+            print(f"Processing action: {action}")
+            if action["action"].lower() in ["play", "update_time"]:
+                print(f"Action details - Podcast: {action['podcast']}, Episode: {action['episode']}, Position: {action.get('position')}")
+                if "position" in action and action["position"] != -1:
+                    episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
+                    if episode_id:
+                        print(f"Recording listen duration for episode ID {episode_id} with position {action['position']}")
+                        record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+                    else:
+                        print(f"No episode ID found for URL {action['episode']}")
+                else:
+                    print(f"Skipping action due to invalid position: {action}")
+
+        except Exception as e:
+            print(f"Error processing episode action {action}: {e}")
+
+    # Collect local episode listen times and push to gPodder if necessary
+    print("Collecting local episode listen times...")
+    try:
+        local_episode_times = get_local_episode_times(cnx, database_type, user_id)
+    except Exception as e:
+        print(f"Error fetching local episode times: {e}")
+        local_episode_times = []
+
+    UPLOAD_BULK_SIZE = 30
+    # Send local episode listen times to gPodder
+    update_actions = []
+    for episode_time in local_episode_times:
+        update_actions.append({
+            "podcast": episode_time["podcast_url"],
+            "episode": episode_time["episode_url"],
+            "action": "play",
+            "timestamp": current_timestamp(),
+            "position": episode_time["listen_duration"],
+            "started": 0,
+            "total": episode_time["episode_duration"],
+            "guid": generate_guid(episode_time)
+        })
+    print(f"Update actions: {update_actions}")
+    # Split the list of update actions into chunks
+    update_actions_chunks = [update_actions[i:i + UPLOAD_BULK_SIZE] for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)]
+
+    from urllib.parse import urljoin
+    for chunk in update_actions_chunks:
+        try:
+            url = urljoin(gpodder_url, f"/api/2/episodes/{gpodder_login}.json")
+            response = requests.post(
+                url,
+                json=chunk,
+                auth=auth,
+                headers={"Accept": "application/json"}
+            )
+            if response.status_code != 200:
+                raise requests.exceptions.RequestException(f"Unexpected status code: {response.status_code}")
+            print(f"Update episode times response: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error updating episode times in gPodder: {e}")
+
+
 
 # database_functions.py
 
@@ -4231,12 +4939,13 @@ def backup_server(database_type, cnx, database_pass):
             "-w"
         ]
     else:  # Assuming MySQL or MariaDB
+        # Using --password=<password> flag for safety
         cmd = [
             "mysqldump",
             "-h", 'db',
             "-P", '3306',
             "-u", "root",
-            "-p" + database_pass,
+            "--password=" + database_pass,
             "pypods_database"
         ]
 
