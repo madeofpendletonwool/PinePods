@@ -11,7 +11,7 @@ from argon2.exceptions import HashingError
 from passlib.hash import argon2
 
 # Set up basic configuration for logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Append the pinepods directory to sys.path for module import
 sys.path.append('/pinepods')
@@ -85,14 +85,9 @@ try:
             """)
             print(f"Column '{column_name}' added to table '{table_name}'")
         else:
-            print(f"Column '{column_name}' already exists in table '{table_name}'")
+            return
 
     add_pod_sync_if_not_exists(cursor, 'Users', 'Pod_Sync_Type', 'VARCHAR(50) DEFAULT \'None\'')
-
-
-    logging.info("Database tables created or verified successfully.")
-
-
 
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
@@ -200,7 +195,6 @@ try:
                     VALUES (%s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE Username=VALUES(Username)
                 """, ('Background Tasks', 'bt', 'inactive', hashed_password, False))
-                logging.info("Added new 'bt' user.")
         except Exception as e:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)
@@ -293,8 +287,6 @@ try:
                         EndSkip INT DEFAULT 0,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
-    logging.info("Podcasts table checked/created.")
-
     # Check if the new columns exist, and add them if they don't
     cursor.execute("SHOW COLUMNS FROM Podcasts LIKE 'AutoDownload'")
     result = cursor.fetchone()
@@ -305,8 +297,6 @@ try:
             ADD COLUMN StartSkip INT DEFAULT 0,
             ADD COLUMN EndSkip INT DEFAULT 0
         """)
-        logging.info("AutoDownload, StartSkip, and EndSkip columns added to Podcasts table.")
-
     cursor.execute("""CREATE TABLE IF NOT EXISTS Episodes (
                         EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
                         PodcastID INT,

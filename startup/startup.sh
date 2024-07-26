@@ -29,18 +29,18 @@ cat << "EOF"
          A
         d$b
       .d\$$b.
-    .d$i$$\$$b.      _______   __                                                __           
-       d$$@b        /       \ /  |                                              /  |          
-      d\$$$ib       $$$$$$$  |$$/  _______    ______    ______    ______    ____$$ |  _______ 
+    .d$i$$\$$b.      _______   __                                                __
+       d$$@b        /       \ /  |                                              /  |
+      d\$$$ib       $$$$$$$  |$$/  _______    ______    ______    ______    ____$$ |  _______
     .d$$$\$$$b      $$ |__$$ |/  |/       \  /      \  /      \  /      \  /    $$ | /       |
-  .d$$@$$$$\$$ib.   $$    $$/ $$ |$$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$$ |/$$$$$$$/ 
-      d$$i$$b       $$$$$$$/  $$ |$$ |  $$ |$$    $$ |$$ |  $$ |$$ |  $$ |$$ |  $$ |$$      \ 
+  .d$$@$$$$\$$ib.   $$    $$/ $$ |$$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$  |/$$$$$$$ |/$$$$$$$/
+      d$$i$$b       $$$$$$$/  $$ |$$ |  $$ |$$    $$ |$$ |  $$ |$$ |  $$ |$$ |  $$ |$$      \
      d\$$$$@$b.     $$ |      $$ |$$ |  $$ |$$$$$$$$/ $$ |__$$ |$$ \__$$ |$$ \__$$ | $$$$$$  |
-  .d$@$$\$$$$$@b.   $$ |      $$ |$$ |  $$ |$$       |$$    $$/ $$    $$/ $$    $$ |/     $$/ 
-.d$$$$i$$$\$$$$$$b. $$/       $$/ $$/   $$/  $$$$$$$/ $$$$$$$/   $$$$$$/   $$$$$$$/ $$$$$$$/  
-        ###                                           $$ |                                    
-        ###                                           $$ |                                    
-        ###                                           $$/                                     
+  .d$@$$\$$$$$@b.   $$ |      $$ |$$ |  $$ |$$       |$$    $$/ $$    $$/ $$    $$ |/     $$/
+.d$$$$i$$$\$$$$$$b. $$/       $$/ $$/   $$/  $$$$$$$/ $$$$$$$/   $$$$$$/   $$$$$$$/ $$$$$$$/
+        ###                                           $$ |
+        ###                                           $$ |
+        ###                                           $$/
 
 A project created and written by Collin Pendleton
 collinp@gooseberrydevelopment.com
@@ -54,13 +54,13 @@ mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
 # Database Setup
 if [[ $DB_TYPE == "postgresql" ]]; then
-echo "Setting up Postgresdb"
+echo "Using Postgresdb"
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setuppostgresdatabase.py
 else
-echo "Setting my mysql/mariadb"
+echo "Using mysql/mariadb"
 /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
 fi
-echo "Database setup complete"
+echo "Database Validation complete"
 # Periodic refresh
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1" | crontab -
 # Fix permissions on exim email server folders
@@ -68,9 +68,7 @@ mkdir -p /var/log/exim4
 mkdir -p /var/spool/exim4
 chown -R Debian-exim:Debian-exim /var/log/exim4
 chown -R Debian-exim:Debian-exim /var/spool/exim4
-echo "Exim permissions fixed"
 # Start all services with supervisord
-echo $DEBUG_MODE
 if [[ $DEBUG_MODE == "true" ]]; then
 supervisord -c /pinepods/startup/supervisordebug.conf
 else

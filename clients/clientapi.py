@@ -57,8 +57,6 @@ else:
 
 secret_key_middle = secrets.token_hex(32)
 
-print('Client API Server is Starting!')
-
 # Temporary storage for MFA secrets
 temp_mfa_secrets = {}
 

@@ -25,7 +25,7 @@ def hash_password(password):
         return None
 
 # Set up basic configuration for logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Append the pinepods directory to sys.path for module import
 sys.path.append('/pinepods')
@@ -85,9 +85,6 @@ try:
         )
     """)
 
-    logging.info("Database tables created or verified successfully.")
-
-
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS "APIKeys" (
                         APIKeyID SERIAL PRIMARY KEY,
@@ -133,7 +130,6 @@ try:
             VALUES (false, true, %s)
         """, (key,))
 
-    logging.info("Creating EmailSettings table...")
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS "EmailSettings" (
@@ -148,7 +144,6 @@ try:
                 Password VARCHAR(255)
             )
         """)
-        logging.info("EmailSettings table created successfully.")
     except Exception as e:
         logging.error(f"Failed to create EmailSettings table: {e}")
 
@@ -166,7 +161,6 @@ try:
             """)
     except Exception as e:
         print(f"Error setting default email data: {e}")
-    logging.info("added default email data.")
 
     def user_exists(cursor, username):
         cursor.execute("""
@@ -190,7 +184,6 @@ try:
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (Username) DO NOTHING
                 """, ('Background Tasks', 'bt', 'inactive', hashed_password, False))
-                logging.info("Added new 'bt' user.")
         except Exception as e:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)
@@ -235,8 +228,6 @@ try:
     except Exception as e:
         print(f"Error creating web key: {e}")
 
-    logging.info("created web api key.")
-
     try:
         # Your admin user variables
         admin_fullname = os.environ.get("FULLNAME", "Admin User")
@@ -262,7 +253,6 @@ try:
         cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hashed_pw, True))
     except Exception as e:
         print(f"Error creating default admin: {e}")
-    logging.info("created default admin.")
 
     try:
         cursor.execute("""
@@ -276,7 +266,6 @@ try:
         """)
     except Exception as e:
         print(f"Error creating intial users in UserStats: {e}")
-    logging.info("created initial users in stats.")
 
     try:
         cursor.execute("""
@@ -301,14 +290,8 @@ try:
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
-    logging.info("created podcasts table.")
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
-    result = cursor.fetchone()
-    if result:
-        logging.info("Table 'Podcasts' exists.")
-    else:
-        logging.error("Table 'Podcasts' does not exist.")
 
     try:
         cursor.execute("""
@@ -353,7 +336,6 @@ try:
                         )""")
     except Exception as e:
         print(f"Error adding UserSettings table: {e}")
-    logging.info("created UserSettings table.")
 
     cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('1', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
     cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('2', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
