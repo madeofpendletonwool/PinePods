@@ -57,8 +57,9 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v3
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: hecrj/setup-rust-action@v2
         with:
+          rust-version: 1.79
           targets: wasm32-unknown-unknown
 
       - uses: cargo-bins/cargo-binstall@main
