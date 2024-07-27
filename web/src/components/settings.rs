@@ -10,7 +10,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use yew::prelude::*;
-use yewdux::{dispatch, prelude::*};
+use yewdux::{prelude::*};
 // use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]

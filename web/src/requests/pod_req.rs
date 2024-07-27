@@ -1878,7 +1878,6 @@ pub async fn call_get_pinepods_version(
 
     if response.ok() {
         let response_text: String = response.text().await?;
-        web_sys::console::log_1(&format!("version: {}", &response_text).into());
 
         // Deserialize the JSON response
         let version_response: VersionResponse = serde_json::from_str(&response_text)
