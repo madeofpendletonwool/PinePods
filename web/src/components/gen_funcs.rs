@@ -5,12 +5,9 @@ use argon2::{
 };
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
-use gloo_net::http::Request;
 use std::collections::HashMap;
 use std::str::FromStr;
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::HtmlAudioElement;
 use web_sys::{DomParser, SupportedType};
 
 // pub fn format_date(date_str: &str) -> String {

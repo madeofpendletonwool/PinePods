@@ -5,6 +5,7 @@ use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::gen_funcs::{format_date, format_time_mins};
 use crate::requests::pod_req::call_get_pinepods_version;
 use crate::requests::stat_reqs;
+use crate::requests::login_requests::use_check_authentication;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;
@@ -12,10 +13,45 @@ use yewdux::prelude::*;
 
 #[function_component(UserStats)]
 pub fn user_stats() -> Html {
-    let (_state, _dispatch) = use_store::<AppState>();
+    let (state, dispatch) = use_store::<AppState>();
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
+    let effect_dispatch = dispatch.clone();
+    let session_dispatch = effect_dispatch.clone();
+    let session_state = state.clone();
     let user_stats = stat_state.stats.as_ref();
     let pinepods_version = stat_state.pinepods_version.as_ref();
+
+    use_effect_with((), move |_| {
+        // Check if the page reload action has already occurred to prevent redundant execution
+        if session_state.reload_occured.unwrap_or(false) {
+            // Logic for the case where reload has already been processed
+        } else {
+            // Normal effect logic for handling page reload
+            let window = web_sys::window().expect("no global `window` exists");
+            let performance = window.performance().expect("should have performance");
+            let navigation_type = performance.navigation().type_();
+
+            if navigation_type == 1 {
+                // 1 stands for reload
+                let session_storage = window.session_storage().unwrap().unwrap();
+                session_storage
+                    .set_item("isAuthenticated", "false")
+                    .unwrap();
+            }
+
+            // Always check authentication status
+            let current_route = window.location().href().unwrap_or_default();
+            use_check_authentication(session_dispatch.clone(), &current_route);
+
+            // Mark that the page reload handling has occurred
+            session_dispatch.reduce_mut(|state| {
+                state.reload_occured = Some(true);
+                state.clone() // Return the modified state
+            });
+        }
+
+        || ()
+    });
 
     // let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -34,44 +70,47 @@ pub fn user_stats() -> Html {
             .auth_details
             .as_ref()
             .map(|ud| ud.server_name.clone());
-
         let server_name_effect = server_name.clone();
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
                 // your async call here, using stat_dispatch to update stat_state
-                let get_server_name = server_name_effect.clone();
-                let get_api_key = api_key.clone();
-                let get_stat_dispatch = stat_dispatch.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Ok(fetched_stats) = stat_reqs::call_get_stats(
-                        get_server_name.unwrap().clone(),
-                        get_api_key.flatten().clone(),
-                        &user_id.unwrap(),
-                    )
-                    .await
-                    {
-                        get_stat_dispatch.reduce_mut(move |state| {
-                            state.stats = Some(fetched_stats);
-                        });
-                    }
-                    // handle error case
-                });
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone())
+                {
+                    let get_server_name = server_name.clone();
+                    let get_api_key = api_key.clone();
+                    let get_stat_dispatch = stat_dispatch.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(fetched_stats) = stat_reqs::call_get_stats(
+                            get_server_name.clone(),
+                            get_api_key.clone(),
+                            &user_id,
+                        )
+                        .await
+                        {
+                            get_stat_dispatch.reduce_mut(move |state| {
+                                state.stats = Some(fetched_stats);
+                            });
+                        }
+                        // handle error case
+                    });
 
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Ok(fetched_stats) = call_get_pinepods_version(
-                        server_name_effect.unwrap().clone(),
-                        &api_key.flatten().clone(),
-                    )
-                    .await
-                    {
-                        stat_dispatch.reduce_mut(move |state| {
-                            state.pinepods_version = Some(fetched_stats);
-                        });
-                    }
-                    // handle error case
-                });
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(fetched_stats) = call_get_pinepods_version(
+                            server_name_effect.unwrap().clone(),
+                            &api_key.clone(),
+                        )
+                        .await
+                        {
+                            stat_dispatch.reduce_mut(move |state| {
+                                state.pinepods_version = Some(fetched_stats);
+                            });
+                        }
+                        // handle error case
+                    });
+                }
                 || ()
             },
         );

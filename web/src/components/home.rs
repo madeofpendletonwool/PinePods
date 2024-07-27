@@ -67,7 +67,6 @@ pub fn home() -> Html {
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    web_sys::console::log_1(&format!("State: {:?}", post_state).into());
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let loading = use_state(|| true);

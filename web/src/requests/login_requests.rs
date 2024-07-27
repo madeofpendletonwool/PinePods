@@ -266,7 +266,7 @@ pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_ro
         .unwrap();
     // If not authenticated or no information, redirect to login
     if is_authenticated != Some("true".to_string()) {
-        web_sys::console::log_1(&format!("route on auth false: {:?}", current_route).into());
+        // web_sys::console::log_1(&format!("route on auth false: {:?}", current_route).into());
         session_storage
             .set_item("isAuthenticated", "false")
             .unwrap();
@@ -274,7 +274,7 @@ pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_ro
         // let last_known_route = session_storage.get_item("requested_route").unwrap_or(Some(current_route.to_string())).unwrap_or_default();
         history.push("/");
     } else {
-        web_sys::console::log_1(&format!("route on auth true: {:?}", current_route).into());
+        // web_sys::console::log_1(&format!("route on auth true: {:?}", current_route).into());
         // Already authenticated, continue as normal
         // console::log_1(&"User is authenticated, continuing to requested page".into());
     }
