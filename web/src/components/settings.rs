@@ -145,12 +145,10 @@ pub fn settings() -> Html {
 
         || ()
     });
-    web_sys::console::log_1(&format!("State: {:?}", state).into());
 
 
     let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    web_sys::console::log_1(&format!("State: {:?}", _post_state).into());
 
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
