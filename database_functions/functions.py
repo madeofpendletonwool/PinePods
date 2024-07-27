@@ -1008,10 +1008,16 @@ def refresh_pods(cnx, database_type):
         if isinstance(result, tuple):
             podcast_id, feed_url, artwork_url, auto_download = result
         elif isinstance(result, dict):
-            podcast_id = result["PodcastID"]
-            feed_url = result["FeedURL"]
-            artwork_url = result["ArtworkURL"]
-            auto_download = result["AutoDownload"]
+            if database_type == "postgresql":
+                podcast_id = result["podcastid"]
+                feed_url = result["feedurl"]
+                artwork_url = result["artworkurl"]
+                auto_download = result["autodownload"]
+            else:
+                podcast_id = result["PodcastID"]
+                feed_url = result["FeedURL"]
+                artwork_url = result["ArtworkURL"]
+                auto_download = result["AutoDownload"]
         else:
             raise ValueError(f"Unexpected result type: {type(result)}")
 

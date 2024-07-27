@@ -3125,7 +3125,22 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
         else:
             cnx.close()
 
-    for user_id, gpodder_url, gpodder_token, gpodder_login in users:
+    for user in users:
+        # Handle both dictionary and tuple cases
+        if isinstance(user, dict):
+            if database_type == "postgresql":
+                user_id = user["userid"]
+                gpodder_url = user["gpodderurl"]
+                gpodder_token = user["gpoddertoken"]
+                gpodder_login = user["gpodderloginname"]
+            else:
+                user_id = user["UserID"]
+                gpodder_url = user["GpodderUrl"]
+                gpodder_token = user["GpodderToken"]
+                gpodder_login = user["GpodderLoginName"]
+        else:  # assuming tuple
+            user_id, gpodder_url, gpodder_token, gpodder_login = user
+        
         print(f"userid: {user_id}")
         background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
 
