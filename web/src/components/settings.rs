@@ -10,7 +10,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use yew::prelude::*;
-use yewdux::prelude::*;
+use yewdux::{dispatch, prelude::*};
 // use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]
@@ -108,26 +108,11 @@ pub fn accordion_item(
 
 #[function_component(Settings)]
 pub fn settings() -> Html {
-    let (_post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let active_tab = use_state(|| "user");
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
-    let session_dispatch = _post_dispatch.clone();
-    let session_state = _post_state.clone();
+    let (state, dispatch) = use_store::<AppState>();
+    let effect_dispatch = dispatch.clone();
 
-    let api_key = _post_state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.api_key.clone());
-    let user_id = _post_state
-        .user_details
-        .as_ref()
-        .map(|ud| ud.UserID.clone());
-    let server_name = _post_state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.server_name.clone());
+    let session_dispatch = effect_dispatch.clone();
+    let session_state = state.clone();
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -161,34 +146,60 @@ pub fn settings() -> Html {
         || ()
     });
 
+
+    let (_post_state, _post_dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
+
+    let error_message = audio_state.error_message.clone();
+    let info_message = audio_state.info_message.clone();
+    let active_tab = use_state(|| "user");
+
+    let api_key = _post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
+    let user_id = _post_state
+        .user_details
+        .as_ref()
+        .map(|ud| ud.UserID.clone());
+    let server_name = _post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
+
     let is_admin = use_state(|| false);
     let audio_admin = audio_dispatch.clone();
 
     {
         let is_admin = is_admin.clone();
 
-        use_effect_with((), move |_| {
-            wasm_bindgen_futures::spawn_local(async move {
-                match call_user_admin_check(
-                    &server_name.unwrap(),
-                    &api_key.unwrap().unwrap(),
-                    user_id.unwrap(),
-                )
-                .await
-                {
-                    Ok(response) => {
-                        is_admin.set(response.is_admin);
+        use_effect_with(
+            (api_key.clone(), user_id.clone(), server_name.clone()),
+            move |_| {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone())
+            {
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_user_admin_check(
+                        &server_name,
+                        &api_key.unwrap(),
+                        user_id,
+                    )
+                    .await
+                    {
+                        Ok(response) => {
+                            is_admin.set(response.is_admin);
+                        }
+                        Err(e) => {
+                            audio_admin.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Failed to check admin status: {:?}", e))
+                            });
+                            // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
+                        }
                     }
-                    Err(e) => {
-                        audio_admin.reduce_mut(|state| {
-                            state.error_message =
-                                Some(format!("Failed to check admin status: {:?}", e))
-                        });
-                        // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
-                    }
-                }
-            });
-
+                });
+            }
             || ()
         });
     }
