@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, UseScrollToTop};
+use super::gen_components::{Search_nav, empty_message, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -99,26 +99,16 @@ pub fn pod_layout() -> Html {
                                 </div>
                             }
                         } else {
-                            html! {
-                                <>
-                                    <div class="empty-episodes-container">
-                                        <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1>{ "No Podcast Search Results Found" }</h1>
-                                        <p>{"Try searching again with a different set of keywords."}</p>
-                                    </div>
-                                </>
-                            }
+                            empty_message(
+                                "No Podcast Search Results Found",
+                                "Try searching again with a different set of keywords."
+                            )
                         }
                     } else {
-                        html! {
-                            <>
-                                <div class="empty-episodes-container">
-                                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                    <h1>{ "No Podcast Search Results Found" }</h1>
-                                    <p>{"Try searching again with a different set of keywords."}</p>
-                                </div>
-                            </>
-                        }
+                        empty_message(
+                            "No Podcast Search Results Found",
+                            "Try searching again with a different set of keywords."
+                        )
                     }
                 }
                 <App_drawer />

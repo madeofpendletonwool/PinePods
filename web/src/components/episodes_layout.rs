@@ -8,6 +8,7 @@ use crate::components::gen_funcs::format_time;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
+use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
@@ -302,7 +303,7 @@ pub fn episode_layout() -> Html {
     }
 
     // On mount, check if the podcast is in the database
-    let effect_user_id = user_id.unwrap().clone();
+    let effect_user_id = user_id.clone();
     let effect_api_key = api_key.clone();
 
     {
@@ -312,24 +313,80 @@ pub fn episode_layout() -> Html {
         let api_key = effect_api_key.clone();
         let server_name = server_name.clone();
 
-        use_effect_with(&(), move |_| {
-            let is_added = is_added.clone();
-            let podcast = podcast.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let added = call_check_podcast(
-                    &server_name.unwrap(),
-                    &api_key.unwrap().unwrap(),
-                    user_id,
-                    podcast.clone().unwrap().podcast_title.as_str(),
-                    podcast.clone().unwrap().podcast_url.as_str(),
-                )
-                .await
-                .unwrap_or_default()
-                .exists;
-                is_added.set(added);
-            });
-            || ()
-        });
+        use_effect_with(
+            (api_key.clone(), user_id.clone(), server_name.clone()),
+            move |(api_key, user_id, server_name)| {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
+                    let is_added = is_added.clone();
+                    let podcast = podcast.clone();
+
+                    if podcast.is_none() {
+                        web_sys::console::log_1(&"Podcast is None".into());
+                        let window = window().expect("no global window exists");
+                        let local_storage = window
+                            .local_storage()
+                            .unwrap()
+                            .expect("should have local storage");
+
+                        let podcast_title = local_storage
+                            .get_item("episodeDisplayTitle")
+                            .unwrap_or(None);
+                        let podcast_url =
+                            local_storage.get_item("episodeDisplayURL").unwrap_or(None);
+
+                        if let (Some(title), Some(url)) = (podcast_title, podcast_url) {
+                            let podcast_info = ClickedFeedURL {
+                                podcast_title: title,
+                                podcast_url: url,
+                                podcast_description: String::new(),
+                                podcast_author: String::new(),
+                                podcast_artwork: String::new(),
+                                podcast_explicit: false,
+                                podcast_episode_count: 0,
+                                podcast_categories: None,
+                                podcast_link: String::new(),
+                            };
+
+                            let api_key = api_key.clone();
+                            let user_id = user_id.clone();
+                            let server_name = server_name.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                let added = call_check_podcast(
+                                    &server_name,
+                                    &api_key.unwrap(),
+                                    user_id,
+                                    podcast_info.podcast_title.as_str(),
+                                    podcast_info.podcast_url.as_str(),
+                                )
+                                .await
+                                .unwrap_or_default()
+                                .exists;
+                                is_added.set(added);
+                            });
+                        }
+                    } else {
+                        web_sys::console::log_1(&"Podcast is Some".into());
+                        let podcast = podcast.unwrap();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let added = call_check_podcast(
+                                &server_name,
+                                &api_key.unwrap(),
+                                user_id,
+                                podcast.podcast_title.as_str(),
+                                podcast.podcast_url.as_str(),
+                            )
+                            .await
+                            .unwrap_or_default()
+                            .exists;
+                            is_added.set(added);
+                        });
+                    }
+                }
+                || ()
+            },
+        );
     }
 
     let download_status = use_state(|| false);
@@ -534,9 +591,7 @@ pub fn episode_layout() -> Html {
         let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
 
-        let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-        let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
-        let user_id_og = user_id.unwrap().clone();
+        let user_id_og = user_id.clone();
 
         let api_key_clone = api_key.clone();
         let server_name_clone = server_name.clone();
@@ -545,12 +600,14 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
+            let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
             app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
             let pod_feed_url = pod_feed_url_og.clone();
-            let user_id = user_id_og.clone();
+            let user_id = user_id_og.clone().unwrap();
             let podcast_values = RemovePodcastValuesName {
                 podcast_name: pod_title,
                 podcast_url: pod_feed_url,
@@ -608,7 +665,7 @@ pub fn episode_layout() -> Html {
         let call_dispatch = download_dispatch.clone();
         let server_name_copy = download_server_name.clone();
         let api_key_copy = download_api_key.clone();
-        let user_id_copy = user_id.unwrap();
+        let user_id_copy = user_id.clone();
         let search_call_state = app_state.clone();
 
         Callback::from(move |e: MouseEvent| {
@@ -637,14 +694,14 @@ pub fn episode_layout() -> Html {
                     &ep_server_name.unwrap(),
                     &ep_api_key.unwrap(),
                     episode_id,
-                    ep_user_id,
+                    ep_user_id.unwrap(),
                 )
                 .await
                 {
                     Ok(podcast_id) => {
                         let request = DownloadAllPodcastRequest {
-                            podcast_id: podcast_id,
-                            user_id: user_id_copy,
+                            podcast_id,
+                            user_id: user_id_copy.unwrap(),
                         };
 
                         match call_download_all_podcast(
@@ -985,22 +1042,7 @@ pub fn episode_layout() -> Html {
     let toggle_podcast = {
         let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
-
-        let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-        let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
-        let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
-        let categories_og = pod_values
-            .clone()
-            .unwrap()
-            .podcast_categories
-            .unwrap()
-            .clone();
-        let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
-        let pod_episode_count_og = pod_values.clone().unwrap().podcast_episode_count.clone();
-        let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
-        let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
-        let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
-        let user_id_og = user_id.unwrap().clone();
+        let user_id_og = user_id.clone();
 
         let api_key_clone = api_key.clone();
         let server_name_clone = server_name.clone();
@@ -1014,6 +1056,21 @@ pub fn episode_layout() -> Html {
         } else {
             Callback::from(move |_: MouseEvent| {
                 // Ensure this is triggered only by a MouseEvent
+                let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
+                let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
+                let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
+                let categories_og = pod_values
+                    .clone()
+                    .unwrap()
+                    .podcast_categories
+                    .unwrap()
+                    .clone();
+                let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
+                let pod_episode_count_og =
+                    pod_values.clone().unwrap().podcast_episode_count.clone();
+                let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
+                let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
+                let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
                 let app_dispatch = app_dispatch.clone();
                 app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
@@ -1027,7 +1084,7 @@ pub fn episode_layout() -> Html {
                 let pod_feed_url = pod_feed_url_og.clone();
                 let pod_website = pod_website_og.clone();
                 let pod_explicit = pod_explicit_og.clone();
-                let user_id = user_id_og.clone();
+                let user_id = user_id_og.clone().unwrap();
                 let podcast_values = PodcastValues {
                     pod_title,
                     pod_artwork,
