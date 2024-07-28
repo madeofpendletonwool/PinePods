@@ -3,6 +3,7 @@ use super::gen_components::ContextButton;
 use super::gen_components::{on_shownotes_click, EpisodeTrait, Search_nav, UseScrollToTop};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::{on_play_click, AudioPlayer};
+use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_time;
 use crate::components::gen_funcs::{
@@ -209,16 +210,6 @@ pub fn episode_layout() -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
-    let episode_name_pre: Option<String> = search_state
-        .podcast_feed_results
-        .as_ref()
-        .and_then(|results| results.episodes.get(0))
-        .and_then(|episode| episode.title.clone());
-    let episode_url_pre: Option<String> = search_state
-        .podcast_feed_results
-        .as_ref()
-        .and_then(|results| results.episodes.get(0))
-        .and_then(|episode| episode.enclosure_url.clone());
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -312,6 +303,12 @@ pub fn episode_layout() -> Html {
         let user_id = effect_user_id.clone();
         let api_key = effect_api_key.clone();
         let server_name = server_name.clone();
+        let click_dispatch = _search_dispatch.clone();
+        let click_history = history.clone();
+
+        fn emit_click(callback: Callback<MouseEvent>) {
+            callback.emit(MouseEvent::new("click").unwrap());
+        }
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
@@ -355,7 +352,7 @@ pub fn episode_layout() -> Html {
                             wasm_bindgen_futures::spawn_local(async move {
                                 let added = call_check_podcast(
                                     &server_name,
-                                    &api_key.unwrap(),
+                                    &api_key.clone().unwrap(),
                                     user_id,
                                     podcast_info.podcast_title.as_str(),
                                     podcast_info.podcast_url.as_str(),
@@ -364,11 +361,47 @@ pub fn episode_layout() -> Html {
                                 .unwrap_or_default()
                                 .exists;
                                 is_added.set(added);
+
+                                // Execute the same process as when a podcast is clicked
+                                let on_title_click = create_on_title_click(
+                                    click_dispatch,
+                                    server_name,
+                                    Some(Some(api_key.clone().unwrap())),
+                                    &click_history,
+                                    podcast_info.podcast_title,
+                                    podcast_info.podcast_url,
+                                    podcast_info.podcast_description,
+                                    podcast_info.podcast_author,
+                                    podcast_info.podcast_artwork,
+                                    podcast_info.podcast_explicit,
+                                    podcast_info.podcast_episode_count,
+                                    None, // assuming no categories in local storage
+                                    podcast_info.podcast_link,
+                                    user_id,
+                                );
+                                emit_click(on_title_click);
                             });
                         }
                     } else {
                         web_sys::console::log_1(&"Podcast is Some".into());
                         let podcast = podcast.unwrap();
+
+                        // Set local storage values
+                        let window = web_sys::window().expect("no global window exists");
+                        let local_storage = window
+                            .local_storage()
+                            .unwrap()
+                            .expect("should have local storage");
+                        local_storage
+                            .set_item("episodeDisplayTitle", &podcast.podcast_title)
+                            .expect("Failed to set item");
+                        local_storage
+                            .set_item("episodeDisplayURL", &podcast.podcast_url)
+                            .expect("Failed to set item");
+
+                        let api_key = api_key.clone();
+                        let user_id = user_id.clone();
+                        let server_name = server_name.clone();
                         wasm_bindgen_futures::spawn_local(async move {
                             let added = call_check_podcast(
                                 &server_name,
@@ -399,119 +432,154 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
-        let episode_name = episode_name_pre.clone();
-        let episode_url = episode_url_pre.clone();
+        // let episode_name = episode_name_pre.clone();
+        // let episode_url = episode_url_pre.clone();
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
         let effect_start_skip = start_skip.clone();
         let effect_end_skip = end_skip.clone();
         let effect_added = is_added.clone();
         let audio_dispatch = _dispatch.clone();
+        let click_state = search_state.clone();
 
-        use_effect_with(effect_added.clone(), move |_| {
-            let bool_true = *effect_added; // Dereference here
-            if bool_true {
-                let api_key = api_key.clone();
-                let server_name = server_name.clone();
-                let podcast_id = podcast_id.clone();
-                let download_status = download_status.clone();
-                let episode_name = episode_name;
-                let episode_url = episode_url;
-                let user_id = user_id.unwrap();
+        use_effect_with(
+            (
+                click_state.podcast_feed_results.clone(),
+                effect_added.clone(),
+            ),
+            move |_| {
+                let episode_name: Option<String> = click_state
+                    .podcast_feed_results
+                    .as_ref()
+                    .and_then(|results| results.episodes.get(0))
+                    .and_then(|episode| episode.title.clone());
+                web_sys::console::log_1(&JsValue::from_str(&format!(
+                    "Episode name: {:?}",
+                    episode_name
+                )));
+                let episode_url: Option<String> = click_state
+                    .podcast_feed_results
+                    .as_ref()
+                    .and_then(|results| results.episodes.get(0))
+                    .and_then(|episode| episode.enclosure_url.clone());
 
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let (Some(api_key), Some(server_name)) =
-                        (api_key.as_ref(), server_name.as_ref())
-                    {
-                        match call_get_podcast_id_from_ep_name(
-                            &server_name,
-                            &api_key,
-                            episode_name.unwrap(),
-                            episode_url.unwrap(),
-                            user_id,
-                        )
-                        .await
-                        {
-                            Ok(id) => {
-                                podcast_id.set(id);
+                let bool_true = *effect_added; // Dereference here
+                if bool_true {
+                    let api_key = api_key.clone();
+                    let server_name = server_name.clone();
+                    let podcast_id = podcast_id.clone();
+                    let download_status = download_status.clone();
+                    let episode_name = episode_name;
+                    let episode_url = episode_url;
+                    let user_id = user_id.unwrap();
 
-                                match call_get_auto_download_status(
-                                    &server_name,
-                                    user_id,
-                                    &Some(api_key.clone().unwrap()),
-                                    id,
-                                )
-                                .await
-                                {
-                                    Ok(status) => {
-                                        download_status.set(status);
-                                    }
-                                    Err(e) => {
-                                        web_sys::console::log_1(
-                                            &format!("Error getting auto-download status: {}", e)
-                                                .into(),
-                                        );
-                                    }
-                                }
-                                match call_get_auto_skip_times(
-                                    &server_name,
-                                    &Some(api_key.clone().unwrap()),
-                                    user_id,
-                                    id,
-                                )
-                                .await
-                                {
-                                    Ok((start, end)) => {
-                                        effect_start_skip.set(start);
-                                        effect_end_skip.set(end);
-                                    }
-                                    Err(e) => {
-                                        web_sys::console::log_1(
-                                            &format!("Error getting auto-skip times: {}", e).into(),
-                                        );
-                                    }
-                                }
-                                let chap_request = FetchPodcasting2PodDataRequest {
-                                    podcast_id: id,
-                                    user_id,
-                                };
-                                match call_fetch_podcasting_2_pod_data(
+                    if episode_name.is_some() && episode_url.is_some() {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let (Some(api_key), Some(server_name)) =
+                                (api_key.as_ref(), server_name.as_ref())
+                            {
+                                match call_get_podcast_id_from_ep_name(
                                     &server_name,
                                     &api_key,
-                                    &chap_request,
+                                    episode_name.unwrap(),
+                                    episode_url.unwrap(),
+                                    user_id,
                                 )
                                 .await
                                 {
-                                    Ok(response) => {
-                                        // let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
-                                        let value = response.value.clone();
-                                        let funding = response.funding.clone();
-                                        let podroll = response.podroll.clone();
-                                        let people = response.people.clone();
-                                        audio_dispatch.reduce_mut(|state| {
-                                            state.podcast_value4value = Some(value);
-                                            state.podcast_funding = Some(funding);
-                                            state.podcast_podroll = Some(podroll);
-                                            state.podcast_people = Some(people);
-                                        });
+                                    Ok(id) => {
+                                        web_sys::console::log_1(
+                                            &format!("Podcast ID: {}", id).into(),
+                                        );
+                                        podcast_id.set(id);
+
+                                        match call_get_auto_download_status(
+                                            &server_name,
+                                            user_id,
+                                            &Some(api_key.clone().unwrap()),
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(status) => {
+                                                download_status.set(status);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting auto-download status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        match call_get_auto_skip_times(
+                                            &server_name,
+                                            &Some(api_key.clone().unwrap()),
+                                            user_id,
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok((start, end)) => {
+                                                effect_start_skip.set(start);
+                                                effect_end_skip.set(end);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting auto-skip times: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        let chap_request = FetchPodcasting2PodDataRequest {
+                                            podcast_id: id,
+                                            user_id,
+                                        };
+                                        match call_fetch_podcasting_2_pod_data(
+                                            &server_name,
+                                            &api_key,
+                                            &chap_request,
+                                        )
+                                        .await
+                                        {
+                                            Ok(response) => {
+                                                // let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
+                                                let value = response.value.clone();
+                                                let funding = response.funding.clone();
+                                                let podroll = response.podroll.clone();
+                                                let people = response.people.clone();
+                                                audio_dispatch.reduce_mut(|state| {
+                                                    state.podcast_value4value = Some(value);
+                                                    state.podcast_funding = Some(funding);
+                                                    state.podcast_podroll = Some(podroll);
+                                                    state.podcast_people = Some(people);
+                                                });
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!("Error fetching chapters: {}", e)
+                                                        .into(),
+                                                );
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         web_sys::console::log_1(
-                                            &format!("Error fetching chapters: {}", e).into(),
+                                            &format!("Error getting podcast ID: {}", e).into(),
                                         );
                                     }
                                 }
                             }
-                            Err(e) => {
-                                web_sys::console::log_1(
-                                    &format!("Error getting podcast ID: {}", e).into(),
-                                );
-                            }
-                        }
+                        });
                     }
-                });
-            }
-            || ()
-        });
+                }
+                || ()
+            },
+        );
     }
 
     let open_in_new_tab = Callback::from(move |url: String| {
