@@ -1,3 +1,4 @@
+use crate::components::podcast_layout::ClickedFeedURL;
 use anyhow::Error;
 use chrono::DateTime;
 use gloo_net::http::Request;
@@ -486,6 +487,41 @@ pub async fn call_parse_podcast_channel_info(podcast_url: &str) -> Result<Podcas
     };
 
     Ok(podcast_info)
+}
+
+pub async fn call_get_podcast_details_dynamic(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    podcast_title: &str,
+    podcast_url: &str,
+    added: bool,
+) -> Result<ClickedFeedURL, Error> {
+    let url = format!(
+        "{}/api/data/get_podcast_details_dynamic?user_id={}&podcast_title={}&podcast_url={}&added={}",
+        server_name, user_id, podcast_title, podcast_url, added
+    );
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
+
+    if response.ok() {
+        let podcast_details: ClickedFeedURL = response
+            .json()
+            .await
+            .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
+
+        Ok(podcast_details)
+    } else {
+        Err(Error::msg(format!(
+            "Error retrieving podcast details. Server response: {}",
+            response.status_text()
+        )))
+    }
 }
 
 // In Databases

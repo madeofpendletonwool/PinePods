@@ -19,13 +19,15 @@ use crate::requests::pod_req::{
     FetchPodcasting2PodDataRequest, Person, PodcastValues, RemovePodcastValuesName,
     SkipTimesRequest,
 };
+use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{window, Event, HtmlInputElement, MouseEvent};
+use wasm_bindgen_futures::spawn_local;
+use web_sys::{window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
 use yew::prelude::*;
 use yew::Properties;
 use yew::{
@@ -229,6 +231,7 @@ pub fn episode_layout() -> Html {
     let session_dispatch = _search_dispatch.clone();
     let session_state = search_state.clone();
     let podcast_added = search_state.podcast_added.unwrap_or_default();
+    let pod_url = use_state(|| String::new());
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -305,6 +308,7 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let click_dispatch = _search_dispatch.clone();
         let click_history = history.clone();
+        let pod_load_url = pod_url.clone();
 
         fn emit_click(callback: Callback<MouseEvent>) {
             callback.emit(MouseEvent::new("click").unwrap());
@@ -317,26 +321,38 @@ pub fn episode_layout() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let is_added = is_added.clone();
-                    let podcast = podcast.clone();
+
+                    let update_url_with_params = |title: &str, url: &str| {
+                        web_sys::console::log_1(&"Updating URL".into());
+                        let window = web_sys::window().expect("no global window exists");
+                        let history = window.history().expect("should have a history");
+                        let location = window.location();
+
+                        let mut new_url = location.origin().unwrap();
+                        new_url.push_str(&location.pathname().unwrap());
+                        new_url.push_str("?podcast_title=");
+                        new_url.push_str(&urlencoding::encode(title));
+                        new_url.push_str("&podcast_url=");
+                        new_url.push_str(&urlencoding::encode(url));
+
+                        history
+                            .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&new_url))
+                            .expect("should push state");
+                    };
 
                     if podcast.is_none() {
                         web_sys::console::log_1(&"Podcast is None".into());
-                        let window = window().expect("no global window exists");
-                        let local_storage = window
-                            .local_storage()
-                            .unwrap()
-                            .expect("should have local storage");
+                        let window = web_sys::window().expect("no global window exists");
+                        let search_params = window.location().search().unwrap();
+                        let url_params = UrlSearchParams::new_with_str(&search_params).unwrap();
 
-                        let podcast_title = local_storage
-                            .get_item("episodeDisplayTitle")
-                            .unwrap_or(None);
-                        let podcast_url =
-                            local_storage.get_item("episodeDisplayURL").unwrap_or(None);
+                        let podcast_title = url_params.get("podcast_title").unwrap_or_default();
+                        let podcast_url = url_params.get("podcast_url").unwrap_or_default();
 
-                        if let (Some(title), Some(url)) = (podcast_title, podcast_url) {
+                        if !podcast_title.is_empty() && !podcast_url.is_empty() {
                             let podcast_info = ClickedFeedURL {
-                                podcast_title: title,
-                                podcast_url: url,
+                                podcast_title: podcast_title.clone(),
+                                podcast_url: podcast_url.clone(),
                                 podcast_description: String::new(),
                                 podcast_author: String::new(),
                                 podcast_artwork: String::new(),
@@ -349,7 +365,7 @@ pub fn episode_layout() -> Html {
                             let api_key = api_key.clone();
                             let user_id = user_id.clone();
                             let server_name = server_name.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
+                            spawn_local(async move {
                                 let added = call_check_podcast(
                                     &server_name,
                                     &api_key.clone().unwrap(),
@@ -362,47 +378,89 @@ pub fn episode_layout() -> Html {
                                 .exists;
                                 is_added.set(added);
 
+                                let podcast_details = call_get_podcast_details_dynamic(
+                                    &server_name,
+                                    &api_key.clone().unwrap(),
+                                    user_id,
+                                    podcast_info.podcast_title.as_str(),
+                                    podcast_info.podcast_url.as_str(),
+                                    added,
+                                )
+                                .await
+                                .unwrap();
+
+                                // update_url_with_params(
+                                //     &podcast_details.podcast_title,
+                                //     &podcast_details.podcast_url,
+                                // );
+                                // Update the URL with query parameters
+
+                                web_sys::console::log_1(
+                                    &format!("ep count: {:?}", podcast_details.clone()).into(),
+                                );
                                 // Execute the same process as when a podcast is clicked
                                 let on_title_click = create_on_title_click(
                                     click_dispatch,
                                     server_name,
                                     Some(Some(api_key.clone().unwrap())),
                                     &click_history,
-                                    podcast_info.podcast_title,
-                                    podcast_info.podcast_url,
-                                    podcast_info.podcast_description,
-                                    podcast_info.podcast_author,
-                                    podcast_info.podcast_artwork,
-                                    podcast_info.podcast_explicit,
-                                    podcast_info.podcast_episode_count,
+                                    podcast_details.podcast_title,
+                                    podcast_details.podcast_url,
+                                    podcast_details.podcast_description,
+                                    podcast_details.podcast_author,
+                                    podcast_details.podcast_artwork,
+                                    podcast_details.podcast_explicit,
+                                    podcast_details.podcast_episode_count,
                                     None, // assuming no categories in local storage
-                                    podcast_info.podcast_link,
+                                    podcast_details.podcast_link,
                                     user_id,
                                 );
                                 emit_click(on_title_click);
+                                let window = web_sys::window().expect("no global window exists");
+                                let history = window.history().expect("should have a history");
+                                let location = window.location();
+
+                                let mut new_url = location.origin().unwrap();
+                                new_url.push_str(&location.pathname().unwrap());
+                                new_url.push_str("?podcast_title=");
+                                new_url.push_str(&urlencoding::encode(&podcast_info.podcast_title));
+                                new_url.push_str("&podcast_url=");
+                                new_url.push_str(&urlencoding::encode(&podcast_info.podcast_url));
+                                web_sys::console::log_1(&new_url.clone().into());
+                                pod_load_url.set(new_url.clone());
+                                // history
+                                //     .push_state_with_url(
+                                //         &wasm_bindgen::JsValue::NULL,
+                                //         "",
+                                //         Some(&new_url),
+                                //     )
+                                //     .expect("should push state");
                             });
                         }
                     } else {
                         web_sys::console::log_1(&"Podcast is Some".into());
                         let podcast = podcast.unwrap();
 
-                        // Set local storage values
+                        // Update the URL with query parameters
                         let window = web_sys::window().expect("no global window exists");
-                        let local_storage = window
-                            .local_storage()
-                            .unwrap()
-                            .expect("should have local storage");
-                        local_storage
-                            .set_item("episodeDisplayTitle", &podcast.podcast_title)
-                            .expect("Failed to set item");
-                        local_storage
-                            .set_item("episodeDisplayURL", &podcast.podcast_url)
-                            .expect("Failed to set item");
+                        let history = window.history().expect("should have a history");
+                        let location = window.location();
+
+                        let mut new_url = location.origin().unwrap();
+                        new_url.push_str(&location.pathname().unwrap());
+                        new_url.push_str("?podcast_title=");
+                        new_url.push_str(&urlencoding::encode(&podcast.podcast_title));
+                        new_url.push_str("&podcast_url=");
+                        new_url.push_str(&urlencoding::encode(&podcast.podcast_url));
+
+                        history
+                            .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&new_url))
+                            .expect("should push state");
 
                         let api_key = api_key.clone();
                         let user_id = user_id.clone();
                         let server_name = server_name.clone();
-                        wasm_bindgen_futures::spawn_local(async move {
+                        spawn_local(async move {
                             let added = call_check_podcast(
                                 &server_name,
                                 &api_key.unwrap(),
@@ -421,6 +479,33 @@ pub fn episode_layout() -> Html {
             },
         );
     }
+
+    let podcast_info = search_state.clicked_podcast_info.clone();
+
+    use_effect_with(podcast_info.clone(), {
+        let pod_url = pod_url.clone();
+        move |podcast_info| {
+            if let Some(info) = podcast_info {
+                let window = window().expect("no global window exists");
+                let history = window.history().expect("should have a history");
+                let location = window.location();
+
+                let mut new_url = location.origin().unwrap();
+                new_url.push_str(&location.pathname().unwrap());
+                new_url.push_str("?podcast_title=");
+                new_url.push_str(&urlencoding::encode(&info.podcast_title));
+                new_url.push_str("&podcast_url=");
+                new_url.push_str(&urlencoding::encode(&info.podcast_url));
+                web_sys::console::log_1(&new_url.clone().into());
+                pod_url.set(new_url.clone());
+
+                history
+                    .push_state_with_url(&JsValue::NULL, "", Some(&new_url))
+                    .expect("should push state");
+            }
+            || {}
+        }
+    });
 
     let download_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
@@ -1218,6 +1303,18 @@ pub fn episode_layout() -> Html {
         #[wasm_bindgen(js_namespace = window)]
         fn toggle_description(guid: &str);
     }
+    //print episode count to test with episode count: text
+    // web_sys::console::log_1(
+    //     &format!(
+    //         "ep count: {}",
+    //         clicked_podcast_info
+    //             .clone()
+    //             .unwrap()
+    //             .podcast_episode_count
+    //             .clone()
+    //     )
+    //     .into(),
+    // );
 
     let web_link = open_in_new_tab.clone();
     let pod_layout_data = clicked_podcast_info.clone();
