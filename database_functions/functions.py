@@ -722,14 +722,8 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     rows = cursor.fetchall()
     cursor.close()
 
-    logging.error(f"Raw rows before normalization: {rows}")
-
     # Normalize keys
     rows = capitalize_keys(rows)
-
-    logging.error(f"Raw rows after normalization: {rows}")
-
-    logging.debug(f"Rows after normalization: {rows}")
 
     return rows or None
 
@@ -740,6 +734,7 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
+    print(f"pulling pod deets for {podcast_id}")
     if database_type == "postgresql":
         query = """
             SELECT *

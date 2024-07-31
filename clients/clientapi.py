@@ -48,6 +48,7 @@ sys.path.append('/pinepods')
 
 import database_functions.functions
 import database_functions.auth_functions
+import database_functions.app_functions
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -270,7 +271,6 @@ def check_if_admin_inner(api_key: str, cnx):
 
     if not user_id:
         return False
-    print("checking admin")
     return database_functions.functions.user_admin_check(cnx, database_type, user_id)
 
 
@@ -610,6 +610,112 @@ async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_
         raise HTTPException(status_code=403,
                             detail="You can only return pocast ids of your own podcasts!")
 
+class ClickedFeedURL(BaseModel):
+    podcast_title: str
+    podcast_url: str
+    podcast_description: str
+    podcast_author: str
+    podcast_artwork: str
+    podcast_explicit: bool
+    podcast_episode_count: int
+    podcast_categories: Optional[Dict[str, str]]
+    podcast_link: str
+
+@app.get("/api/data/get_podcast_details_dynamic", response_model=ClickedFeedURL)
+async def get_podcast_details(
+    user_id: int,
+    podcast_title: str,
+    podcast_url: str,
+    added: bool,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header),
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
+
+    if added:
+        print("podcast added")
+        print(f"podcast url: {podcast_url}")
+        print(f"podcast name: {podcast_title}")
+        podcast_id = database_functions.functions.get_podcast_id(database_type, cnx, user_id, podcast_url, podcast_title)
+        print(f"heres the id: {podcast_id}")
+        details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
+        print(f"got the details: {details}")
+        if details is None:
+            raise HTTPException(status_code=404, detail="Podcast not found")
+
+        # Handle categories field
+        if database_type == "postgresql":
+            categories = details["categories"]
+        else:
+            categories = details["Categories"]
+
+        if categories.startswith('{'):
+            try:
+                categories = categories.replace("'", '"')
+                categories_dict = json.loads(categories)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                raise HTTPException(status_code=500, detail="Internal server error")
+        else:
+            categories_dict = {str(i): cat.strip() for i, cat in enumerate(categories.split(','))}
+
+
+        if database_type == 'postgresql':
+            pod_details = ClickedFeedURL(
+                podcast_title=details["podcastname"],
+                podcast_url=details["feedurl"],
+                podcast_description=details["description"],
+                podcast_author=details["author"],
+                podcast_artwork=details["artworkurl"],
+                podcast_explicit=details["explicit"],
+                podcast_episode_count=details["episodecount"],
+                podcast_categories=categories_dict,
+                podcast_link=details["websiteurl"],
+            )
+        else:
+            pod_details = ClickedFeedURL(
+                podcast_title=details["PodcastName"],
+                podcast_url=details["FeedURL"],
+                podcast_description=details["Description"],
+                podcast_author=details["Author"],
+                podcast_artwork=details["ArtworkURL"],
+                podcast_explicit=details["Explicit"],
+                podcast_episode_count=details["EpisodeCount"],
+                podcast_categories=categories_dict,
+                podcast_link=details["WebsiteURL"],
+            )
+
+        return pod_details
+    else:
+        print("podcast not added")
+        podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, user_id)
+        categories = podcast_values['categories']
+
+        if categories.startswith('{'):
+            try:
+                # Replace single quotes with double quotes
+                categories = categories.replace("'", '"')
+                categories_dict = json.loads(categories)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                raise HTTPException(status_code=500, detail="Internal server error")
+        else:
+            categories_dict = {str(i): cat.strip() for i, cat in enumerate(categories.split(','))}
+
+
+        return ClickedFeedURL(
+            podcast_title=podcast_values['pod_title'],
+            podcast_url=podcast_values['pod_feed_url'],
+            podcast_description=podcast_values['pod_description'],
+            podcast_author=podcast_values['pod_author'],
+            podcast_artwork=podcast_values['pod_artwork'],
+            podcast_explicit=podcast_values['pod_explicit'],
+            podcast_episode_count=podcast_values['pod_episode_count'],
+            podcast_categories=categories_dict,
+            podcast_link=podcast_values['pod_website'],
+        )
 
 class PodcastFeedData(BaseModel):
     podcast_feed: str
@@ -984,7 +1090,6 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, podcast_values.user_id)
             print(f"Adding podcast to Nextcloud: {gpodder_url}, {gpodder_login}, {gpodder_token}, {podcast_values.pod_feed_url}")
             gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
-            print(f"Type of podsync {gpod_type}")
             if gpod_type == "nextcloud":
                 database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
             else:
@@ -1541,13 +1646,10 @@ async def api_check_podcast(
 async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header),
                                      cnx=Depends(get_database_connection)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    print("validated key")
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-    print("running elevated access")
     elevated_access = await has_elevated_access(api_key, cnx)
-    print("post access")
     if not elevated_access:
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
@@ -1585,7 +1687,6 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
-        print(f"Type of podsync {gpod_type}")
         if gpod_type == "nextcloud":
             database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
         else:
@@ -1623,7 +1724,6 @@ async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...), cnx
         logging.info('em cloud')
         podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
-        print(f"Type of podsync {gpod_type}")
         if gpod_type == "nextcloud":
             database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
         else:
@@ -2145,7 +2245,6 @@ async def api_get_api_info(cnx=Depends(get_database_connection), api_key: str = 
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-    print('getting elevate')
     elevated_access = await has_elevated_access(api_key, cnx)
 
     if not elevated_access:
@@ -3140,8 +3239,7 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
                 gpodder_login = user["GpodderLoginName"]
         else:  # assuming tuple
             user_id, gpodder_url, gpodder_token, gpodder_login = user
-        
-        print(f"userid: {user_id}")
+
         background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
 
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
@@ -3252,7 +3350,6 @@ async def stream_episode(
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
         file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
-        print(file_path)
         if file_path:
             return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
         else:
