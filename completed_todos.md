@@ -14,7 +14,9 @@ Next Minor Version:
 - [] Test with LXC containers
 - [] Queue adjmustment for mobile devices
 - [] Full Show deletion with checkbox on download page
-
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Manually adjust tags for podcast in podcast settings
+- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 
 Version 0.6.4
 
@@ -22,10 +24,10 @@ Version 0.6.4
 - [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
 - [] Fixed layout for podcasts when searching
 - [] Support floating point chapters
-- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
-- [] Manually adjust tags for podcast in podcast settings
-
+- [x] Fixed issue with white space at the bottom of every page #229
+- [x] Cleaned up incorrect or not needed logging at startup #219
+- [x] Fixed issue with user stats page where it would lose user context on reload #135
+- [x] Fixed issue with settings page where it would lose user context on reload #134
 
 Version 0.6.3
 

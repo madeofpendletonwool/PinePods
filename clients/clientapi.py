@@ -653,6 +653,7 @@ async def get_podcast_details(
 
         if categories.startswith('{'):
             try:
+                categories = categories.replace("'", '"')
                 categories_dict = json.loads(categories)
             except json.JSONDecodeError as e:
                 print(f"JSON decode error: {e}")
@@ -690,15 +691,29 @@ async def get_podcast_details(
     else:
         print("podcast not added")
         podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, user_id)
+        categories = podcast_values['categories']
+
+        if categories.startswith('{'):
+            try:
+                # Replace single quotes with double quotes
+                categories = categories.replace("'", '"')
+                categories_dict = json.loads(categories)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                raise HTTPException(status_code=500, detail="Internal server error")
+        else:
+            categories_dict = {str(i): cat.strip() for i, cat in enumerate(categories.split(','))}
+
+
         return ClickedFeedURL(
             podcast_title=podcast_values['pod_title'],
-            podcast_url=podcast_values['pod_url'],
+            podcast_url=podcast_values['pod_feed_url'],
             podcast_description=podcast_values['pod_description'],
             podcast_author=podcast_values['pod_author'],
             podcast_artwork=podcast_values['pod_artwork'],
             podcast_explicit=podcast_values['pod_explicit'],
             podcast_episode_count=podcast_values['pod_episode_count'],
-            podcast_categories=podcast_values['categories'],
+            podcast_categories=categories_dict,
             podcast_link=podcast_values['pod_website'],
         )
 
