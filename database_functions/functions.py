@@ -174,19 +174,18 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
         else:
             category_list = ''
 
-        # Insert the podcast into the database
         if database_type == "postgresql":
             add_podcast_query = """
                 INSERT INTO "Podcasts"
                 (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s) RETURNING PodcastID
             """
             explicit = podcast_values['pod_explicit']
         else:  # MySQL or MariaDB
             add_podcast_query = """
                 INSERT INTO Podcasts
                 (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
             """
             explicit = 1 if podcast_values['pod_explicit'] else 0
 
@@ -208,7 +207,6 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 podcast_values['pod_author'],
                 category_list,
                 podcast_values['pod_description'],
-                podcast_values['pod_episode_count'],
                 podcast_values['pod_feed_url'],
                 podcast_values['pod_website'],
                 explicit,
@@ -444,6 +442,15 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
                 h, m, s = map(int, parts)
                 return h * 3600 + m * 60 + s
 
+    # Function to update the episode count
+    def update_episode_count(cnx, database_type, cursor, podcast_id):
+        if database_type == "postgresql":
+            update_query = 'UPDATE "Podcasts" SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            update_query = "UPDATE Podcasts SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s"
+
+        cursor.execute(update_query, (podcast_id,))
+        cnx.commit()
 
 
     for entry in episode_dump.entries:
@@ -512,6 +519,7 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
 
         cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
         print('episodes inserted')
+        update_episode_count(cnx, database_type, cursor, podcast_id)
         # Get the EpisodeID for the newly added episode
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
