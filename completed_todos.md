@@ -29,6 +29,7 @@ Version 0.6.4
 - [x] Fixed issue with user stats page where it would lose user context on reload #135
 - [x] Fixed issue with settings page where it would lose user context on reload #134
 - [x] Fixed issue with episode_layout page where it would lose user context on reload and also made podcasts sharable via link #213
+- [x] Fixed issue where podcast episode counts wouldn't increment after initial add to the db
 - [x] Ugraded gloo::net to 0.6.0
 - [x] Upgraded openssl in src-tauri to 0.10.66
 - [x] Upgraded a few other rust depends to next minor version

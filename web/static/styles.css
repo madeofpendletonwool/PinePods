@@ -1494,6 +1494,13 @@ button.item-container-action-button.item-container-action-button {
     /* Or whatever size you prefer */
 }
 
+.home-material-icons {
+    width: 30px;
+    height: 35px;
+    font-size: 33px !important;
+    /* Or whatever size you prefer */
+}
+
 .icon-space {
     transform: translateY(4px);
     margin-right: 10px;
