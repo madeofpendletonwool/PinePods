@@ -73,6 +73,12 @@ fn download_icon() -> Html {
 
     }
 }
+fn home_icon() -> Html {
+    html! {
+        <span class="material-icons">{ "home" }</span>
+
+    }
+}
 fn no_icon() -> Html {
     html! {}
 }
