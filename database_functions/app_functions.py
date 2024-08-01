@@ -121,7 +121,7 @@ def get_podcast_values(feed_url, user_id):
         'pod_author': d.feed.author if hasattr(d.feed, 'author') else None,
         'categories': [],
         'pod_description': d.feed.description if hasattr(d.feed, 'description') else None,
-        'pod_episode_count': len(d.entries),
+        'pod_episode_count': 0,
         'pod_feed_url': feed_url,
         'pod_website': d.feed.link if hasattr(d.feed, 'link') else None,
         'pod_explicit': False,
