@@ -327,7 +327,6 @@ pub fn episode_layout() -> Html {
                     let is_added = is_added.clone();
 
                     let update_url_with_params = |title: &str, url: &str| {
-                        web_sys::console::log_1(&"Updating URL".into());
                         let window = web_sys::window().expect("no global window exists");
                         let history = window.history().expect("should have a history");
                         let location = window.location();
@@ -345,7 +344,6 @@ pub fn episode_layout() -> Html {
                     };
 
                     if podcast.is_none() {
-                        web_sys::console::log_1(&"Podcast is None".into());
                         let window = web_sys::window().expect("no global window exists");
                         let search_params = window.location().search().unwrap();
                         let url_params = UrlSearchParams::new_with_str(&search_params).unwrap();
@@ -393,16 +391,6 @@ pub fn episode_layout() -> Html {
                                 .await
                                 .unwrap();
 
-                                // update_url_with_params(
-                                //     &podcast_details.podcast_title,
-                                //     &podcast_details.podcast_url,
-                                // );
-                                // Update the URL with query parameters
-
-                                web_sys::console::log_1(
-                                    &format!("ep count: {:?}", podcast_details.clone()).into(),
-                                );
-
                                 fn categories_to_string(
                                     categories: Option<HashMap<String, String>>,
                                 ) -> Option<String> {
@@ -441,19 +429,10 @@ pub fn episode_layout() -> Html {
                                 new_url.push_str(&urlencoding::encode(&podcast_info.podcast_title));
                                 new_url.push_str("&podcast_url=");
                                 new_url.push_str(&urlencoding::encode(&podcast_info.podcast_url));
-                                web_sys::console::log_1(&new_url.clone().into());
                                 pod_load_url.set(new_url.clone());
-                                // history
-                                //     .push_state_with_url(
-                                //         &wasm_bindgen::JsValue::NULL,
-                                //         "",
-                                //         Some(&new_url),
-                                //     )
-                                //     .expect("should push state");
                             });
                         }
                     } else {
-                        web_sys::console::log_1(&"Podcast is Some".into());
                         let podcast = podcast.unwrap();
 
                         // Update the URL with query parameters
@@ -515,7 +494,6 @@ pub fn episode_layout() -> Html {
                 new_url.push_str(&urlencoding::encode(&info.podcast_title));
                 new_url.push_str("&podcast_url=");
                 new_url.push_str(&urlencoding::encode(&info.podcast_url));
-                web_sys::console::log_1(&new_url.clone().into());
                 pod_url.set(new_url.clone());
                 load_link.set(false);
 
@@ -557,10 +535,6 @@ pub fn episode_layout() -> Html {
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| episode.title.clone());
-                web_sys::console::log_1(&JsValue::from_str(&format!(
-                    "Episode name: {:?}",
-                    episode_name
-                )));
                 let episode_url: Option<String> = click_state
                     .podcast_feed_results
                     .as_ref()
@@ -569,19 +543,8 @@ pub fn episode_layout() -> Html {
 
                 let bool_true = *effect_added; // Dereference here
 
-                web_sys::console::log_1(&JsValue::from_str(&format!("Bool true: {:?}", bool_true)));
-
                 if !bool_true {
-                    web_sys::console::log_1(&JsValue::from_str(
-                        "Bool true is false. Stopping loading animation.",
-                    ));
-                    // loading_ep.set(false);
                 } else {
-                    // Add logging to track the flow
-                    web_sys::console::log_1(&JsValue::from_str(
-                        "Bool true is true. Performing additional checks.",
-                    ));
-
                     let api_key = api_key.clone();
                     let server_name = server_name.clone();
                     let podcast_id = podcast_id.clone();
@@ -605,9 +568,6 @@ pub fn episode_layout() -> Html {
                                 .await
                                 {
                                     Ok(id) => {
-                                        web_sys::console::log_1(
-                                            &format!("Podcast ID: {}", id).into(),
-                                        );
                                         podcast_id.set(id);
 
                                         match call_get_auto_download_status(
@@ -1337,18 +1297,6 @@ pub fn episode_layout() -> Html {
         #[wasm_bindgen(js_namespace = window)]
         fn toggle_description(guid: &str);
     }
-    //print episode count to test with episode count: text
-    // web_sys::console::log_1(
-    //     &format!(
-    //         "ep count: {}",
-    //         clicked_podcast_info
-    //             .clone()
-    //             .unwrap()
-    //             .podcast_episode_count
-    //             .clone()
-    //     )
-    //     .into(),
-    // );
 
     let web_link = open_in_new_tab.clone();
     let pod_layout_data = clicked_podcast_info.clone();
@@ -1788,13 +1736,6 @@ pub fn episode_layout() -> Html {
                 html! {}
             }
         }
-        //     if !state.error_message.is_empty() {
-        //         html! { <div class="error-snackbar">{ &state.error_message }</div> }
-        //     } else {
-        //         html! {}
-        //     }
-        // }
-        //     // Conditional rendering for the info banner
         {
         if state.info_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
                 html! { <div class="info-snackbar">{ &state.info_message }</div> }
@@ -1802,13 +1743,6 @@ pub fn episode_layout() -> Html {
                 html! {}
             }
         }
-        // {
-        //     if !state.info_message.is_empty() {
-        //         html! { <div class="info-snackbar">{ &state.info_message }</div> }
-        //     } else {
-        //         html! {}
-        //     }
-        // }
         {
             if let Some(audio_props) = &state.currently_playing {
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
