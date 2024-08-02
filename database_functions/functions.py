@@ -2395,32 +2395,47 @@ def is_same_api_key(cnx, database_type, api_id, api_key):
         cursor = cnx.cursor()
         query = 'SELECT APIKey FROM "APIKeys" WHERE APIKeyID = %s'
     else:  # MySQL or MariaDB
-        cursor = cnx.cursor()
+        cursor = cnx.cursor(dictionary=True)
         query = "SELECT APIKey FROM APIKeys WHERE APIKeyID = %s"
 
     cursor.execute(query, (api_id,))
     result = cursor.fetchone()
     cursor.close()
 
-    if result and result[0] == api_key:
-        return True
+    if result:
+        if isinstance(result, tuple):
+            # Convert tuple to dictionary
+            result = dict(zip([desc[0] for desc in cursor.description], result))
+        if database_type == 'postgresql':
+            if result.get('apikey') == api_key:
+                return True
+        else:
+            if result.get('APIKey') == api_key:
+                return True
     return False
+
 
 def belongs_to_guest_user(cnx, database_type, api_id):
     if database_type == "postgresql":
         cursor = cnx.cursor()
         query = 'SELECT UserID FROM "APIKeys" WHERE APIKeyID = %s'
     else:  # MySQL or MariaDB
-        cursor = cnx.cursor()
+        cursor = cnx.cursor(dictionary=True)
         query = "SELECT UserID FROM APIKeys WHERE APIKeyID = %s"
 
     cursor.execute(query, (api_id,))
     result = cursor.fetchone()
     cursor.close()
-    # Check if the result exists and if the UserID is 1 (guest user)
-    return result and result[0] == 1
 
-
+    if result:
+        if isinstance(result, tuple):
+            # Convert tuple to dictionary
+            result = dict(zip([desc[0] for desc in cursor.description], result))
+        if database_type == 'postgresql':
+            return result.get('userid') == 1
+        else:
+            return result.get('UserID') == 1
+    return False
 
 
 def delete_api(cnx, database_type, api_id):
@@ -2611,7 +2626,7 @@ def final_admin(cnx, database_type, user_id):
     cursor = cnx.cursor()
 
     if database_type == "postgresql":
-        query = 'SELECT COUNT(*) FROM "Users" WHERE IsAdmin = 1'
+        query = 'SELECT COUNT(*) FROM "Users" WHERE IsAdmin = TRUE'
     else:  # MySQL or MariaDB
         query = "SELECT COUNT(*) FROM Users WHERE IsAdmin = 1"
     cursor.execute(query)
@@ -2899,16 +2914,27 @@ def get_stats(cnx, database_type, user_id):
         return None
 
     result = results[0]
-    if database_type == "postgresql":
-        stats = {
-            "UserCreated": result['usercreated'],
-            "PodcastsPlayed": result['podcastsplayed'],
-            "TimeListened": result['timelistened'],
-            "PodcastsAdded": result['podcastsadded'],
-            "EpisodesSaved": result['episodessaved'],
-            "EpisodesDownloaded": result['episodesdownloaded']
-        }
-    else:  # MySQL or MariaDB
+    # Check if result is a dictionary or a tuple and create stats accordingly
+    if isinstance(result, dict):
+        if database_type == 'postgresql':
+            stats = {
+                "UserCreated": result['UserCreated'],
+                "PodcastsPlayed": result['PodcastsPlayed'],
+                "TimeListened": result['TimeListened'],
+                "PodcastsAdded": result['PodcastsAdded'],
+                "EpisodesSaved": result['EpisodesSaved'],
+                "EpisodesDownloaded": result['EpisodesDownloaded']
+            }
+        else:
+            stats = {
+                "UserCreated": result['usercreated'],
+                "PodcastsPlayed": result['podcastsplayed'],
+                "TimeListened": result['timelistened'],
+                "PodcastsAdded": result['podcastsadded'],
+                "EpisodesSaved": result['episodessaved'],
+                "EpisodesDownloaded": result['episodesdownloaded']
+            }
+    else:  # Assume it's a tuple
         stats = {
             "UserCreated": result[0],
             "PodcastsPlayed": result[1],
@@ -3618,11 +3644,21 @@ def get_mfa_secret(database_type, cnx, user_id):
         result = cursor.fetchone()
         cursor.close()
 
-        return result['MFA_Secret']
+        if isinstance(result, tuple):
+            # Convert result to dictionary format for consistency
+            result = dict(zip([desc[0] for desc in cursor.description], result))
+        
+        if isinstance(result, dict):
+            if database_type == 'postgresql':
+                return result.get('mfa_secret')
+            else:
+                return result.get('MFA_Secret')
+        else:
+            print("Unexpected result format:", result)
+            return None
     except Exception as e:
         print("Error retrieving MFA secret:", e)
         return None
-
 
 
 def delete_mfa_secret(database_type, cnx, user_id):

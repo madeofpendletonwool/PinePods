@@ -3,6 +3,7 @@ use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
 use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIRequest};
 // use crate::gen_components::_ErrorMessageProps::error_message;
+use wasm_bindgen::JsCast;
 
 #[function_component(APIKeys)]
 pub fn api_keys() -> Html {
@@ -74,6 +75,22 @@ pub fn api_keys() -> Html {
             page_state.set(PageState::Hidden);
         })
     };
+
+    let on_background_click = {
+        let on_close_modal = close_modal.clone();
+        Callback::from(move |e: MouseEvent| {
+            let target = e.target().unwrap();
+            let element = target.dyn_into::<web_sys::Element>().unwrap();
+            if element.tag_name() == "DIV" {
+                on_close_modal.emit(e);
+            }
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
+
 
     // Define the function to open the modal and request a new API key
     let request_state = state.clone();
@@ -151,8 +168,8 @@ pub fn api_keys() -> Html {
 
 
     let delete_api_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
                 <div class="relative rounded-lg shadow">
                     <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t">
                         <button onclick={close_modal.clone()} class="self-end text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
@@ -182,29 +199,27 @@ pub fn api_keys() -> Html {
     };
 
     let create_api_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700">
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t ">
-                        <button onclick={close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{"Close modal"}</span>
-                        </button>
-                        <h3 class="item_container-text text-xl font-semibold">
-                            {"New Api Key Created"}
-                        </h3>
-                        <p class="text-m font-semibold item_container-text">
-                        {"Copy the API Key Listed Below. Be sure to save it in a safe place. You will only ever be able to view it once. You can always just create a new one if you lose it."}
-                        </p>
-                        <div class="mfa-code-box mt-4 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
-                            {api_key_display}
-                        </div>
-                        <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                            {"OK"}
-                        </button>
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t ">
+                    <button onclick={close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                        <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                        </svg>
+                        <span class="sr-only">{"Close modal"}</span>
+                    </button>
+                    <h3 class="item_container-text text-xl font-semibold">
+                        {"New Api Key Created"}
+                    </h3>
+                    <p class="text-m font-semibold item_container-text">
+                    {"Copy the API Key Listed Below. Be sure to save it in a safe place. You will only ever be able to view it once. You can always just create a new one if you lose it."}
+                    </p>
+                    <div class="mfa-code-box mt-4 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
+                        {api_key_display}
                     </div>
+                    <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        {"OK"}
+                    </button>
                 </div>
             </div>
         </div>

@@ -193,7 +193,7 @@ body {
     /* Align to the left of the viewport */
     right: 0;
     /* Ensure it extends to the right of the viewport */
-    z-index: 1000;
+    z-index: 49;
     /* Make sure it stays on top of other content */
 }
 

@@ -463,7 +463,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             // <p class="item_container-text">{ &podcast.description }</p>
                             {
                                 html! {
-                                    <div class="item-container-text hidden md:block">
+                                    <div class="item-description-text hidden md:block">
                                         <div class={format!("item_container-text episode-description-container {}", description_class)}>
                                             <SafeHtml html={podcast_description_clone} />
                                         </div>

@@ -7,6 +7,7 @@ use std::borrow::Borrow;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {
@@ -78,6 +79,21 @@ pub fn mfa_options() -> Html {
             page_state.set(PageState::Hidden);
         })
     };
+
+    let on_background_click = {
+        let on_close_modal = close_modal.clone();
+        Callback::from(move |e: MouseEvent| {
+            let target = e.target().unwrap();
+            let element = target.dyn_into::<web_sys::Element>().unwrap();
+            if element.tag_name() == "DIV" {
+                on_close_modal.emit(e);
+            }
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
 
     let open_setup_modal = {
         let mfa_code = mfa_code.clone();
@@ -204,8 +220,8 @@ pub fn mfa_options() -> Html {
     // let svg_data_url = format!("data:image/svg+xml;utf8,{}", url_encode(&(*mfa_code).clone()));
     let qr_code_svg = (*mfa_code).clone();
     let setup_mfa_modal = html! {
-        <div id="setup-mfa-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="setup-mfa-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
                         <button onclick={close_modal.clone()} class="self-end text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">

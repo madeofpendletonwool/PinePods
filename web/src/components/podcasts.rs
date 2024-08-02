@@ -136,11 +136,142 @@ pub fn podcasts() -> Html {
         );
     }
 
+    // Define the state of the application
+    #[derive(Clone, PartialEq)]
+    enum PageState {
+        Hidden,
+        Delete,
+    }
+
+    let page_state = use_state(|| PageState::Hidden);
+    let podcast_to_delete = use_state(|| None::<i32>);
+
+    let on_close_modal = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Hidden);
+        })
+    };
+
+    let on_background_click = {
+        let on_close_modal = on_close_modal.clone();
+        Callback::from(move |e: MouseEvent| {
+            let target = e.target().unwrap();
+            let element = target.dyn_into::<web_sys::Element>().unwrap();
+            if element.tag_name() == "DIV" {
+                on_close_modal.emit(e);
+            }
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
+
+    let on_remove_click = {
+        let dispatch_remove = dispatch.clone();
+        let podcast_to_delete = podcast_to_delete.clone();
+        let user_id = user_id.unwrap();
+        let api_key_rm = api_key.clone();
+        let server_name = server_name.clone();
+        let on_close_remove = on_close_modal.clone();
+
+        Callback::from(move |_: MouseEvent| {
+            if let Some(podcast_id) = *podcast_to_delete {
+                let dispatch_call = dispatch_remove.clone();
+                let api_key_call = api_key_rm.clone();
+                let server_name_call = server_name.clone();
+
+                let remove_values = RemovePodcastValues {
+                    podcast_id,
+                    user_id,
+                };
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_remove_podcasts(&server_name_call.unwrap(), &api_key_call.unwrap(), &remove_values).await {
+                        Ok(success) => {
+                            if success {
+                                dispatch_call.apply(AppStateMsg::RemovePodcast(podcast_id));
+                                dispatch_call.reduce_mut(|state| {
+                                    state.info_message = Some("Podcast successfully removed".to_string())
+                                });
+                            } else {
+                                dispatch_call.reduce_mut(|state| {
+                                    state.error_message = Some("Failed to remove podcast".to_string())
+                                });
+                            }
+                        },
+                        Err(e) => {
+                            dispatch_call.reduce_mut(|state| {
+                                state.error_message = Some(format!("Error removing podcast: {:?}", e))
+                            });
+                        }
+                    }
+                });
+            }
+            on_close_remove.emit(MouseEvent::new("click").unwrap());
+        })
+    };
+
+        // Define the modal components
+    let delete_pod_model = html! {
+        <div id="delete_pod_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
+                            {"Delete Podcast"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <div>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Are you sure you want to delete the podcast from the database? This will remove it from every aspect of the app. Meaning this will remove any saved, downloaded, or queued episodes for this podcast. It will also remove any history that includes it."}</label>
+                                <div class="flex justify-between space-x-4">
+                                    <button onclick={on_remove_click} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                                        {"Yes, Delete Podcast"}
+                                    </button>
+                                    <button onclick={on_close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                                        {"No, take me back"}
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    let toggle_delete = {
+        let page_state = page_state.clone();
+        let podcast_to_delete = podcast_to_delete.clone();
+        Callback::from(move |podcast_id: i32| {
+            podcast_to_delete.set(Some(podcast_id));
+            page_state.set(PageState::Delete);
+        })
+    };
+    
+
+
+
     html! {
         <>
         <div class="main-container">
             <Search_nav />
             <UseScrollToTop />
+            {
+                match *page_state {
+                PageState::Delete => delete_pod_model,
+                _ => html! {},
+                }
+            }
             {
                 if let Some(podcasts) = state.podcast_feed_return.clone() {
                     let int_podcasts = podcasts.clone();
@@ -156,76 +287,13 @@ pub fn podcasts() -> Html {
                             }
                         } else {
                         pods.into_iter().map(|podcast| {
-                            // let state_ep = state.clone();
-                            // let audio_state_ep = audio_state.clone();
                             let api_key_iter = api_key.clone();
                             let server_name_iter = server_name.clone().unwrap();
                             let history = history_clone.clone();
 
-                            // let id_string = &podcast.PodcastID.to_string();
-
                             let dispatch = dispatch.clone();
                             let podcast_id_loop = podcast.podcastid.clone();
-                            // let podcast_url_clone = podcast.FeedURL.clone();
-                            // let podcast_title_clone = podcast.PodcastName.clone();
-                            // let podcast_ep_count = podcast.EpisodeCount.clone();
-                            // let podcast_artwork_clone = podcast.ArtworkURL.clone();
                             let podcast_description_clone = podcast.description.clone();
-                            // let categories: HashMap<String, String> = serde_json::from_str(&podcast_categories_clone).unwrap_or_else(|_| HashMap::new());
-                            let on_remove_click = {
-                                let dispatch_remove = dispatch.clone();
-                                let podcast_feed_return = podcast_feed_return.clone();
-                                let user_id = user_id.unwrap();
-
-                                let api_key_rm = api_key_iter.clone();
-                                let server_name = server_name.clone();
-
-                                Callback::from(move |_: MouseEvent| {
-                                    let dispatch_call = dispatch_remove.clone();
-                                    let api_key_call = api_key_rm.clone();
-                                    let server_name_call = server_name.clone();
-                                    let user_id = user_id;
-
-                                    if let Some(podcasts) = &podcast_feed_return {
-                                        for _podcast in &podcasts.pods {
-                                            let dispatch_for = dispatch_call.clone();
-                                            let api_key_for = api_key_call.clone();
-                                            let server_name_for = server_name_call.clone();
-                                            let podcast_id = podcast_id_loop.clone(); // Use the correct podcast ID
-
-                                            let remove_values = RemovePodcastValues {
-                                                podcast_id,
-                                                user_id,
-                                            };
-
-                                            wasm_bindgen_futures::spawn_local(async move {
-                                                let dispatch_clone = dispatch_for.clone();
-                                                let api_key_wasm = api_key_for.clone();
-                                                let server_name_wasm = server_name_for.clone();
-                                                match call_remove_podcasts(&server_name_wasm.unwrap(), &api_key_wasm.unwrap(), &remove_values).await {
-                                                    Ok(success) => {
-                                                        if success {
-                                                            dispatch_clone.apply(AppStateMsg::RemovePodcast(podcast_id));
-                                                            dispatch_clone.reduce_mut(|state| {
-                                                                state.info_message = Some("Podcast successfully removed".to_string())
-                                                            });
-                                                        } else {
-                                                            dispatch_clone.reduce_mut(|state| {
-                                                                state.error_message = Some("Failed to remove podcast".to_string())
-                                                            });
-                                                        }
-                                                    },
-                                                    Err(e) => {
-                                                        dispatch_clone.reduce_mut(|state| {
-                                                            state.error_message = Some(format!("Error removing podcast: {:?}", e))
-                                                        });
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
-                                })
-                            };
 
                             let on_title_click = create_on_title_click(
                                 dispatch.clone(),
@@ -306,7 +374,7 @@ pub fn podcasts() -> Html {
                                             <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
                                         </div>
                                         <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                            <span class="material-icons" onclick={on_remove_click}>{"delete"}</span>
+                                            <span class="material-icons" onclick={toggle_delete.reform(move |_| podcast_id_loop)}>{"delete"}</span>
                                         </button>
 
                                     </div>

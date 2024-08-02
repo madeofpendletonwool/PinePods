@@ -13,10 +13,16 @@ Next Minor Version:
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
 - [] Queue adjmustment for mobile devices
+- [] Adjust download checkboxes to look nicer
+- [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Manually adjust tags for podcast in podcast settings
 - [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [] Update api key creation and deletion after change dynamically with use_effect
+- [] Update mfa setup slider after setup dynamically with use_effect
+- [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
+pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 
 Version 0.6.4
 
@@ -33,6 +39,14 @@ Version 0.6.4
 - [x] Ugraded gloo::net to 0.6.0
 - [x] Upgraded openssl in src-tauri to 0.10.66
 - [x] Upgraded a few other rust depends to next minor version
+- [x] Added loading spinner to custom feed and implemented more clear success message
+- [x] Fixed postgres return issue on user_stats route
+- [x] Fixed postgres return issue on mfa return route
+- [] Fixed delete api key route for postgres
+- [] Implemented adjustment on all modals throughout the app so clicking outside them closes them (episode layout confiramtions missing yet - also test all login modals)
+- [] Implemented adjustment on all modals so that they overlap everything in the app (This was causing issues on small screens)
+- [] Added Confirmation dialog modal to podcast deletion on /podcasts layout page
+- [] Changed name of bt user to background_tasks to make the user more clear on api key settings display
 
 Version 0.6.3
 

@@ -917,6 +917,21 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let on_background_click = {
+        let on_close_modal = on_close_modal.clone();
+        Callback::from(move |e: MouseEvent| {
+            let target = e.target().unwrap();
+            let element = target.dyn_into::<web_sys::Element>().unwrap();
+            if element.tag_name() == "DIV" {
+                on_close_modal.emit(e);
+            }
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
+
     let toggle_download = {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
@@ -1021,8 +1036,8 @@ pub fn episode_layout() -> Html {
 
     // Define the modal components
     let podcast_option_model = html! {
-        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
@@ -1094,8 +1109,8 @@ pub fn episode_layout() -> Html {
 
     // Define the modal components
     let download_all_model = html! {
-        <div id="download_all_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="download_all_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
@@ -1130,8 +1145,8 @@ pub fn episode_layout() -> Html {
 
     // Define the modal components
     let delete_pod_model = html! {
-        <div id="delete_pod_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="delete_pod_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">

@@ -8,6 +8,7 @@ use std::borrow::Borrow;
 use crate::requests::setting_reqs::{SettingsUser, call_add_user, call_delete_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, call_set_isadmin};
 use crate::components::gen_funcs::{ValidationError, encode_password, validate_email, validate_username};
 use crate::components::gen_funcs::validate_user_input;
+use wasm_bindgen::JsCast;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
 
@@ -99,14 +100,27 @@ pub fn user_settings() -> Html {
     // Define the initial state
     let page_state = use_state(|| PageState::Hidden);
 
-
-    // Define the callback function for closing the modal
     let on_close_modal = {
         let page_state = page_state.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             page_state.set(PageState::Hidden);
         })
     };
+
+    let on_background_click = {
+        let on_close_modal = on_close_modal.clone();
+        Callback::from(move |e: MouseEvent| {
+            let target = e.target().unwrap();
+            let element = target.dyn_into::<web_sys::Element>().unwrap();
+            if element.tag_name() == "DIV" {
+                on_close_modal.emit(e);
+            }
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
 
     // Define the callback functions
     let on_create_new_user = {
@@ -239,8 +253,8 @@ pub fn user_settings() -> Html {
 
     // Define the modal components
     let create_user_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
@@ -296,6 +310,7 @@ pub fn user_settings() -> Html {
             </div>
         </div>
     };
+
     let user_dispatch = ui_user.clone();
     let edit_admin_call = admin_edit_status.clone();
     let on_user_row_click = {
@@ -670,10 +685,11 @@ pub fn user_settings() -> Html {
             // Handle admin status change if applicable
         })
     };
+
     // Define the modal components
     let edit_user_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow z-50" onclick={stop_propagation.clone()}>
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
