@@ -28,7 +28,7 @@ Version 0.6.4
 
 - [x] Added a fallback to the opml import for when the opml file uses text instead of title for the podcast name key
 - [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
-- [] Fixed layout for podcasts when searching
+- [x] Fixed layout for podcasts when searching
 - [] Support floating point chapters
 - [x] Fixed issue with white space at the bottom of every page #229
 - [x] Cleaned up incorrect or not needed logging at startup #219
@@ -42,10 +42,10 @@ Version 0.6.4
 - [x] Added loading spinner to custom feed and implemented more clear success message
 - [x] Fixed postgres return issue on user_stats route
 - [x] Fixed postgres return issue on mfa return route
-- [] Fixed delete api key route for postgres
-- [] Implemented adjustment on all modals throughout the app so clicking outside them closes them (episode layout confiramtions missing yet - also test all login modals)
-- [] Implemented adjustment on all modals so that they overlap everything in the app (This was causing issues on small screens)
-- [] Added Confirmation dialog modal to podcast deletion on /podcasts layout page
+- [x] Fixed delete api key route for postgres
+- [x] Implemented adjustment on all modals throughout the app so clicking outside them closes them (episode layout confiramtions missing yet - also test all login modals)
+- [x] Implemented adjustment on all modals so that they overlap everything in the app (This was causing issues on small screens)
+- [x] Added Confirmation dialog modal to podcast deletion on /podcasts layout page
 - [] Changed name of bt user to background_tasks to make the user more clear on api key settings display
 
 Version 0.6.3
