@@ -10,6 +10,7 @@ pub fn custom_feed() -> Html {
     let feed_url = use_state(|| "".to_string());
     let error_message = use_state(|| None::<String>);
     let info_message = use_state(|| None::<String>);
+    let is_loading = use_state(|| false);
 
     // API key, server name, and other data can be fetched from AppState if required
     let (state, _) = use_store::<AppState>();
@@ -41,6 +42,7 @@ pub fn custom_feed() -> Html {
     };
 
     // Ensure `onclick_restore` is correctly used
+    let custom_loading = is_loading.clone();
     let add_custom_feed = {
         let api_key = api_key.unwrap_or_default();
         let server_name = server_name.unwrap_or_default();
@@ -50,6 +52,7 @@ pub fn custom_feed() -> Html {
         let info_message = info_message.clone();
         let clear_info = clear_info.clone();
         let clear_error = clear_error.clone();
+        let is_loading_call = custom_loading.clone();
         Callback::from(move |_| {
             let clear_info = clear_info.clone();
             let clear_error = clear_error.clone();
@@ -58,10 +61,12 @@ pub fn custom_feed() -> Html {
             let feed_url = feed_url.clone();
             let error_message = error_message.clone();
             let info_message = info_message.clone();
+            is_loading_call.set(true);
+            let is_loading_wasm = is_loading_call.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match call_add_custom_feed(&server_name, &feed_url, &user_id.unwrap(), &api_key.unwrap()).await {
-                    Ok(message) => {
-                        info_message.set(Some(message));
+                    Ok(_) => {
+                        info_message.set(Some("Podcast Successfully Added".to_string()));
                         Timeout::new(5000, move || { clear_info.emit(()) }).forget();
                     },
                     Err(e) => {
@@ -69,6 +74,7 @@ pub fn custom_feed() -> Html {
                         Timeout::new(5000, move || { clear_error.emit(()) }).forget();
                     }
                 }
+                is_loading_wasm.set(false);
             });
         })
     };
@@ -92,8 +98,11 @@ pub fn custom_feed() -> Html {
                     <span class="text-green-600 text-xs">{ info }</span>
                 }
             </div>
-            <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
             {"Add Feed"}
+            if *is_loading {
+                <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
+            }
             </button>
         </div>
     }
