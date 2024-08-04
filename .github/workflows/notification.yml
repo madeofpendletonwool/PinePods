@@ -26,11 +26,12 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
             version="${{ github.event.release.tag_name }}"
-            message="Pinepods Version $version Released!\nCheck out the release [here](${{ github.event.release.html_url }})"
+            message="Pinepods Version $version Released! Check out the release [here](${{ github.event.release.html_url }})"
             echo "::set-output name=message::$message"
           else
             echo "::set-output name=message::${{ github.event.inputs.message_text }}"
           fi
+
 
       - name: Discord notification to announce deployment
         env:
