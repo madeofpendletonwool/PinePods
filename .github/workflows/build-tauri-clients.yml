@@ -48,7 +48,6 @@ jobs:
 
       - name: Set environment variables (Windows)
         run: |
-          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $Env:GITHUB_ENV
           echo "ARTIFACT_NAME1=nsis/Pinepods_${{ env.IMAGE_TAG }}_x64-setup.exe" >> $Env:GITHUB_ENV
           echo "ARTIFACT_NAME2=msi/Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
         shell: pwsh
