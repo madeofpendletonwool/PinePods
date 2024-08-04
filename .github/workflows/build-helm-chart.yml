@@ -69,6 +69,15 @@ jobs:
         run: |
           helm repo index docs --url https://helm.pinepods.online
 
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Checkout main branch
+        run: git checkout main
+
       - uses: EndBug/add-and-commit@v9
         with:
           committer_name: GitHub Actions
