@@ -28,8 +28,12 @@ jobs:
       - name: Set Image Tag
         id: set_tag
         run: |
-          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
-
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $Env:GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+          fi
+          
       - name: Set environment variables
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
