@@ -4365,10 +4365,11 @@ def get_gpodder_type(cnx, database_type, user_id):
 
     if result:
         if isinstance(result, dict):
-            return result.get("Pod_Sync_Type")
-        elif isinstance(result, list) or isinstance(result, tuple):
+            return result.get('pod_sync_type' if database_type == 'postgresql' else 'Pod_Sync_Type')
+        elif isinstance(result, (list, tuple)):
             return result[0]
     return None
+
 
 
 
@@ -4393,12 +4394,12 @@ def check_gpodder_settings(database_type, cnx, user_id):
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
+
     if result:
-        # Check if result is a dictionary
         if isinstance(result, dict):
-            gpodder_url = result.get('gpodderurl')
-            gpodder_token = result.get('gpoddertoken')
-        else:  # result is a tuple
+            gpodder_url = result.get('gpodderurl' if database_type == 'postgresql' else 'GpodderUrl')
+            gpodder_token = result.get('gpoddertoken' if database_type == 'postgresql' else 'GpodderToken')
+        elif isinstance(result, (list, tuple)):
             gpodder_url = result[0]
             gpodder_token = result[1]
 
