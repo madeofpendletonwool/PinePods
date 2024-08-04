@@ -69,6 +69,8 @@ RUN chmod +x /pinepods/startup/startup.sh
 
 ENV APP_ROOT /pinepods
 
+# Define the build argument
+ARG PINEPODS_VERSION
 # Write the Pinepods version to the current_version file
 RUN echo "${PINEPODS_VERSION}" > /pinepods/current_version
 
