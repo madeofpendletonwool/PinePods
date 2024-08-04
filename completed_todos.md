@@ -29,7 +29,7 @@ Version 0.6.4
 - [x] Added a fallback to the opml import for when the opml file uses text instead of title for the podcast name key
 - [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
 - [x] Fixed layout for podcasts when searching
-- [] Support floating point chapters
+- [x] Support floating point chapters
 - [x] Fixed issue with white space at the bottom of every page #229
 - [x] Cleaned up incorrect or not needed logging at startup #219
 - [x] Fixed issue with user stats page where it would lose user context on reload #135
@@ -46,7 +46,7 @@ Version 0.6.4
 - [x] Implemented adjustment on all modals throughout the app so clicking outside them closes them (episode layout confiramtions missing yet - also test all login modals)
 - [x] Implemented adjustment on all modals so that they overlap everything in the app (This was causing issues on small screens)
 - [x] Added Confirmation dialog modal to podcast deletion on /podcasts layout page
-- [] Changed name of bt user to background_tasks to make the user more clear on api key settings display
+- [x] Changed name of bt user to background_tasks to make the user more clear on api key settings display
 
 Version 0.6.3
 

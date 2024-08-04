@@ -176,14 +176,21 @@ try:
                     UPDATE "Users"
                     SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
                     WHERE Username = %s
-                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False, 'guest'))
-                logging.info("Updated existing 'guest' user to 'bt' user.")
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
+                logging.info("Updated existing 'guest' user to 'background_tasks' user.")
+            elif user_exists(cursor, 'bt'):
+                cursor.execute("""
+                    UPDATE "Users"
+                    SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
+                    WHERE Username = %s
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
+                logging.info("Updated existing 'guest' user to 'background_tasks' user.")
             else:
                 cursor.execute("""
                     INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (Username) DO NOTHING
-                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False))
+                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False, 'guest'))
         except Exception as e:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)

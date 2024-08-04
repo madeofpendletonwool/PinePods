@@ -1,7 +1,9 @@
 use anyhow::{Context, Error};
 use gloo_net::http::Request;
+use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -1142,10 +1144,73 @@ pub async fn call_get_episode_metadata(
 #[serde(rename_all = "snake_case")]
 #[allow(non_snake_case)]
 pub struct Chapter {
-    pub startTime: Option<i32>, // Changed to Option<String>
+    #[serde(deserialize_with = "deserialize_start_time")]
+    pub startTime: Option<i32>, // Changed to Option<i32> with custom deserializer
     pub title: String,
     pub url: Option<String>,
     pub img: Option<String>,
+}
+
+fn deserialize_start_time<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StartTimeVisitor;
+
+    impl<'de> Visitor<'de> for StartTimeVisitor {
+        type Value = Option<i32>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("an integer or a floating point number as start time")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value as i32))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value as i32))
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.round() as i32))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            value
+                .parse::<f64>()
+                .map(|v| Some(v.round() as i32))
+                .map_err(de::Error::custom)
+        }
+    }
+
+    deserializer.deserialize_option(StartTimeVisitor)
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
