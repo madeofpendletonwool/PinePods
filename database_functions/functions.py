@@ -2918,21 +2918,21 @@ def get_stats(cnx, database_type, user_id):
     if isinstance(result, dict):
         if database_type == 'postgresql':
             stats = {
-                "UserCreated": result['UserCreated'],
-                "PodcastsPlayed": result['PodcastsPlayed'],
-                "TimeListened": result['TimeListened'],
-                "PodcastsAdded": result['PodcastsAdded'],
-                "EpisodesSaved": result['EpisodesSaved'],
-                "EpisodesDownloaded": result['EpisodesDownloaded']
-            }
-        else:
-            stats = {
                 "UserCreated": result['usercreated'],
                 "PodcastsPlayed": result['podcastsplayed'],
                 "TimeListened": result['timelistened'],
                 "PodcastsAdded": result['podcastsadded'],
                 "EpisodesSaved": result['episodessaved'],
                 "EpisodesDownloaded": result['episodesdownloaded']
+            }
+        else:
+            stats = {
+                "UserCreated": result['UserCreated'],
+                "PodcastsPlayed": result['PodcastsPlayed'],
+                "TimeListened": result['TimeListened'],
+                "PodcastsAdded": result['PodcastsAdded'],
+                "EpisodesSaved": result['EpisodesSaved'],
+                "EpisodesDownloaded": result['EpisodesDownloaded']
             }
     else:  # Assume it's a tuple
         stats = {
@@ -3647,7 +3647,7 @@ def get_mfa_secret(database_type, cnx, user_id):
         if isinstance(result, tuple):
             # Convert result to dictionary format for consistency
             result = dict(zip([desc[0] for desc in cursor.description], result))
-        
+
         if isinstance(result, dict):
             if database_type == 'postgresql':
                 return result.get('mfa_secret')
