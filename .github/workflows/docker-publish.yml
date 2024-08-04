@@ -38,7 +38,7 @@ jobs:
 
       - name: Build and push x86 image
         run: |
-          docker build --build-arg PINEPODS_VERSION=$(echo $IMAGE_TAG) -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 -f dockerfile .
+          docker build --build-arg PINEPODS_VERSION=${{ env.IMAGE_TAG }} -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 -f dockerfile .
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86
           if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
             docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
