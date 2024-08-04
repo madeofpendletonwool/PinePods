@@ -13,6 +13,7 @@ Next Minor Version:
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
 - [] Queue adjmustment for mobile devices
+- [] Update queue slider to be centered
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page

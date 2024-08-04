@@ -183,7 +183,7 @@ try:
                     UPDATE "Users"
                     SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
                     WHERE Username = %s
-                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'bt'))
                 logging.info("Updated existing 'guest' user to 'background_tasks' user.")
             else:
                 cursor.execute("""
