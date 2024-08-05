@@ -47,6 +47,19 @@ try:
     # Create a cursor to execute SQL statements
     cursor = cnx.cursor()
 
+    # Function to ensure all usernames are lowercase
+    def ensure_usernames_lowercase(cnx):
+        cursor = cnx.cursor()
+        cursor.execute('SELECT UserID, Username FROM Users')
+        users = cursor.fetchall()
+        for user_id, username in users:
+            if username != username.lower():
+                cursor.execute('UPDATE Users SET Username = %s WHERE UserID = %s', (username.lower(), user_id))
+                print(f"Updated Username for UserID {user_id} to lowercase")
+        cnx.commit()
+        cursor.close()
+
+
     # Execute SQL command to create tables
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Users (
@@ -70,6 +83,8 @@ try:
             UNIQUE (Username)
         )
     """)
+
+    ensure_usernames_lowercase(cnx)
 
     def add_pod_sync_if_not_exists(cursor, table_name, column_name, column_definition):
         cursor.execute(f"""
