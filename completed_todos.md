@@ -24,6 +24,7 @@ Next Minor Version:
 - [] Update mfa setup slider after setup dynamically with use_effect
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
+- [] Add option to add podcast from feed on podcasts page
 
 Version 0.6.4
 
