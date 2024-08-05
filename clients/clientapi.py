@@ -301,7 +301,7 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
                             detail="Your API key is either invalid or does not have correct permission")
 
 @app.get('/api/data/get_user')
-async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+async def get_user(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         retrieved_id = database_functions.functions.get_api_user(cnx, database_type, api_key)
@@ -311,11 +311,11 @@ async def verify_key(cnx=Depends(get_database_connection), api_key: str = Depend
                             detail="Your api-key appears to be incorrect.")
 
 @app.get('/api/data/get_key')
-async def verify_key(cnx=Depends(get_database_connection),
+async def get_key(cnx=Depends(get_database_connection),
                      credentials: HTTPBasicCredentials = Depends(get_current_user)):
-    is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, credentials.username, credentials.password)
+    is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, credentials.username.lower(), credentials.password)
     if is_password_valid:
-        retrieved_key = database_functions.functions.get_api_key(cnx, database_type, credentials.username)
+        retrieved_key = database_functions.functions.get_api_key(cnx, database_type, credentials.username.lower())
         return {"status": "success", "retrieved_key": retrieved_key}
     else:
         raise HTTPException(status_code=403,
@@ -403,7 +403,7 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
 
     if not elevated_access:
         # Get user ID from username
-        user_id_from_username = database_functions.functions.get_user_id(cnx, database_type, username)
+        user_id_from_username = database_functions.functions.get_user_id(cnx, database_type, username.lower())
 
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
@@ -412,7 +412,7 @@ async def api_get_user_details(username: str, cnx=Depends(get_database_connectio
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
 
-    result = database_functions.functions.get_user_details(cnx, database_type, username)
+    result = database_functions.functions.get_user_details(cnx, database_type, username.lower())
     if result:
         return result
     else:
@@ -456,9 +456,9 @@ async def api_verify_password(data: VerifyPasswordInput, cnx=Depends(get_databas
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         if database_type == 'postgresql':
-            is_password_valid = database_functions.functions.verify_password(cnx, database_type, data.username, data.password)
+            is_password_valid = database_functions.functions.verify_password(cnx, database_type, data.username.lower(), data.password)
         else:
-            is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, data.username, data.password)
+            is_password_valid = database_functions.auth_functions.verify_password(cnx, database_type, data.username.lower(), data.password)
         return {"is_password_valid": is_password_valid}
     else:
         raise HTTPException(status_code=403,
@@ -1857,7 +1857,7 @@ class UserValues(BaseModel):
 async def api_add_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
                        user_values: UserValues = Body(...)):
     database_functions.functions.add_user(cnx, database_type, (
-        user_values.fullname, user_values.username, user_values.email, user_values.hash_pw))
+        user_values.fullname, user_values.username.lower(), user_values.email, user_values.hash_pw))
     return {"detail": "User added."}
 
 
@@ -1867,7 +1867,7 @@ async def api_add_user(cnx=Depends(get_database_connection),
     self_service = database_functions.functions.check_self_service(cnx, database_type)
     if self_service:
         database_functions.functions.add_user(cnx, database_type, (
-            user_values.fullname, user_values.username, user_values.email, user_values.hash_pw))
+            user_values.fullname, user_values.username.lower(), user_values.email, user_values.hash_pw))
         return {"detail": "User added."}
     else:
         raise HTTPException(status_code=403,
@@ -1974,7 +1974,7 @@ async def api_set_username(cnx=Depends(get_database_connection), api_key: str = 
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to access these user details")
     try:
-        database_functions.functions.set_username(cnx, database_type, user_id, new_username)
+        database_functions.functions.set_username(cnx, database_type, user_id, new_username.lower())
         return {"detail": "Username updated."}
     except:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -2281,7 +2281,7 @@ async def api_reset_password_route(payload: ResetCodePayload, cnx=Depends(get_da
         raise HTTPException(status_code=403,
                             detail="Email settings not configured. Please contact your administrator.")
     else:
-        check_user = database_functions.functions.check_reset_user(cnx, database_type, payload.username, payload.email)
+        check_user = database_functions.functions.check_reset_user(cnx, database_type, payload.username.lower(), payload.email)
         if check_user:
             create_code = database_functions.functions.reset_password_create_code(cnx, database_type, payload.email)
 
