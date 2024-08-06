@@ -17,14 +17,24 @@ Next Minor Version:
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
-- [] Manually adjust tags for podcast in podcast settings
-- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 - [] Update api key creation and deletion after change dynamically with use_effect
 - [] Update mfa setup slider after setup dynamically with use_effect
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
-- [] Add option to add podcast from feed on podcasts page
+
+
+Version 0.6.5
+
+- [x] Fixed issue with Podcasts page not refreshing correctly
+- [x] Added Add Custom Feed to Podcasts page
+- [x] Allow for podcast feeds with user and pass
+- [x] Add option to add podcast from feed on podcasts page
+- [] Ensure podcast loads onto podcast page when adding a new custom one in
+- [] Added filtering to podcasts page
+- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Manually adjust tags for podcast in podcast settings
+- [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 
 Version 0.6.4
 

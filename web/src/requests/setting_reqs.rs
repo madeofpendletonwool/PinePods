@@ -1437,6 +1437,8 @@ pub async fn call_user_admin_check(
 struct CustomFeedRequest {
     feed_url: String,
     user_id: i32,
+    username: Option<String>,
+    password: Option<String>,
 }
 
 pub async fn call_add_custom_feed(
@@ -1444,13 +1446,16 @@ pub async fn call_add_custom_feed(
     feed_url: &str,
     user_id: &i32,
     api_key: &str,
+    username: Option<String>,
+    password: Option<String>,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/add_custom_podcast", server_name);
     let request_body = CustomFeedRequest {
-        feed_url: feed_url.to_string().clone(),
-        user_id: user_id.clone(),
+        feed_url: feed_url.to_string(),
+        user_id: *user_id,
+        username,
+        password,
     };
-    log::info!("url: {:?}", feed_url.to_string().clone());
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")

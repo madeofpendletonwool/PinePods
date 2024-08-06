@@ -1,13 +1,16 @@
-use yew::prelude::*;
-use yewdux::prelude::*;
 use crate::components::context::AppState;
 use crate::requests::setting_reqs::call_add_custom_feed;
-use web_sys::HtmlInputElement;
 use gloo_timers::callback::Timeout;
+use web_sys::HtmlInputElement;
+use yew::prelude::*;
+use yewdux::prelude::*;
 
 #[function_component(CustomFeed)]
 pub fn custom_feed() -> Html {
     let feed_url = use_state(|| "".to_string());
+
+    let pod_user = use_state(|| "".to_string());
+    let pod_pass = use_state(|| "".to_string());
     let error_message = use_state(|| None::<String>);
     let info_message = use_state(|| None::<String>);
     let is_loading = use_state(|| false);
@@ -25,7 +28,21 @@ pub fn custom_feed() -> Html {
             let input: HtmlInputElement = e.target_dyn_into().unwrap();
             feed_url.set(input.value());
         })
-    };  
+    };
+    let update_pod_user = {
+        let pod_user = pod_user.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_dyn_into().unwrap();
+            pod_user.set(input.value());
+        })
+    };
+    let update_pod_pass = {
+        let pod_pass = pod_pass.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_dyn_into().unwrap();
+            pod_pass.set(input.value());
+        })
+    };
     // Function to clear message
     let clear_error = {
         let error_message = error_message.clone();
@@ -63,15 +80,26 @@ pub fn custom_feed() -> Html {
             let info_message = info_message.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
+            let unstate_pod_user = (*pod_user).clone();
+            let unstate_pod_pass = (*pod_pass).clone();
             wasm_bindgen_futures::spawn_local(async move {
-                match call_add_custom_feed(&server_name, &feed_url, &user_id.unwrap(), &api_key.unwrap()).await {
+                match call_add_custom_feed(
+                    &server_name,
+                    &feed_url,
+                    &user_id.unwrap(),
+                    &api_key.unwrap(),
+                    Some(unstate_pod_user),
+                    Some(unstate_pod_pass),
+                )
+                .await
+                {
                     Ok(_) => {
                         info_message.set(Some("Podcast Successfully Added".to_string()));
-                        Timeout::new(5000, move || { clear_info.emit(()) }).forget();
-                    },
+                        Timeout::new(5000, move || clear_info.emit(())).forget();
+                    }
                     Err(e) => {
                         error_message.set(Some(e.to_string()));
-                        Timeout::new(5000, move || { clear_error.emit(()) }).forget();
+                        Timeout::new(5000, move || clear_error.emit(())).forget();
                     }
                 }
                 is_loading_wasm.set(false);
@@ -83,11 +111,17 @@ pub fn custom_feed() -> Html {
         <div class="p-4">
             <p class="item_container-text text-lg font-bold mb-4">{"Add Feed:"}</p>
             <p class="item_container-text text-md mb-4">{"Use this to add a custom feed to your podcasts. Simply enter the feed url and click the button below. This is great in case you subscibe to premium podcasts and they aren't availble in The Pocast Index or other indexing services. After adding here, podcasts will show up and be available just like any others."}</p>
-            
+
             <br/>
             <div>
                 <div>
                     <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="https://bestpodcast.com/feed.xml" />
+                </div>
+                <div>
+                    <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Username (optional)" />
+                </div>
+                <div>
+                    <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Password (optional)" />
                 </div>
                 // Display error message inline right below the text input
                 if let Some(error) = &*error_message {

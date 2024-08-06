@@ -1,3 +1,5 @@
+from typing import Optional
+
 def send_email(server_name, server_port, from_email, to_email, send_mode, encryption, auth_required, username, password, subject, body):
     import smtplib
     from email.mime.multipart import MIMEMultipart
@@ -108,11 +110,24 @@ def sync_episode_actions(nextcloud_url, headers):
     # Implement fetching and creating episode actions
     # Similar to the sync_subscriptions method
 
-def get_podcast_values(feed_url, user_id):
+def get_podcast_values(feed_url, user_id, username: Optional[str] = None, password: Optional[str] = None):
     import feedparser
     import json
+    import requests
+    # Use requests to fetch the feed content
+    try:
+        if username and password:
+            response = requests.get(feed_url, auth=(username, password))
+        else:
+            response = requests.get(feed_url)
+
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        feed_content = response.content
+    except requests.RequestException as e:
+        raise ValueError(f"Error fetching the feed: {str(e)}")
+
     # Parse the feed
-    d = feedparser.parse(feed_url)
+    d = feedparser.parse(feed_content)
 
     # Initialize podcast_values as a dictionary
     podcast_values = {
@@ -161,17 +176,30 @@ def get_podcast_values(feed_url, user_id):
 
 
 
-def check_valid_feed(feed_url: str):
-    import feedparser
+def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Optional[str] = None):
     """
     Check if the provided URL points to a valid podcast feed.
     Raises ValueError if the feed is invalid.
     """
-    parsed_feed = feedparser.parse(feed_url)
+    import feedparser
+    import requests
+    # Use requests to fetch the feed content
+    try:
+        if username and password:
+            response = requests.get(feed_url, auth=(username, password))
+        else:
+            response = requests.get(feed_url)
+
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        feed_content = response.content
+    except requests.RequestException as e:
+        raise ValueError(f"Error fetching the feed: {str(e)}")
+
+    # Parse the feed
+    parsed_feed = feedparser.parse(feed_content)
 
     # Check for basic RSS or Atom feed structure
     if not parsed_feed.get('version'):
-        # If it does not contain a recognizable version, it's likely not a valid feed
         raise ValueError("Invalid podcast feed URL or content.")
 
     # Check for essential elements in the feed
