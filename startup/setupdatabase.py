@@ -194,7 +194,6 @@ try:
         """, (username,))
         return cursor.fetchone() is not None
 
-    # Insert or update the user in the database
     def insert_or_update_user(cursor, hashed_password):
         try:
             if user_exists(cursor, 'guest'):
@@ -209,17 +208,18 @@ try:
                     UPDATE Users
                     SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
                     WHERE Username = %s
-                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
-                logging.info("Updated existing 'guest' user to 'bt' user.")
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'bt'))
+                logging.info("Updated existing 'bt' user.")
             else:
                 cursor.execute("""
                     INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
                     VALUES (%s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE Username=VALUES(Username)
-                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False))
+                logging.info("Inserted new 'background_tasks' user.")
         except Exception as e:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)
+
 
     try:
         # Generate and hash the password
