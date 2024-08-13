@@ -357,7 +357,7 @@ The Intention is for this app to become available on Windows, Linux, Mac, Androi
 
 ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version.
 
-## ToDo
+## ToDo pre-1.0
 
 - [x] Additional Downloads Page organization - Organize by Podcast
 - [x] Download entire podcast button. For episode archival
@@ -374,7 +374,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
-- [ ] Guest User
 - [ ] Add Fyyd as searching index
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
 - [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
@@ -382,7 +381,6 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] How-to guides on doing things in the app
 - [ ] *Pinepods Firewood*. A light, terminal based client used as a remote streaming device or to just listen to podcasts in your terminal! No GUI
 - [ ] Add highlight to indicate which page you're on
-- [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
 - [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts.
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Playlist Priority - Similar to podcast republic
@@ -405,6 +403,10 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
     - [ ] Android Auto support
   - [ ] IOS App
   - [ ] Packaging and automation
+
+## Long term goals
+
+- [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
 
 
 ## Screenshots :camera:

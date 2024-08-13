@@ -22,6 +22,8 @@ Next Minor Version:
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Added filtering to podcasts page
 
 Version 0.6.5
 
@@ -31,9 +33,8 @@ Version 0.6.5
 - [x] Add option to add podcast from feed on podcasts page
 - [x] Ensure podcast loads onto podcast page when adding a new custom one in
 - [] Adjusted buttons on episode layout page so they dynamically adjust position to fit better
-- [] Added filtering to podcasts page
+- [] Option for user to manually update feeds
 - [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Manually adjust tags for podcast in podcast settings
 - [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [x] Fixed issue with nextcloud sync on mysql dbs
