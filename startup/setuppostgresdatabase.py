@@ -303,12 +303,51 @@ try:
                 AutoDownload BOOLEAN DEFAULT FALSE,
                 StartSkip INT DEFAULT 0,
                 EndSkip INT DEFAULT 0,
+                Username TEXT,
+                Password TEXT,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
+
+    def add_user_pass_columns_if_not_exist(cursor, cnx):
+        try:
+            # Check if the columns exist
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name IN ('username', 'password')
+            """)
+            existing_columns = cursor.fetchall()
+            existing_columns = [col[0] for col in existing_columns]
+
+            # Add Username column if it doesn't exist
+            if 'username' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN "Username" TEXT
+                """)
+                print("Added 'Username' column to 'Podcasts' table.")
+
+            # Add Password column if it doesn't exist
+            if 'password' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN "Password" TEXT
+                """)
+                print("Added 'Password' column to 'Podcasts' table.")
+
+            cnx.commit()  # Ensure changes are committed
+        except Exception as e:
+            print(f"Error adding columns to Podcasts table: {e}")
+
+    # Usage
+    add_user_pass_columns_if_not_exist(cursor, cnx)
+
+
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 

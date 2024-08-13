@@ -99,13 +99,15 @@ def get_web_key(cnx, database_type):
     else:
         return None
 
-def add_custom_podcast(database_type, cnx, feed_url, user_id):
+def add_custom_podcast(database_type, cnx, feed_url, user_id, username=None, password=None):
     # Proceed to extract and use podcast details if the feed is valid
-    podcast_values = get_podcast_values(feed_url, user_id)
+    podcast_values = get_podcast_values(feed_url, user_id, username, password)
     print("Adding podcast custom")
+    print(f'custo pod user: {username}')
+    print(f'custo pod pass {password}')
 
     try:
-        return_value = add_podcast(cnx, database_type, podcast_values, user_id)
+        return_value = add_podcast(cnx, database_type, podcast_values, user_id, username, password)
         if not return_value:
             raise Exception("Failed to add the podcast.")
         return return_value
@@ -140,9 +142,11 @@ def add_news_feed_if_not_added(database_type, cnx):
     finally:
         cursor.close()
 
-def add_podcast(cnx, database_type, podcast_values, user_id):
+def add_podcast(cnx, database_type, podcast_values, user_id, username=None, password=None):
     cursor = cnx.cursor()
     print(f"Podcast values '{podcast_values}'")
+    print(f'pod pod user: {username}')
+    print(f'pod pod pass {password}')
 
     try:
         # Check if the podcast already exists for the user
@@ -177,15 +181,15 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
         if database_type == "postgresql":
             add_podcast_query = """
                 INSERT INTO "Podcasts"
-                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID)
-                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s) RETURNING PodcastID
+                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
             """
             explicit = podcast_values['pod_explicit']
         else:  # MySQL or MariaDB
             add_podcast_query = """
                 INSERT INTO Podcasts
-                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID)
-                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
+                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
             """
             explicit = 1 if podcast_values['pod_explicit'] else 0
 
@@ -198,6 +202,8 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
         print(podcast_values['pod_episode_count'])
         print(podcast_values['pod_feed_url'])
         print(podcast_values['pod_website'])
+        print(f"feed username: {username}")
+        print(f"feed password: {password}")
         print(explicit)
         print(user_id)
         try:
@@ -210,7 +216,9 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
                 podcast_values['pod_feed_url'],
                 podcast_values['pod_website'],
                 explicit,
-                user_id
+                user_id,
+                username,
+                password
             ))
 
             if database_type == "postgresql":
@@ -244,8 +252,9 @@ def add_podcast(cnx, database_type, podcast_values, user_id):
             print("stats table updated")
 
             # Add episodes to database
-            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False)
+            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False, username, password)
             print("episodes added")
+            return podcast_id
 
         except Exception as e:
             logging.error(f"Failed to add podcast: {e}")
@@ -411,13 +420,24 @@ def get_pinepods_version():
     except Exception as e:
         return f"An error occurred: {e}"
 
-def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download):
+def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username=None, password=None):
     import datetime
     import feedparser
     import dateutil.parser
     import re
+    import requests
+    from requests.auth import HTTPBasicAuth
 
-    episode_dump = feedparser.parse(feed_url)
+    if username and password:
+        response = requests.get(feed_url, auth=HTTPBasicAuth(username, password))
+        if response.status_code != 200:
+            raise ValueError(f"Failed to fetch feed with status code: {response.status_code}")
+        episode_dump = feedparser.parse(response.content)
+    else:
+        response = requests.get(feed_url)
+        if response.status_code != 200:
+            raise ValueError(f"Failed to fetch feed with status code: {response.status_code}")
+        episode_dump = feedparser.parse(response.content)
 
     cursor = cnx.cursor()
 
@@ -1000,32 +1020,36 @@ def refresh_pods(cnx, database_type):
     cursor = cnx.cursor()
 
     if database_type == "postgresql":
-        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM "Podcasts"'
+        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM "Podcasts"'
     else:  # MySQL or MariaDB
-        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload FROM Podcasts"
+        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM Podcasts"
 
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall()  # fetch the result set
 
     for result in result_set:
         if isinstance(result, tuple):
-            podcast_id, feed_url, artwork_url, auto_download = result
+            podcast_id, feed_url, artwork_url, auto_download, username, password = result
         elif isinstance(result, dict):
             if database_type == "postgresql":
                 podcast_id = result["podcastid"]
                 feed_url = result["feedurl"]
                 artwork_url = result["artworkurl"]
                 auto_download = result["autodownload"]
+                username = result["username"]
+                password = result["password"]
             else:
                 podcast_id = result["PodcastID"]
                 feed_url = result["FeedURL"]
                 artwork_url = result["ArtworkURL"]
                 auto_download = result["AutoDownload"]
+                username = result["Username"]
+                password = result["Password"]
         else:
             raise ValueError(f"Unexpected result type: {type(result)}")
 
         print(f'Running for :{podcast_id}')
-        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download)
+        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username, password)
 
     cursor.close()
     # cnx.close()
