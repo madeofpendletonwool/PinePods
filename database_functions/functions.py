@@ -4275,7 +4275,7 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
 
     query = (
         'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s' if database_type == "postgresql" else
-        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken, Pod_Sync_Type = %s WHERE UserID = %s"
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s"
     )
 
     cursor.execute(query, (gpodder_url, login_name, decoded_token, pod_sync_type, user_id))
