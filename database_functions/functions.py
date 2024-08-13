@@ -102,9 +102,6 @@ def get_web_key(cnx, database_type):
 def add_custom_podcast(database_type, cnx, feed_url, user_id, username=None, password=None):
     # Proceed to extract and use podcast details if the feed is valid
     podcast_values = get_podcast_values(feed_url, user_id, username, password)
-    print("Adding podcast custom")
-    print(f'custo pod user: {username}')
-    print(f'custo pod pass {password}')
 
     try:
         return_value = add_podcast(cnx, database_type, podcast_values, user_id, username, password)
@@ -202,8 +199,6 @@ def add_podcast(cnx, database_type, podcast_values, user_id, username=None, pass
         print(podcast_values['pod_episode_count'])
         print(podcast_values['pod_feed_url'])
         print(podcast_values['pod_website'])
-        print(f"feed username: {username}")
-        print(f"feed password: {password}")
         print(explicit)
         print(user_id)
         try:
@@ -4275,7 +4270,7 @@ def add_gpodder_settings(database_type, cnx, user_id, gpodder_url, gpodder_token
 
     query = (
         'UPDATE "Users" SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s' if database_type == "postgresql" else
-        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken, Pod_Sync_Type = %s WHERE UserID = %s"
+        "UPDATE Users SET GpodderUrl = %s, GpodderLoginName = %s, GpodderToken = %s, Pod_Sync_Type = %s WHERE UserID = %s"
     )
 
     cursor.execute(query, (gpodder_url, login_name, decoded_token, pod_sync_type, user_id))

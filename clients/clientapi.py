@@ -635,13 +635,8 @@ async def get_podcast_details(
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
 
     if added:
-        print("podcast added")
-        print(f"podcast url: {podcast_url}")
-        print(f"podcast name: {podcast_title}")
         podcast_id = database_functions.functions.get_podcast_id(database_type, cnx, user_id, podcast_url, podcast_title)
-        print(f"heres the id: {podcast_id}")
         details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
-        print(f"got the details: {details}")
         if details is None:
             raise HTTPException(status_code=404, detail="Podcast not found")
 
@@ -689,7 +684,6 @@ async def get_podcast_details(
 
         return pod_details
     else:
-        print("podcast not added")
         podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, user_id)
         categories = podcast_values['categories']
 
@@ -2226,17 +2220,13 @@ async def api_delete_api_key(payload: DeleteAPIKeyHeaders, cnx=Depends(get_datab
     if database_functions.functions.is_same_api_key(cnx, database_type, payload.api_id, api_key):
         raise HTTPException(status_code=403,
                             detail="You cannot delete the API key that is currently in use.")
-    print('same done')
     # Check if the API key belongs to the guest user (user_id 1)
     if database_functions.functions.belongs_to_guest_user(cnx, database_type, payload.api_id):
         raise HTTPException(status_code=403,
                             detail="Cannot delete guest user api.")
-    print('belongs done')
 
     # Proceed with deletion if the checks pass
-    print('deleting')
     database_functions.functions.delete_api(cnx, database_type, payload.api_id)
-    print('deleted')
     return {"detail": "API key deleted."}
 
 
@@ -3287,8 +3277,6 @@ def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Op
 
         feed_content = response.content
 
-        # Print the first 500 characters of the content for debugging
-        print("Feed Content Preview:", feed_content[:500].decode('utf-8', 'ignore'))
     except requests.RequestException as e:
         raise ValueError(f"Error fetching the feed: {str(e)}")
 
@@ -3316,8 +3304,6 @@ class CustomPodcast(BaseModel):
 async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connection),
                      api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    print(f'pod user: {data.username}')
-    print(f'pod pass {data.password}')
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -3339,7 +3325,6 @@ async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connectio
         try:
             podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
             podcast_details = database_functions.functions.get_podcast_details(database_type, cnx, data.user_id, podcast_id)
-            print(f'podcast details: {podcast_details}')
             return {"data": podcast_details}
         except Exception as e:
             logger.error(f"Failed to process the podcast: {str(e)}")
