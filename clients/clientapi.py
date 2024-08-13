@@ -3247,7 +3247,7 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
 
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
 
-def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login):
+def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_token, gpodder_login):
     cnx = create_database_connection()
     try:
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
@@ -3261,23 +3261,63 @@ def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url,
         else:
             cnx.close()
 
-def check_valid_feed(feed_url: str):
+def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Optional[str] = None):
+    """
+    Check if the provided URL points to a valid podcast feed.
+    Raises ValueError if the feed is invalid.
+    """
     import feedparser
-    parsed_feed = feedparser.parse(feed_url)
+    import requests
+    from requests.auth import HTTPBasicAuth
+
+    # Use requests to fetch the feed content
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        if username and password:
+            response = requests.get(feed_url, headers=headers, auth=HTTPBasicAuth(username, password))
+        else:
+            response = requests.get(feed_url, headers=headers)
+
+        response.raise_for_status()  # Raise an exception for HTTP errors
+
+        # Check Content-Type
+        content_type = response.headers.get('Content-Type', '')
+        if 'xml' not in content_type:
+            raise ValueError(f"Unexpected Content-Type: {content_type}")
+
+        feed_content = response.content
+
+        # Print the first 500 characters of the content for debugging
+        print("Feed Content Preview:", feed_content[:500].decode('utf-8', 'ignore'))
+    except requests.RequestException as e:
+        raise ValueError(f"Error fetching the feed: {str(e)}")
+
+    # Parse the feed content using feedparser
+    parsed_feed = feedparser.parse(feed_content)
+
+    # Validate the parsed feed
     if not parsed_feed.get('version'):
         raise ValueError("Invalid podcast feed URL or content.")
+
     if not ('title' in parsed_feed.feed and 'link' in parsed_feed.feed and 'description' in parsed_feed.feed):
         raise ValueError("Feed missing required attributes: title, link, or description.")
+
     return parsed_feed
+
+
 
 class CustomPodcast(BaseModel):
     feed_url: str
     user_id: int
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 @app.post("/api/data/add_custom_podcast")
-async def queue_bump(data: CustomPodcast, cnx=Depends(get_database_connection),
+async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connection),
                      api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    print(f'pod user: {data.username}')
+    print(f'pod pass {data.password}')
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -3290,15 +3330,17 @@ async def queue_bump(data: CustomPodcast, cnx=Depends(get_database_connection),
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
         try:
-            parsed_feed = check_valid_feed(data.feed_url)
+            parsed_feed = check_valid_feed(data.feed_url, data.username, data.password)
         except ValueError as e:
             logger.error(f"Failed to parse: {str(e)}")
             raise HTTPException(status_code=400, detail=str(e))
 
         # Assuming the rest of the code processes the podcast correctly
         try:
-            result = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id)
-            return {"data": result}
+            podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
+            podcast_details = database_functions.functions.get_podcast_details(database_type, cnx, data.user_id, podcast_id)
+            print(f'podcast details: {podcast_details}')
+            return {"data": podcast_details}
         except Exception as e:
             logger.error(f"Failed to process the podcast: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to process the podcast: {str(e)}")

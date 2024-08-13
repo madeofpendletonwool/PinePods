@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use super::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
@@ -9,7 +7,11 @@ use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponse, RemovePodcastValues};
+use crate::requests::setting_reqs::call_add_custom_feed;
+use gloo_timers::callback::Timeout;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
+use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -54,6 +56,12 @@ pub fn podcasts() -> Html {
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let podcast_feed_return = state.podcast_feed_return.clone();
+    let is_loading = use_state(|| false);
+    let feed_url = use_state(|| "".to_string());
+    let pod_user = use_state(|| "".to_string());
+    let pod_pass = use_state(|| "".to_string());
+    let error_message = use_state(|| None::<String>);
+    let info_message = use_state(|| None::<String>);
 
     let session_dispatch = dispatch.clone();
     let session_state = state.clone();
@@ -141,6 +149,7 @@ pub fn podcasts() -> Html {
     enum PageState {
         Hidden,
         Delete,
+        Custom_Pod,
     }
 
     let page_state = use_state(|| PageState::Hidden);
@@ -171,7 +180,7 @@ pub fn podcasts() -> Html {
     let on_remove_click = {
         let dispatch_remove = dispatch.clone();
         let podcast_to_delete = podcast_to_delete.clone();
-        let user_id = user_id.unwrap();
+        let user_id = user_id.clone();
         let api_key_rm = api_key.clone();
         let server_name = server_name.clone();
         let on_close_remove = on_close_modal.clone();
@@ -181,29 +190,39 @@ pub fn podcasts() -> Html {
                 let dispatch_call = dispatch_remove.clone();
                 let api_key_call = api_key_rm.clone();
                 let server_name_call = server_name.clone();
+                let user_id_call = user_id.unwrap();
 
                 let remove_values = RemovePodcastValues {
                     podcast_id,
-                    user_id,
+                    user_id: user_id_call,
                 };
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_remove_podcasts(&server_name_call.unwrap(), &api_key_call.unwrap(), &remove_values).await {
+                    match call_remove_podcasts(
+                        &server_name_call.unwrap(),
+                        &api_key_call.unwrap(),
+                        &remove_values,
+                    )
+                    .await
+                    {
                         Ok(success) => {
                             if success {
                                 dispatch_call.apply(AppStateMsg::RemovePodcast(podcast_id));
                                 dispatch_call.reduce_mut(|state| {
-                                    state.info_message = Some("Podcast successfully removed".to_string())
+                                    state.info_message =
+                                        Some("Podcast successfully removed".to_string())
                                 });
                             } else {
                                 dispatch_call.reduce_mut(|state| {
-                                    state.error_message = Some("Failed to remove podcast".to_string())
+                                    state.error_message =
+                                        Some("Failed to remove podcast".to_string())
                                 });
                             }
-                        },
+                        }
                         Err(e) => {
                             dispatch_call.reduce_mut(|state| {
-                                state.error_message = Some(format!("Error removing podcast: {:?}", e))
+                                state.error_message =
+                                    Some(format!("Error removing podcast: {:?}", e))
                             });
                         }
                     }
@@ -213,7 +232,7 @@ pub fn podcasts() -> Html {
         })
     };
 
-        // Define the modal components
+    // Define the modal components
     let delete_pod_model = html! {
         <div id="delete_pod_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
             <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
@@ -257,9 +276,175 @@ pub fn podcasts() -> Html {
             page_state.set(PageState::Delete);
         })
     };
-    
 
+    // Correct setup for `on_password_change`
+    let update_feed = {
+        let feed_url = feed_url.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_dyn_into().unwrap();
+            feed_url.set(input.value());
+        })
+    };
+    let update_pod_user = {
+        let pod_user = pod_user.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_dyn_into().unwrap();
+            pod_user.set(input.value());
+        })
+    };
+    let update_pod_pass = {
+        let pod_pass = pod_pass.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_dyn_into().unwrap();
+            pod_pass.set(input.value());
+        })
+    };
+    // Function to clear message
+    let clear_error = {
+        let error_message = error_message.clone();
+        Callback::from(move |_| {
+            error_message.set(None);
+        })
+    };
 
+    let clear_info = {
+        let info_message = info_message.clone();
+        Callback::from(move |_| {
+            info_message.set(None);
+        })
+    };
+
+    // Ensure `onclick_restore` is correctly used
+    let custom_loading = is_loading.clone();
+    let add_custom_feed = {
+        let dispatch_remove = dispatch.clone();
+        let api_key = api_key.clone().unwrap_or_default();
+        let server_name = server_name.clone().unwrap_or_default();
+        let user_id = user_id;
+        let feed_url = (*feed_url).clone();
+        let error_message = error_message.clone();
+        let info_message = info_message.clone();
+        let clear_info = clear_info.clone();
+        let clear_error = clear_error.clone();
+        let is_loading_call = custom_loading.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let dispatch_call = dispatch_remove.clone();
+            let clear_info = clear_info.clone();
+            let clear_error = clear_error.clone();
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let feed_url = feed_url.clone();
+            let error_message = error_message.clone();
+            let info_message = info_message.clone();
+            is_loading_call.set(true);
+            let is_loading_wasm = is_loading_call.clone();
+            let unstate_pod_user = (*pod_user).clone();
+            let unstate_pod_pass = (*pod_pass).clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_add_custom_feed(
+                    &server_name,
+                    &feed_url,
+                    &user_id.unwrap(),
+                    &api_key.unwrap(),
+                    Some(unstate_pod_user),
+                    Some(unstate_pod_pass),
+                )
+                .await
+                {
+                    Ok(new_podcast) => {
+                        info_message.set(Some("Podcast Successfully Added".to_string()));
+                        dispatch_call.reduce_mut(move |state| {
+                            if let Some(ref mut podcast_response) = state.podcast_feed_return {
+                                if let Some(ref mut pods) = podcast_response.pods {
+                                    web_sys::console::log_1(&JsValue::from_str("Adding Podcast"));
+                                    pods.push(new_podcast.clone());
+                                } else {
+                                    web_sys::console::log_1(&JsValue::from_str("Creating Podcast"));
+                                    podcast_response.pods = Some(vec![new_podcast.clone()]);
+                                }
+                            } else {
+                                state.podcast_feed_return = Some(PodcastResponse {
+                                    pods: Some(vec![new_podcast.clone()]),
+                                });
+                            }
+                        });
+                        Timeout::new(5000, move || clear_info.emit(())).forget();
+                    }
+                    Err(e) => {
+                        error_message.set(Some(e.to_string()));
+                        Timeout::new(5000, move || clear_error.emit(())).forget();
+                    }
+                }
+                is_loading_wasm.set(false);
+            });
+        })
+    };
+
+    // Define the modal components
+    let custom_pod_modal = html! {
+        <div id="custom_pod_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
+                            {"Add Custom Podcast"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <form class="space-y-4" action="#">
+                            <div>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Simply enter the feed url, optional credentials, and click the button below. This is great in case you subscibe to premium podcasts and they aren't availble in The Pocast Index or other indexing services."}</label>
+                                <div class="justify-between space-x-4">
+                                    <div>
+                                        <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="https://bestpodcast.com/feed.xml" />
+                                    </div>
+                                </div>
+                                <div class="flex justify-between space-x-4">
+                                    <div>
+                                        <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Username (optional)" />
+                                    </div>
+                                    <div>
+                                        <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Password (optional)" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
+                                    {"Add Feed"}
+                                    if *is_loading {
+                                        <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
+                                    }
+                                    </button>
+                                </div>
+                                <div>
+                                if let Some(error) = &*error_message {
+                                    <span class="text-red-600 text-xs">{ error }</span>
+                                }
+                                // Display informational message inline right below the text input
+                                if let Some(info) = &*info_message {
+                                    <span class="text-green-600 text-xs">{ info }</span>
+                                }
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    let toggle_custom_modal = {
+        let page_state = page_state.clone();
+        Callback::from(move |_: MouseEvent| {
+            page_state.set(PageState::Custom_Pod);
+        })
+    };
 
     html! {
         <>
@@ -269,7 +454,24 @@ pub fn podcasts() -> Html {
             {
                 match *page_state {
                 PageState::Delete => delete_pod_model,
+                PageState::Custom_Pod => custom_pod_modal,
                 _ => html! {},
+                }
+            }
+            {
+                html! {
+                    <div>
+                        <div class="flex justify-between">
+                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center">
+                                <span class="material-icons icon-space">{"filter_alt"}</span>
+                                <span class="text-lg">{"Filter"}</span>
+                            </button>
+                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_custom_modal}>
+                                <span class="material-icons icon-space">{"add_box"}</span>
+                                <span class="text-lg">{"Add Custom Feed"}</span>
+                            </button>
+                        </div>
+                    </div>
                 }
             }
             {
