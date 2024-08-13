@@ -36,6 +36,8 @@ Version 0.6.5
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Manually adjust tags for podcast in podcast settings
 - [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [x] Fixed issue with nextcloud sync on mysql dbs
+- [x] Fixed issue with db setup with mysql
 
 Version 0.6.4
 
