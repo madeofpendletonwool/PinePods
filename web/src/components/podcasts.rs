@@ -317,6 +317,7 @@ pub fn podcasts() -> Html {
     // Ensure `onclick_restore` is correctly used
     let custom_loading = is_loading.clone();
     let add_custom_feed = {
+        let dispatch_remove = dispatch.clone();
         let api_key = api_key.clone().unwrap_or_default();
         let server_name = server_name.clone().unwrap_or_default();
         let user_id = user_id;
@@ -328,6 +329,7 @@ pub fn podcasts() -> Html {
         let is_loading_call = custom_loading.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let dispatch_call = dispatch_remove.clone();
             let clear_info = clear_info.clone();
             let clear_error = clear_error.clone();
             let server_name = server_name.clone();
@@ -350,8 +352,23 @@ pub fn podcasts() -> Html {
                 )
                 .await
                 {
-                    Ok(_) => {
+                    Ok(new_podcast) => {
                         info_message.set(Some("Podcast Successfully Added".to_string()));
+                        dispatch_call.reduce_mut(move |state| {
+                            if let Some(ref mut podcast_response) = state.podcast_feed_return {
+                                if let Some(ref mut pods) = podcast_response.pods {
+                                    web_sys::console::log_1(&JsValue::from_str("Adding Podcast"));
+                                    pods.push(new_podcast.clone());
+                                } else {
+                                    web_sys::console::log_1(&JsValue::from_str("Creating Podcast"));
+                                    podcast_response.pods = Some(vec![new_podcast.clone()]);
+                                }
+                            } else {
+                                state.podcast_feed_return = Some(PodcastResponse {
+                                    pods: Some(vec![new_podcast.clone()]),
+                                });
+                            }
+                        });
                         Timeout::new(5000, move || clear_info.emit(())).forget();
                     }
                     Err(e) => {

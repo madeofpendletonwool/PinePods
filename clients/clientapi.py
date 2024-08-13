@@ -3268,24 +3268,43 @@ def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Op
     """
     import feedparser
     import requests
+    from requests.auth import HTTPBasicAuth
+
     # Use requests to fetch the feed content
     try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
         if username and password:
-            response = requests.get(feed_url, auth=(username, password))
+            response = requests.get(feed_url, headers=headers, auth=HTTPBasicAuth(username, password))
         else:
-            response = requests.get(feed_url)
+            response = requests.get(feed_url, headers=headers)
 
         response.raise_for_status()  # Raise an exception for HTTP errors
+
+        # Check Content-Type
+        content_type = response.headers.get('Content-Type', '')
+        if 'xml' not in content_type:
+            raise ValueError(f"Unexpected Content-Type: {content_type}")
+
         feed_content = response.content
+
+        # Print the first 500 characters of the content for debugging
+        print("Feed Content Preview:", feed_content[:500].decode('utf-8', 'ignore'))
     except requests.RequestException as e:
         raise ValueError(f"Error fetching the feed: {str(e)}")
 
-    parsed_feed = feedparser.parse(feed_url)
+    # Parse the feed content using feedparser
+    parsed_feed = feedparser.parse(feed_content)
+
+    # Validate the parsed feed
     if not parsed_feed.get('version'):
         raise ValueError("Invalid podcast feed URL or content.")
+
     if not ('title' in parsed_feed.feed and 'link' in parsed_feed.feed and 'description' in parsed_feed.feed):
         raise ValueError("Feed missing required attributes: title, link, or description.")
+
     return parsed_feed
+
+
 
 class CustomPodcast(BaseModel):
     feed_url: str
@@ -3318,8 +3337,10 @@ async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connectio
 
         # Assuming the rest of the code processes the podcast correctly
         try:
-            result = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
-            return {"data": result}
+            podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
+            podcast_details = database_functions.functions.get_podcast_details(database_type, cnx, data.user_id, podcast_id)
+            print(f'podcast details: {podcast_details}')
+            return {"data": podcast_details}
         except Exception as e:
             logger.error(f"Failed to process the podcast: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to process the podcast: {str(e)}")

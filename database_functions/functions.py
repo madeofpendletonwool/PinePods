@@ -101,7 +101,7 @@ def get_web_key(cnx, database_type):
 
 def add_custom_podcast(database_type, cnx, feed_url, user_id, username=None, password=None):
     # Proceed to extract and use podcast details if the feed is valid
-    podcast_values = get_podcast_values(feed_url, user_id)
+    podcast_values = get_podcast_values(feed_url, user_id, username, password)
     print("Adding podcast custom")
     print(f'custo pod user: {username}')
     print(f'custo pod pass {password}')
@@ -252,8 +252,9 @@ def add_podcast(cnx, database_type, podcast_values, user_id, username=None, pass
             print("stats table updated")
 
             # Add episodes to database
-            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False)
+            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False, username, password)
             print("episodes added")
+            return podcast_id
 
         except Exception as e:
             logging.error(f"Failed to add podcast: {e}")
@@ -433,7 +434,10 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
             raise ValueError(f"Failed to fetch feed with status code: {response.status_code}")
         episode_dump = feedparser.parse(response.content)
     else:
-        episode_dump = feedparser.parse(feed_url)
+        response = requests.get(feed_url)
+        if response.status_code != 200:
+            raise ValueError(f"Failed to fetch feed with status code: {response.status_code}")
+        episode_dump = feedparser.parse(response.content)
 
     cursor = cnx.cursor()
 

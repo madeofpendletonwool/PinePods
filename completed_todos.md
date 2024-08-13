@@ -29,12 +29,13 @@ Version 0.6.5
 - [x] Added Add Custom Feed to Podcasts page
 - [x] Allow for podcast feeds with user and pass
 - [x] Add option to add podcast from feed on podcasts page
-- [] Ensure podcast loads onto podcast page when adding a new custom one in
+- [x] Ensure podcast loads onto podcast page when adding a new custom one in
+- [] Adjusted buttons on episode layout page so they dynamically adjust position to fit better
 - [] Added filtering to podcasts page
 - [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Manually adjust tags for podcast in podcast settings
-- [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 
 Version 0.6.4
 

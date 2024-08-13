@@ -319,24 +319,24 @@ try:
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name='Podcasts'
-                AND column_name IN ('Username', 'Password')
+                AND column_name IN ('username', 'password')
             """)
             existing_columns = cursor.fetchall()
             existing_columns = [col[0] for col in existing_columns]
 
             # Add Username column if it doesn't exist
-            if 'Username' not in existing_columns:
+            if 'username' not in existing_columns:
                 cursor.execute("""
                     ALTER TABLE "Podcasts"
-                    ADD COLUMN Username TEXT
+                    ADD COLUMN "Username" TEXT
                 """)
                 print("Added 'Username' column to 'Podcasts' table.")
 
             # Add Password column if it doesn't exist
-            if 'Password' not in existing_columns:
+            if 'password' not in existing_columns:
                 cursor.execute("""
                     ALTER TABLE "Podcasts"
-                    ADD COLUMN Password TEXT
+                    ADD COLUMN "Password" TEXT
                 """)
                 print("Added 'Password' column to 'Podcasts' table.")
 
@@ -346,6 +346,7 @@ try:
 
     # Usage
     add_user_pass_columns_if_not_exist(cursor, cnx)
+
 
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")

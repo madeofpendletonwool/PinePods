@@ -1,3 +1,4 @@
+use crate::requests::pod_req::Podcast;
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -1441,6 +1442,11 @@ struct CustomFeedRequest {
     password: Option<String>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct AddCustomPodcastResponse {
+    data: Podcast,
+}
+
 pub async fn call_add_custom_feed(
     server_name: &str,
     feed_url: &str,
@@ -1448,7 +1454,7 @@ pub async fn call_add_custom_feed(
     api_key: &str,
     username: Option<String>,
     password: Option<String>,
-) -> Result<String, Error> {
+) -> Result<Podcast, Error> {
     let url = format!("{}/api/data/add_custom_podcast", server_name);
     let request_body = CustomFeedRequest {
         feed_url: feed_url.to_string(),
@@ -1465,8 +1471,25 @@ pub async fn call_add_custom_feed(
         .await
         .map_err(Error::msg)?;
 
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "Response Status: {}",
+        response.status()
+    )));
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "Response Headers: {:?}",
+        response.headers()
+    )));
+
     if response.ok() {
-        response.text().await.map_err(Error::msg)
+        let response_text = response.text().await.map_err(Error::msg)?;
+        web_sys::console::log_1(&JsValue::from_str(&format!(
+            "Response Body: {}",
+            response_text
+        )));
+
+        let add_custom_podcast_response: AddCustomPodcastResponse =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(add_custom_podcast_response.data)
     } else {
         Err(Error::msg(format!(
             "Error adding feed: {}",

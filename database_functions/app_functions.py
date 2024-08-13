@@ -114,12 +114,15 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
     import feedparser
     import json
     import requests
+    from requests.auth import HTTPBasicAuth
+
     # Use requests to fetch the feed content
     try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
         if username and password:
-            response = requests.get(feed_url, auth=(username, password))
+            response = requests.get(feed_url, headers=headers, auth=HTTPBasicAuth(username, password))
         else:
-            response = requests.get(feed_url)
+            response = requests.get(feed_url, headers=headers)
 
         response.raise_for_status()  # Raise an exception for HTTP errors
         feed_content = response.content
@@ -164,7 +167,6 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
         categories_dict = {str(i): cat for i, cat in enumerate(podcast_values['categories'], start=1)}
         podcast_values['categories'] = json.dumps(categories_dict)  # Serialize populated categories dict
 
-
     if not podcast_values['pod_description'] and hasattr(d.feed, 'itunes_summary'):
         podcast_values['pod_description'] = d.feed.itunes_summary
 
@@ -173,6 +175,7 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
         podcast_values['pod_explicit'] = d.feed.itunes_explicit == 'yes'
 
     return podcast_values
+
 
 
 
