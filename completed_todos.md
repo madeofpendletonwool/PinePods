@@ -33,9 +33,11 @@ Version 0.6.5
 - [x] Add option to add podcast from feed on podcasts page
 - [x] Ensure podcast loads onto podcast page when adding a new custom one in
 - [] Adjusted buttons on episode layout page so they dynamically adjust position to fit better
-- [] Option for user to manually update feeds
-- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [x] Option for user to manually update feeds
+- [x] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
 - [] Manually adjust tags for podcast in podcast settings
+- [] Ensured See More Button only shows when needed
+- [] Fixed documentation so backend variables work with new docker standards
 - [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [x] Fixed issue with nextcloud sync on mysql dbs
 - [x] Fixed issue with db setup with mysql

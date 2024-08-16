@@ -1,9 +1,11 @@
 use super::routes::Route;
 use crate::components::context::AppState;
+use crate::requests::pod_req::connect_to_episode_websocket;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::window;
 use yew::prelude::*;
 use yew_router::prelude::Link;
 use yewdux::use_store;
-use web_sys::window;
 
 #[allow(non_camel_case_types)]
 #[function_component(App_drawer)]
@@ -13,6 +15,18 @@ pub fn app_drawer() -> Html {
 
     let is_drawer_open = use_state(|| false);
     let (state, _dispatch) = use_store::<AppState>();
+    let (post_state, _post_dispatch) = use_store::<AppState>();
+    let is_refreshing = post_state.is_refreshing.unwrap_or(false);
+    let api_key = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
+    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = post_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
+    // let session_state = state.clone();
     let username = state
         .user_details
         .as_ref()
@@ -32,13 +46,60 @@ pub fn app_drawer() -> Html {
         }
     };
 
+    let on_refresh_click = {
+        let is_refreshing = is_refreshing.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |event: MouseEvent| {
+            event.stop_propagation();
+
+            let server_name_call = server_name.clone();
+            let user_id_call = user_id.clone();
+            let api_key = api_key.clone();
+            let dispatch = _dispatch.clone();
+            dispatch.reduce_mut(|state| {
+                state.is_refreshing = Some(true);
+                state.clone() // Return the modified state
+            });
+
+            let is_refreshing = is_refreshing.clone();
+            spawn_local(async move {
+                if let Err(e) = connect_to_episode_websocket(
+                    &server_name_call.unwrap(),
+                    &user_id_call.unwrap(),
+                    &api_key.unwrap().unwrap(),
+                    false,
+                )
+                .await
+                {
+                    web_sys::console::log_1(
+                        &format!("Failed to connect to WebSocket: {:?}", e).into(),
+                    );
+                } else {
+                    web_sys::console::log_1(
+                        &"WebSocket connection established and refresh initiated.".into(),
+                    );
+                }
+
+                // Stop the loading animation after the WebSocket operation is complete
+                // Stop the refresh process
+                dispatch.reduce_mut(|state| {
+                    state.is_refreshing = Some(false);
+                    state.clone() // Return the modified state
+                });
+            });
+        })
+    };
+
     let current_path = window()
-    .unwrap()
-    .location()
-    .pathname()
-    .unwrap_or_else(|_| String::new());
+        .unwrap()
+        .location()
+        .pathname()
+        .unwrap_or_else(|_| String::new());
 
     let show_home_button = current_path != "/home";
+    let show_refresh_button = current_path == "/home";
 
     #[cfg(not(feature = "server_build"))]
     let local_download_link = html! {
@@ -175,9 +236,9 @@ pub fn app_drawer() -> Html {
                     <div class="w-6 h-1 drawer-burger rounded-lg"></div>
                 </div>
             </label>
-        
+
             <div class="w-8 h-8 ml-3 flex items-center">
-        
+
                 { if show_home_button {
                     html! {
                         <Link<Route> to={Route::Home} classes="rounded-lg cursor-pointer">
@@ -189,7 +250,28 @@ pub fn app_drawer() -> Html {
                 } else {
                     html! {}
                 }}
-        
+                { if show_refresh_button {
+                    html! {
+                            <button onclick={on_refresh_click} class="rounded-lg cursor-pointer">
+                                <div class="flex flex-col items-center">
+                                    {
+                                        if state.is_refreshing.unwrap_or(false) {
+                                            html! {
+                                                <span class="loading-icon">{ "⏳" }</span>
+                                            }
+                                        } else {
+                                            html! {
+                                                <span class="home-material-icons material-icons">{ "refresh" }</span>
+                                            }
+                                        }
+                                    }
+                                </div>
+                            </button>
+                        }
+                } else {
+                    html! {}
+                }}
+
                 {
                     match state.is_loading {
                         Some(true) => html! {
@@ -206,7 +288,7 @@ pub fn app_drawer() -> Html {
                 }
             </div>
         </div>
-        
+
 
 
             // <input
