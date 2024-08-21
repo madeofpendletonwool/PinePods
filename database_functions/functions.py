@@ -247,9 +247,9 @@ def add_podcast(cnx, database_type, podcast_values, user_id, username=None, pass
             print("stats table updated")
 
             # Add episodes to database
-            add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False, username, password)
+            first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'], podcast_values['pod_artwork'], False, username, password)
             print("episodes added")
-            return podcast_id
+            return podcast_id, first_episode_id
 
         except Exception as e:
             logging.error(f"Failed to add podcast: {e}")
@@ -389,20 +389,6 @@ def add_admin_user(cnx, database_type, user_values):
     cnx.commit()
     cursor.close()
 
-def get_first_episode_id(cnx, database_type, podcast_id, user_id):
-    cursor = cnx.cursor()
-    try:
-        if database_type == "postgresql":
-            query = 'SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s LIMIT 1'
-        else:  # MySQL or MariaDB
-            query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s LIMIT 1"
-
-        cursor.execute(query, (podcast_id,))
-        result = cursor.fetchone()
-        return result[0] if result else None
-    finally:
-        cursor.close()
-
 def get_pinepods_version():
     try:
         with open('/pinepods/current_version', 'r') as file:
@@ -415,6 +401,28 @@ def get_pinepods_version():
     except Exception as e:
         return f"An error occurred: {e}"
 
+def get_first_episode_id(cnx, database_type, podcast_id):
+    print('getting first ep id')
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s ORDER BY EpisodePubDate ASC LIMIT 1'
+        else:  # MySQL or MariaDB
+            query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s ORDER BY EpisodePubDate ASC LIMIT 1"
+        print(f'request finish')
+        cursor.execute(query, (podcast_id,))
+        result = cursor.fetchone()
+        print(f'request result {result}')
+
+        if isinstance(result, dict):
+            return result.get("episodeid") if result else None
+        elif isinstance(result, tuple):
+            return result[0] if result else None
+        else:
+            return None
+    finally:
+        cursor.close()
+
 def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username=None, password=None, websocket=False):
     import datetime
     import feedparser
@@ -422,6 +430,8 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
     import re
     import requests
     from requests.auth import HTTPBasicAuth
+
+    first_episode_id = None
 
     if username and password:
         response = requests.get(feed_url, auth=HTTPBasicAuth(username, password))
@@ -555,14 +565,21 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
                 new_episodes.append(episode_data)
             if auto_download:  # Check if auto-download is enabled
                 episode_id = get_episode_id(cnx, database_type, podcast_id, parsed_title, parsed_audio_url)
+
                 user_id = get_user_id_from_pod_id(cnx, database_type, podcast_id)
                 # Call your download function here
                 download_podcast(cnx, database_type, episode_id, user_id)
 
     cnx.commit()
+
+    # Now, retrieve the first episode ID
+    if not websocket and first_episode_id is None:
+        print(f'getting first id pre')
+        first_episode_id = get_first_episode_id(cnx, database_type, podcast_id)
+        print(f'first result {first_episode_id}')
     if websocket:
         return new_episodes
-    return []
+    return first_episode_id
 
 
 def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
@@ -1060,6 +1077,7 @@ def refresh_pods_for_user(cnx, database_type, user_id):
 
     cursor.close()
     return new_episodes
+
 
 
 

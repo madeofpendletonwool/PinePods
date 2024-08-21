@@ -545,6 +545,26 @@ pub fn podcasts() -> Html {
                             } else {
                                 "desc-collapsed".to_string()
                             };
+
+                            fn should_show_see_more_button(podcast_id: i32) -> bool {
+                                let selector = format!(".desc-{}", podcast_id);
+                                let desc_container = web_sys::window()
+                                    .unwrap()
+                                    .document()
+                                    .unwrap()
+                                    .query_selector(&selector)
+                                    .unwrap();
+
+                                if let Some(container) = desc_container {
+                                    let scroll_height = container.scroll_height();
+                                    let client_height = container.client_height();
+                                    return scroll_height > client_height;
+                                }
+
+                                false
+                            }
+
+
                             html! {
                                 <div>
                                 <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
@@ -564,15 +584,17 @@ pub fn podcasts() -> Html {
                                             {
                                                 html! {
                                                     <div class="item-description-text hidden md:block">
-                                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                                        <div
+                                                            class={format!("item_container-text episode-description-container {}", description_class)}
+                                                            onclick={toggle_expanded}  // Make the description container clickable
+                                                            id={format!("desc-{}", podcast.podcastid)}
+                                                        >
                                                             <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                                         </div>
-                                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                                            { if desc_expanded { "See Less" } else { "See More" } }
-                                                        </a>
                                                     </div>
                                                 }
                                             }
+
                                             <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
                                         </div>
                                         <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">

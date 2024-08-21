@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, UseScrollToTop};
+use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -444,6 +444,24 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         "desc-collapsed".to_string()
     };
 
+    fn should_show_see_more_button(podcast_id: i64) -> bool {
+        let selector = format!(".desc-{}", podcast_id);
+        let desc_container = web_sys::window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .query_selector(&selector)
+            .unwrap();
+
+        if let Some(container) = desc_container {
+            let scroll_height = container.scroll_height();
+            let client_height = container.client_height();
+            return scroll_height > client_height;
+        }
+
+        false
+    }
+
     html! {
         <div>
             {
@@ -464,15 +482,17 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             {
                                 html! {
                                     <div class="item-description-text hidden md:block">
-                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                        <div
+                                            class={format!("item_container-text episode-description-container {}", description_class)}
+                                            onclick={toggle_expanded}  // Make the description container clickable
+                                            id={format!("desc-{}", podcast.id)}
+                                        >
                                             <SafeHtml html={podcast_description_clone} />
                                         </div>
-                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                            { if desc_expanded { "See Less" } else { "See More" } }
-                                        </a>
                                     </div>
                                 }
                             }
+
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
                         <button class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} style="width: 60px; height: 60px;">

@@ -634,20 +634,17 @@ async def get_podcast_details(
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
-
     if added:
         podcast_id = database_functions.functions.get_podcast_id(database_type, cnx, user_id, podcast_url, podcast_title)
         details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
         if details is None:
             raise HTTPException(status_code=404, detail="Podcast not found")
 
-        # Handle categories field
-        if database_type == "postgresql":
-            categories = details["categories"]
-        else:
-            categories = details["Categories"]
-
-        if categories.startswith('{'):
+        # Handle categories field with existence check
+        categories = details.get("categories") if database_type != "postgresql" else details.get("categories")
+        if not categories:
+            categories_dict = {}
+        elif categories.startswith('{'):
             try:
                 categories = categories.replace("'", '"')
                 categories_dict = json.loads(categories)
@@ -658,31 +655,17 @@ async def get_podcast_details(
             categories_dict = {str(i): cat.strip() for i, cat in enumerate(categories.split(','))}
 
 
-        if database_type == 'postgresql':
-            pod_details = ClickedFeedURL(
-                podcast_title=details["podcastname"],
-                podcast_url=details["feedurl"],
-                podcast_description=details["description"],
-                podcast_author=details["author"],
-                podcast_artwork=details["artworkurl"],
-                podcast_explicit=details["explicit"],
-                podcast_episode_count=details["episodecount"],
-                podcast_categories=categories_dict,
-                podcast_link=details["websiteurl"],
-            )
-        else:
-            pod_details = ClickedFeedURL(
-                podcast_title=details["PodcastName"],
-                podcast_url=details["FeedURL"],
-                podcast_description=details["Description"],
-                podcast_author=details["Author"],
-                podcast_artwork=details["ArtworkURL"],
-                podcast_explicit=details["Explicit"],
-                podcast_episode_count=details["EpisodeCount"],
-                podcast_categories=categories_dict,
-                podcast_link=details["WebsiteURL"],
-            )
-
+        pod_details = ClickedFeedURL(
+            podcast_title=details["podcastname"],
+            podcast_url=details["feedurl"],
+            podcast_description=details["description"],
+            podcast_author=details["author"],
+            podcast_artwork=details["artworkurl"],
+            podcast_explicit=details["explicit"],
+            podcast_episode_count=details["episodecount"],
+            podcast_categories=categories_dict,
+            podcast_link=details["websiteurl"],
+        )
         return pod_details
     else:
         podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, user_id)
@@ -1083,15 +1066,14 @@ async def api_add_podcast(podcast_values: PodcastValuesModel,
         # Check if user has nextcloud enabled and add to subscription list
         if database_functions.functions.check_gpodder_settings(database_type, cnx, podcast_values.user_id):
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, podcast_values.user_id)
-            print(f"Adding podcast to Nextcloud: {gpodder_url}, {gpodder_login}, {gpodder_token}, {podcast_values.pod_feed_url}")
             gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
             if gpod_type == "nextcloud":
                 database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
             else:
                 database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url, "pinepods")
-        result = database_functions.functions.add_podcast(cnx, database_type, podcast_values.dict(), podcast_values.user_id)
-        if result:
-            return {"success": True}
+        podcast_id, first_episode_id = database_functions.functions.add_podcast(cnx, database_type, podcast_values.dict(), podcast_values.user_id)
+        if podcast_id:
+            return {"success": True, "podcast_id": podcast_id, "first_episode_id": first_episode_id}
         else:
             return {"success": False}
     else:
@@ -1573,21 +1555,19 @@ active_websockets = {}
 @app.websocket("/ws/api/data/episodes/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get_database_connection), nextcloud_refresh: bool = Query(False), api_key: str = Query(None)):
     await websocket.accept()
-    print(f'Nextcloud refresh: {nextcloud_refresh}')
 
     try:
+        print(f"User {user_id} connected to WebSocket")
         # Validate the API key
-        print('Pre validate')
         is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
         if not is_valid_key:
             await websocket.send_json({"detail": "Invalid API key or insufficient permissions"})
             await websocket.close()
             return
-        print('Pre id fetch')
         # Continue as normal for all other episode IDs
         is_web_key = api_key == base_webkey.web_key
         key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
+        print(f"User ID: {user_id}, Key ID: {key_id}, Web Key: {is_web_key}")
         if key_id != user_id and not is_web_key:
             await websocket.send_json({"detail": "You can only refresh your own podcasts"})
             await websocket.close()
@@ -1600,19 +1580,18 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
 
         if user_id not in active_websockets:
             active_websockets[user_id] = []
-
+        print(f"Active WebSockets: {active_websockets}")
         active_websockets[user_id].append(websocket)
 
         # Create a lock for the user and start the refresh task
         user_locks[user_id] = Lock()
-        print('Before task')
         try:
             # Acquire the lock
             user_locks[user_id].acquire()
-
+            print(f"Acquired lock for user {user_id}")
             # Run the refresh process asynchronously without blocking the WebSocket
             task = asyncio.create_task(run_refresh_process(user_id, nextcloud_refresh, websocket))
-
+            print(f"Task created for user {user_id}")
             # Keep the WebSocket connection alive while the task is running
             while not task.done():
                 await asyncio.sleep(1)  # Keep the event loop alive
@@ -1647,15 +1626,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
 
 async def run_refresh_process(user_id, nextcloud_refresh, websocket):
     cnx = create_database_connection()
+    print(f"Running refresh process for user in job {user_id}")
     try:
         if nextcloud_refresh:
-            print('Running inside refresh')
             await websocket.send_json({"detail": "Refreshing Nextcloud subscriptions..."})
-
+            print(f"Refreshing Nextcloud subscriptions for user {user_id}")
             # Retrieve necessary details for the user
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, user_id)
-            print('Got nextcloud stuff')
-
+            print(f"Nextcloud details: {gpodder_url}, {gpodder_token}, {gpodder_login}")
             pod_sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
             if pod_sync_type == "nextcloud":
                 await asyncio.to_thread(database_functions.functions.refresh_nextcloud_subscription,
@@ -1665,7 +1643,6 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket):
                                         database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
 
             await websocket.send_json({"detail": "Pod Sync subscription refresh complete."})
-            print('Refreshed cloud')
 
         # Collect new episodes in a list to send after refresh
         new_episodes = await asyncio.to_thread(database_functions.functions.refresh_pods_for_user, cnx, database_type, user_id)
@@ -1680,7 +1657,14 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket):
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
     finally:
         if database_type == "postgresql":
-            connection_pool.putconn(cnx)
+            if cnx.closed == 0:  # Ensure connection is still open before returning
+                try:
+                    connection_pool.putconn(cnx)
+                except ValueError as e:
+                    print(f"Error returning connection to pool: {e}")
+                    cnx.close()
+            else:
+                cnx.close()
         else:
             cnx.close()
 
@@ -1804,7 +1788,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
                                 detail="You are not authorized to remove podcasts for other users")
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
+        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
         if gpod_type == "nextcloud":
             database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
         else:
@@ -3082,8 +3066,6 @@ class LoginInitiateData(BaseModel):
 @app.post("/api/data/initiate_nextcloud_login")
 async def initiate_nextcloud_login(data: LoginInitiateData, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     import requests
-
-    print(f'key {api_key}')
 
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:

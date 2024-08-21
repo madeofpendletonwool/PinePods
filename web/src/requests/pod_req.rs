@@ -116,9 +116,11 @@ pub struct PodcastValues {
     pub user_id: i32,
 }
 
-#[derive(serde::Deserialize)]
-struct PodcastStatusResponse {
-    success: bool,
+#[derive(serde::Deserialize, Serialize)]
+pub struct PodcastStatusResponse {
+    pub success: bool,
+    pub podcast_id: Option<i32>,
+    pub first_episode_id: Option<i32>,
     // Include other fields if your response contains more data
 }
 
@@ -127,7 +129,7 @@ pub async fn call_add_podcast(
     api_key: &Option<String>,
     _user_id: i32,
     added_podcast: &PodcastValues,
-) -> Result<bool, Error> {
+) -> Result<PodcastStatusResponse, Error> {
     let url = format!("{}/api/data/add_podcast", server_name);
     let api_key_ref = api_key
         .as_deref()
@@ -144,8 +146,11 @@ pub async fn call_add_podcast(
         .await?;
 
     if response.ok() {
+        // Read the response as JSON
         let response_body = response.json::<PodcastStatusResponse>().await?;
-        Ok(response_body.success)
+        // Optionally, you can log the response body as JSON string
+        web_sys::console::log_1(&serde_json::to_string(&response_body).unwrap().into());
+        Ok(response_body)
     } else {
         Err(Error::msg(format!(
             "Error adding podcast: {}",

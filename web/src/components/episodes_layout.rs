@@ -20,6 +20,7 @@ use crate::requests::pod_req::{
     SkipTimesRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
+use crate::requests::search_pods::call_get_podcast_episodes;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use std::collections::HashMap;
@@ -214,6 +215,7 @@ pub fn episode_layout() -> Html {
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
     let loading = use_state(|| true);
+    let page_state = use_state(|| PageState::Hidden);
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -232,7 +234,7 @@ pub fn episode_layout() -> Html {
 
     let session_dispatch = _search_dispatch.clone();
     let session_state = search_state.clone();
-    let podcast_added = search_state.podcast_added.unwrap_or_default();
+    let mut podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
 
     use_effect_with((), move |_| {
@@ -744,9 +746,11 @@ pub fn episode_layout() -> Html {
         let server_name_clone = server_name.clone();
         let app_dispatch = _search_dispatch.clone();
         let call_is_added = is_added.clone();
+        let page_state = page_state.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let page_state = page_state.clone();
             let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
             let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
             app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
@@ -783,6 +787,11 @@ pub fn episode_layout() -> Html {
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             is_added_inner.set(false);
+                            web_sys::console::log_1(&"adjusting podcast added".into());
+                            podcast_added = false;
+                            app_dispatch.reduce_mut(|state| {
+                                state.podcast_added = Some(podcast_added);
+                            });
                         } else {
                             dispatch_wasm.reduce_mut(|state| {
                                 state.error_message =
@@ -790,6 +799,7 @@ pub fn episode_layout() -> Html {
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
+                        page_state.set(PageState::Hidden);
                     }
                     Err(e) => {
                         dispatch_wasm.reduce_mut(|state| {
@@ -907,8 +917,6 @@ pub fn episode_layout() -> Html {
     let payment_icon = { payments_icon() };
 
     let website_icon = { website_icon() };
-
-    let page_state = use_state(|| PageState::Hidden);
 
     let on_close_modal = {
         let page_state = page_state.clone();
@@ -1218,6 +1226,7 @@ pub fn episode_layout() -> Html {
         } else {
             Callback::from(move |_: MouseEvent| {
                 // Ensure this is triggered only by a MouseEvent
+                let callback_podcast_id = podcast_id.clone();
                 let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
                 let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
                 let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
@@ -1271,21 +1280,77 @@ pub fn episode_layout() -> Html {
                     let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
 
                     match call_add_podcast(
-                        &server_name_wasm.unwrap(),
+                        &server_name_wasm.clone().unwrap(),
                         &api_key_wasm,
                         user_id_wasm,
                         &pod_values_clone,
                     )
                     .await
                     {
-                        Ok(success) => {
-                            if success {
+                        Ok(response_body) => {
+                            if response_body.success {
                                 dispatch_wasm.reduce_mut(|state| {
                                     state.info_message =
                                         Option::from("Podcast successfully added".to_string())
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
+                                web_sys::console::log_1(&"adjusting podcast added".into());
+                                podcast_added = true;
+                                if let Some(call_podcast_id) = response_body.podcast_id {
+                                    // Use the podcast_id for further processing if needed
+                                    web_sys::console::log_1(
+                                        &format!("Podcast ID: {}", call_podcast_id).into(),
+                                    );
+                                    callback_podcast_id.set(call_podcast_id);
+                                }
+                                if let Some(first_episode_id) = response_body.first_episode_id {
+                                    web_sys::console::log_1(
+                                        &format!("First Episode ID: {}", first_episode_id).into(),
+                                    );
+                                    // Set the episode_id to the first episode's ID
+                                    let episode_id = Some(first_episode_id);
+
+                                    // Use the episode_id for further processing if needed
+                                    app_dispatch.reduce_mut(|state| {
+                                        state.selected_episode_id = episode_id; // Example usage
+                                    });
+
+                                    // Example log to confirm it's set
+                                    web_sys::console::log_1(
+                                        &format!("Episode ID set to: {}", first_episode_id).into(),
+                                    );
+                                }
+
+                                // Fetch episodes from the database after adding the podcast
+                                if let Some(call_podcast_id) = response_body.podcast_id {
+                                    match call_get_podcast_episodes(
+                                        &server_name_wasm.unwrap(),
+                                        &api_key_wasm,
+                                        &user_id_wasm,
+                                        &call_podcast_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(podcast_feed_results) => {
+                                            app_dispatch.reduce_mut(move |state| {
+                                                state.podcast_feed_results =
+                                                    Some(podcast_feed_results);
+                                            });
+                                            app_dispatch
+                                                .reduce_mut(|state| state.is_loading = Some(false));
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(
+                                                &format!("Error fetching episodes: {:?}", e).into(),
+                                            );
+                                        }
+                                    }
+                                }
+
+                                app_dispatch.reduce_mut(|state| {
+                                    state.podcast_added = Some(podcast_added);
+                                });
                             } else {
                                 dispatch_wasm.reduce_mut(|state| {
                                     state.error_message =
@@ -1402,15 +1467,33 @@ pub fn episode_layout() -> Html {
                                                             html! {}
                                                         }
                                                     }
-                                                    <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                        { download_all }
-                                                    </button>
+                                                    {
+                                                        if search_state.podcast_added.unwrap() {
+                                                            web_sys::console::log_1(&"toggling on".into());
+                                                            html! {
+                                                                <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                                    { download_all }
+                                                                </button>
+                                                            }
+                                                        } else {
+                                                            web_sys::console::log_1(&"toggling off".into());
+                                                            html! {}
+                                                        }
+                                                    }
                                                     <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
                                                         { button_content }
                                                     </button>
-                                                    <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                        { setting_content }
-                                                    </button>
+                                                    {
+                                                        if search_state.podcast_added.unwrap() {
+                                                            html! {
+                                                                <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                                    { setting_content }
+                                                                </button>
+                                                            }
+                                                        } else {
+                                                            html! {}
+                                                        }
+                                                    }
                                                 </div>
                                                 <div class="item-header-mobile-cover-container">
                                                     <img src={podcast_info.podcast_artwork.clone()} alt={format!("Cover for {}", &podcast_info.podcast_title)} class="item-header-mobile-cover"/>
@@ -1464,15 +1547,31 @@ pub fn episode_layout() -> Html {
                                                 <div class="item-header-info">
                                                     <div class="title-button-container">
                                                         <h2 class="item-header-title">{ &podcast_info.podcast_title }</h2>
-                                                        <button onclick={toggle_download} title="Click to download all episodes for this podcast" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                            { download_all }
-                                                        </button>
+                                                        {
+                                                            if search_state.podcast_added.unwrap() {
+                                                                html! {
+                                                                    <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                                        { download_all }
+                                                                    </button>
+                                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
                                                         <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                                             { button_content }
                                                         </button>
-                                                        <button onclick={toggle_settings} title="Click to setup podcast specific settings" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                            { setting_content }
-                                                        </button>
+                                                        {
+                                                            if search_state.podcast_added.unwrap() {
+                                                                html! {
+                                                                    <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                                        { setting_content }
+                                                                    </button>
+                                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
                                                     </div>
 
                                                     // <p class="item-header-description">{ &podcast_info.podcast_description }</p>
