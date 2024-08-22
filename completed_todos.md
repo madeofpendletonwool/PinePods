@@ -26,17 +26,20 @@ Version 0.6.6
 - [] Manually adjust tags for podcast in podcast settings
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Fixed documentation so backend variables work with new docker standards
+- [x] Removed see more button from the episodes_layout, queue, and downloads page
+- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Added filtering to podcasts page
+- [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [x] Update api key creation and deletion after change dynamically with use_effect
+- [x] Update mfa setup slider after setup dynamically with use_effect
+
+CI/CD:
+
 - [] mac version attached like this:
 dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
 - [] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
 - [] Add in x64 mac releases
 - [] Build in arm cross compile into ubuntu build
-- [x] Removed see more button from the episodes_layout, queue, and downloads page
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
-- [] Added filtering to podcasts page
-- [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
-- [] Update api key creation and deletion after change dynamically with use_effect
-- [] Update mfa setup slider after setup dynamically with use_effect
 
 Version 0.6.5
 

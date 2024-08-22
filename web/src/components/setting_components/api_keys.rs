@@ -1,13 +1,14 @@
+use crate::components::context::{AppState, UIState};
+use crate::requests::setting_reqs::{
+    call_create_api_key, call_delete_api_key, call_get_api_info, DeleteAPIRequest,
+};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use crate::requests::setting_reqs::{call_get_api_info, call_create_api_key, call_delete_api_key, DeleteAPIRequest};
 // use crate::gen_components::_ErrorMessageProps::error_message;
 use wasm_bindgen::JsCast;
 
 #[function_component(APIKeys)]
 pub fn api_keys() -> Html {
-
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -23,34 +24,82 @@ pub fn api_keys() -> Html {
     // Define the type of user in the Vec
     // let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 
+    // Fetch the API keys when the component is first rendered or when api_key or server_name changes
     {
         let api_infos = api_infos.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
 
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                let api_infos = api_infos.clone();
+                let api_key_cloned = api_key.clone();
+                let server_name_cloned = server_name.clone();
 
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(api_key) = api_key_cloned {
+                        if let Some(server_name) = server_name_cloned {
+                            match call_get_api_info(server_name, user_id.unwrap(), api_key.unwrap())
+                                .await
+                            {
+                                Ok(response) => {
+                                    api_infos.set(response.api_info);
+                                }
+                                Err(e) => {
+                                    audio_dispatch_effect.reduce_mut(|audio_state| {
+                                        audio_state.error_message =
+                                            Option::from(format!("Error getting API Info: {}", e))
+                                    });
+                                }
+                            }
+                        }
+                    }
+                });
 
-        use_effect_with((api_key, server_name), move |(api_key, server_name)| {
+                || ()
+            },
+        );
+    }
+
+    let audio_dispatch_refresh = audio_dispatch.clone();
+
+    // Add a new `use_effect_with` to re-fetch the API keys when a new API key is added
+    {
+        let api_infos = api_infos.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let new_api_key = new_api_key.clone();
+
+        use_effect_with(new_api_key.clone(), move |_| {
             let api_infos = api_infos.clone();
             let api_key_cloned = api_key.clone();
             let server_name_cloned = server_name.clone();
-    
+
             wasm_bindgen_futures::spawn_local(async move {
-                if let Some(api_key) = api_key_cloned {
-                    if let Some(server_name) = server_name_cloned {
-                        match call_get_api_info(server_name, user_id.unwrap(), api_key.unwrap()).await {
-                            Ok(response) => {
-                                api_infos.set(response.api_info);
-                            },
-                            Err(e) => {
-                                audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting API Info: {}", e)));
+                if !new_api_key.is_empty() {
+                    if let Some(api_key) = api_key_cloned {
+                        if let Some(server_name) = server_name_cloned {
+                            match call_get_api_info(server_name, user_id.unwrap(), api_key.unwrap())
+                                .await
+                            {
+                                Ok(response) => {
+                                    api_infos.set(response.api_info);
+                                }
+                                Err(e) => {
+                                    audio_dispatch_refresh.reduce_mut(|audio_state| {
+                                        audio_state.error_message =
+                                            Option::from(format!("Error getting API Info: {}", e))
+                                    });
+                                }
                             }
                         }
                     }
                 }
             });
-    
+
             || ()
         });
     }
@@ -65,8 +114,6 @@ pub fn api_keys() -> Html {
 
     // Define the initial state
     let page_state = use_state(|| PageState::Hidden);
-
-
 
     // Define the function to close the modal
     let close_modal = {
@@ -91,7 +138,6 @@ pub fn api_keys() -> Html {
         e.stop_propagation();
     });
 
-
     // Define the function to open the modal and request a new API key
     let request_state = state.clone();
     let request_api_key = {
@@ -102,19 +148,30 @@ pub fn api_keys() -> Html {
         Callback::from(move |_| {
             let audio_dispatch = audio_dispatch.clone();
             let api_key = api_key.clone();
-            let user_id = request_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+            let user_id = request_state
+                .user_details
+                .as_ref()
+                .map(|ud| ud.UserID.clone());
             let server_name = server_name.clone();
             let page_state = page_state.clone();
             let new_api_key = new_api_key.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                match call_create_api_key(&server_name.unwrap(), user_id.unwrap(), &api_key.unwrap().unwrap()).await {
+                match call_create_api_key(
+                    &server_name.unwrap(),
+                    user_id.unwrap(),
+                    &api_key.unwrap().unwrap(),
+                )
+                .await
+                {
                     Ok(response) => {
                         new_api_key.set(response.api_key);
                         page_state.set(PageState::Shown); // Move to the edit page state
-                    },
+                    }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(e.to_string()));
-                    },
+                        audio_dispatch.reduce_mut(|audio_state| {
+                            audio_state.error_message = Option::from(e.to_string())
+                        });
+                    }
                 }
             });
         })
@@ -141,14 +198,26 @@ pub fn api_keys() -> Html {
                 api_id: api_id.unwrap().to_string(),
             };
             wasm_bindgen_futures::spawn_local(async move {
-                match call_delete_api_key(&server_name.unwrap(), delete_body, &api_key.unwrap().unwrap()).await {
+                match call_delete_api_key(
+                    &server_name.unwrap(),
+                    delete_body,
+                    &api_key.unwrap().unwrap(),
+                )
+                .await
+                {
                     Ok(_) => {
-                        audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from(format!("API key deleted successfully")));
+                        audio_dispatch.reduce_mut(|audio_state| {
+                            audio_state.info_message =
+                                Option::from(format!("API key deleted successfully"))
+                        });
                         // Update UI accordingly, e.g., remove the deleted API key from the list
-                    },
+                    }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error Deleting API Key: {}", e)));
-                    },
+                        audio_dispatch.reduce_mut(|audio_state| {
+                            audio_state.error_message =
+                                Option::from(format!("Error Deleting API Key: {}", e))
+                        });
+                    }
                 }
                 page_state.set(PageState::Hidden); // Hide modal after deletion
             });
@@ -159,13 +228,13 @@ pub fn api_keys() -> Html {
     let on_api_key_row_click = {
         let selected_api_key_id = selected_api_key_id.clone();
         let page_state = page_state.clone();
-        move |api_key_id: i32| Callback::from(move |_| {
-            selected_api_key_id.set(Some(api_key_id));
-            page_state.set(PageState::Delete); // Assuming you have a PageState enum value for showing the delete modal
-        })
+        move |api_key_id: i32| {
+            Callback::from(move |_| {
+                selected_api_key_id.set(Some(api_key_id));
+                page_state.set(PageState::Delete); // Assuming you have a PageState enum value for showing the delete modal
+            })
+        }
     };
-    
-
 
     let delete_api_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
@@ -224,9 +293,6 @@ pub fn api_keys() -> Html {
             </div>
         </div>
     };
-
-    
-
 
     html! {
         <>
