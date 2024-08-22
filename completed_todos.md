@@ -31,7 +31,7 @@ dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
 - [] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
 - [] Add in x64 mac releases
 - [] Build in arm cross compile into ubuntu build
-- [] Removed see more button from the episodes_layout page
+- [x] Removed see more button from the episodes_layout, queue, and downloads page
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Added filtering to podcasts page
 - [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
