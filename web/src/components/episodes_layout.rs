@@ -1770,12 +1770,12 @@ pub fn episode_layout() -> Html {
                                                             {
                                                                 html! {
                                                                     <div class="item-description-text hidden md:block">
-                                                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                                                        <div
+                                                                            class={format!("item_container-text episode-description-container {}", description_class)}
+                                                                            onclick={toggle_expanded}  // Make the description container clickable
+                                                                        >
                                                                             <SafeHtml html={description} />
                                                                         </div>
-                                                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                                                            { if is_expanded { "See Less" } else { "See More" } }
-                                                                        </a>
                                                                     </div>
                                                                 }
                                                             }

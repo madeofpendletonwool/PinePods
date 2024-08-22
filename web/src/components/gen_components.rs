@@ -1510,12 +1510,12 @@ pub fn download_episode_item(
                     {
                         html! {
                             <div class="item-description-text hidden md:block">
-                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                <div
+                                    class={format!("item_container-text episode-description-container {}", description_class)}
+                                    onclick={toggle_expanded}  // Make the description container clickable
+                                >
                                     <SafeHtml html={description} />
                                 </div>
-                                <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                    { if is_expanded { "See Less" } else { "See More" } }
-                                </a>
                             </div>
                         }
                     }
@@ -1620,17 +1620,6 @@ pub fn queue_episode_item(
         "desc-collapsed".to_string()
     };
 
-    // // Wrap ontouchend callback to ensure class is removed
-    // let wrapped_ontouchend = {
-    //     let element_ref = element_ref_drag.clone();
-    //     Callback::from(move |e: TouchEvent| {
-    //         if let Some(element) = element_ref.cast::<HtmlElement>() {
-    //             element.class_list().remove_1("dragging").unwrap();
-    //         }
-    //         ontouchend.emit(e);
-    //     })
-    // };
-
     html! {
         <>
         <div
@@ -1681,12 +1670,12 @@ pub fn queue_episode_item(
                     {
                         html! {
                             <div class="item-description-text hidden md:block">
-                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                <div
+                                    class={format!("item_container-text episode-description-container {}", description_class)}
+                                    onclick={toggle_expanded}  // Make the description container clickable
+                                >
                                     <SafeHtml html={description} />
                                 </div>
-                                <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                    { if is_expanded { "See Less" } else { "See More" } }
-                                </a>
                             </div>
                         }
                     }
