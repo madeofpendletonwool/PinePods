@@ -1168,12 +1168,14 @@ pub async fn initiate_nextcloud_login(
 ) -> Result<NextcloudInitiateResponse, Error> {
     // Construct the URL with query parameters
     let url = format!("{}/api/data/initiate_nextcloud_login", server_name);
+    web_sys::console::log_1(&url.clone().into());
     let request_body = LoginInitiateRequest {
         user_id,
         nextcloud_url: nextcloud_url.to_string(),
     };
     let json_body = serde_json::to_string(&request_body)
         .map_err(|e| Error::msg(format!("Failed to serialize request body: {}", e)))?;
+    web_sys::console::log_1(&api_key.clone().into());
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")

@@ -88,6 +88,7 @@ pub struct AppState {
     pub pods: Option<Podcast>,
     pub podcast_feed_return: Option<PodcastResponse>,
     pub is_loading: Option<bool>,
+    pub is_refreshing: Option<bool>,
     pub gravatar_url: Option<String>,
     #[serde(default)]
     pub expanded_descriptions: HashSet<String>,

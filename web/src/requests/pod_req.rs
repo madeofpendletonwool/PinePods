@@ -1,9 +1,15 @@
 use anyhow::{Context, Error};
+// use futures_util::stream::StreamExt;
+use futures::{SinkExt, StreamExt};
+use gloo::net::websocket::WebSocketError;
+use gloo::net::websocket::{futures::WebSocket, Message};
 use gloo_net::http::Request;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::from_str;
 use std::collections::HashMap;
 use std::fmt;
+use web_sys::console;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -110,9 +116,11 @@ pub struct PodcastValues {
     pub user_id: i32,
 }
 
-#[derive(serde::Deserialize)]
-struct PodcastStatusResponse {
-    success: bool,
+#[derive(serde::Deserialize, Serialize)]
+pub struct PodcastStatusResponse {
+    pub success: bool,
+    pub podcast_id: Option<i32>,
+    pub first_episode_id: Option<i32>,
     // Include other fields if your response contains more data
 }
 
@@ -121,7 +129,7 @@ pub async fn call_add_podcast(
     api_key: &Option<String>,
     _user_id: i32,
     added_podcast: &PodcastValues,
-) -> Result<bool, Error> {
+) -> Result<PodcastStatusResponse, Error> {
     let url = format!("{}/api/data/add_podcast", server_name);
     let api_key_ref = api_key
         .as_deref()
@@ -138,8 +146,11 @@ pub async fn call_add_podcast(
         .await?;
 
     if response.ok() {
+        // Read the response as JSON
         let response_body = response.json::<PodcastStatusResponse>().await?;
-        Ok(response_body.success)
+        // Optionally, you can log the response body as JSON string
+        web_sys::console::log_1(&serde_json::to_string(&response_body).unwrap().into());
+        Ok(response_body)
     } else {
         Err(Error::msg(format!(
             "Error adding podcast: {}",
@@ -1959,4 +1970,88 @@ pub async fn call_get_pinepods_version(
             error_text
         )))
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
+pub struct EpisodeWebsocketResponse {
+    pub episode_id: i32,
+    pub podcast_id: i32,
+    pub title: String,
+    pub description: Option<String>,
+    pub audio_url: String,
+    pub artwork_url: Option<String>,
+    pub release_datetime: String,
+    pub duration: i32,
+    pub completed: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct EpisodeResponse {
+    pub new_episode: EpisodeWebsocketResponse,
+}
+
+pub async fn connect_to_episode_websocket(
+    server_name: &String,
+    user_id: &i32,
+    api_key: &str,
+    nextcloud_refresh: bool,
+) -> Result<Vec<EpisodeWebsocketResponse>, Error> {
+    let clean_server_name = server_name
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
+
+    let url = format!(
+        "ws://{}/ws/api/data/episodes/{}?api_key={}&nextcloud_refresh={}",
+        clean_server_name, user_id, api_key, nextcloud_refresh
+    );
+
+    // Open WebSocket connection
+    let ws_result = WebSocket::open(&url);
+
+    if ws_result.is_err() {
+        return Err(Error::msg(format!(
+            "Failed to open WebSocket: {:?}",
+            ws_result.err()
+        )));
+    }
+
+    let mut websocket = ws_result.unwrap();
+    let (mut write, mut read) = websocket.split();
+
+    let mut episodes = Vec::new();
+
+    // Read messages from the WebSocket
+    while let Some(msg) = read.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                match serde_json::from_str::<EpisodeResponse>(&text) {
+                    Ok(episode_response) => {
+                        episodes.push(episode_response.new_episode.clone());
+                        // Logging received message
+                        console::log_1(
+                            &format!("Received new episode: {:?}", episode_response.new_episode)
+                                .into(),
+                        );
+                    }
+                    Err(e) => {
+                        console::log_1(&format!("Failed to parse episode: {}", e).into());
+                    }
+                }
+            }
+            Ok(Message::Bytes(_)) => {
+                console::log_1(&"Binary message received, ignoring".into());
+            }
+            Err(WebSocketError::ConnectionClose(close_event)) => {
+                console::log_1(&format!("WebSocket closed: {:?}", close_event).into());
+                break;
+            }
+            Err(e) => {
+                console::log_1(&format!("WebSocket error: {:?}", e).into());
+                break;
+            }
+        }
+    }
+
+    Ok(episodes)
 }

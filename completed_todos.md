@@ -24,6 +24,11 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Added filtering to podcasts page
+- [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [] Manually adjust tags for podcast in podcast settings
+- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [] When opening an episode ensure there's a loading spinner until the context loads in
+- [] Fixed documentation so backend variables work with new docker standards
 
 Version 0.6.5
 
@@ -32,13 +37,15 @@ Version 0.6.5
 - [x] Allow for podcast feeds with user and pass
 - [x] Add option to add podcast from feed on podcasts page
 - [x] Ensure podcast loads onto podcast page when adding a new custom one in
-- [] Adjusted buttons on episode layout page so they dynamically adjust position to fit better
-- [] Option for user to manually update feeds
-- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
-- [] Manually adjust tags for podcast in podcast settings
-- [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [x] Adjusted buttons on episode layout page so they dynamically adjust position to fit better
+- [x] Option for user to manually update feeds
+- [x] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [x] Fixed issue with episode refreshing where a panic could occur (This was due to the categories list)
+- [x] Ensured See More Button only shows when needed (Just made the descriptions clickable)
+- [x] Fixed issue with context for podcasts not dynamically updating on the episode layout page once the podcast was added to the db
 - [x] Fixed issue with nextcloud sync on mysql dbs
 - [x] Fixed issue with db setup with mysql
+- [x] Ensured deleting podcast when on the episode layout page it closes the deleted modal
 
 Version 0.6.4
 

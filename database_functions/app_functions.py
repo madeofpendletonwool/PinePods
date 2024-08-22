@@ -118,8 +118,14 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
 
     # Use requests to fetch the feed content
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        print(f"Fetching URL: {feed_url}")
+        print(f"Headers: {headers}")
         if username and password:
+            print(f"Using auth for user: {username}")
             response = requests.get(feed_url, headers=headers, auth=HTTPBasicAuth(username, password))
         else:
             response = requests.get(feed_url, headers=headers)
@@ -127,6 +133,8 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
         response.raise_for_status()  # Raise an exception for HTTP errors
         feed_content = response.content
     except requests.RequestException as e:
+        print(f"Response headers: {response.headers}")
+        print(f"Response content: {response.content}")
         raise ValueError(f"Error fetching the feed: {str(e)}")
 
     # Parse the feed
