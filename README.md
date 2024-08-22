@@ -387,7 +387,7 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
 - [ ] Implement Podroll to Podcast page when offered
-- [ ] Sharing System
+- [ ] Sharing System - Podcast Share implemented, episode coming in next minor update!
 - [ ] Option to use login images as background throughout app.
 - [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
 - [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in

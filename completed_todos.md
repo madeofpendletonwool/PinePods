@@ -17,18 +17,26 @@ Next Minor Version:
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
-- [] Update api key creation and deletion after change dynamically with use_effect
-- [] Update mfa setup slider after setup dynamically with use_effect
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
+- [] When opening an episode ensure there's a loading spinner until the context loads in
 
+Version 0.6.6
+
+- [] Manually adjust tags for podcast in podcast settings
+- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [] Fixed documentation so backend variables work with new docker standards
+- [] mac version attached like this:
+dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
+- [] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
+- [] Add in x64 mac releases
+- [] Build in arm cross compile into ubuntu build
+- [] Removed see more button from the episodes_layout page
 - [] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Added filtering to podcasts page
 - [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
-- [] Manually adjust tags for podcast in podcast settings
-- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
-- [] When opening an episode ensure there's a loading spinner until the context loads in
-- [] Fixed documentation so backend variables work with new docker standards
+- [] Update api key creation and deletion after change dynamically with use_effect
+- [] Update mfa setup slider after setup dynamically with use_effect
 
 Version 0.6.5
 
