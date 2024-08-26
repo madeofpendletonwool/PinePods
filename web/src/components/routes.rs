@@ -29,6 +29,8 @@ pub enum Route {
     UserStats,
     #[at("/sign_out")]
     LogOut,
+    #[at("/person/:name")]
+    Person { name: String },
     #[at("/pod_layout")]
     PodLayout,
     #[at("/search_new")]

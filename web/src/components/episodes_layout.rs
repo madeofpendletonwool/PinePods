@@ -165,6 +165,13 @@ pub struct HostDropdownProps {
     pub hosts: Vec<Person>,
 }
 
+#[derive(Clone, PartialEq)]
+pub struct Host {
+    pub name: String,
+    pub img: Option<String>,
+    pub href: Option<String>, // This will be used for navigation
+}
+
 #[function_component(HostDropdown)]
 pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> Html {
     let is_open = use_state(|| false);
@@ -172,6 +179,8 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
         let is_open = is_open.clone();
         Callback::from(move |_| is_open.set(!*is_open))
     };
+
+    let history = BrowserHistory::new();
 
     let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };
 
@@ -191,15 +200,26 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
             </button>
             if *is_open {
                 <div class="flex space-x-4 mt-2">
-                    { for hosts.iter().map(|host| html! {
-                        <div class="flex flex-col items-center">
-                            { if let Some(img) = &host.img {
-                                html! { <img src={img.clone()} alt={host.name.clone()} class="w-12 h-12 rounded-full" /> }
-                            } else {
-                                html! {}
-                            }}
-                            <a href={host.href.clone().unwrap_or_default()} class="text-center text-blue-500 hover:underline mt-1">{ &host.name }</a>
-                        </div>
+                    { for hosts.iter().map(|host| {
+                        let host_name = host.name.clone();
+                        let on_host_click = {
+                            let history = history.clone();
+                            Callback::from(move |_| {
+                                let target_url = format!("/person/{}", host_name);
+                                history.push(target_url);
+                            })
+                        };
+
+                        html! {
+                            <div class="flex flex-col items-center" onclick={on_host_click}>
+                                { if let Some(img) = &host.img {
+                                    html! { <img src={img.clone()} alt={host.name.clone()} class="w-12 h-12 rounded-full" /> }
+                                } else {
+                                    html! {}
+                                }}
+                                <span class="text-center text-blue-500 hover:underline mt-1">{ &host.name }</span>
+                            </div>
+                        }
                     })}
                 </div>
             }

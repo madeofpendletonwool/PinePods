@@ -5,6 +5,7 @@ use gloo_net::http::Request;
 use rss::Channel;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use wasm_bindgen::JsValue;
 
 #[derive(Deserialize, Debug)]
 pub struct RecentEps {
@@ -238,7 +239,6 @@ pub struct Episode {
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct PodcastFeedResult {
-    // ... other fields ...
     pub(crate) episodes: Vec<Episode>,
 }
 
@@ -247,11 +247,14 @@ pub async fn call_get_podcast_info(
     search_api_url: &Option<String>,
     search_index: &str,
 ) -> Result<PodcastSearchResult, anyhow::Error> {
+    web_sys::console::log_1(&JsValue::from_str("Calling get podcast info"));
+    web_sys::console::log_1(&JsValue::from_str(podcast_value));
     let url = if let Some(api_url) = search_api_url {
         format!("{}?query={}&index={}", api_url, podcast_value, search_index)
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
+    web_sys::console::log_1(&JsValue::from_str(&url));
 
     let response = Request::get(&url)
         .send()
@@ -270,6 +273,48 @@ pub async fn call_get_podcast_info(
     } else {
         Err(anyhow::Error::msg(format!(
             "Failed to fetch podcast info: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+// pub struct PersonSearchResult {
+//     pub(crate) episodes: Vec<Episode>,
+// }
+
+pub async fn call_get_person_info(
+    person_name: &String,
+    search_api_url: &Option<String>,
+    search_index: &str,
+) -> Result<PodcastFeedResult, anyhow::Error> {
+    let url = if let Some(api_url) = search_api_url {
+        format!(
+            "{}?query={}&index={}&type=person",
+            api_url, person_name, search_index
+        )
+    } else {
+        return Err(anyhow::Error::msg("API URL is not provided"));
+    };
+    web_sys::console::log_1(&JsValue::from_str(&url));
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|err| anyhow::Error::new(err))?;
+
+    if response.ok() {
+        let response_text = response
+            .text()
+            .await
+            .map_err(|err| anyhow::Error::new(err))?;
+
+        let search_results: PodcastFeedResult = serde_json::from_str(&response_text)?;
+        web_sys::console::log_1(&JsValue::from_str(&response_text));
+        Ok(search_results)
+    } else {
+        Err(anyhow::Error::msg(format!(
+            "Failed to fetch person info: {}",
             response.status_text()
         )))
     }

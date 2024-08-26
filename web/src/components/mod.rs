@@ -21,6 +21,7 @@ pub(crate) mod gen_components;
 pub mod gen_funcs;
 #[cfg(feature = "server_build")]
 pub mod login;
+pub(crate) mod person;
 pub(crate) mod podcast_layout;
 pub(crate) mod podcasts;
 pub(crate) mod search_new;
