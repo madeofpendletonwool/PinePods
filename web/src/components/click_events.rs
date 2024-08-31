@@ -2,7 +2,8 @@ use crate::components::context::AppState;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{call_check_podcast, call_get_podcast_details, call_get_podcast_id};
 use crate::requests::search_pods::{
-    call_get_podcast_episodes, call_parse_podcast_channel_info, call_parse_podcast_url,
+    call_get_person_info, call_get_podcast_episodes, call_parse_podcast_channel_info,
+    call_parse_podcast_url,
 };
 use anyhow::Error;
 use std::collections::HashMap;

@@ -9,7 +9,9 @@ use crate::requests::pod_req::{
     HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
     RecentEps, SavedEpisodesResponse, Transcript, Value,
 };
-use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
+use crate::requests::search_pods::{
+    PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse,
+};
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::stat_reqs::UserStats;
 use serde::Deserialize;
@@ -77,6 +79,7 @@ pub struct AppState {
     pub info_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
+    pub people_feed_results: Option<PeopleFeedResult>,
     pub server_feed_results: Option<RecentEps>,
     pub queued_episodes: Option<QueuedEpisodesResponse>,
     pub saved_episodes: Option<SavedEpisodesResponse>,

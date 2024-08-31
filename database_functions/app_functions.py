@@ -110,7 +110,7 @@ def sync_episode_actions(nextcloud_url, headers):
     # Implement fetching and creating episode actions
     # Similar to the sync_subscriptions method
 
-def get_podcast_values(feed_url, user_id, username: Optional[str] = None, password: Optional[str] = None):
+def get_podcast_values(feed_url, user_id, username: Optional[str] = None, password: Optional[str] = None, display_only: bool = False):
     import feedparser
     import json
     import requests
@@ -147,7 +147,7 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
         'pod_author': d.feed.author if hasattr(d.feed, 'author') else None,
         'categories': [],
         'pod_description': d.feed.description if hasattr(d.feed, 'description') else None,
-        'pod_episode_count': 0,
+        'pod_episode_count': len(d.entries) if display_only else 0,
         'pod_feed_url': feed_url,
         'pod_website': d.feed.link if hasattr(d.feed, 'link') else None,
         'pod_explicit': False,

@@ -628,6 +628,7 @@ async def get_podcast_details(
     podcast_title: str,
     podcast_url: str,
     added: bool,
+    display_only: bool = False,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header),
 ):
@@ -668,8 +669,9 @@ async def get_podcast_details(
         )
         return pod_details
     else:
-        podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, user_id)
+        podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, user_id, None, None, display_only)
         categories = podcast_values['categories']
+        print(f"heres the ep count: {podcast_values['pod_episode_count']}")
 
         if categories.startswith('{'):
             try:

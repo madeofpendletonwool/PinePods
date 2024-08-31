@@ -57,9 +57,17 @@ async fn search_handler(query: web::Query<SearchQuery>) -> impl Responder {
         };
 
         let encoded_search_term = urlencoding::encode(&search_term);
+        println!("Encoded search term: {}", encoded_search_term);
+        println!("Search type: {}", search_type);
         let podcast_search_url = match search_type.as_str() {
-            "person" => format!("https://api.podcastindex.org/api/1.0/search/byperson?q={}", encoded_search_term),
-            _ => format!("https://api.podcastindex.org/api/1.0/search/byterm?q={}", encoded_search_term),
+            "person" => {
+                println!("Using /search/byperson endpoint");
+                format!("https://api.podcastindex.org/api/1.0/search/byperson?q={}", encoded_search_term)
+            },
+            _ => {
+                println!("Using /search/byterm endpoint");
+                format!("https://api.podcastindex.org/api/1.0/search/byterm?q={}", encoded_search_term)
+            },
         };
 
         println!("Using Podcast Index search URL: {}", podcast_search_url);
@@ -96,7 +104,10 @@ async fn search_handler(query: web::Query<SearchQuery>) -> impl Responder {
             if resp.status().is_success() {
                 println!("Request succeeded");
                 match resp.text().await {
-                    Ok(body) => HttpResponse::Ok().content_type("application/json").body(body),
+                    Ok(body) => {
+                        println!("Response body: {:?}", body);
+                        HttpResponse::Ok().content_type("application/json").body(body)
+                    },
                     Err(_) => {
                         error!("Failed to parse response body");
                         HttpResponse::InternalServerError().body("Failed to parse response body")
@@ -114,7 +125,6 @@ async fn search_handler(query: web::Query<SearchQuery>) -> impl Responder {
         }
     }
 }
-
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

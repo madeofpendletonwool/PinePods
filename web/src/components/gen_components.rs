@@ -18,7 +18,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
-use crate::requests::search_pods::{call_get_podcast_info, test_connection};
+use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
 use std::any::Any;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -1247,6 +1247,40 @@ impl EpisodeTrait for SearchNewEpisode {
             fallback_id
         } else {
             panic!("No episode ID available");
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for PeopleEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.feedImage.clone().unwrap()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+        if let Some(id) = self.id {
+            id
+        } else if let Some(fallback_id) = fallback_id {
+            fallback_id
+        } else {
+            // Truncate i64 to fit into i32
+            let truncated_id = (self.id.unwrap_or(0) as u32) as i32;
+            if truncated_id != 0 {
+                truncated_id
+            } else {
+                panic!("No episode ID available");
+            }
         }
     }
 

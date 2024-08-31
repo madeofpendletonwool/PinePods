@@ -14,16 +14,19 @@ use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
     call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
-    call_get_auto_skip_times, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_remove_podcasts_name, AutoDownloadRequest, DownloadAllPodcastRequest,
-    FetchPodcasting2PodDataRequest, Person, PodcastValues, RemovePodcastValuesName,
+    call_get_auto_skip_times, call_get_podcast_details, call_get_podcast_id,
+    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name, call_remove_podcasts_name,
+    AutoDownloadRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, Person,
+    Podcast, PodcastDetails, PodcastResponse, PodcastValues, RemovePodcastValuesName,
     SkipTimesRequest,
 };
+use crate::requests::search_pods::call_get_person_info;
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
@@ -172,8 +175,40 @@ pub struct Host {
     pub href: Option<String>, // This will be used for navigation
 }
 
+fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
+    Podcast {
+        podcastid: details.podcastid,
+        podcastname: details.podcastname,
+        artworkurl: Some(details.artworkurl),
+        description: Some(details.description),
+        episodecount: details.episodecount,
+        websiteurl: Some(details.websiteurl),
+        feedurl: details.feedurl,
+        author: Some(details.author),
+        categories: details.categories,
+        explicit: details.explicit,
+    }
+}
+
 #[function_component(HostDropdown)]
 pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> Html {
+    let (search_state, _search_dispatch) = use_store::<AppState>();
+    let api_key = search_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
+    let server_name = search_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
+    let api_url = search_state
+        .server_details
+        .as_ref()
+        .map(|ud| ud.api_url.clone());
+    let user_id = search_state
+        .user_details
+        .as_ref()
+        .map(|ud| ud.UserID.clone());
     let is_open = use_state(|| false);
     let toggle = {
         let is_open = is_open.clone();
@@ -202,13 +237,132 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                 <div class="flex space-x-4 mt-2">
                     { for hosts.iter().map(|host| {
                         let host_name = host.name.clone();
+                        let dispatch = _search_dispatch.clone(); // Clone dispatch to use in the async block
+                        let server_name_clone = server_name.clone(); // Ensure you have the server_name
+                        let server_name_clone = api_key.clone(); // Ensure you have the api_key
+                        let history_clone = history.clone();
+                        let api_url_clone = api_url.clone();
+
                         let on_host_click = {
-                            let history = history.clone();
+                            let dispatch_clone = dispatch.clone();
+                            let server_name = server_name.clone();
+                            let api_key = api_key.clone();
+                            let api_url = api_url.clone();
+                            let user_id = user_id.clone();
+                            let host_name = host_name.clone();
+                            let history = history_clone.clone();
+                            let search_state_call = search_state.clone();
+
                             Callback::from(move |_| {
-                                let target_url = format!("/person/{}", host_name);
-                                history.push(target_url);
+                                let hostname = host_name.clone();
+                                let api_url = api_url.clone();
+                                let api_key = api_key.clone();
+                                let server_name = server_name.clone();
+                                let search_state = search_state_call.clone();
+                                let dispatch = dispatch_clone.clone();
+                                let history = history.clone();
+
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    let target_url = format!("/person/{}", hostname);
+
+                                    // Fetch person info
+                                    if let Ok(person_search_result) = call_get_person_info(
+                                        &hostname,
+                                        &api_url.unwrap(),
+                                        &api_key.clone().unwrap().unwrap(),
+                                    ).await {
+
+                                        // Extract unique podcast feeds
+                                        let unique_feeds: HashSet<_> = person_search_result.items.iter()
+                                            .map(|item| (item.feedTitle.clone(), item.feedUrl.clone()))
+                                            .collect();
+
+                                        let mut fetched_podcasts = vec![];
+
+                                        for (feed_title, feed_url) in unique_feeds {
+
+                                            web_sys::console::log_1(&format!("Checking podcast: {:?} - {:?}", feed_title, feed_url).into());
+                                            let podcast_exists = call_check_podcast(
+                                                &server_name.clone().unwrap(),
+                                                &api_key.clone().unwrap().unwrap(),
+                                                user_id.unwrap(),
+                                                &feed_title.clone().unwrap_or_default(),
+                                                &feed_url.clone().unwrap_or_default(),
+                                            ).await.unwrap_or_default().exists;
+
+                                            if podcast_exists {
+                                                // Fetch podcast details if it exists in the database
+                                                web_sys::console::log_1(&format!("Podcast exists: {:?} - {:?}", feed_title, feed_url).into());
+                                                if let Ok(podcast_id) = call_get_podcast_id(
+                                                    &server_name.clone().unwrap(),
+                                                    &api_key.clone().unwrap(),
+                                                    &search_state.user_details.as_ref().unwrap().UserID,
+                                                    &feed_url.unwrap_or_default(),
+                                                    &feed_title.clone().unwrap_or_default(),
+                                                ).await {
+                                                    if let Ok(podcast_details) = call_get_podcast_details(
+                                                        &server_name.clone().unwrap(),
+                                                        &api_key.clone().unwrap().unwrap(),
+                                                        search_state.user_details.as_ref().unwrap().UserID,
+                                                        &podcast_id,
+                                                    ).await {
+                                                        fetched_podcasts.push(map_podcast_details_to_podcast(podcast_details));
+                                                    }
+                                                }
+                                            } else {
+                                                // Fetch podcast dynamically if it doesn't exist in the database
+                                                web_sys::console::log_1(&format!("Podcast does not exist: {:?} - {:?}", feed_title, feed_url).into());
+                                                if let Ok(clicked_feed_url) = call_get_podcast_details_dynamic(
+                                                    &server_name.clone().unwrap(),
+                                                    &api_key.clone().unwrap().unwrap(),
+                                                    user_id.unwrap(),
+                                                    &feed_title.clone().unwrap_or_default(),
+                                                    &feed_url.clone().unwrap_or_default(),
+                                                    false,
+                                                    Some(true),
+                                                ).await {
+                                                    web_sys::console::log_1(&format!("Fetched Podcast Episode Count: {}", clicked_feed_url.podcast_episode_count).into());
+
+                                                    let podcast = Podcast {
+                                                        podcastid: 0, // Set a dummy ID or handle appropriately
+                                                        podcastname: clicked_feed_url.podcast_title,
+                                                        artworkurl: Some(clicked_feed_url.podcast_artwork),
+                                                        description: Some(clicked_feed_url.podcast_description),
+                                                        episodecount: clicked_feed_url.podcast_episode_count,
+                                                        websiteurl: Some(clicked_feed_url.podcast_link),
+                                                        feedurl: clicked_feed_url.podcast_url,
+                                                        author: Some(clicked_feed_url.podcast_author),
+                                                        categories: clicked_feed_url.podcast_categories
+                                                            .map(|cat_map| cat_map.values().cloned().collect::<Vec<_>>().join(", "))
+                                                            .unwrap_or_else(|| "{}".to_string()),
+                                                        explicit: clicked_feed_url.podcast_explicit,
+                                                    };
+                                                    fetched_podcasts.push(podcast);
+                                                }
+                                            }
+                                        }
+
+                                        // Update the state once with all the fetched podcasts
+                                        dispatch.reduce_mut(move |state| {
+                                            state.podcast_feed_return = Some(PodcastResponse {
+                                                pods: Some(fetched_podcasts),
+                                            });
+                                            state.people_feed_results = Some(person_search_result);
+                                            state.is_loading = Some(false);
+                                        });
+
+                                        history.push(target_url);
+                                    } else {
+                                        // Handle error
+                                        dispatch.reduce_mut(|state| {
+                                            state.error_message = Some("Failed to fetch person info".to_string());
+                                            state.is_loading = Some(false);
+                                        });
+                                    }
+                                });
                             })
                         };
+
 
                         html! {
                             <div class="flex flex-col items-center" onclick={on_host_click}>
@@ -409,6 +563,7 @@ pub fn episode_layout() -> Html {
                                     podcast_info.podcast_title.as_str(),
                                     podcast_info.podcast_url.as_str(),
                                     added,
+                                    Some(false),
                                 )
                                 .await
                                 .unwrap();
