@@ -1094,6 +1094,7 @@ pub struct EpisodeInfo {
     pub episodetitle: String,
     pub podcastname: String,
     pub podcastid: i32,
+    pub feedurl: String,
     pub episodepubdate: String,
     pub episodedescription: String,
     pub episodeartwork: String,
@@ -1513,6 +1514,47 @@ pub async fn call_get_podcast_id(
 
     let response_data: PodcastIdResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.episodes)
+}
+
+pub async fn call_get_episode_id(
+    server_name: &str,
+    api_key: &String,
+    user_id: &i32,
+    episode_title: &str,
+    episode_url: &str,
+) -> Result<i32, anyhow::Error> {
+    // Append the user_id, podcast_feed, and podcast_title as query parameters
+    let encoded_feed = utf8_percent_encode(episode_url, NON_ALPHANUMERIC).to_string();
+    let encoded_title = utf8_percent_encode(episode_title, NON_ALPHANUMERIC).to_string();
+    let url = format!(
+        "{}/api/data/get_episode_id_ep_name?user_id={}&episode_url={}&episode_title={}",
+        server_name, user_id, encoded_feed, encoded_title
+    );
+
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast id: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+
+    // Log the response text
+    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+        "Response text: {}",
+        response_text
+    )));
+
+    // Try to parse the response text into an i32
+    match response_text.trim().parse::<i32>() {
+        Ok(episode_id) => Ok(episode_id),
+        Err(_) => Err(anyhow::Error::msg(
+            "Failed to parse episode ID from response",
+        )),
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]

@@ -2029,6 +2029,44 @@ def get_episode_id(cnx, database_type, podcast_id, episode_title, episode_url):
 
     return episode_id
 
+def get_episode_id_ep_name(cnx, database_type, podcast_title, episode_url):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query = '''
+            SELECT e.EpisodeID
+            FROM "Episodes" e
+            JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+            WHERE p.PodcastName = %s AND e.EpisodeURL = %s
+        '''
+    else:  # MySQL or MariaDB
+        cursor = cnx.cursor()
+        query = '''
+            SELECT e.EpisodeID
+            FROM Episodes e
+            JOIN Podcasts p ON e.PodcastID = p.PodcastID
+            WHERE p.PodcastName = %s AND e.EpisodeURL = %s
+        '''
+
+    params = (podcast_title, episode_url)
+    print(f"Executing query: {query} with params: {params}")
+
+    # Extra debugging: Check the values before executing the query
+    print(f"Podcast Title: {podcast_title}")
+    print(f"Episode URL: {episode_url}")
+
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+
+    if result:
+        episode_id = result['episodeid'] if database_type == "postgresql" else result[0]
+    else:
+        episode_id = None
+        print(f"No match found for Podcast Name: '{podcast_title}' and Episode URL: '{episode_url}'")
+
+    cursor.close()
+    return episode_id
+
 
 def get_episode_id_by_url(cnx, database_type, episode_url):
     cursor = cnx.cursor()
@@ -3648,7 +3686,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
+            'SELECT "Podcasts".PodcastID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
             '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "Episodes" '
@@ -3659,7 +3697,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+            "SELECT Podcasts.PodcastID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
             "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM Episodes "

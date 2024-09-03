@@ -1274,13 +1274,7 @@ impl EpisodeTrait for PeopleEpisode {
         } else if let Some(fallback_id) = fallback_id {
             fallback_id
         } else {
-            // Truncate i64 to fit into i32
-            let truncated_id = (self.id.unwrap_or(0) as u32) as i32;
-            if truncated_id != 0 {
-                truncated_id
-            } else {
-                panic!("No episode ID available");
-            }
+            panic!("No episode ID available");
         }
     }
 

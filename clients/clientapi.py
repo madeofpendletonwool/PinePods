@@ -513,6 +513,30 @@ async def api_podcast_episodes(cnx=Depends(get_database_connection), api_key: st
         raise HTTPException(status_code=403,
                             detail="You can only return episodes of your own!")
 
+@app.get("/api/data/get_episode_id_ep_name")
+async def api_episode_id(cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header),
+                              user_id: int = Query(...), episode_title: str = Query(...), episode_url: str = Query(...)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user, or it's the web API key
+    if key_id == user_id or is_web_key:
+        print(episode_title)
+        print(episode_url)
+        ep_id = database_functions.functions.get_episode_id_ep_name(cnx, database_type, episode_title, episode_url)
+        print(f"Episode ID: {ep_id}")
+        return ep_id
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only return pocast ids of your own podcasts!")
 
 
 @app.get("/api/data/get_podcast_id")
@@ -588,7 +612,7 @@ async def api_get_podcast_id_name(episode_name: str, episode_url: str, user_id: 
 
 
 @app.get("/api/data/get_podcast_details")
-async def api_podcast_id(podcast_id: str = Query(...), cnx=Depends(get_database_connection),
+async def api_podcast_details(podcast_id: str = Query(...), cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
                               user_id: int = Query(...)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)

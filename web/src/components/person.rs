@@ -63,6 +63,25 @@ impl Reducer<AppState> for AppStateMsg {
     }
 }
 
+fn generate_unique_id(podcast_id: Option<i32>, feed_url: &str) -> String {
+    println!("Podcast ID: {:?}", podcast_id);
+    match podcast_id {
+        Some(id) if id != 0 => id.to_string(),
+        _ => {
+            // Adding a fallback in case of identical feed URLs or ID being zero
+            let encoded_url = general_purpose::STANDARD.encode(feed_url);
+            let sanitized_url = sanitize_for_css(&encoded_url);
+            let fallback_unique = format!("{}", sanitized_url);
+            println!("Generated fallback ID: {}", fallback_unique);
+            fallback_unique
+        }
+    }
+}
+
+fn sanitize_for_css(input: &str) -> String {
+    input.replace(|c: char| !c.is_alphanumeric() && c != '-', "_")
+}
+
 #[derive(Clone, PartialEq, Routable)]
 pub enum Route {
     #[at("/person/:name")]
@@ -152,108 +171,164 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let dispatch = dispatch.clone();
+        let state_callback = state.clone();
 
-        Callback::from(move |event: MouseEvent| {
-            let podcast_id = event
-                .target()
-                .and_then(|target| target.dyn_into::<HtmlElement>().ok())
-                .and_then(|el| el.get_attribute("data-podcastid"))
-                .and_then(|id| id.parse::<i32>().ok());
-
-            if let Some(podcast_id) = podcast_id {
-                let is_added = added_podcasts.contains(&podcast_id);
-                let podcast = state.podcast_feed_return.as_ref().and_then(|feed| {
+        Callback::from(move |podcast_id: i32| {
+            let added_pod_state = added_podcasts.clone();
+            let server_name_callback = server_name.clone();
+            let api_key_callback = api_key.clone();
+            let user_id_callback = user_id.clone();
+            let added_podcasts_callback = added_podcasts.clone();
+            let dispatch_callback = dispatch.clone();
+            // Extract the necessary data before the async block
+            // let is_added = added_podcasts.contains(&podcast_id);
+            // Extract the podcast ID from the event's dataset
+            // Extract the podcast data
+            let podcast = state_callback
+                .podcast_feed_return
+                .as_ref()
+                .and_then(|feed| {
                     feed.pods
                         .as_ref()
                         .and_then(|pods| pods.iter().find(|pod| pod.podcastid == podcast_id))
-                });
+                })
+                .cloned();
 
-                if let Some(podcast) = podcast {
-                    let podcast_url = podcast.feedurl.clone();
+            if let Some(mut podcast) = podcast {
+                web_sys::console::log_1(&format!("Handling Podcast ID: {}", podcast_id).into());
 
-                    wasm_bindgen_futures::spawn_local(async move {
-                        if is_added {
-                            // Remove podcast logic
-                            let podcast_values = RemovePodcastValuesName {
-                                podcast_name: podcast.podcastname.clone(),
-                                podcast_url: podcast_url.clone(),
-                                user_id: user_id.clone().unwrap(),
-                            };
-                            match call_remove_podcasts_name(
-                                &server_name.unwrap(),
-                                &api_key.unwrap(),
-                                &podcast_values,
-                            )
-                            .await
-                            {
-                                Ok(_) => {
-                                    added_podcasts.set(|set| {
-                                        let mut new_set = set.clone();
-                                        new_set.remove(&podcast_id);
-                                        new_set
-                                    });
-                                    dispatch.reduce_mut(|state| {
-                                        state.info_message =
-                                            Some("Podcast successfully removed".to_string());
-                                        state.is_loading = Some(false);
-                                    });
-                                }
-                                Err(e) => {
-                                    dispatch.reduce_mut(|state| {
-                                        state.error_message =
-                                            Some(format!("Error removing podcast: {:?}", e));
-                                        state.is_loading = Some(false);
-                                    });
-                                }
+                let is_added = podcast.podcastid <= 1_000_000_000
+                    && added_podcasts.contains(&podcast.podcastid);
+
+                let podcast_url = podcast.feedurl.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    if is_added {
+                        // Remove podcast logic
+                        let podcast_values = RemovePodcastValuesName {
+                            podcast_name: podcast.podcastname.clone(),
+                            podcast_url: podcast_url.clone(),
+                            user_id: user_id.clone().unwrap(),
+                        };
+                        match call_remove_podcasts_name(
+                            &server_name_callback.unwrap(),
+                            &api_key_callback.unwrap(),
+                            &podcast_values,
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                let mut new_set = (*added_podcasts_callback).clone();
+                                new_set.remove(&podcast_id);
+                                added_podcasts_callback.set(new_set);
+                                dispatch_callback.reduce_mut(|state| {
+                                    state.info_message =
+                                        Some("Podcast successfully removed".to_string());
+                                    state.is_loading = Some(false);
+                                });
                             }
-                        } else {
-                            // Add podcast logic
-                            let podcast_values = PodcastValues {
-                                pod_title: podcast.podcastname.clone(),
-                                pod_artwork: podcast.artworkurl.clone().unwrap(),
-                                pod_author: podcast.author.clone().unwrap(),
-                                categories: podcast.categories.clone(),
-                                pod_description: podcast.description.clone().unwrap(),
-                                pod_episode_count: podcast.episodecount,
-                                pod_feed_url: podcast_url.clone(),
-                                pod_website: podcast.websiteurl.clone().unwrap(),
-                                pod_explicit: podcast.explicit,
-                                user_id: user_id.clone().unwrap(),
-                            };
-                            match call_add_podcast(
-                                &server_name.unwrap(),
-                                &api_key.unwrap(),
-                                user_id.unwrap(),
-                                &podcast_values,
-                            )
-                            .await
-                            {
-                                Ok(_) => {
-                                    added_podcasts.set(|set| {
-                                        let mut new_set = set.clone();
-                                        new_set.insert(podcast_id);
-                                        new_set
-                                    });
-                                    dispatch.reduce_mut(|state| {
-                                        state.info_message =
-                                            Some("Podcast successfully added".to_string());
-                                        state.is_loading = Some(false);
-                                    });
-                                }
-                                Err(e) => {
-                                    dispatch.reduce_mut(|state| {
-                                        state.error_message =
-                                            Some(format!("Error adding podcast: {:?}", e));
-                                        state.is_loading = Some(false);
-                                    });
-                                }
+                            Err(e) => {
+                                dispatch_callback.reduce_mut(|state| {
+                                    state.error_message =
+                                        Some(format!("Error removing podcast: {:?}", e));
+                                    state.is_loading = Some(false);
+                                });
                             }
                         }
-                    });
-                }
+                    } else {
+                        fn convert_categories_to_hashmap(
+                            categories: String,
+                        ) -> HashMap<String, String> {
+                            categories
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .map(|category| (category.clone(), category))
+                                .collect()
+                        }
+
+                        // Assuming you have this inside the `toggle_podcast` closure:
+                        let categories_og_hashmap =
+                            convert_categories_to_hashmap(podcast.categories.clone());
+
+                        // Add podcast logic
+                        let podcast_values = PodcastValues {
+                            pod_title: podcast.podcastname.clone(),
+                            pod_artwork: podcast.artworkurl.clone().unwrap(),
+                            pod_author: podcast.author.clone().unwrap(),
+                            categories: categories_og_hashmap,
+                            pod_description: podcast.description.clone().unwrap(),
+                            pod_episode_count: podcast.episodecount,
+                            pod_feed_url: podcast_url.clone(),
+                            pod_website: podcast.websiteurl.clone().unwrap(),
+                            pod_explicit: podcast.explicit,
+                            user_id: user_id.clone().unwrap(),
+                        };
+                        match call_add_podcast(
+                            &server_name_callback.unwrap(),
+                            &api_key_callback.unwrap(),
+                            user_id_callback.unwrap(),
+                            &podcast_values,
+                        )
+                        .await
+                        {
+                            Ok(podcast_info) => {
+                                let new_podcast_id = podcast_info.podcast_id.unwrap();
+
+                                // Update the podcast ID with the correct one from the DB
+                                podcast.podcastid = new_podcast_id;
+                                // Update Yewdux state
+                                dispatch_callback.reduce_mut(|state| {
+                                    if let Some(feed) = state.podcast_feed_return.as_mut() {
+                                        if let Some(pods) = feed.pods.as_mut() {
+                                            if let Some(existing_podcast) = pods
+                                                .iter_mut()
+                                                .find(|pod| pod.podcastid == podcast_id)
+                                            {
+                                                existing_podcast.podcastid = new_podcast_id;
+                                            }
+                                        }
+                                    }
+                                    state.info_message =
+                                        Some("Podcast successfully added".to_string());
+                                    state.is_loading = Some(false);
+                                });
+                                let mut new_set = (*added_podcasts_callback).clone();
+                                new_set.insert(podcast.podcastid);
+                                added_podcasts_callback.set(new_set.clone());
+                                added_pod_state.set(new_set.clone());
+                            }
+                            Err(e) => {
+                                dispatch_callback.reduce_mut(|state| {
+                                    state.error_message =
+                                        Some(format!("Error adding podcast: {:?}", e));
+                                    state.is_loading = Some(false);
+                                });
+                            }
+                        }
+                    }
+                });
             }
         })
     };
+
+    // Create a HashMap to store the podcasts for quick lookup
+    let podcasts_map: HashMap<(String, String), i32> =
+        state
+            .podcast_feed_return
+            .as_ref()
+            .map_or(HashMap::new(), |feed| {
+                feed.pods.as_ref().map_or(HashMap::new(), |pods| {
+                    pods.iter()
+                        .map(|podcast| {
+                            (
+                                (podcast.feedurl.clone(), podcast.podcastname.clone()),
+                                podcast.podcastid,
+                            )
+                        })
+                        .collect::<HashMap<_, _>>()
+                })
+            });
+
     html! {
         <>
             <div class="main-container">
@@ -278,7 +353,21 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         }
                                     } else {
                                     pods.into_iter().map(|podcast| {
+                                        let is_added = if podcast.podcastid > 1_000_000_000 {
+                                            false
+                                        } else {
+                                            added_podcasts_state.contains(&podcast.podcastid)
+                                        };
+
                                         let button_text = if is_added { "delete" } else { "add" };
+
+                                        let onclick = {
+                                            let podcast_id = podcast.podcastid;
+                                            let toggle_podcast = toggle_podcast.clone();
+                                            Callback::from(move |_: MouseEvent| {
+                                                toggle_podcast.emit(podcast_id);
+                                            })
+                                        };
 
                                         let api_key_iter = api_key.clone();
                                         let server_name_iter = server_name.clone().unwrap();
@@ -298,128 +387,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let pod_website_og = podcast.websiteurl.clone();
                                         let pod_explicit_og = podcast.explicit.clone();
 
-                                        // let toggle_podcast = {
-
-                                        //     let api_key_clone = api_key.clone();
-                                        //     let server_name_clone = server_name.clone();
-                                        //     let user_id_clone = user_id.clone();
-                                        //     let is_added_clone = is_added_state.clone();
-
-
-                                        //     let dispatch = dispatch.clone(); // Clone the dispatch for updating global state after removing
-                                        //     let podcast_url = podcast.feedurl.clone(); // The URL of the podcast to toggle
-                                        //     let pod_title_og_clone = pod_title_og.clone();
-
-                                        //     Callback::from(move |_: MouseEvent| {
-                                        //         dispatch.reduce_mut(|state| state.is_loading = Some(true));
-                                        //         let user_id = user_id_clone.clone();
-                                        //         let api_key = api_key_clone.clone();
-                                        //         let server_name = server_name_clone.clone();
-
-                                        //         let dispatch = dispatch.clone();
-                                        //         let podcast_url = podcast_url.clone();
-
-                                        //         // Determine if the podcast is currently added or not
-                                        //         if is_added {
-                                        //             // Remove podcast logic
-                                        //             let pod_title_og = pod_title_og_clone.clone();
-                                        //             let pod_feed_url_og = pod_feed_url_og.clone();
-                                        //             let value_id = user_id.clone().unwrap();
-                                        //             let podcast_url = podcast_url.clone();
-
-                                        //             wasm_bindgen_futures::spawn_local(async move {
-                                        //                 let podcast_values = RemovePodcastValuesName {
-                                        //                     podcast_name: pod_title_og,
-                                        //                     podcast_url: pod_feed_url_og,
-                                        //                     user_id: value_id,
-                                        //                 };
-                                        //                 match call_remove_podcasts_name(
-                                        //                     &server_name.unwrap(),
-                                        //                     &api_key.unwrap(),
-                                        //                     &podcast_values,
-                                        //                 )
-                                        //                 .await
-                                        //                 {
-                                        //                     Ok(_) => {
-                                        //                         is_added_clone.set(false);
-                                        //                         dispatch.reduce_mut(|state| {
-                                        //                             state.info_message = Some("Podcast successfully removed".to_string());
-                                        //                         });
-                                        //                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                        //                     }
-                                        //                     Err(e) => {
-                                        //                         dispatch.reduce_mut(|state| {
-                                        //                             state.error_message = Some(format!("Error removing podcast: {:?}", e));
-                                        //                         });
-                                        //                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                        //                     }
-                                        //                 }
-                                        //             });
-                                        //         } else {
-                                        //             // Add podcast logic
-                                        //             let pod_title_og = pod_title_og.clone();
-                                        //             let pod_artwork_og = pod_artwork_og.clone();
-                                        //             let pod_author_og = pod_author_og.clone();
-                                        //             let categories_og = categories_og.clone();
-                                        //             let pod_description_og = pod_description_og.clone();
-                                        //             let pod_episode_count_og = pod_episode_count_og.clone();
-                                        //             let pod_feed_url_og = pod_feed_url_og.clone();
-                                        //             let pod_website_og = pod_website_og.clone();
-                                        //             let pod_explicit_og = pod_explicit_og.clone();
-
-                                        //             fn convert_categories_to_hashmap(categories: String) -> HashMap<String, String> {
-                                        //                 categories
-                                        //                     .split(',')
-                                        //                     .map(|s| s.trim().to_string())
-                                        //                     .map(|category| (category.clone(), category))
-                                        //                     .collect()
-                                        //             }
-
-                                        //             // Assuming you have this inside the `toggle_podcast` closure:
-                                        //             let categories_og_hashmap = convert_categories_to_hashmap(categories_og.clone());
-
-
-                                        //             wasm_bindgen_futures::spawn_local(async move {
-                                        //                 let podcast_values = PodcastValues {
-                                        //                     pod_title: pod_title_og,
-                                        //                     pod_artwork: pod_artwork_og.unwrap(),
-                                        //                     pod_author: pod_author_og.unwrap(),
-                                        //                     categories: categories_og_hashmap,
-                                        //                     pod_description: pod_description_og.unwrap(),
-                                        //                     pod_episode_count: pod_episode_count_og,
-                                        //                     pod_feed_url: pod_feed_url_og.clone(),
-                                        //                     pod_website: pod_website_og.unwrap(),
-                                        //                     pod_explicit: pod_explicit_og,
-                                        //                     user_id: user_id.unwrap(),
-                                        //                 };
-                                        //                 match call_add_podcast(
-                                        //                     &server_name.unwrap(),
-                                        //                     &api_key.unwrap(),
-                                        //                     user_id.unwrap(),
-                                        //                     &podcast_values,
-                                        //                 )
-                                        //                 .await
-                                        //                 {
-                                        //                     Ok(_) => {
-                                        //                         is_added_clone.set(true);
-                                        //                         dispatch.reduce_mut(|state| {
-                                        //                             state.info_message = Some("Podcast successfully added".to_string());
-                                        //                         });
-                                        //                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                        //                     }
-                                        //                     Err(e) => {
-                                        //                         dispatch.reduce_mut(|state| {
-                                        //                             state.error_message = Some(format!("Error adding podcast: {:?}", e));
-                                        //                         });
-                                        //                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                        //                     }
-                                        //                 }
-                                        //             });
-                                        //         }
-                                        //     })
-
-                                        // };
-
                                         let on_title_click = create_on_title_click(
                                             dispatch.clone(),
                                             server_name_iter,
@@ -438,26 +405,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             user_id.unwrap(),
                                         );
 
-                                        fn generate_unique_id(podcast_id: Option<i32>, feed_url: &str) -> String {
-                                            println!("Podcast ID: {:?}", podcast_id);
-                                            match podcast_id {
-                                                Some(id) if id != 0 => id.to_string(),
-                                                _ => {
-                                                    // Adding a fallback in case of identical feed URLs or ID being zero
-                                                    let encoded_url = general_purpose::STANDARD.encode(feed_url);
-                                                    let sanitized_url = sanitize_for_css(&encoded_url);
-                                                    let fallback_unique = format!("{}", sanitized_url);
-                                                    println!("Generated fallback ID: {}", fallback_unique);
-                                                    fallback_unique
-                                                }
-                                            }
-                                        }
-
-                                        fn sanitize_for_css(input: &str) -> String {
-                                            input.replace(|c: char| !c.is_alphanumeric() && c != '-', "_")
-                                        }
-
-
                                         let id_string = generate_unique_id(Some(podcast.podcastid.clone()), &podcast.feedurl.clone());
                                         let desc_expanded = desc_state.expanded_descriptions.contains(&id_string.clone());
 
@@ -470,7 +417,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             let desc_dispatch = desc_dispatch.clone();
                                             let episode_guid = id_string;
                                             // let episode_guid = podcast.podcastid.clone().to_string();
-                                            web_sys::console::log_1(&JsValue::from_str(&episode_guid));
 
                                             Callback::from(move |_: MouseEvent| {
                                                 let guid = episode_guid.clone();
@@ -528,7 +474,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                     //     <span class="material-icons" onclick={toggle_delete.reform(move |_| podcast_id_loop)}>{"delete"}</span>
                                                     // </button>
                                                     <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                        <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
+                                                        <span class="material-icons" onclick={onclick}>{ button_text }</span>
                                                     </button>
 
                                                 </div>
@@ -560,8 +506,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                     <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
                     {
                         if let Some(results) = &state.people_feed_results {
-                            // let podcast_link_clone = clicked_podcast_info.clone().unwrap().podcast_url.clone();
-                            // let podcast_title = clicked_podcast_info.clone().unwrap().podcast_title.clone();
                             html! {
                                 <div>
                                     { for results.items.iter().map(|episode| {
@@ -571,8 +515,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let search_state_clone = post_state.clone(); // Clone search_state
 
                                         // Clone the variables outside the closure
-                                        // let podcast_link_clone = podcast_link_clone.clone();
-                                        // let podcast_title = podcast_title.clone();
+                                        let podcast_link_clone = episode.feedUrl.clone().unwrap_or_default();
+                                        let podcast_title = episode.feedTitle.clone().unwrap_or_default();
                                         let episode_url_clone = episode.enclosureUrl.clone().unwrap_or_default();
                                         let episode_title_clone = episode.title.clone().unwrap_or_default();
                                         let episode_artwork_clone = episode.feedImage.clone().unwrap_or_default();
@@ -585,6 +529,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         //         0
                                         //     }
                                         // };
+                                        // Check if the podcast exists in the database
+                                        let podcast_key = (podcast_link_clone.clone(), podcast_title.clone());
+                                        let podcast_added = podcasts_map.contains_key(&podcast_key);
+
+
                                         let episode_id_clone = 0;
                                         let mut db_added = false;
                                         if episode_id_clone == 0 {
@@ -626,6 +575,12 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
 
 
                                         let state = state.clone();
+                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode url: {:?}", episode_url_clone)));
+                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode title: {:?}", episode_title_clone)));
+                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode artwork: {:?}", episode_artwork_clone)));
+                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode duration: {:?}", episode_duration_clone)));
+                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode id: {:?}", episode_id_clone)));
+
                                         let on_play_click = on_play_click(
                                             episode_url_clone.clone(),
                                             episode_title_clone.clone(),
@@ -640,9 +595,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             audio_state.clone(),
                                             None,
                                         );
-                                        // Just print a log indicating we made it this far
-                                        web_sys::console::log_1(&JsValue::from_str("Made it this far"));
-
 
                                         let description_class = if is_expanded {
                                             "desc-expanded".to_string()
@@ -665,6 +617,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
                                         let formatted_duration = format_time(episode_duration_clone.into());
                                         let episode_url_for_ep_item = episode_url_clone.clone();
+                                        let episode_id_for_ep_item = 0;
+                                        let episode_title_for_ep_item = episode_title_clone.clone();
                                         let shownotes_episode_url = episode_url_clone.clone();
                                         let should_show_buttons = !episode_url_for_ep_item.is_empty();
                                         html! {
@@ -675,7 +629,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                     class="episode-image"/>
                                                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                                     <p class="item_container-text episode-title font-semibold"
-                                                    // onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added)}
+                                                    onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_for_ep_item), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added)}
                                                     >{ &episode.title.clone().unwrap_or_default() }</p>
                                                     // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                                     {

@@ -322,9 +322,17 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                                     Some(true),
                                                 ).await {
                                                     web_sys::console::log_1(&format!("Fetched Podcast Episode Count: {}", clicked_feed_url.podcast_episode_count).into());
+                                                    use rand::Rng;
 
+                                                    fn generate_monster_id() -> i32 {
+                                                            // Assign a large number for podcasts that aren't added yet, with a smaller random range
+                                                        let mut rng = rand::thread_rng();
+                                                        1_000_000_000 + rng.gen_range(0..1_000_000_000) as i32
+
+                                                    }
+                                                    let unique_id = generate_monster_id();
                                                     let podcast = Podcast {
-                                                        podcastid: 0, // Set a dummy ID or handle appropriately
+                                                        podcastid: unique_id, // Set a dummy ID or handle appropriately
                                                         podcastname: clicked_feed_url.podcast_title,
                                                         artworkurl: Some(clicked_feed_url.podcast_artwork),
                                                         description: Some(clicked_feed_url.podcast_description),
@@ -1903,6 +1911,12 @@ pub fn episode_layout() -> Html {
 
 
                                                 let state = state.clone();
+                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode url: {:?}", episode_url_clone)));
+                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode title: {:?}", episode_title_clone)));
+                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode artwork: {:?}", episode_artwork_clone)));
+                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode duration: {:?}", episode_duration_clone)));
+                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode id: {:?}", episode_id_clone)));
+
                                                 let on_play_click = on_play_click(
                                                     episode_url_clone.clone(),
                                                     episode_title_clone.clone(),
