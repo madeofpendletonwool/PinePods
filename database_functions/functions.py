@@ -2029,6 +2029,44 @@ def get_episode_id(cnx, database_type, podcast_id, episode_title, episode_url):
 
     return episode_id
 
+def get_episode_id_ep_name(cnx, database_type, podcast_title, episode_url):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query = '''
+            SELECT e.EpisodeID
+            FROM "Episodes" e
+            JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+            WHERE p.PodcastName = %s AND e.EpisodeURL = %s
+        '''
+    else:  # MySQL or MariaDB
+        cursor = cnx.cursor()
+        query = '''
+            SELECT e.EpisodeID
+            FROM Episodes e
+            JOIN Podcasts p ON e.PodcastID = p.PodcastID
+            WHERE p.PodcastName = %s AND e.EpisodeURL = %s
+        '''
+
+    params = (podcast_title, episode_url)
+    print(f"Executing query: {query} with params: {params}")
+
+    # Extra debugging: Check the values before executing the query
+    print(f"Podcast Title: {podcast_title}")
+    print(f"Episode URL: {episode_url}")
+
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+
+    if result:
+        episode_id = result['episodeid'] if database_type == "postgresql" else result[0]
+    else:
+        episode_id = None
+        print(f"No match found for Podcast Name: '{podcast_title}' and Episode URL: '{episode_url}'")
+
+    cursor.close()
+    return episode_id
+
 
 def get_episode_id_by_url(cnx, database_type, episode_url):
     cursor = cnx.cursor()
@@ -3209,6 +3247,198 @@ def remove_saved_episode(cnx, database_type, episode_id, user_id):
     finally:
         cursor.close()
 
+def get_categories(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = (
+                'SELECT "categories" '
+                'FROM "Podcasts" '
+                'WHERE "podcastid" = %s AND "userid" = %s'
+            )
+        else:  # For MySQL or MariaDB
+            query = (
+                "SELECT Categories "
+                "FROM Podcasts "
+                "WHERE PodcastID = %s AND UserID = %s"
+            )
+        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if not result:
+            logging.warning("No matching podcast found.")
+            cursor.close()
+            return []
+
+        # Check if the result is a dictionary or a tuple
+        if isinstance(result, dict):
+            # For dictionary, access the field by key
+            categories_field = result.get('categories')  # Adjust key based on your schema
+        elif isinstance(result, tuple):
+            # For tuple, access the field by index
+            categories_field = result[0]
+        else:
+            logging.error(f"Unexpected result type: {type(result)}")
+            return []
+
+        # Split the categories if they exist
+        categories = categories_field.split(', ') if categories_field else []
+
+        return categories
+
+    except Exception as e:
+        logging.error(f"Error retrieving categories: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+
+def add_category(cnx, database_type, podcast_id, user_id, category):
+    cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = (
+                'SELECT categories '
+                'FROM "Podcasts" '
+                'WHERE "podcastid" = %s AND "userid" = %s'
+            )
+        else:  # For MySQL or MariaDB
+            query = (
+                "SELECT Categories "
+                "FROM Podcasts "
+                "WHERE PodcastID = %s AND UserID = %s"
+            )
+        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if not result:
+            logging.warning("No matching podcast found.")
+            cursor.close()
+            return False
+
+        # Extract the categories and split them into a list
+        # Check if the result is a dictionary or a tuple
+        if isinstance(result, dict):
+            # For dictionary, access the field by key
+            categories_field = result.get('categories')  # Adjust key based on your schema
+        elif isinstance(result, tuple):
+            # For tuple, access the field by index
+            categories_field = result[0]
+        else:
+            logging.error(f"Unexpected result type: {type(result)}")
+            return []
+
+        # Split the categories if they exist
+        categories = categories_field.split(', ') if categories_field else []
+
+
+        # Add the new category if it doesn't exist
+        if category not in categories:
+            categories.append(category)
+
+        # Join the updated categories back into a comma-separated string
+        updated_categories = ', '.join(categories)
+
+        # Update the database with the new categories list
+        if database_type == "postgresql":
+            update_query = (
+                'UPDATE "Podcasts" '
+                'SET "categories" = %s '
+                'WHERE "podcastid" = %s AND "userid" = %s'
+            )
+        else:
+            update_query = (
+                "UPDATE Podcasts "
+                "SET Categories = %s "
+                "WHERE PodcastID = %s AND UserID = %s"
+            )
+        cursor.execute(update_query, (updated_categories, podcast_id, user_id))
+        cnx.commit()
+
+        return True
+
+    except Exception as e:
+        logging.error(f"Error adding category: {e}")
+        raise
+    finally:
+        cursor.close()
+
+def remove_category(cnx, database_type, podcast_id, user_id, category):
+    cursor = cnx.cursor()
+
+    try:
+        if database_type == "postgresql":
+            query = (
+                'SELECT categories '
+                'FROM "Podcasts" '
+                'WHERE "podcastid" = %s AND "userid" = %s'
+            )
+        else:  # For MySQL or MariaDB
+            query = (
+                "SELECT Categories "
+                "FROM Podcasts "
+                "WHERE PodcastID = %s AND UserID = %s"
+            )
+        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        print(f'heres cats: {result}')
+
+        if not result:
+            logging.warning("No matching podcast found.")
+            cursor.close()
+            return
+
+        # Extract the categories and split them into a list
+        # Check if the result is a dictionary or a tuple
+        if isinstance(result, dict):
+            # For dictionary, access the field by key
+            categories_field = result.get('categories')  # Adjust key based on your schema
+        elif isinstance(result, tuple):
+            # For tuple, access the field by index
+            categories_field = result[0]
+        else:
+            logging.error(f"Unexpected result type: {type(result)}")
+            return []
+
+        # Split the categories if they exist
+        categories = categories_field.split(', ') if categories_field else []
+
+        # Remove the category if it exists
+        if category in categories:
+            categories.remove(category)
+
+        # Join the updated categories back into a comma-separated string
+        updated_categories = ', '.join(categories)
+
+        # Update the database with the new categories list
+        if database_type == "postgresql":
+            update_query = (
+                'UPDATE "Podcasts" '
+                'SET "categories" = %s '
+                'WHERE "podcastid" = %s AND "userid" = %s'
+            )
+        else:
+            update_query = (
+                "UPDATE Podcasts "
+                "SET Categories = %s "
+                "WHERE PodcastID = %s AND UserID = %s"
+            )
+        cursor.execute(update_query, (updated_categories, podcast_id, user_id))
+        cnx.commit()
+
+    except Exception as e:
+        logging.error(f"Error removing category: {e}")
+        raise
+    finally:
+        cursor.close()
+
 
 def increment_played(cnx, database_type, user_id):
     cursor = cnx.cursor()
@@ -3648,7 +3878,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
+            'SELECT "Podcasts".PodcastID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
             '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "Episodes" '
@@ -3659,7 +3889,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+            "SELECT Podcasts.PodcastID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
             "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM Episodes "
@@ -3680,6 +3910,46 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
     bool_fix = convert_bools(lower_row, database_type)
 
     return bool_fix
+
+def get_episode_metadata_id(database_type, cnx, episode_id):
+    if database_type == "postgresql":
+        from psycopg.rows import dict_row
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+        query = (
+            'SELECT "Podcasts".PodcastID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
+            '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
+            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
+            'FROM "Episodes" '
+            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
+            'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "Podcasts".UserID = "UserEpisodeHistory".UserID '
+            'WHERE "Episodes".EpisodeID = %s'
+        )
+    else:  # MySQL or MariaDB
+        cursor = cnx.cursor(dictionary=True)
+        query = (
+            "SELECT Podcasts.PodcastID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+            "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
+            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
+            "FROM Episodes "
+            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+            "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND Podcasts.UserID = UserEpisodeHistory.UserID "
+            "WHERE Episodes.EpisodeID = %s"
+        )
+
+    cursor.execute(query, (episode_id,))
+    row = cursor.fetchone()
+
+    cursor.close()
+
+    if not row:
+        raise ValueError(f"No episode found with ID {episode_id}")
+
+    lower_row = lowercase_keys(row)
+    bool_fix = convert_bools(lower_row, database_type)
+
+    return bool_fix
+
 
 
 import logging
@@ -4329,6 +4599,70 @@ def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url
         return result[0] == 1
     else:
         raise TypeError("Unexpected type for 'result'")
+
+
+def add_shared_episode(database_type, cnx, episode_id, url_key, expiration_date):
+    cursor = cnx.cursor()
+
+    if database_type == "postgresql":
+        query = '''
+            INSERT INTO "SharedEpisodes" (EpisodeID, UrlKey, ExpirationDate)
+            VALUES (%s, %s, %s)
+        '''
+    else:  # MySQL/MariaDB version
+        query = '''
+            INSERT INTO SharedEpisodes (EpisodeID, UrlKey, ExpirationDate)
+            VALUES (%s, %s, %s)
+        '''
+
+    try:
+        cursor.execute(query, (episode_id, url_key, expiration_date))
+        cnx.commit()  # Commit the changes
+        cursor.close()
+        return True
+    except Exception as e:
+        print(f"Error sharing episode: {e}")
+        cursor.close()
+        return False
+
+def get_episode_id_by_url_key(database_type, cnx, url_key):
+    cursor = cnx.cursor()
+
+    query = '''
+        SELECT EpisodeID FROM "SharedEpisodes" WHERE UrlKey = %s AND ExpirationDate > NOW()
+    ''' if database_type == "postgresql" else '''
+        SELECT EpisodeID FROM SharedEpisodes WHERE UrlKey = %s AND ExpirationDate > NOW()
+    '''
+
+    try:
+        cursor.execute(query, (url_key,))
+        result = cursor.fetchone()
+
+        # Debug: print the result type and value
+        print(f"Result: {result}, Type: {type(result)}")
+
+        if result:
+            # Safely handle result as either tuple or dict
+            if isinstance(result, tuple):
+                print('tuple')
+                episode_id = result[0]  # Access tuple
+            elif isinstance(result, dict):
+                print('dict')
+                if database_type == 'postgresql':
+                    episode_id = result['episodeid']  # Access dict
+                else:
+                    episode_id = result['EpisodeID']  # Access dict
+            else:
+                episode_id = None  # If somehow it's neither, default to None
+        else:
+            episode_id = None
+        print(episode_id)
+        cursor.close()
+        return episode_id
+    except Exception as e:
+        print(f"Error retrieving episode by URL key: {e}")
+        cursor.close()
+        return None
 
 
 

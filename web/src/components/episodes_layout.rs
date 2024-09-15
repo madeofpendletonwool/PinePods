@@ -12,23 +12,28 @@ use crate::components::gen_funcs::{
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
-    call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
-    call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
-    call_get_auto_skip_times, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_remove_podcasts_name, AutoDownloadRequest, DownloadAllPodcastRequest,
-    FetchPodcasting2PodDataRequest, Person, PodcastValues, RemovePodcastValuesName,
+    call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
+    call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
+    call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_details,
+    call_get_podcast_id, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_remove_category, call_remove_podcasts_name, AddCategoryRequest, AutoDownloadRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, Person, Podcast, PodcastDetails,
+    PodcastResponse, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     SkipTimesRequest,
 };
+use crate::requests::search_pods::call_get_person_info;
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::Element;
 use web_sys::{window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
 use yew::prelude::*;
 use yew::Properties;
@@ -165,13 +170,54 @@ pub struct HostDropdownProps {
     pub hosts: Vec<Person>,
 }
 
+#[derive(Clone, PartialEq)]
+pub struct Host {
+    pub name: String,
+    pub img: Option<String>,
+    pub href: Option<String>, // This will be used for navigation
+}
+
+fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
+    Podcast {
+        podcastid: details.podcastid,
+        podcastname: details.podcastname,
+        artworkurl: Some(details.artworkurl),
+        description: Some(details.description),
+        episodecount: details.episodecount,
+        websiteurl: Some(details.websiteurl),
+        feedurl: details.feedurl,
+        author: Some(details.author),
+        categories: details.categories,
+        explicit: details.explicit,
+    }
+}
+
 #[function_component(HostDropdown)]
 pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> Html {
+    let (search_state, _search_dispatch) = use_store::<AppState>();
+    let api_key = search_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.api_key.clone());
+    let server_name = search_state
+        .auth_details
+        .as_ref()
+        .map(|ud| ud.server_name.clone());
+    let api_url = search_state
+        .server_details
+        .as_ref()
+        .map(|ud| ud.api_url.clone());
+    let user_id = search_state
+        .user_details
+        .as_ref()
+        .map(|ud| ud.UserID.clone());
     let is_open = use_state(|| false);
     let toggle = {
         let is_open = is_open.clone();
         Callback::from(move |_| is_open.set(!*is_open))
     };
+
+    let history = BrowserHistory::new();
 
     let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };
 
@@ -191,15 +237,150 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
             </button>
             if *is_open {
                 <div class="flex space-x-4 mt-2">
-                    { for hosts.iter().map(|host| html! {
-                        <div class="flex flex-col items-center">
-                            { if let Some(img) = &host.img {
-                                html! { <img src={img.clone()} alt={host.name.clone()} class="w-12 h-12 rounded-full" /> }
-                            } else {
-                                html! {}
-                            }}
-                            <a href={host.href.clone().unwrap_or_default()} class="text-center text-blue-500 hover:underline mt-1">{ &host.name }</a>
-                        </div>
+                    { for hosts.iter().map(|host| {
+                        let host_name = host.name.clone();
+                        let dispatch = _search_dispatch.clone(); // Clone dispatch to use in the async block
+                        let history_clone = history.clone();
+
+                        let on_host_click = {
+                            let dispatch_clone = dispatch.clone();
+                            let server_name = server_name.clone();
+                            let api_key = api_key.clone();
+                            let api_url = api_url.clone();
+                            let user_id = user_id.clone();
+                            let host_name = host_name.clone();
+                            let history = history_clone.clone();
+                            let search_state_call = search_state.clone();
+
+                            Callback::from(move |_| {
+                                let hostname = host_name.clone();
+                                let api_url = api_url.clone();
+                                let api_key = api_key.clone();
+                                let server_name = server_name.clone();
+                                let search_state = search_state_call.clone();
+                                let dispatch = dispatch_clone.clone();
+                                let history = history.clone();
+
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    let target_url = format!("/person/{}", hostname);
+
+                                    // Fetch person info
+                                    if let Ok(person_search_result) = call_get_person_info(
+                                        &hostname,
+                                        &api_url.unwrap(),
+                                        &api_key.clone().unwrap().unwrap(),
+                                    ).await {
+
+                                        // Extract unique podcast feeds
+                                        let unique_feeds: HashSet<_> = person_search_result.items.iter()
+                                            .map(|item| (item.feedTitle.clone(), item.feedUrl.clone()))
+                                            .collect();
+
+                                        let mut fetched_podcasts = vec![];
+
+                                        for (feed_title, feed_url) in unique_feeds {
+
+                                            web_sys::console::log_1(&format!("Checking podcast: {:?} - {:?}", feed_title, feed_url).into());
+                                            let podcast_exists = call_check_podcast(
+                                                &server_name.clone().unwrap(),
+                                                &api_key.clone().unwrap().unwrap(),
+                                                user_id.unwrap(),
+                                                &feed_title.clone().unwrap_or_default(),
+                                                &feed_url.clone().unwrap_or_default(),
+                                            ).await.unwrap_or_default().exists;
+
+                                            if podcast_exists {
+                                                // Fetch podcast details if it exists in the database
+                                                web_sys::console::log_1(&format!("Podcast exists: {:?} - {:?}", feed_title, feed_url).into());
+                                                if let Ok(podcast_id) = call_get_podcast_id(
+                                                    &server_name.clone().unwrap(),
+                                                    &api_key.clone().unwrap(),
+                                                    &search_state.user_details.as_ref().unwrap().UserID,
+                                                    &feed_url.unwrap_or_default(),
+                                                    &feed_title.clone().unwrap_or_default(),
+                                                ).await {
+                                                    if let Ok(podcast_details) = call_get_podcast_details(
+                                                        &server_name.clone().unwrap(),
+                                                        &api_key.clone().unwrap().unwrap(),
+                                                        search_state.user_details.as_ref().unwrap().UserID,
+                                                        &podcast_id,
+                                                    ).await {
+                                                        fetched_podcasts.push(map_podcast_details_to_podcast(podcast_details));
+                                                    }
+                                                }
+                                            } else {
+                                                // Fetch podcast dynamically if it doesn't exist in the database
+                                                web_sys::console::log_1(&format!("Podcast does not exist: {:?} - {:?}", feed_title, feed_url).into());
+                                                if let Ok(clicked_feed_url) = call_get_podcast_details_dynamic(
+                                                    &server_name.clone().unwrap(),
+                                                    &api_key.clone().unwrap().unwrap(),
+                                                    user_id.unwrap(),
+                                                    &feed_title.clone().unwrap_or_default(),
+                                                    &feed_url.clone().unwrap_or_default(),
+                                                    false,
+                                                    Some(true),
+                                                ).await {
+                                                    web_sys::console::log_1(&format!("Fetched Podcast Episode Count: {}", clicked_feed_url.podcast_episode_count).into());
+                                                    use rand::Rng;
+
+                                                    fn generate_monster_id() -> i32 {
+                                                            // Assign a large number for podcasts that aren't added yet, with a smaller random range
+                                                        let mut rng = rand::thread_rng();
+                                                        1_000_000_000 + rng.gen_range(0..1_000_000_000) as i32
+
+                                                    }
+                                                    let unique_id = generate_monster_id();
+                                                    let podcast = Podcast {
+                                                        podcastid: unique_id, // Set a dummy ID or handle appropriately
+                                                        podcastname: clicked_feed_url.podcast_title,
+                                                        artworkurl: Some(clicked_feed_url.podcast_artwork),
+                                                        description: Some(clicked_feed_url.podcast_description),
+                                                        episodecount: clicked_feed_url.podcast_episode_count,
+                                                        websiteurl: Some(clicked_feed_url.podcast_link),
+                                                        feedurl: clicked_feed_url.podcast_url,
+                                                        author: Some(clicked_feed_url.podcast_author),
+                                                        categories: clicked_feed_url.podcast_categories
+                                                            .map(|cat_map| cat_map.values().cloned().collect::<Vec<_>>().join(", "))
+                                                            .unwrap_or_else(|| "{}".to_string()),
+                                                        explicit: clicked_feed_url.podcast_explicit,
+                                                    };
+                                                    fetched_podcasts.push(podcast);
+                                                }
+                                            }
+                                        }
+
+                                        // Update the state once with all the fetched podcasts
+                                        dispatch.reduce_mut(move |state| {
+                                            state.podcast_feed_return = Some(PodcastResponse {
+                                                pods: Some(fetched_podcasts),
+                                            });
+                                            state.people_feed_results = Some(person_search_result);
+                                            state.is_loading = Some(false);
+                                        });
+
+                                        history.push(target_url);
+                                    } else {
+                                        // Handle error
+                                        dispatch.reduce_mut(|state| {
+                                            state.error_message = Some("Failed to fetch person info".to_string());
+                                            state.is_loading = Some(false);
+                                        });
+                                    }
+                                });
+                            })
+                        };
+
+
+                        html! {
+                            <div class="flex flex-col items-center" onclick={on_host_click}>
+                                { if let Some(img) = &host.img {
+                                    html! { <img src={img.clone()} alt={host.name.clone()} class="w-12 h-12 rounded-full" /> }
+                                } else {
+                                    html! {}
+                                }}
+                                <span class="text-center text-blue-500 hover:underline mt-1">{ &host.name }</span>
+                            </div>
+                        }
                     })}
                 </div>
             }
@@ -234,8 +415,17 @@ pub fn episode_layout() -> Html {
 
     let session_dispatch = _search_dispatch.clone();
     let session_state = search_state.clone();
-    let mut podcast_added = search_state.podcast_added.unwrap_or_default();
+    let podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
+    let new_category = use_state(|| String::new());
+
+    let new_cat_in = new_category.clone();
+    let new_category_input = Callback::from(move |e: InputEvent| {
+        if let Some(input_element) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+            let value = input_element.value(); // Get the value as a String
+            new_cat_in.set(value); // Set the state with the String
+        }
+    });
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -328,23 +518,6 @@ pub fn episode_layout() -> Html {
                 {
                     let is_added = is_added.clone();
 
-                    let update_url_with_params = |title: &str, url: &str| {
-                        let window = web_sys::window().expect("no global window exists");
-                        let history = window.history().expect("should have a history");
-                        let location = window.location();
-
-                        let mut new_url = location.origin().unwrap();
-                        new_url.push_str(&location.pathname().unwrap());
-                        new_url.push_str("?podcast_title=");
-                        new_url.push_str(&urlencoding::encode(title));
-                        new_url.push_str("&podcast_url=");
-                        new_url.push_str(&urlencoding::encode(url));
-
-                        history
-                            .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&new_url))
-                            .expect("should push state");
-                    };
-
                     if podcast.is_none() {
                         let window = web_sys::window().expect("no global window exists");
                         let search_params = window.location().search().unwrap();
@@ -389,6 +562,7 @@ pub fn episode_layout() -> Html {
                                     podcast_info.podcast_title.as_str(),
                                     podcast_info.podcast_url.as_str(),
                                     added,
+                                    Some(false),
                                 )
                                 .await
                                 .unwrap();
@@ -422,7 +596,6 @@ pub fn episode_layout() -> Html {
                                 );
                                 emit_click(on_title_click);
                                 let window = web_sys::window().expect("no global window exists");
-                                let history = window.history().expect("should have a history");
                                 let location = window.location();
 
                                 let mut new_url = location.origin().unwrap();
@@ -788,7 +961,6 @@ pub fn episode_layout() -> Html {
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             is_added_inner.set(false);
                             web_sys::console::log_1(&"adjusting podcast added".into());
-                            podcast_added = false;
                             app_dispatch.reduce_mut(|state| {
                                 state.podcast_added = Some(podcast_added);
                             });
@@ -1042,7 +1214,187 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    // let onclick_cat = new_category
+    let app_dispatch_add = _search_dispatch.clone();
+    let onclick_add = {
+        // let dispatch = dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone(); // Assuming user_id is an Option<i32> or similar
+        let podcast_id = podcast_id.clone(); // Assuming this is available in your context
+        let new_category = new_category.clone(); // Assuming this is a state that stores the new category input
+
+        Callback::from(move |event: web_sys::MouseEvent| {
+            
+            event.prevent_default(); // Prevent the default form submit or page reload behavior
+            let app_dispatch = app_dispatch_add.clone();
+            if new_category.is_empty() {
+                web_sys::console::log_1(&"Category name cannot be empty".into());
+                return;
+            }
+
+            // let dispatch = dispatch.clone();
+            let server_name = server_name.clone().unwrap();
+            let api_key = api_key.clone().unwrap();
+            let user_id = user_id.clone().unwrap(); // Assuming user_id is Some(i32)
+            let podcast_id = *podcast_id; // Assuming podcast_id is Some(i32)
+            let category_name = (*new_category).clone();
+            let cat_name_dis = category_name.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let request_data = AddCategoryRequest {
+                    podcast_id,
+                    user_id,
+                    category: category_name,
+                };
+
+                // Await the async function call
+                let response = call_add_category(&server_name, &api_key, &request_data).await;
+
+                // Match on the awaited response
+                match response {
+                    Ok(_) => {
+                        app_dispatch.reduce_mut(|state| {
+                            if let Some(ref mut podcast_info) = state.clicked_podcast_info {
+                                if let Some(ref mut categories) = podcast_info.podcast_categories {
+                                    // Add the new category to the HashMap
+                                    categories.insert(cat_name_dis.clone(), cat_name_dis.clone());
+                                } else {
+                                    // Initialize the HashMap if it's None
+                                    let mut new_map = HashMap::new();
+                                    new_map.insert(cat_name_dis.clone(), cat_name_dis);
+                                    podcast_info.podcast_categories = Some(new_map);
+                                }
+                            }
+                        });
+                        web_sys::console::log_1(&"Category added successfully".into());
+                        
+                    }
+                    Err(err) => {
+                        web_sys::console::log_1(&format!("Error adding category: {}", err).into());
+                    }
+                }
+            });
+        })
+    };
+
+    let category_to_remove = use_state(|| None::<String>);
+    let onclick_remove = {
+        let category_to_remove = category_to_remove.clone();
+        Callback::from(move |event: MouseEvent| {
+            event.prevent_default();
+            let category = event
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|e| e.get_attribute("data-category"))
+                .unwrap_or_default();
+            category_to_remove.set(Some(category));
+        })
+    };
+
+    let app_dispatch = _search_dispatch.clone();
+
+    {
+        let category_to_remove = category_to_remove.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id;
+        let podcast_id = *podcast_id;
+
+        use_effect_with(category_to_remove, move |category_to_remove| {
+            if let Some(category) = (**category_to_remove).clone() {
+                let server_name = server_name.clone().unwrap();
+                let api_key = api_key.clone().unwrap();
+                let user_id = user_id.unwrap();
+                let category_request = category.clone();
+                web_sys::console::log_1(
+                    &format!("Category that we're removing: {}", category).into(),
+                );
+                wasm_bindgen_futures::spawn_local(async move {
+                    let request_data = RemoveCategoryRequest {
+                        podcast_id,
+                        user_id,
+                        category,
+                    };
+                    // Your API call here
+                    let response =
+                        call_remove_category(&server_name, &api_key, &request_data).await;
+                    match response {
+                        Ok(_) => {
+                            app_dispatch.reduce_mut(|state| {
+                                if let Some(ref mut podcast_info) = state.clicked_podcast_info {
+                                    if let Some(ref mut categories) = podcast_info.podcast_categories {
+                                        // Filter the HashMap and collect back into HashMap
+                                        *categories = categories
+                                            .clone()
+                                            .into_iter()
+                                            .filter(|(_, cat)| cat != &category_request) // Ensure you're comparing correctly
+                                            .collect();
+                                    }
+                                }
+                            });
+                            web_sys::console::log_1(&"Category removed successfully".into());
+                        }
+                        Err(err) => {
+                            web_sys::console::log_1(
+                                &format!("Error removing category: {}", err).into(),
+                            );
+                        }
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    // let onclick_remove = {
+    //     // let dispatch = dispatch.clone();
+    //     let server_name = server_name.clone();
+    //     let api_key = api_key.clone();
+    //     let user_id = user_id; // Dereference to get the actual value
+    //     let podcast_id = *podcast_id; // Dereference to get the actual value
+    //     let category_name = (*cat_name_remove).clone(); // let category_name = category_name.clone(); // Assume this is coming from the correct state
+
+    //     Callback::from(move |event: web_sys::MouseEvent| {
+    //         event.prevent_default();
+
+    //         // let dispatch = dispatch.clone();
+    //         let server_name = server_name.clone().unwrap();
+    //         let api_key = api_key.clone().unwrap();
+    //         let user_id = user_id.unwrap();
+    //         let podcast_id = podcast_id;
+    //         let category_name = category_name.clone();
+    //         web_sys::console::log_1(
+    //             &format!("Category that we're removing: {}", category_name).into(),
+    //         );
+
+    //         wasm_bindgen_futures::spawn_local(async move {
+    //             let request_data = RemoveCategoryRequest {
+    //                 podcast_id,
+    //                 user_id,
+    //                 category: category_name,
+    //             };
+
+    //             // Await the async function
+    //             let response = call_remove_category(&server_name, &api_key, &request_data).await;
+
+    //             // Match on the awaited response
+    //             match response {
+    //                 Ok(resp) => {
+    //                     web_sys::console::log_1(&format!("Category removed!: {}", resp).into());
+    //                 }
+    //                 Err(err) => {
+    //                     web_sys::console::log_1(
+    //                         &format!("Error removing category: {}", err).into(),
+    //                     );
+    //                 }
+    //             }
+    //         });
+    //     })
+    // };
+
     // Define the modal components
+    let clicked_feed = clicked_podcast_info.clone();
     let podcast_option_model = html! {
         <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
             <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
@@ -1105,6 +1457,57 @@ pub fn episode_layout() -> Html {
                                         onclick={save_skip_times}
                                     >
                                         {"Confirm"}
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="category_adjust" class="block mb-2 text-sm font-medium">
+                                    {"Adjust Podcast Categories:"}
+                                </label>
+                                <div class="flex flex-wrap items-center space-x-2">
+                                    {
+                                        // let categories_list = clicked_feed.unwrap().podcast_categories.clone();
+                                        if let Some(categories) = clicked_feed.unwrap().podcast_categories.clone() {
+                                            let categories = Rc::new(categories);
+                                            html! {
+                                                <>
+                                                    { for categories.iter().map(|(_, category_name)| {
+                                                        let category_name = category_name.clone();
+                                                        let onclick_remove = onclick_remove.clone();
+                                                        html! {
+                                                            <div class="flex items-center category-item space-x-1">
+                                                                <span class="category-box">{ &category_name }</span>
+                                                                <button
+                                                                    class="minus-button text-red-500 font-bold"
+                                                                    onclick={onclick_remove}
+                                                                    data-category={category_name.clone()}
+                                                                >
+                                                                    {"-"}
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                    }) }
+                                                </>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </div>
+
+                                <div class="mt-4">
+                                    <input type="text"
+                                        id="new_category"
+                                        class="category-input w-full md:w-auto px-3 py-2 border rounded-md mr-2"
+                                        placeholder="New category"
+                                        value={(*new_category).clone()}
+                                        oninput={new_category_input.clone()} // Input handler to update `new_category`
+                                    />
+                                    <button
+                                        class="add-category-button text-sm font-medium rounded-lg border focus:ring-4 focus:outline-none search-btn py-2 px-4 rounded-md"
+                                        onclick={onclick_add}
+                                    >
+                                        {"New Category"}
                                     </button>
                                 </div>
                             </div>
@@ -1296,7 +1699,6 @@ pub fn episode_layout() -> Html {
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
                                 web_sys::console::log_1(&"adjusting podcast added".into());
-                                podcast_added = true;
                                 if let Some(call_podcast_id) = response_body.podcast_id {
                                     // Use the podcast_id for further processing if needed
                                     web_sys::console::log_1(
@@ -1728,6 +2130,7 @@ pub fn episode_layout() -> Html {
 
 
                                                 let state = state.clone();
+
                                                 let on_play_click = on_play_click(
                                                     episode_url_clone.clone(),
                                                     episode_title_clone.clone(),

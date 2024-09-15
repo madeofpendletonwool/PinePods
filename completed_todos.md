@@ -19,19 +19,29 @@ Next Minor Version:
 - [] Full Show deletion with checkbox on download page
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
-- [] When opening an episode ensure there's a loading spinner until the context loads in
+- [] Add background task to remove shared episode references in db after 60 days
+- [] Allow for episode plays on episode page when podcast not in db
+- [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
+- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 
 Version 0.6.6
 
-- [] Manually adjust tags for podcast in podcast settings
-- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [x] Manually adjust tags for podcast in podcast settings
+- [x] Dynamically refresh tags on ep-layout when adding and removing them
 - [] Fixed documentation so backend variables work with new docker standards
 - [x] Removed see more button from the episodes_layout, queue, and downloads page
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Speed up people page loading
+- [] Add loading component to people page loading process
 - [] Added filtering to podcasts page
-- [] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [x] Update api key creation and deletion after change dynamically with use_effect
 - [x] Update mfa setup slider after setup dynamically with use_effect
+- [] Fixed refreshing on episode screen so it no longer breaks the session
+- [] Fixed refreshing on episode-layout screen so it no longer breaks the session
+- [x] Fixed issue with episode page where refreshing caused it to break
+- [x] Fixed issue with queue where episode couldn't be manually removed
+- [x] Added loading spinner when opening an episode to ensure you don't momentarily see the wrong episode
 
 CI/CD:
 

@@ -55,7 +55,6 @@ pub fn podcasts() -> Html {
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
-    let podcast_feed_return = state.podcast_feed_return.clone();
     let is_loading = use_state(|| false);
     let feed_url = use_state(|| "".to_string());
     let pod_user = use_state(|| "".to_string());
@@ -149,7 +148,7 @@ pub fn podcasts() -> Html {
     enum PageState {
         Hidden,
         Delete,
-        Custom_Pod,
+        CustomPod,
     }
 
     let page_state = use_state(|| PageState::Hidden);
@@ -442,7 +441,7 @@ pub fn podcasts() -> Html {
     let toggle_custom_modal = {
         let page_state = page_state.clone();
         Callback::from(move |_: MouseEvent| {
-            page_state.set(PageState::Custom_Pod);
+            page_state.set(PageState::CustomPod);
         })
     };
 
@@ -454,7 +453,7 @@ pub fn podcasts() -> Html {
             {
                 match *page_state {
                 PageState::Delete => delete_pod_model,
-                PageState::Custom_Pod => custom_pod_modal,
+                PageState::CustomPod => custom_pod_modal,
                 _ => html! {},
                 }
             }
@@ -545,25 +544,6 @@ pub fn podcasts() -> Html {
                             } else {
                                 "desc-collapsed".to_string()
                             };
-
-                            fn should_show_see_more_button(podcast_id: i32) -> bool {
-                                let selector = format!(".desc-{}", podcast_id);
-                                let desc_container = web_sys::window()
-                                    .unwrap()
-                                    .document()
-                                    .unwrap()
-                                    .query_selector(&selector)
-                                    .unwrap();
-
-                                if let Some(container) = desc_container {
-                                    let scroll_height = container.scroll_height();
-                                    let client_height = container.client_height();
-                                    return scroll_height > client_height;
-                                }
-
-                                false
-                            }
-
 
                             html! {
                                 <div>

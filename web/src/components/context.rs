@@ -7,9 +7,11 @@ use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::{
     Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
     HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
-    RecentEps, SavedEpisodesResponse, Transcript, Value,
+    RecentEps, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
 };
-use crate::requests::search_pods::{PodcastFeedResult, PodcastSearchResult, SearchResponse};
+use crate::requests::search_pods::{
+    PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse,
+};
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::stat_reqs::UserStats;
 use serde::Deserialize;
@@ -77,6 +79,7 @@ pub struct AppState {
     pub info_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
+    pub people_feed_results: Option<PeopleFeedResult>,
     pub server_feed_results: Option<RecentEps>,
     pub queued_episodes: Option<QueuedEpisodesResponse>,
     pub saved_episodes: Option<SavedEpisodesResponse>,
@@ -94,6 +97,7 @@ pub struct AppState {
     pub expanded_descriptions: HashSet<String>,
     pub selected_theme: Option<String>,
     pub fetched_episode: Option<EpisodeMetadataResponse>,
+    pub shared_fetched_episode: Option<SharedEpisodeResponse>,
     pub selected_episode_id: Option<i32>,
     pub selected_episode_url: Option<String>,
     pub selected_episode_audio_url: Option<String>,

@@ -18,7 +18,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
-use crate::requests::search_pods::{call_get_podcast_info, test_connection};
+use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
 use std::any::Any;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -1111,7 +1111,7 @@ impl EpisodeTrait for Episode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1134,7 +1134,7 @@ impl EpisodeTrait for QueuedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1156,7 +1156,7 @@ impl EpisodeTrait for SavedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1178,7 +1178,7 @@ impl EpisodeTrait for HistoryEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1196,7 +1196,7 @@ impl EpisodeTrait for EpisodeDownload {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1218,7 +1218,7 @@ impl EpisodeTrait for SearchEpisode {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1242,6 +1242,34 @@ impl EpisodeTrait for SearchNewEpisode {
 
     fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
         if let Some(id) = self.episode_id {
+            id
+        } else if let Some(fallback_id) = fallback_id {
+            fallback_id
+        } else {
+            panic!("No episode ID available");
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for PeopleEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.feedImage.clone().unwrap()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+        if let Some(id) = self.id {
             id
         } else if let Some(fallback_id) = fallback_id {
             fallback_id

@@ -1175,7 +1175,7 @@ pub async fn initiate_nextcloud_login(
     };
     let json_body = serde_json::to_string(&request_body)
         .map_err(|e| Error::msg(format!("Failed to serialize request body: {}", e)))?;
-    web_sys::console::log_1(&api_key.clone().into());
+    web_sys::console::log_1(&api_key.into());
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
