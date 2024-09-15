@@ -240,10 +240,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                     { for hosts.iter().map(|host| {
                         let host_name = host.name.clone();
                         let dispatch = _search_dispatch.clone(); // Clone dispatch to use in the async block
-                        let server_name_clone = server_name.clone(); // Ensure you have the server_name
-                        let server_name_clone = api_key.clone(); // Ensure you have the api_key
                         let history_clone = history.clone();
-                        let api_url_clone = api_url.clone();
 
                         let on_host_click = {
                             let dispatch_clone = dispatch.clone();
@@ -418,9 +415,8 @@ pub fn episode_layout() -> Html {
 
     let session_dispatch = _search_dispatch.clone();
     let session_state = search_state.clone();
-    let mut podcast_added = search_state.podcast_added.unwrap_or_default();
+    let podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
-    let set_new_category = use_state(|| String::new());
     let new_category = use_state(|| String::new());
 
     let new_cat_in = new_category.clone();
@@ -522,23 +518,6 @@ pub fn episode_layout() -> Html {
                 {
                     let is_added = is_added.clone();
 
-                    let update_url_with_params = |title: &str, url: &str| {
-                        let window = web_sys::window().expect("no global window exists");
-                        let history = window.history().expect("should have a history");
-                        let location = window.location();
-
-                        let mut new_url = location.origin().unwrap();
-                        new_url.push_str(&location.pathname().unwrap());
-                        new_url.push_str("?podcast_title=");
-                        new_url.push_str(&urlencoding::encode(title));
-                        new_url.push_str("&podcast_url=");
-                        new_url.push_str(&urlencoding::encode(url));
-
-                        history
-                            .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&new_url))
-                            .expect("should push state");
-                    };
-
                     if podcast.is_none() {
                         let window = web_sys::window().expect("no global window exists");
                         let search_params = window.location().search().unwrap();
@@ -617,7 +596,6 @@ pub fn episode_layout() -> Html {
                                 );
                                 emit_click(on_title_click);
                                 let window = web_sys::window().expect("no global window exists");
-                                let history = window.history().expect("should have a history");
                                 let location = window.location();
 
                                 let mut new_url = location.origin().unwrap();
@@ -983,7 +961,6 @@ pub fn episode_layout() -> Html {
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             is_added_inner.set(false);
                             web_sys::console::log_1(&"adjusting podcast added".into());
-                            podcast_added = false;
                             app_dispatch.reduce_mut(|state| {
                                 state.podcast_added = Some(podcast_added);
                             });
@@ -1276,7 +1253,7 @@ pub fn episode_layout() -> Html {
 
                 // Match on the awaited response
                 match response {
-                    Ok(resp) => {
+                    Ok(_) => {
                         app_dispatch.reduce_mut(|state| {
                             if let Some(ref mut podcast_info) = state.clicked_podcast_info {
                                 if let Some(ref mut categories) = podcast_info.podcast_categories {
@@ -1301,8 +1278,6 @@ pub fn episode_layout() -> Html {
         })
     };
 
-    let category_name_state = use_state(|| "".to_string());
-    let cat_name_remove = category_name_state.clone();
     let category_to_remove = use_state(|| None::<String>);
     let onclick_remove = {
         let category_to_remove = category_to_remove.clone();
@@ -1317,7 +1292,6 @@ pub fn episode_layout() -> Html {
         })
     };
 
-    let app_state = search_state.clone();
     let app_dispatch = _search_dispatch.clone();
 
     {
@@ -1725,7 +1699,6 @@ pub fn episode_layout() -> Html {
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
                                 web_sys::console::log_1(&"adjusting podcast added".into());
-                                podcast_added = true;
                                 if let Some(call_podcast_id) = response_body.podcast_id {
                                     // Use the podcast_id for further processing if needed
                                     web_sys::console::log_1(

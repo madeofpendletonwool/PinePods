@@ -279,6 +279,7 @@ pub async fn call_get_podcast_info(
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[allow(non_snake_case)]
 pub struct PeopleEpisode {
     #[serde(deserialize_with = "deserialize_id")]
     pub id: Option<i32>,

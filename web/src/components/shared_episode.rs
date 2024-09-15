@@ -1,5 +1,4 @@
-use super::app_drawer::App_drawer;
-use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use super::gen_components::{empty_message, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
@@ -17,7 +16,6 @@ use wasm_bindgen::JsCast;
 use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
 use yew_router::prelude::*;
 use yewdux::prelude::*;
 
@@ -39,12 +37,9 @@ pub fn shared_episode(props: &SharedProps) -> Html {
     web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("shared ep hit"));
     let (state, dispatch) = use_store::<AppState>();
 
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
     let error = use_state(|| None);
-    let shared_url = use_state(|| Option::<String>::None);
 
-    let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     // let server_name = post_state
     //     .auth_details
@@ -52,8 +47,6 @@ pub fn shared_episode(props: &SharedProps) -> Html {
     //     .map(|ud| ud.server_name.clone());
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
-    let history = BrowserHistory::new();
-    let episode_id = state.selected_episode_id.clone();
     let loading = use_state(|| true); // Initial loading state set to true
 
     {
@@ -195,8 +188,6 @@ pub fn shared_episode(props: &SharedProps) -> Html {
                         let episode_title_clone = episode.episode.episodetitle.clone();
                         let episode_artwork_clone = episode.episode.episodeartwork.clone();
                         let episode_duration_clone = episode.episode.episodeduration.clone();
-                        let podcast_of_episode = episode.episode.podcastid.clone();
-                        let episode_listened_clone = Option::from(0);
                         let episode_id_clone = episode.episode.episodeid.clone();
 
                         let sanitized_description = sanitize_html_with_blank_target(&episode.episode.episodedescription.clone());
@@ -207,7 +198,6 @@ pub fn shared_episode(props: &SharedProps) -> Html {
                         let episode_artwork_for_closure = episode_artwork_clone.clone();
                         let episode_duration_for_closure = episode_duration_clone.clone();
                         let episode_id_for_closure = episode_id_clone.clone();
-                        let listener_duration_for_closure = episode_listened_clone.clone();
                         let audio_dispatch = audio_dispatch.clone();
 
                         let on_play_click = on_play_click_shared(

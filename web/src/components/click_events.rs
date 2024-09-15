@@ -1,11 +1,9 @@
 use crate::components::context::AppState;
 use crate::components::podcast_layout::ClickedFeedURL;
-use crate::requests::pod_req::{call_check_podcast, call_get_podcast_details, call_get_podcast_id};
+use crate::requests::pod_req::{call_check_podcast, call_get_podcast_id};
 use crate::requests::search_pods::{
-    call_get_person_info, call_get_podcast_episodes, call_parse_podcast_channel_info,
-    call_parse_podcast_url,
+    call_get_podcast_episodes, call_parse_podcast_url,
 };
-use anyhow::Error;
 use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::Callback;
@@ -142,66 +140,4 @@ pub fn create_on_title_click(
             };
         });
     })
-}
-
-pub async fn get_podcast_values(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
-    podcast_title: &str,
-    podcast_url: &str,
-    added: bool,
-) -> Result<ClickedFeedURL, Error> {
-    if added {
-        // Fetch podcast details using podcast id
-        let podcast_id = call_get_podcast_id(
-            server_name,
-            &Some(api_key.to_string()),
-            &user_id,
-            podcast_url,
-            podcast_title,
-        )
-        .await?;
-        let podcast_details =
-            call_get_podcast_details(server_name, api_key, user_id, &podcast_id).await?;
-        Ok(ClickedFeedURL {
-            podcast_title: podcast_details.podcastname,
-            podcast_url: podcast_details.feedurl,
-            podcast_description: podcast_details.description,
-            podcast_author: podcast_details.author,
-            podcast_artwork: podcast_details.artworkurl,
-            podcast_explicit: podcast_details.explicit,
-            podcast_episode_count: podcast_details.episodecount,
-            podcast_categories: Some(
-                podcast_details
-                    .categories
-                    .split(", ")
-                    .enumerate()
-                    .map(|(i, cat)| (i.to_string(), cat.to_string()))
-                    .collect(),
-            ),
-            podcast_link: podcast_details.websiteurl,
-        })
-    } else {
-        // Parse the podcast URL to get the details using the existing function
-        let podcast_info = call_parse_podcast_channel_info(podcast_url).await?;
-        Ok(ClickedFeedURL {
-            podcast_title: podcast_info.title,
-            podcast_url: podcast_url.to_string(),
-            podcast_description: podcast_info.description,
-            podcast_author: podcast_info.author,
-            podcast_artwork: podcast_info.artwork_url.unwrap_or_default(),
-            podcast_explicit: podcast_info.explicit,
-            podcast_episode_count: podcast_info.episode_count,
-            podcast_categories: Some(
-                podcast_info
-                    .categories
-                    .iter()
-                    .enumerate()
-                    .map(|(i, cat)| (i.to_string(), cat.to_string()))
-                    .collect(),
-            ),
-            podcast_link: podcast_info.website,
-        })
-    }
 }

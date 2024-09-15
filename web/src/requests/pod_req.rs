@@ -1,12 +1,11 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use gloo::net::websocket::WebSocketError;
 use gloo::net::websocket::{futures::WebSocket, Message};
 use gloo_net::http::Request;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::from_str;
 use std::collections::HashMap;
 use std::fmt;
 use web_sys::console;
@@ -2057,8 +2056,8 @@ pub async fn connect_to_episode_websocket(
         )));
     }
 
-    let mut websocket = ws_result.unwrap();
-    let (mut write, mut read) = websocket.split();
+    let websocket = ws_result.unwrap();
+    let (_write, mut read) = websocket.split();
 
     let mut episodes = Vec::new();
 

@@ -180,7 +180,6 @@ pub fn epsiode() -> Html {
                 {
                     web_sys::console::log_1(&"Fetching episode...".into());
                     let dispatch = effect_dispatch.clone();
-                    let pod_state = effect_pod_state.clone();
 
                     // Check if the URL contains the parameters for the episode
                     let window = web_sys::window().expect("no global window exists");
@@ -730,7 +729,7 @@ pub fn epsiode() -> Html {
 
             wasm_bindgen_futures::spawn_local(async move {
                 let api_key_copy = api_key.clone();
-                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref()) {
+                if let (Some(_api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref()) {
                     match call_create_share_link(
                         &server_name,
                         &api_key_copy.unwrap().unwrap(),

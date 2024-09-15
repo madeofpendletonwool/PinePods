@@ -6,27 +6,22 @@ use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg as EpisodeMsg;
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::gen_components::ContextButton;
-use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
-use crate::components::gen_components::{on_shownotes_click, EpisodeTrait};
+use crate::components::gen_components::{Search_nav, UseScrollToTop};
+use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_funcs::{
-    convert_time_to_seconds, format_datetime, format_time, match_date_format, parse_date,
+    format_datetime, format_time, match_date_format, parse_date,
     sanitize_html_with_blank_target, truncate_description,
 };
 use crate::requests::login_requests::use_check_authentication;
-use crate::requests::pod_req::Podcast;
 use crate::requests::pod_req::{
-    call_add_podcast, call_remove_podcasts, call_remove_podcasts_name, PodcastValues,
-    RemovePodcastValues, RemovePodcastValuesName,
+    call_add_podcast, call_remove_podcasts_name, PodcastValues, RemovePodcastValuesName,
 };
-use crate::requests::search_pods::call_get_person_info;
 use base64::{engine::general_purpose, Engine as _};
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
-use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
-use web_sys::HtmlElement;
+use wasm_bindgen::prelude::wasm_bindgen;
 use yew::prelude::*;
 use yew_router::history::BrowserHistory;
 use yew_router::prelude::*;
@@ -135,13 +130,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     });
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let podcast_feed_results = post_state.podcast_feed_results.clone();
     let api_key = post_state
         .auth_details
         .as_ref()
         .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let api_url = state.server_details.as_ref().map(|ud| ud.api_url.clone());
     let server_name = post_state
         .auth_details
         .as_ref()
@@ -311,24 +304,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         })
     };
 
-    // Create a HashMap to store the podcasts for quick lookup
-    let podcasts_map: HashMap<(String, String), i32> =
-        state
-            .podcast_feed_return
-            .as_ref()
-            .map_or(HashMap::new(), |feed| {
-                feed.pods.as_ref().map_or(HashMap::new(), |pods| {
-                    pods.iter()
-                        .map(|podcast| {
-                            (
-                                (podcast.feedurl.clone(), podcast.podcastname.clone()),
-                                podcast.podcastid,
-                            )
-                        })
-                        .collect::<HashMap<_, _>>()
-                })
-            });
-
     html! {
         <>
             <div class="main-container">
@@ -374,18 +349,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let history = history_clone.clone();
 
                                         let dispatch = dispatch.clone();
-                                        let podcast_id_loop = podcast.podcastid.clone();
                                         let podcast_description_clone = podcast.description.clone();
-
-                                        let pod_title_og = podcast.podcastname.clone();
-                                        let pod_artwork_og = podcast.artworkurl.clone();
-                                        let pod_author_og = podcast.author.clone();
-                                        let categories_og = podcast.categories.clone();
-                                        let pod_description_og = podcast.description.clone();
-                                        let pod_episode_count_og = podcast.episodecount.clone();
-                                        let pod_feed_url_og = podcast.feedurl.clone();
-                                        let pod_website_og = podcast.websiteurl.clone();
-                                        let pod_explicit_og = podcast.explicit.clone();
 
                                         let on_title_click = create_on_title_click(
                                             dispatch.clone(),
@@ -519,20 +483,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let podcast_title = episode.feedTitle.clone().unwrap_or_default();
                                         let episode_url_clone = episode.enclosureUrl.clone().unwrap_or_default();
                                         let episode_title_clone = episode.title.clone().unwrap_or_default();
-                                        let episode_artwork_clone = episode.feedImage.clone().unwrap_or_default();
-                                        // let episode_duration_clone = episode.duration.clone().unwrap_or_default();
-                                        let episode_duration_clone = episode.duration.clone().unwrap_or_default();
-                                        // let episode_duration_in_seconds = match convert_time_to_seconds(&episode_duration_clone) {
-                                        //     Ok(seconds) => seconds as i32,
-                                        //     Err(e) => {
-                                        //         eprintln!("Failed to convert time to seconds: {}", e);
-                                        //         0
-                                        //     }
-                                        // };
-                                        // Check if the podcast exists in the database
-                                        let podcast_key = (podcast_link_clone.clone(), podcast_title.clone());
-                                        let podcast_added = podcasts_map.contains_key(&podcast_key);
-
+                                        let episode_artwork_clone = episode.feedImage.clone().unwrap_or_default();                                        let episode_duration_clone = episode.duration.clone().unwrap_or_default();
 
                                         let episode_id_clone = 0;
                                         let mut db_added = false;
@@ -573,14 +524,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             })
                                         };
 
-
-                                        let state = state.clone();
-                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode url: {:?}", episode_url_clone)));
-                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode title: {:?}", episode_title_clone)));
-                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode artwork: {:?}", episode_artwork_clone)));
-                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode duration: {:?}", episode_duration_clone)));
-                                        // web_sys::console::log_1(&JsValue::from_str(&format!("Episode id: {:?}", episode_id_clone)));
-
                                         let on_play_click = on_play_click(
                                             episode_url_clone.clone(),
                                             episode_title_clone.clone(),
@@ -614,11 +557,9 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         };
                                         let datetime = parse_date(&datetime_str, &search_state_clone.user_tz);
                                         let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
-                                        let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
                                         let formatted_duration = format_time(episode_duration_clone.into());
                                         let episode_url_for_ep_item = episode_url_clone.clone();
                                         let episode_id_for_ep_item = 0;
-                                        let episode_title_for_ep_item = episode_title_clone.clone();
                                         let shownotes_episode_url = episode_url_clone.clone();
                                         let should_show_buttons = !episode_url_for_ep_item.is_empty();
                                         html! {

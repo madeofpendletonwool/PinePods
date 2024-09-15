@@ -16,7 +16,6 @@ pub fn app_drawer() -> Html {
     let is_drawer_open = use_state(|| false);
     let (state, _dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let is_refreshing = post_state.is_refreshing.unwrap_or(false);
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -47,7 +46,6 @@ pub fn app_drawer() -> Html {
     };
 
     let on_refresh_click = {
-        let is_refreshing = is_refreshing.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
 
@@ -63,7 +61,6 @@ pub fn app_drawer() -> Html {
                 state.clone() // Return the modified state
             });
 
-            let is_refreshing = is_refreshing.clone();
             spawn_local(async move {
                 if let Err(e) = connect_to_episode_websocket(
                     &server_name_call.unwrap(),

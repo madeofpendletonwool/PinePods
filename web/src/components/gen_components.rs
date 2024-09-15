@@ -1111,7 +1111,7 @@ impl EpisodeTrait for Episode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1134,7 +1134,7 @@ impl EpisodeTrait for QueuedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1156,7 +1156,7 @@ impl EpisodeTrait for SavedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1178,7 +1178,7 @@ impl EpisodeTrait for HistoryEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1196,7 +1196,7 @@ impl EpisodeTrait for EpisodeDownload {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1218,7 +1218,7 @@ impl EpisodeTrait for SearchEpisode {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
