@@ -27,10 +27,12 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 Version 0.6.6
 
 - [x] Manually adjust tags for podcast in podcast settings
-- [] Dynamically refresh tags on ep-layout when adding and removing them
+- [x] Dynamically refresh tags on ep-layout when adding and removing them
 - [] Fixed documentation so backend variables work with new docker standards
 - [x] Removed see more button from the episodes_layout, queue, and downloads page
 - [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [] Speed up people page loading
+- [] Add loading component to people page loading process
 - [] Added filtering to podcasts page
 - [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [x] Update api key creation and deletion after change dynamically with use_effect

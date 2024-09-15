@@ -1238,6 +1238,7 @@ pub fn episode_layout() -> Html {
     };
 
     // let onclick_cat = new_category
+    let app_dispatch_add = _search_dispatch.clone();
     let onclick_add = {
         // let dispatch = dispatch.clone();
         let server_name = server_name.clone();
@@ -1247,8 +1248,9 @@ pub fn episode_layout() -> Html {
         let new_category = new_category.clone(); // Assuming this is a state that stores the new category input
 
         Callback::from(move |event: web_sys::MouseEvent| {
+            
             event.prevent_default(); // Prevent the default form submit or page reload behavior
-
+            let app_dispatch = app_dispatch_add.clone();
             if new_category.is_empty() {
                 web_sys::console::log_1(&"Category name cannot be empty".into());
                 return;
@@ -1260,6 +1262,7 @@ pub fn episode_layout() -> Html {
             let user_id = user_id.clone().unwrap(); // Assuming user_id is Some(i32)
             let podcast_id = *podcast_id; // Assuming podcast_id is Some(i32)
             let category_name = (*new_category).clone();
+            let cat_name_dis = category_name.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 let request_data = AddCategoryRequest {
@@ -1274,7 +1277,21 @@ pub fn episode_layout() -> Html {
                 // Match on the awaited response
                 match response {
                     Ok(resp) => {
+                        app_dispatch.reduce_mut(|state| {
+                            if let Some(ref mut podcast_info) = state.clicked_podcast_info {
+                                if let Some(ref mut categories) = podcast_info.podcast_categories {
+                                    // Add the new category to the HashMap
+                                    categories.insert(cat_name_dis.clone(), cat_name_dis.clone());
+                                } else {
+                                    // Initialize the HashMap if it's None
+                                    let mut new_map = HashMap::new();
+                                    new_map.insert(cat_name_dis.clone(), cat_name_dis);
+                                    podcast_info.podcast_categories = Some(new_map);
+                                }
+                            }
+                        });
                         web_sys::console::log_1(&"Category added successfully".into());
+                        
                     }
                     Err(err) => {
                         web_sys::console::log_1(&format!("Error adding category: {}", err).into());
@@ -1300,6 +1317,9 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let app_state = search_state.clone();
+    let app_dispatch = _search_dispatch.clone();
+
     {
         let category_to_remove = category_to_remove.clone();
         let server_name = server_name.clone();
@@ -1312,6 +1332,7 @@ pub fn episode_layout() -> Html {
                 let server_name = server_name.clone().unwrap();
                 let api_key = api_key.clone().unwrap();
                 let user_id = user_id.unwrap();
+                let category_request = category.clone();
                 web_sys::console::log_1(
                     &format!("Category that we're removing: {}", category).into(),
                 );
@@ -1326,6 +1347,18 @@ pub fn episode_layout() -> Html {
                         call_remove_category(&server_name, &api_key, &request_data).await;
                     match response {
                         Ok(_) => {
+                            app_dispatch.reduce_mut(|state| {
+                                if let Some(ref mut podcast_info) = state.clicked_podcast_info {
+                                    if let Some(ref mut categories) = podcast_info.podcast_categories {
+                                        // Filter the HashMap and collect back into HashMap
+                                        *categories = categories
+                                            .clone()
+                                            .into_iter()
+                                            .filter(|(_, cat)| cat != &category_request) // Ensure you're comparing correctly
+                                            .collect();
+                                    }
+                                }
+                            });
                             web_sys::console::log_1(&"Category removed successfully".into());
                         }
                         Err(err) => {
