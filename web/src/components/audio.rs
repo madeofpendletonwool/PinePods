@@ -1420,3 +1420,55 @@ pub fn on_play_click_offline(
         });
     })
 }
+
+
+pub fn on_play_click_shared(
+    episode_url: String,
+    episode_title: String,
+    episode_artwork: String,
+    episode_duration: i32,
+    episode_id: i32,
+    audio_dispatch: Dispatch<UIState>,
+) -> Callback<MouseEvent> {
+    Callback::from(move |_: MouseEvent| {
+        let episode_url = episode_url.clone();
+        let episode_title = episode_title.clone();
+        let episode_artwork = episode_artwork.clone();
+        let episode_duration = episode_duration.clone();
+        let episode_id = episode_id.clone();
+        let audio_dispatch = audio_dispatch.clone();
+
+        web_sys::console::log_1(&JsValue::from_str("Playing shared episode..."));
+        web_sys::console::log_1(&JsValue::from_str(&episode_title));
+        web_sys::console::log_1(&JsValue::from_str(&episode_url));
+        web_sys::console::log_1(&JsValue::from_str(&episode_artwork));
+        web_sys::console::log_1(&JsValue::from_str(&episode_duration.to_string()));
+        web_sys::console::log_1(&JsValue::from_str(&episode_id.to_string()));
+
+        // No user-specific checks or DB operations needed, just play the episode
+        wasm_bindgen_futures::spawn_local(async move {
+            audio_dispatch.reduce_mut(move |audio_state| {
+                audio_state.audio_playing = Some(true);
+                audio_state.playback_speed = 1.0;
+                audio_state.audio_volume = 100.0;
+                audio_state.offline = Some(false);
+                audio_state.currently_playing = Some(AudioPlayerProps {
+                    src: episode_url.clone(),
+                    title: episode_title.clone(),
+                    artwork_url: episode_artwork.clone(),
+                    duration: episode_duration.to_string(),
+                    episode_id: episode_id,
+                    duration_sec: episode_duration as f64,
+                    start_pos_sec: 0.0, // Start playing from the beginning
+                    end_pos_sec: 0.0,
+                    offline: true,
+                });
+                audio_state.set_audio_source(episode_url.clone());
+                if let Some(audio) = &audio_state.audio_element {
+                    let _ = audio.play();
+                }
+                audio_state.audio_playing = Some(true);
+            });
+        });
+    })
+}

@@ -1525,6 +1525,57 @@ async def api_remove_saved_episode(data: RemoveSavedEpisodeData, cnx=Depends(get
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
+class AddCategoryData(BaseModel):
+    podcast_id: int
+    user_id: int
+    category: str
+
+@app.post("/api/data/add_category")
+async def api_add_category(data: AddCategoryData, cnx=Depends(get_database_connection),
+                           api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, "postgresql", api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        existing_categories = database_functions.functions.get_categories(cnx, database_type, data.podcast_id, data.user_id)
+        if data.category in existing_categories:
+            return {"detail": "Category already exists."}
+        else:
+            success = database_functions.functions.add_category(cnx, database_type, data.podcast_id, data.user_id, data.category)
+            if success:
+                return {"detail": "Category added!"}
+            else:
+                raise HTTPException(status_code=400, detail="Error adding category.")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify categories of your own podcasts!")
+
+class RemoveCategoryData(BaseModel):
+    podcast_id: int
+    user_id: int
+    category: str
+
+@app.post("/api/data/remove_category")
+async def api_remove_category(data: RemoveCategoryData, cnx=Depends(get_database_connection),
+                              api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if is_valid_key:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if key_id == data.user_id:
+            database_functions.functions.remove_category(cnx, database_type, data.podcast_id, data.user_id, data.category)
+            return {"detail": "Category removed."}
+        else:
+            raise HTTPException(status_code=403,
+                                detail="You can only modify categories of your own podcasts!")
+    else:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
 
 class RecordListenDurationData(BaseModel):
     episode_id: int
@@ -3084,6 +3135,50 @@ async def get_pinepods_version(cnx=Depends(get_database_connection),
 
     result = database_functions.functions.get_pinepods_version()
     return {"data": result}
+
+@app.post("/api/data/share_episode/{episode_id}")
+async def share_episode(episode_id: int, cnx=Depends(get_database_connection),
+                        api_key: str = Depends(get_api_key_from_header)):
+    import uuid
+    from datetime import datetime, timedelta
+    # Verify API key validity
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have the correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Generate the URL key and expiration date
+    url_key = str(uuid.uuid4())  # Generates a unique URL key
+    expiration_date = datetime.utcnow() + timedelta(days=60)  # Expire in 60 days
+
+    # Call database function to insert the shared episode entry
+    result = database_functions.functions.add_shared_episode(database_type, cnx, episode_id, url_key, expiration_date)
+
+    if result:
+        return {"url_key": url_key}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to share episode")
+
+@app.get("/api/data/episode_by_url/{url_key}")
+async def get_episode_by_url_key(url_key: str, cnx=Depends(get_database_connection)):
+    # Find the episode ID associated with the URL key
+    print('running inside ep by url')
+    episode_id = database_functions.functions.get_episode_id_by_url_key(database_type, cnx, url_key)
+    print(f'outside dunc {episode_id}')
+    if episode_id is None:
+        raise HTTPException(status_code=404, detail="Invalid or expired URL key")
+
+    # Now retrieve the episode metadata using the episode_id
+    try:
+        episode_data = database_functions.functions.get_episode_metadata_id(database_type, cnx, episode_id)  # UserID is None because we are bypassing normal user auth for shared links
+        return {"episode": episode_data}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 
 class LoginInitiateData(BaseModel):
     user_id: int

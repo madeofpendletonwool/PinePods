@@ -14,7 +14,7 @@ use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_download_episode, call_fetch_podcasting_2_data, call_get_episode_id,
-    call_mark_episode_completed, call_mark_episode_uncompleted, call_queue_episode,
+    call_mark_episode_completed, call_create_share_link, call_mark_episode_uncompleted, call_queue_episode,
     call_save_episode, DownloadEpisodeRequest, EpisodeInfo, EpisodeMetadataResponse,
     EpisodeRequest, FetchPodcasting2DataRequest, MarkEpisodeCompletedRequest, QueuePodcastRequest,
     SavePodcastRequest,
@@ -28,6 +28,12 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+
+fn get_current_url() -> String {
+    let window = window().expect("no global `window` exists");
+    let location = window.location();
+    location.href().unwrap_or_else(|_| "Unable to retrieve URL".to_string())
+}
 
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
@@ -69,6 +75,8 @@ pub fn epsiode() -> Html {
     });
 
     let error = use_state(|| None);
+    let shared_url = use_state(|| Option::<String>::None);
+
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = post_state
@@ -627,6 +635,40 @@ pub fn epsiode() -> Html {
 
     let completion_status = use_state(|| false); // State to track completion status
 
+    // let copy_to_clipboard = Callback::from(move |_| {
+    //     let window = window().expect("global window does not exist");
+    //     let document = window.document().expect("document not available");
+
+    //     if let Some(input_element) = document
+    //         .get_element_by_id("share_link")
+    //         .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+    //     {
+    //         input_element.select();
+
+    //         // Access the clipboard API directly
+    //         let navigator = window.navigator();
+    //         if let Some(clipboard) = navigator.clipboard() {
+    //             let value_to_copy = input_element.value();
+    //             spawn_local(async move {
+    //                 match wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&value_to_copy)).await {
+    //                     Ok(_) => {
+    //                         web_sys::console::log_1(&"Link copied to clipboard!".into());
+    //                     }
+    //                     Err(err) => {
+    //                         web_sys::console::log_1(&format!("Error copying to clipboard: {:?}", err).into());
+    //                     }
+    //                 }
+    //             });
+    //         } else {
+    //             web_sys::console::log_1(&"Clipboard API not available".into());
+    //         }
+    //     }
+    // });
+
+
+
+
+
     {
         let state = state.clone();
         let completion_status = completion_status.clone();
@@ -640,11 +682,121 @@ pub fn epsiode() -> Html {
         });
     }
 
+    let page_state = use_state(|| PageState::Hidden);
+
+    // Define the state of the application
+    #[derive(Clone, PartialEq)]
+    enum PageState {
+        Hidden,
+        Shown,
+    }
+
+    let on_close_modal = {
+        let page_state = page_state.clone();
+        Callback::from(move |_| {
+            page_state.set(PageState::Hidden);
+        })
+    };
+
+    let on_background_click = {
+        let on_close_modal = on_close_modal.clone();
+        Callback::from(move |e: MouseEvent| {
+            let target = e.target().unwrap();
+            let element = target.dyn_into::<web_sys::Element>().unwrap();
+            if element.tag_name() == "DIV" {
+                on_close_modal.emit(e);
+            }
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
+
+    let shared_url_copy = shared_url.clone();
+    let create_share_link = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let episode_id = episode_id.clone();
+        let page_state_create = page_state.clone(); // Handle modal visibility
+        let shared_url_create = shared_url_copy.clone(); // Store the created shared link
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let ep_id_deref = episode_id.clone().unwrap();
+            let shared_url_copy = shared_url_create.clone();
+            let page_state_copy = page_state_create.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let api_key_copy = api_key.clone();
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref()) {
+                    match call_create_share_link(
+                        &server_name,
+                        &api_key_copy.unwrap().unwrap(),
+                        ep_id_deref,
+                    )
+                    .await
+                    {
+                        Ok(url_key) => {
+                            let full_url = format!("{}/shared_episode/{}", server_name, url_key);
+                            shared_url_copy.set(Some(full_url)); // Store the generated link
+                            page_state_copy.set(PageState::Shown); // Show the modal
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(&format!("Error creating share link: {}", e).into());
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    // Define the modal for showing the shareable link
+    let share_url_modal =
+        html! {
+            <div id="share_url_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                            <h3 class="text-xl font-semibold">
+                                {"Copy Shared Link"}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{"Close modal"}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <div>
+                                <label for="share_link" class="block mb-2 text-sm font-medium">{"Share this link with anyone you'd like to be able to listen to this episode. They don't even need an account on the server to use this!"}</label>
+                                <input type="text" id="share_link" class="input-black w-full px-3 py-2 border border-gray-300 rounded-md" value={shared_url.as_ref().map(|url| url.clone()).unwrap_or_else(|| "".to_string())} readonly=true />
+                                // <button class="copy-button" onclick={copy_to_clipboard.clone()}>{ "Copy to clipboard" }</button>
+                            </div>
+                            <div>
+                                <label for="share_link" class="block mb-2 text-sm font-medium">{"If they do have an account you can just send the user the current link on this web page:"}</label>
+                                <input type="text" id="share_link" class="input-black w-full px-3 py-2 border border-gray-300 rounded-md" value={get_current_url()} readonly=true />
+                                // <button class="copy-button" onclick={copy_to_clipboard.clone()}>{ "Copy to clipboard" }</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        };
+
     html! {
         <>
         <div class="main-container">
             <Search_nav />
             <UseScrollToTop />
+            {
+                match *page_state {
+                PageState::Shown => share_url_modal,
+                _ => html! {},
+                }
+            }
             {
                 if *loading { // If loading is true, display the loading animation
                     html! {
@@ -1016,6 +1168,13 @@ pub fn epsiode() -> Html {
                                                             html! {}
                                                         }
                                                     }
+                                                    {
+                                                        html! {
+                                                            <button onclick={create_share_link.clone()} class="play-button">
+                                                                <i class="material-icons">{ "share" }</i>
+                                                            </button>
+                                                        }
+                                                    }
                                                 </h2>
                                             </div>
                                             // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
@@ -1199,6 +1358,12 @@ pub fn epsiode() -> Html {
                                                     html! {}
                                                 }
                                             }
+                                            <button
+                                                class="share-button font-bold py-2 px-4 rounded"
+                                                onclick={create_share_link.clone()}
+                                            >
+                                                {"Share Episode"}
+                                            </button>
                                         </div>
                                     </div>
                                     <div class="episode-action-buttons">

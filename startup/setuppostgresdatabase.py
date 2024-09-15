@@ -384,6 +384,21 @@ try:
     create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
     create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
 
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "SharedEpisodes" (
+                SharedEpisodeID SERIAL PRIMARY KEY,
+                EpisodeID INT,
+                UrlKey TEXT,
+                ExpirationDate TIMESTAMP,
+                FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
+            )
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating SharedEpisodes table: {e}")
+
+
 
     try:
         cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (

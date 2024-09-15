@@ -51,6 +51,10 @@ body {
     /* Example property, adjust as needed */
 }
 
+.episode-layout-container-shared {
+    padding-top: 20px;
+}
+
 .item_container-text.episode-description-container a:hover {
     color: var(--hover-color);
     /* Replace #hoverColorCode with the color you want for hover state */
@@ -221,6 +225,22 @@ body {
 }
 
 /* styles.css */
+
+.category-input {
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+.category-input:focus {
+    border-color: var(--hover-color);
+    ring-color: var(--link-color);
+}
+
+.category-input::placeholder {
+    color: var(--text-secondary-color);
+}
 
 .search-input,
 .search-btn {
@@ -941,7 +961,31 @@ body {
     margin-bottom: 10px;
 }
 
+.input-black {
+    color: black; /* Set the text color to white to make it readable */
+    border-color: var(--border-color); /* Maintain consistent border styling */
+}
+
+.share-button {
+    color: var(--button-text-color);
+    background-color: var(--button-color);
+    border-color: var(--border-color);
+    margin-bottom: 10px;
+    max-width: 200px; /* Set a maximum width */
+    width: auto; /* Allow the button to size according to its content */
+}
+
+.share-button-mobile {
+    display: block; /* Makes the button block-level to use margin auto */
+    margin-left: auto; /* Centers the button horizontally */
+    margin-right: auto; /* Centers the button horizontally */
+}
+
 .download-button:hover {
+    background-color: var(--hover-color);
+}
+
+.share:hover {
     background-color: var(--hover-color);
 }
 

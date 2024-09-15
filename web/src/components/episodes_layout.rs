@@ -12,12 +12,13 @@ use crate::components::gen_funcs::{
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
-    call_add_podcast, call_adjust_skip_times, call_check_podcast, call_download_all_podcast,
-    call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
-    call_get_auto_skip_times, call_get_podcast_details, call_get_podcast_id,
-    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name, call_remove_podcasts_name,
-    AutoDownloadRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, Person,
-    Podcast, PodcastDetails, PodcastResponse, PodcastValues, RemovePodcastValuesName,
+    call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
+    call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
+    call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_details,
+    call_get_podcast_id, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_remove_category, call_remove_podcasts_name, AddCategoryRequest, AutoDownloadRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, Person, Podcast, PodcastDetails,
+    PodcastResponse, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     SkipTimesRequest,
 };
 use crate::requests::search_pods::call_get_person_info;
@@ -32,6 +33,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::Element;
 use web_sys::{window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
 use yew::prelude::*;
 use yew::Properties;
@@ -418,6 +420,16 @@ pub fn episode_layout() -> Html {
     let session_state = search_state.clone();
     let mut podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
+    let set_new_category = use_state(|| String::new());
+    let new_category = use_state(|| String::new());
+
+    let new_cat_in = new_category.clone();
+    let new_category_input = Callback::from(move |e: InputEvent| {
+        if let Some(input_element) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+            let value = input_element.value(); // Get the value as a String
+            new_cat_in.set(value); // Set the state with the String
+        }
+    });
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -1225,7 +1237,157 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    // let onclick_cat = new_category
+    let onclick_add = {
+        // let dispatch = dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone(); // Assuming user_id is an Option<i32> or similar
+        let podcast_id = podcast_id.clone(); // Assuming this is available in your context
+        let new_category = new_category.clone(); // Assuming this is a state that stores the new category input
+
+        Callback::from(move |event: web_sys::MouseEvent| {
+            event.prevent_default(); // Prevent the default form submit or page reload behavior
+
+            if new_category.is_empty() {
+                web_sys::console::log_1(&"Category name cannot be empty".into());
+                return;
+            }
+
+            // let dispatch = dispatch.clone();
+            let server_name = server_name.clone().unwrap();
+            let api_key = api_key.clone().unwrap();
+            let user_id = user_id.clone().unwrap(); // Assuming user_id is Some(i32)
+            let podcast_id = *podcast_id; // Assuming podcast_id is Some(i32)
+            let category_name = (*new_category).clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                let request_data = AddCategoryRequest {
+                    podcast_id,
+                    user_id,
+                    category: category_name,
+                };
+
+                // Await the async function call
+                let response = call_add_category(&server_name, &api_key, &request_data).await;
+
+                // Match on the awaited response
+                match response {
+                    Ok(resp) => {
+                        web_sys::console::log_1(&"Category added successfully".into());
+                    }
+                    Err(err) => {
+                        web_sys::console::log_1(&format!("Error adding category: {}", err).into());
+                    }
+                }
+            });
+        })
+    };
+
+    let category_name_state = use_state(|| "".to_string());
+    let cat_name_remove = category_name_state.clone();
+    let category_to_remove = use_state(|| None::<String>);
+    let onclick_remove = {
+        let category_to_remove = category_to_remove.clone();
+        Callback::from(move |event: MouseEvent| {
+            event.prevent_default();
+            let category = event
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|e| e.get_attribute("data-category"))
+                .unwrap_or_default();
+            category_to_remove.set(Some(category));
+        })
+    };
+
+    {
+        let category_to_remove = category_to_remove.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id;
+        let podcast_id = *podcast_id;
+
+        use_effect_with(category_to_remove, move |category_to_remove| {
+            if let Some(category) = (**category_to_remove).clone() {
+                let server_name = server_name.clone().unwrap();
+                let api_key = api_key.clone().unwrap();
+                let user_id = user_id.unwrap();
+                web_sys::console::log_1(
+                    &format!("Category that we're removing: {}", category).into(),
+                );
+                wasm_bindgen_futures::spawn_local(async move {
+                    let request_data = RemoveCategoryRequest {
+                        podcast_id,
+                        user_id,
+                        category,
+                    };
+                    // Your API call here
+                    let response =
+                        call_remove_category(&server_name, &api_key, &request_data).await;
+                    match response {
+                        Ok(_) => {
+                            web_sys::console::log_1(&"Category removed successfully".into());
+                        }
+                        Err(err) => {
+                            web_sys::console::log_1(
+                                &format!("Error removing category: {}", err).into(),
+                            );
+                        }
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    // let onclick_remove = {
+    //     // let dispatch = dispatch.clone();
+    //     let server_name = server_name.clone();
+    //     let api_key = api_key.clone();
+    //     let user_id = user_id; // Dereference to get the actual value
+    //     let podcast_id = *podcast_id; // Dereference to get the actual value
+    //     let category_name = (*cat_name_remove).clone(); // let category_name = category_name.clone(); // Assume this is coming from the correct state
+
+    //     Callback::from(move |event: web_sys::MouseEvent| {
+    //         event.prevent_default();
+
+    //         // let dispatch = dispatch.clone();
+    //         let server_name = server_name.clone().unwrap();
+    //         let api_key = api_key.clone().unwrap();
+    //         let user_id = user_id.unwrap();
+    //         let podcast_id = podcast_id;
+    //         let category_name = category_name.clone();
+    //         web_sys::console::log_1(
+    //             &format!("Category that we're removing: {}", category_name).into(),
+    //         );
+
+    //         wasm_bindgen_futures::spawn_local(async move {
+    //             let request_data = RemoveCategoryRequest {
+    //                 podcast_id,
+    //                 user_id,
+    //                 category: category_name,
+    //             };
+
+    //             // Await the async function
+    //             let response = call_remove_category(&server_name, &api_key, &request_data).await;
+
+    //             // Match on the awaited response
+    //             match response {
+    //                 Ok(resp) => {
+    //                     web_sys::console::log_1(&format!("Category removed!: {}", resp).into());
+    //                 }
+    //                 Err(err) => {
+    //                     web_sys::console::log_1(
+    //                         &format!("Error removing category: {}", err).into(),
+    //                     );
+    //                 }
+    //             }
+    //         });
+    //     })
+    // };
+
     // Define the modal components
+    let clicked_feed = clicked_podcast_info.clone();
     let podcast_option_model = html! {
         <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
             <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
@@ -1288,6 +1450,57 @@ pub fn episode_layout() -> Html {
                                         onclick={save_skip_times}
                                     >
                                         {"Confirm"}
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="category_adjust" class="block mb-2 text-sm font-medium">
+                                    {"Adjust Podcast Categories:"}
+                                </label>
+                                <div class="flex flex-wrap items-center space-x-2">
+                                    {
+                                        // let categories_list = clicked_feed.unwrap().podcast_categories.clone();
+                                        if let Some(categories) = clicked_feed.unwrap().podcast_categories.clone() {
+                                            let categories = Rc::new(categories);
+                                            html! {
+                                                <>
+                                                    { for categories.iter().map(|(_, category_name)| {
+                                                        let category_name = category_name.clone();
+                                                        let onclick_remove = onclick_remove.clone();
+                                                        html! {
+                                                            <div class="flex items-center category-item space-x-1">
+                                                                <span class="category-box">{ &category_name }</span>
+                                                                <button
+                                                                    class="minus-button text-red-500 font-bold"
+                                                                    onclick={onclick_remove}
+                                                                    data-category={category_name.clone()}
+                                                                >
+                                                                    {"-"}
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                    }) }
+                                                </>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </div>
+
+                                <div class="mt-4">
+                                    <input type="text"
+                                        id="new_category"
+                                        class="category-input w-full md:w-auto px-3 py-2 border rounded-md mr-2"
+                                        placeholder="New category"
+                                        value={(*new_category).clone()}
+                                        oninput={new_category_input.clone()} // Input handler to update `new_category`
+                                    />
+                                    <button
+                                        class="add-category-button text-sm font-medium rounded-lg border focus:ring-4 focus:outline-none search-btn py-2 px-4 rounded-md"
+                                        onclick={onclick_add}
+                                    >
+                                        {"New Category"}
                                     </button>
                                 </div>
                             </div>
@@ -1911,11 +2124,6 @@ pub fn episode_layout() -> Html {
 
 
                                                 let state = state.clone();
-                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode url: {:?}", episode_url_clone)));
-                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode title: {:?}", episode_title_clone)));
-                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode artwork: {:?}", episode_artwork_clone)));
-                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode duration: {:?}", episode_duration_clone)));
-                                                web_sys::console::log_1(&JsValue::from_str(&format!("Episode id: {:?}", episode_id_clone)));
 
                                                 let on_play_click = on_play_click(
                                                     episode_url_clone.clone(),

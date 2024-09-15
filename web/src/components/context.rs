@@ -7,7 +7,7 @@ use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::{
     Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
     HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
-    RecentEps, SavedEpisodesResponse, Transcript, Value,
+    RecentEps, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse,
@@ -97,6 +97,7 @@ pub struct AppState {
     pub expanded_descriptions: HashSet<String>,
     pub selected_theme: Option<String>,
     pub fetched_episode: Option<EpisodeMetadataResponse>,
+    pub shared_fetched_episode: Option<SharedEpisodeResponse>,
     pub selected_episode_id: Option<i32>,
     pub selected_episode_url: Option<String>,
     pub selected_episode_audio_url: Option<String>,

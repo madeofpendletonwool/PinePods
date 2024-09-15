@@ -41,4 +41,6 @@ pub enum Route {
     EpisodeLayout,
     #[at("/episode")]
     Episode,
+    #[at("/shared_episode/:url_key")]
+    SharedEpisode { url_key: String },
 }
