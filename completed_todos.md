@@ -33,7 +33,7 @@ Version 0.6.6
 - [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [] Speed up people page loading
 - [] Add loading component to people page loading process
-- [] Added filtering to podcasts page
+- [x] Added category filtering to podcasts page
 - [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [x] Update api key creation and deletion after change dynamically with use_effect
 - [x] Update mfa setup slider after setup dynamically with use_effect
