@@ -786,13 +786,24 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     return rows or None
 
 def get_podcast_details(database_type, cnx, user_id, podcast_id):
+    # Unpack the tuple into pod_id and episode_id
+    # pod_id, episode_id = podcast_episode_tuple
+    if isinstance(podcast_id, tuple):
+        pod_id, episode_id = podcast_episode
+    else:
+        pod_id = podcast_id
+        episode_id = None  # or handle this based on your logic
+
+    
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
     else:  # Assuming MariaDB/MySQL if not PostgreSQL
         cursor = cnx.cursor(dictionary=True)
 
-    print(f"pulling pod deets for {podcast_id}")
+    print(f"pulling pod deets for podcast ID: {pod_id}, episode ID: {episode_id}")
+    
+    # Use only the pod_id for the query
     if database_type == "postgresql":
         query = """
             SELECT *
@@ -806,14 +817,17 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
             WHERE PodcastID = %s AND UserID = %s
         """
 
-    cursor.execute(query, (podcast_id, user_id))
+    # Execute the query with pod_id and user_id
+    cursor.execute(query, (pod_id, user_id))
     details = cursor.fetchone()
     cursor.close()
 
+    # Process and return the fetched details
     lower_row = lowercase_keys(details)
     bool_fix = convert_bools(lower_row, database_type)
 
     return bool_fix
+
 
 
 def get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_name):

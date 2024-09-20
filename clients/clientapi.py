@@ -619,15 +619,17 @@ async def api_podcast_details(podcast_id: str = Query(...), cnx=Depends(get_data
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
+    print('in pod details')
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
 
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
+    print('called the id')
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
+        print('getting details')
         details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
+        print(f'got details {details}')
         if details is None:
             episodes = []  # Return an empty list instead of raising an exception
         return {"details": details}
@@ -843,9 +845,13 @@ async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
 
     # Fetch the podcast feed URL and episode URL from the database using the episode_id
+    print(f'types are here db type: {database_type}, ep id: {episode_id}, user: {user_id}')
     episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
+    print(f'got the ep data {episode_metadata}')
     podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+    print(f'Got the id {podcast_id}')
     podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
+    print(f'Got the feed: {podcast_feed}')
     episode_url = episode_metadata['episodeurl']
     podcast_feed_url = podcast_feed['feedurl']
 
@@ -855,7 +861,7 @@ async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get
         feed_content = response.text  # Decode content to string
 
     logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
-
+    print(f"Fetched feed content: {feed_content[:200]}")
     chapters_url = parse_chapters(feed_content, episode_url)
     transcripts = parse_transcripts(feed_content, episode_url)
     people = parse_people(feed_content, episode_url)
@@ -868,6 +874,7 @@ async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get
             chapters_data = response.json().get('chapters', [])
 
     logging.info(f'Chapter data {chapters_data}')
+    print(f'Chapter data {chapters_data}')
     logging.info(f'Transcripts {transcripts}')
     logging.info(f'People {people}')
 

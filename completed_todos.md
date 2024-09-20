@@ -23,6 +23,8 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Allow for episode plays on episode page when podcast not in db
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [] Add additional safety parsing to ensure podcasts will display on pod feed page
+- [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
 
 Version 0.6.6
 
@@ -31,17 +33,19 @@ Version 0.6.6
 - [] Fixed documentation so backend variables work with new docker standards
 - [x] Removed see more button from the episodes_layout, queue, and downloads page
 - [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
-- [] Speed up people page loading
-- [] Add loading component to people page loading process
-- [] Added filtering to podcasts page
+- [x] Speed up people page loading (happens in async now)
+- [x] Add loading component to people page loading process
+- [x] Added category filtering to podcasts page
 - [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [x] Update api key creation and deletion after change dynamically with use_effect
 - [x] Update mfa setup slider after setup dynamically with use_effect
-- [] Fixed refreshing on episode screen so it no longer breaks the session
-- [] Fixed refreshing on episode-layout screen so it no longer breaks the session
+- [x] Fixed refreshing on episode screen so it no longer breaks the session
+- [x] Fixed refreshing on episode-layout screen so it no longer breaks the session
 - [x] Fixed issue with episode page where refreshing caused it to break
 - [x] Fixed issue with queue where episode couldn't be manually removed
 - [x] Added loading spinner when opening an episode to ensure you don't momentarily see the wrong episode
+- [x] Improve Filtering css so that things align correctly
+- [x] Made the button to add and remove podcasts more consistent (Sometimes it was just not registering)
 
 CI/CD:
 

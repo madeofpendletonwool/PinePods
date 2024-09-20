@@ -236,3 +236,9 @@ impl AppState {
     //     None
     // }
 }
+
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct FilterState {
+    pub selected_category: Option<String>,
+    pub category_filter_list: Option<Vec<String>>,
+}
