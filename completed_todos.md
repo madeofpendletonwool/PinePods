@@ -54,6 +54,7 @@ Version 0.6.6
 - [x] Added loading spinner when opening an episode to ensure you don't momentarily see the wrong episode
 - [x] Improve Filtering css so that things align correctly
 - [x] Made the button to add and remove podcasts more consistent (Sometimes it was just not registering)
+- [] Update Rust dependancies
 
 CI/CD:
 
