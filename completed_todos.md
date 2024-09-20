@@ -25,6 +25,14 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 - [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
+- [] Implement additional filtering in podcasts
+- [] Implement episode filtering on episode layout page
+- [] Implement episode filtering on history page
+- [] Implement episode filtering on saved page
+- [] Implement episode filtering on server download page
+- [] Implement episode filtering on local download page
+- [] Implement episode filtering on queue page
+- [] Implement episode filtering on search page
 
 Version 0.6.6
 
