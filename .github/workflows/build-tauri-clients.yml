@@ -39,7 +39,7 @@ jobs:
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             echo "ARTIFACT_NAME1=pinepods_${{ env.IMAGE_TAG }}_amd64.deb" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=pinepods_${{ env.IMAGE_TAG }}_amd64.AppImage" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME3=pinepods-${{ env.IMAGE_TAG }}.x86_64.rpm" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME3=pinepods-${{ env.IMAGE_TAG }}-1.x86_64.rpm" >> $GITHUB_ENV
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_x64-setup.exe" >> $Env:GITHUB_ENV
             echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
