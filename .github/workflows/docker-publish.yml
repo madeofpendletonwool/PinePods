@@ -1,4 +1,4 @@
-name: Publish Pinepods Image to DockerHub
+name: Publish Pinepods Multi-Architecture Image to DockerHub
 
 on:
   release:
@@ -14,7 +14,7 @@ env:
   IMAGE_NAME: madeofpendletonwool/pinepods
 
 jobs:
-  build-x86:
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,87 +25,59 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Log in to Docker Hub
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_KEY }}
 
-      - name: Set Image Tag
-        id: set_tag
+      - name: Set Image Tag and Latest Tag
+        id: set_tags
         run: |
           echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
-
-      - name: Build and push x86 image
-        run: |
-          docker build --build-arg PINEPODS_VERSION=${{ env.IMAGE_TAG }} -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 -f dockerfile .
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86
-          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
-            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "LATEST_TAG=latest-manual" >> $GITHUB_ENV
+          else
+            echo "LATEST_TAG=latest" >> $GITHUB_ENV
           fi
 
-  build-arm:
-    runs-on: pi4
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+      - name: Build and push multi-architecture image
+        uses: docker/build-push-action@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_KEY }}
-
-      - name: Set Image Tag
-        id: set_tag
-        run: |
-          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
-
-      - name: Build and push ARM image
-        run: |
-          docker build --build-arg PINEPODS_VERSION=$(echo $IMAGE_TAG) -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm -f dockerfile-arm .
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
-          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
-            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm
-          fi
-
-  create-and-push-manifest:
-    needs: [build-x86, build-arm]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-
-    steps:
-      - name: Log in to Docker Hub
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_KEY }}
-
-      - name: Set Image Tag
-        id: set_tag
-        run: |
-          echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+          context: .
+          file: ./dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
+          build-args: |
+            PINEPODS_VERSION=${{ env.IMAGE_TAG }}
 
       - name: Create and push Docker manifest for the version tag
         run: |
           docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
           docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Create and push Docker manifest for the latest tag
         run: |
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.LATEST_TAG }} \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
+          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.LATEST_TAG }}
+
+      - name: Image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}
