@@ -1763,3 +1763,27 @@ pub fn queue_episode_item(
             </>
     }
 }
+
+
+#[derive(Properties, PartialEq)]
+pub struct LoadingModalProps {
+    pub name: String,
+    pub is_visible: bool,
+}
+
+#[function_component(LoadingModal)]
+pub fn loading_modal(props: &LoadingModalProps) -> Html {
+    if !props.is_visible {
+        return html! {};
+    }
+
+    html! {
+        <div class="modal-overlay flex items-center justify-center">
+            <div class="modal-content text-center">
+                <div class="spinner mx-auto mb-4"></div>
+                <p class="modal-title">{ format!("Searching everywhere for {}...", props.name) }</p>
+                <p class="modal-subtitle mt-2">{"This may take a moment"}</p>
+            </div>
+        </div>
+    }
+}

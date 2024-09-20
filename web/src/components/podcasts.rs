@@ -545,12 +545,15 @@ pub fn podcasts() -> Html {
             {
                 if *show_filter_dropdown {
                     html! {
-                        <>
+                        <div class="filter-container flex items-center space-x-4">
+                            // Clear Filter button
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={clear_filter}>
                                 <span class="material-icons icon-space">{"clear"}</span>
                                 <span class="text-lg">{"Clear Filter"}</span>
                             </button>
-                            <div class="filter-dropdown">
+            
+                            // Category dropdown
+                            <div class="filter-dropdown font-bold rounded">
                                 {
                                     if let Some(categories) = &filter_state.category_filter_list {
                                         let categories_clone = categories.clone();
@@ -561,7 +564,7 @@ pub fn podcasts() -> Html {
                                                     let selected_value = target.value();
                                                     on_filter_click.emit(selected_value);
                                                 })}>
-                                                    <option value="">{"Select a category"}</option>
+                                                    <option value="" disabled=true selected=true>{ "Select Category" }</option>
                                                     { for categories_clone.iter().map(|category| html! {
                                                         <option value={category.clone()}>{ category }</option>
                                                     }) }
@@ -573,12 +576,14 @@ pub fn podcasts() -> Html {
                                     }
                                 }
                             </div>
-                        </>
+                        </div>
                     }
                 } else {
                     html! {}
                 }
-            }          
+            }
+            
+                     
             {
                 if let Some(podcasts) = state.podcast_feed_return.clone() {
                     let int_podcasts = podcasts.clone();
@@ -684,8 +689,12 @@ pub fn podcasts() -> Html {
     
                                                 <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
                                             </div>
-                                            <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                <span class="material-icons" onclick={toggle_delete.reform(move |_| podcast_id_loop)}>{"delete"}</span>
+                                            <button 
+                                                class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} 
+                                                style="width: 60px; height: 60px;"
+                                                onclick={toggle_delete.reform(move |_| podcast_id_loop)}
+                                            >
+                                                <span class="material-icons" >{"delete"}</span>
                                             </button>
     
                                         </div>

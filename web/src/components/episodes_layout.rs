@@ -1,11 +1,11 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::ContextButton;
-use super::gen_components::{on_shownotes_click, EpisodeTrait, Search_nav, UseScrollToTop};
+use super::gen_components::{ContextButton, LoadingModal, on_shownotes_click, EpisodeTrait, Search_nav, UseScrollToTop};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::{on_play_click, AudioPlayer};
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_time;
+use futures::future::join_all;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
@@ -221,6 +221,10 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
 
     let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };
 
+    let loading_modal_visible = use_state(|| false);
+    let loading_name = use_state(|| String::new());
+
+
     html! {
         <div class="inline-block">
             <button
@@ -251,6 +255,9 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                             let host_name = host_name.clone();
                             let history = history_clone.clone();
                             let search_state_call = search_state.clone();
+                            let loading_modal_visible = loading_modal_visible.clone();
+                            let loading_name = loading_name.clone();
+                    
 
                             Callback::from(move |_| {
                                 let hostname = host_name.clone();
@@ -260,6 +267,10 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                 let search_state = search_state_call.clone();
                                 let dispatch = dispatch_clone.clone();
                                 let history = history.clone();
+                                let loading_modal_visible = loading_modal_visible.clone();
+                                let loading_name = loading_name.clone();
+                                loading_name.set(hostname.clone());
+                                loading_modal_visible.set(true);                    
 
                                 wasm_bindgen_futures::spawn_local(async move {
                                     let target_url = format!("/person/{}", hostname);
@@ -276,79 +287,81 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                             .map(|item| (item.feedTitle.clone(), item.feedUrl.clone()))
                                             .collect();
 
-                                        let mut fetched_podcasts = vec![];
-
-                                        for (feed_title, feed_url) in unique_feeds {
-
-                                            web_sys::console::log_1(&format!("Checking podcast: {:?} - {:?}", feed_title, feed_url).into());
-                                            let podcast_exists = call_check_podcast(
-                                                &server_name.clone().unwrap(),
-                                                &api_key.clone().unwrap().unwrap(),
-                                                user_id.unwrap(),
-                                                &feed_title.clone().unwrap_or_default(),
-                                                &feed_url.clone().unwrap_or_default(),
-                                            ).await.unwrap_or_default().exists;
-
-                                            if podcast_exists {
-                                                // Fetch podcast details if it exists in the database
-                                                web_sys::console::log_1(&format!("Podcast exists: {:?} - {:?}", feed_title, feed_url).into());
-                                                if let Ok(podcast_id) = call_get_podcast_id(
-                                                    &server_name.clone().unwrap(),
-                                                    &api_key.clone().unwrap(),
-                                                    &search_state.user_details.as_ref().unwrap().UserID,
-                                                    &feed_url.unwrap_or_default(),
-                                                    &feed_title.clone().unwrap_or_default(),
-                                                ).await {
-                                                    if let Ok(podcast_details) = call_get_podcast_details(
-                                                        &server_name.clone().unwrap(),
-                                                        &api_key.clone().unwrap().unwrap(),
-                                                        search_state.user_details.as_ref().unwrap().UserID,
-                                                        &podcast_id,
-                                                    ).await {
-                                                        fetched_podcasts.push(map_podcast_details_to_podcast(podcast_details));
-                                                    }
-                                                }
-                                            } else {
-                                                // Fetch podcast dynamically if it doesn't exist in the database
-                                                web_sys::console::log_1(&format!("Podcast does not exist: {:?} - {:?}", feed_title, feed_url).into());
-                                                if let Ok(clicked_feed_url) = call_get_podcast_details_dynamic(
+                                        let podcast_futures: Vec<_> = unique_feeds.into_iter().map(|(feed_title, feed_url)| {
+                                            let server_name = server_name.clone();
+                                            let api_key = api_key.clone();
+                                            let user_id = user_id;
+                                            let search_state = search_state.clone();
+                                        
+                                            async move {
+                                                web_sys::console::log_1(&format!("Checking podcast: {:?} - {:?}", feed_title, feed_url).into());
+                                                let podcast_exists = call_check_podcast(
                                                     &server_name.clone().unwrap(),
                                                     &api_key.clone().unwrap().unwrap(),
                                                     user_id.unwrap(),
                                                     &feed_title.clone().unwrap_or_default(),
                                                     &feed_url.clone().unwrap_or_default(),
-                                                    false,
-                                                    Some(true),
-                                                ).await {
-                                                    web_sys::console::log_1(&format!("Fetched Podcast Episode Count: {}", clicked_feed_url.podcast_episode_count).into());
-                                                    use rand::Rng;
-
-                                                    fn generate_monster_id() -> i32 {
-                                                            // Assign a large number for podcasts that aren't added yet, with a smaller random range
-                                                        let mut rng = rand::thread_rng();
-                                                        1_000_000_000 + rng.gen_range(0..1_000_000_000) as i32
-
+                                                ).await.unwrap_or_default().exists;
+                                        
+                                                if podcast_exists {
+                                                    web_sys::console::log_1(&format!("Podcast exists: {:?} - {:?}", feed_title, feed_url).into());
+                                                    if let Ok(podcast_id) = call_get_podcast_id(
+                                                        &server_name.clone().unwrap(),
+                                                        &api_key.clone().unwrap(),
+                                                        &search_state.user_details.as_ref().unwrap().UserID,
+                                                        &feed_url.unwrap_or_default(),
+                                                        &feed_title.clone().unwrap_or_default(),
+                                                    ).await {
+                                                        if let Ok(podcast_details) = call_get_podcast_details(
+                                                            &server_name.clone().unwrap(),
+                                                            &api_key.clone().unwrap().unwrap(),
+                                                            search_state.user_details.as_ref().unwrap().UserID,
+                                                            &podcast_id,
+                                                        ).await {
+                                                            return Some(map_podcast_details_to_podcast(podcast_details));
+                                                        }
                                                     }
-                                                    let unique_id = generate_monster_id();
-                                                    let podcast = Podcast {
-                                                        podcastid: unique_id, // Set a dummy ID or handle appropriately
-                                                        podcastname: clicked_feed_url.podcast_title,
-                                                        artworkurl: Some(clicked_feed_url.podcast_artwork),
-                                                        description: Some(clicked_feed_url.podcast_description),
-                                                        episodecount: clicked_feed_url.podcast_episode_count,
-                                                        websiteurl: Some(clicked_feed_url.podcast_link),
-                                                        feedurl: clicked_feed_url.podcast_url,
-                                                        author: Some(clicked_feed_url.podcast_author),
-                                                        categories: clicked_feed_url.podcast_categories
-                                                            .map(|cat_map| cat_map.values().cloned().collect::<Vec<_>>().join(", "))
-                                                            .unwrap_or_else(|| "{}".to_string()),
-                                                        explicit: clicked_feed_url.podcast_explicit,
-                                                    };
-                                                    fetched_podcasts.push(podcast);
+                                                } else {
+                                                    web_sys::console::log_1(&format!("Podcast does not exist: {:?} - {:?}", feed_title, feed_url).into());
+                                                    if let Ok(clicked_feed_url) = call_get_podcast_details_dynamic(
+                                                        &server_name.clone().unwrap(),
+                                                        &api_key.clone().unwrap().unwrap(),
+                                                        user_id.unwrap(),
+                                                        &feed_title.clone().unwrap_or_default(),
+                                                        &feed_url.clone().unwrap_or_default(),
+                                                        false,
+                                                        Some(true),
+                                                    ).await {
+                                                        web_sys::console::log_1(&format!("Fetched Podcast Episode Count: {}", clicked_feed_url.podcast_episode_count).into());
+                                                        use rand::Rng;
+                                        
+                                                        fn generate_monster_id() -> i32 {
+                                                            let mut rng = rand::thread_rng();
+                                                            1_000_000_000 + rng.gen_range(0..1_000_000_000) as i32
+                                                        }
+                                                        let unique_id = generate_monster_id();
+                                                        return Some(Podcast {
+                                                            podcastid: unique_id,
+                                                            podcastname: clicked_feed_url.podcast_title,
+                                                            artworkurl: Some(clicked_feed_url.podcast_artwork),
+                                                            description: Some(clicked_feed_url.podcast_description),
+                                                            episodecount: clicked_feed_url.podcast_episode_count,
+                                                            websiteurl: Some(clicked_feed_url.podcast_link),
+                                                            feedurl: clicked_feed_url.podcast_url,
+                                                            author: Some(clicked_feed_url.podcast_author),
+                                                            categories: clicked_feed_url.podcast_categories
+                                                                .map(|cat_map| cat_map.values().cloned().collect::<Vec<_>>().join(", "))
+                                                                .unwrap_or_else(|| "{}".to_string()),
+                                                            explicit: clicked_feed_url.podcast_explicit,
+                                                        });
+                                                    }
                                                 }
+                                                None
                                             }
-                                        }
-
+                                        }).collect();
+                                        
+                                        let fetched_podcasts: Vec<_> = join_all(podcast_futures).await.into_iter().filter_map(|p| p).collect();
+                                        
                                         // Update the state once with all the fetched podcasts
                                         dispatch.reduce_mut(move |state| {
                                             state.podcast_feed_return = Some(PodcastResponse {
@@ -357,7 +370,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                             state.people_feed_results = Some(person_search_result);
                                             state.is_loading = Some(false);
                                         });
-
+                                        loading_modal_visible.set(false);
                                         history.push(target_url);
                                     } else {
                                         // Handle error
@@ -372,6 +385,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
 
 
                         html! {
+                            <>
                             <div class="flex flex-col items-center" onclick={on_host_click}>
                                 { if let Some(img) = &host.img {
                                     html! { <img src={img.clone()} alt={host.name.clone()} class="w-12 h-12 rounded-full" /> }
@@ -380,6 +394,8 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                 }}
                                 <span class="text-center text-blue-500 hover:underline mt-1">{ &host.name }</span>
                             </div>
+                            <LoadingModal name={(*loading_name).clone()} is_visible={*loading_modal_visible} />
+                            </>
                         }
                     })}
                 </div>
@@ -1465,9 +1481,10 @@ pub fn episode_layout() -> Html {
                                     {"Adjust Podcast Categories:"}
                                 </label>
                                 <div class="flex flex-wrap items-center space-x-2">
-                                    {
-                                        // let categories_list = clicked_feed.unwrap().podcast_categories.clone();
-                                        if let Some(categories) = clicked_feed.unwrap().podcast_categories.clone() {
+                                {
+                                    if let Some(feed) = clicked_feed.as_ref() {
+                                        // If clicked_feed is populated, proceed with rendering categories
+                                        if let Some(categories) = feed.podcast_categories.clone() {
                                             let categories = Rc::new(categories);
                                             html! {
                                                 <>
@@ -1490,9 +1507,14 @@ pub fn episode_layout() -> Html {
                                                 </>
                                             }
                                         } else {
-                                            html! {}
+                                            html! { <p>{ "No categories available" }</p> }
                                         }
+                                    } else {
+                                        // If clicked_feed is None, show a loading state or an empty placeholder
+                                        html! { <p>{ "Loading..." }</p> }
                                     }
+                                }
+                                
                                 </div>
 
                                 <div class="mt-4">

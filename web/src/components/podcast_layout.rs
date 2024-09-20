@@ -477,9 +477,12 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
-                        <button class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} style="width: 60px; height: 60px;">
-                            <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
-                            // { button_text }
+                        <button 
+                            class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} 
+                            style="width: 60px; height: 60px;"
+                            onclick={toggle_podcast}
+                        >
+                            <span class="material-icons">{ button_text }</span>
                         </button>
                     </div>
                 }
