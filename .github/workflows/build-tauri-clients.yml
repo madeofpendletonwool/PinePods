@@ -60,7 +60,75 @@ jobs:
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
 
-      # ... (rest of the setup steps remain the same)
+
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: 1.79
+          targets: wasm32-unknown-unknown
+
+      # Install cargo-binstall for macOS runners using direct download
+      - name: Install cargo-binstall on macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          export GITHUB_TOKEN=${{ secrets.RELEASE_TOKEN }}
+          curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v1.9.0/cargo-binstall-universal-apple-darwin.zip -o cargo-binstall.zip
+          unzip cargo-binstall.zip
+          ./cargo-binstall -y --force cargo-binstall
+
+      # Install cargo-binstall for other OSes using the standard method
+      - name: Install cargo-binstall
+        if: matrix.os != 'macos-latest'
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Depends install
+        if: ${{ env.DEPENDS_SETUP == 'true' }}
+        run: |
+          sudo apt update
+          sudo apt install -qy libgtk-3-dev
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: wasm-addition
+        run: |
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install Trunk
+        run: |
+          cargo binstall trunk -y
+
+      - name: Install Tauri
+        run: |
+          cargo install tauri-cli --locked
+
+      - name: Update Tauri version (UNIX)
+        run: |
+          cd web/src-tauri
+          # Use different sed syntax for macOS
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          else
+            sed -i "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          fi
+          cat tauri.conf.json
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Setup Python
+        if: ${{ matrix.os == 'windows-latest' }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+
+      - name: Verify directory and update Tauri version (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: |
+          cd web/src-tauri
+          dir
+          python .\change-version.py tauri.conf.json ${{ env.IMAGE_TAG }}
+          Get-Content tauri.conf.json
+        shell: pwsh
 
       - name: Build | Compile (UNIX)
         run: |
