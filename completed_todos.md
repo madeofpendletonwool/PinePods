@@ -26,6 +26,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 - [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
 - [] Implement additional filtering in podcasts
+- [] Adjust people page so that you can drop down or minimize the episodes/podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
 - [] Implement episode filtering on saved page
@@ -38,7 +39,6 @@ Version 0.6.6
 
 - [x] Manually adjust tags for podcast in podcast settings
 - [x] Dynamically refresh tags on ep-layout when adding and removing them
-- [] Fixed documentation so backend variables work with new docker standards
 - [x] Removed see more button from the episodes_layout, queue, and downloads page
 - [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [x] Speed up people page loading (happens in async now)
