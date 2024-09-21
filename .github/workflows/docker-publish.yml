@@ -48,19 +48,28 @@ jobs:
             echo "LATEST_TAG=latest" >> $GITHUB_ENV
           fi
 
-      - name: Build and push AMD64 and ARM64 images
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64
-          build-args: |
-            PINEPODS_VERSION=${{ env.IMAGE_TAG }}
+      - name: Build and push x86 image
+        run: |
+          docker build --build-arg PINEPODS_VERSION=${{ env.IMAGE_TAG }} -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 -f dockerfile .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86
+          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-x86 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-x86
+          fi
 
-      - name: Build and push ARMv7 image
+      # - name: Build and push AMD64 images
+      #   uses: docker/build-push-action@v4
+      #   with:
+      #     context: .
+      #     file: ./dockerfile
+      #     platforms: linux/amd64,linux/arm64
+      #     push: true
+      #     tags: |
+      #       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64
+      #     build-args: |
+      #       PINEPODS_VERSION=${{ env.IMAGE_TAG }}
+
+      - name: Build and push ARMv8 image
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -68,7 +77,7 @@ jobs:
           platforms: linux/arm/v7
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
+            # ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64
           build-args: |
             PINEPODS_VERSION=${{ env.IMAGE_TAG }}
@@ -78,7 +87,7 @@ jobs:
           docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64 \
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
+            # --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
           docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Create and push Docker manifest for the latest tag
@@ -86,7 +95,7 @@ jobs:
           docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.LATEST_TAG }} \
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-amd64 \
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
+            # --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
           docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.LATEST_TAG }}
 
       - name: Image digest
