@@ -386,7 +386,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
 
                         html! {
                             <>
-                            <div class="flex flex-col items-center" onclick={on_host_click}>
+                            <div class="flex flex-col items-center cursor-pointer" onclick={on_host_click}>
                                 { if let Some(img) = &host.img {
                                     html! { <img src={img.clone()} alt={host.name.clone()} class="w-12 h-12 rounded-full" /> }
                                 } else {
