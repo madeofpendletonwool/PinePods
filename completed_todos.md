@@ -34,6 +34,8 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on local download page
 - [] Implement episode filtering on queue page
 - [] Implement episode filtering on search page
+- [] Add loading spinner when adding podcast via people page
+- [] Fix issues with refreshing
 
 Version 0.6.6
 
@@ -54,6 +56,9 @@ Version 0.6.6
 - [x] Added loading spinner when opening an episode to ensure you don't momentarily see the wrong episode
 - [x] Improve Filtering css so that things align correctly
 - [x] Made the button to add and remove podcasts more consistent (Sometimes it was just not registering)
+- [x] Upgraded pulldown-cmark library
+- [x] Upgraded python mysql-connection library to 9
+- [x] Upgraded chrono-tz rust library
 
 CI/CD:
 

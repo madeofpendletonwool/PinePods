@@ -153,6 +153,7 @@ def setup_connection_pool():
             pool_name="pinepods_api_pool",
             pool_size=32,
             pool_reset_session=True,
+            collation="utf8mb4_general_ci",
             host=db_host,
             port=db_port,
             user=db_user,
@@ -1540,7 +1541,7 @@ class AddCategoryData(BaseModel):
 @app.post("/api/data/add_category")
 async def api_add_category(data: AddCategoryData, cnx=Depends(get_database_connection),
                            api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, "postgresql", api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
