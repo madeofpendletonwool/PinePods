@@ -70,17 +70,13 @@ jobs:
       #       PINEPODS_VERSION=${{ env.IMAGE_TAG }}
 
       - name: Build and push ARMv8 image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./dockerfile-arm
-          platforms: linux/arm/v7
-          push: true
-          tags: |
-            # ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-armv7
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64
-          build-args: |
-            PINEPODS_VERSION=${{ env.IMAGE_TAG }}
+        run: |
+          docker build --build-arg PINEPODS_VERSION=${{ env.IMAGE_TAG }} -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64 -f dockerfile-arm --platform linux/arm64 .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64
+          if [ "${{ env.IMAGE_TAG }}" == "latest" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}-arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+          fi
 
       - name: Create and push Docker manifest for the version tag
         run: |
