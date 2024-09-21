@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
     call_get_nextcloud_server, call_verify_gpodder_auth, initiate_nextcloud_login,
@@ -7,6 +8,7 @@ use crate::requests::setting_reqs::{
 use serde::Deserialize;
 use serde::Serialize;
 use wasm_bindgen::JsValue;
+use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::use_store;
@@ -24,50 +26,6 @@ pub struct Poll {
     pub token: String,
     pub endpoint: String,
 }
-
-// async fn initiate_nextcloud_login(server_url: &str, server_name: &str) -> Result<NextcloudLoginResponse, anyhow::Error> {
-//     let login_endpoint = format!("{}/index.php/login/v2", server_url);
-//     let window = web_sys::window().expect("no global `window` exists");
-//     let request = Request::new_with_str_and_init(&login_endpoint, RequestInit::new().method("POST").mode(RequestMode::Cors))
-//         .expect("Failed to build request.");
-
-//     match JsFuture::from(window.fetch_with_request(&request)).await {
-//         Ok(js_value) => {
-//             console::log_1(&"Received response from server...".into());
-//             let response: Response = js_value.dyn_into().unwrap();
-//             if response.status() == 200 {
-//                 console::log_1(&"Response status is 200...".into());
-//                 match JsFuture::from(response.json().unwrap()).await {
-//                     Ok(json_result) => {
-//                         console::log_1(&"Before login response".into());
-//                         match serde_wasm_bindgen::from_value::<NextcloudLoginResponse>(json_result) {
-//                             Ok(login_data) => {
-//                                 console::log_1(&format!("Login URL: {}", &login_data.login.clone()).into());
-//                                 window.open_with_url(&login_data.login).expect("Failed to open login URL");
-//                                 Ok(login_data)
-//                             },
-//                             Err(_) => {
-//                                 console::log_1(&"Failed to deserialize JSON response...".into());
-//                                 Err(anyhow::Error::msg("Failed to deserialize JSON response"))
-//                             },
-//                         }
-//                     },
-//                     Err(_) => {
-//                         console::log_1(&"Failed to parse JSON response...".into());
-//                         Err(anyhow::Error::msg("Failed to parse JSON response"))
-//                     },
-//                 }
-//             } else {
-//                 console::log_1(&format!("Failed to initiate Nextcloud login, status: {}", response.status()).into());
-//                 Err(anyhow::Error::msg(format!("Failed to initiate Nextcloud login, status: {}", response.status())))
-//             }
-//         },
-//         Err(_) => {
-//             console::log_1(&"Failed to send authentication request...".into());
-//             Err(anyhow::Error::msg("Failed to send authentication request."))
-//         },
-//     }
-// }
 
 async fn open_nextcloud_login(url: &str) -> Result<(), JsValue> {
     let window = web_sys::window().expect("no global `window` exists");
@@ -153,6 +111,7 @@ pub fn nextcloud_options() -> Html {
 
     // Handler for initiating authentication
     let on_authenticate_click = {
+        let app_dispatch = _dispatch.clone();
         let server_url = server_url.clone();
         let server_url_initiate = server_url.clone();
         // let audio_dispatch = audio_dispatch.clone();
@@ -168,9 +127,11 @@ pub fn nextcloud_options() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
+            let dispatch_clone = app_dispatch.clone();
 
             if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
+                    web_sys::console::log_1(&JsValue::from_str("Initiating Nextcloud login"));
                     match initiate_nextcloud_login(
                         &server,
                         &server_name.clone().unwrap(),
@@ -213,6 +174,42 @@ pub fn nextcloud_options() -> Html {
                                                 if response.data {
                                                     log::info!("gPodder settings have been set up");
                                                     audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
+
+                                                    // Set `is_refreshing` to true and start the WebSocket refresh
+                                                    let server_name_call = server_name.clone();
+                                                    let user_id_call = user_id.clone();
+                                                    let api_key_call = api_key.clone();
+                                                    dispatch_clone.reduce_mut(|state| {
+                                                        state.is_refreshing = Some(true);
+                                                        state.clone() // Return the modified state
+                                                    });
+
+                                                    spawn_local(async move {
+                                                        if let Err(e) =
+                                                            connect_to_episode_websocket(
+                                                                &server_name_call.unwrap(),
+                                                                &user_id_call.unwrap(),
+                                                                &api_key_call.unwrap().unwrap(),
+                                                                true,
+                                                            )
+                                                            .await
+                                                        {
+                                                            web_sys::console::log_1(
+                                                                &format!("Failed to connect to WebSocket: {:?}", e).into(),
+                                                            );
+                                                        } else {
+                                                            web_sys::console::log_1(
+                                                                &"WebSocket connection established and refresh initiated.".into(),
+                                                            );
+                                                        }
+
+                                                        // Stop the loading animation after the WebSocket operation is complete
+                                                        dispatch_clone.reduce_mut(|state| {
+                                                            state.is_refreshing = Some(false);
+                                                            state.clone() // Return the modified state
+                                                        });
+                                                    });
+
                                                     break;
                                                 } else {
                                                     log::info!("gPodder settings are not yet set up, continuing to poll...");
@@ -283,6 +280,7 @@ pub fn nextcloud_options() -> Html {
             let server_pass = server_pass.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
+            let dispatch_clone = _dispatch.clone();
             let user_id = user_id.clone();
             let server_user_check_deref = (*server_user).clone();
             let server_user_deref = (*server_user).clone();
@@ -291,6 +289,7 @@ pub fn nextcloud_options() -> Html {
 
             if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
+                    web_sys::console::log_1(&JsValue::from_str("Initiating Nextcloud login..."));
                     let auth_request = GpodderAuthRequest {
                         user_id: user_id.clone().unwrap(),
                         gpodder_url: server.clone(),
@@ -323,6 +322,43 @@ pub fn nextcloud_options() -> Html {
                                                 "Gpodder server now added and podcasts syncing!"
                                                     .to_string(),
                                             )
+                                        });
+                                        // Set `is_refreshing` to true and start the WebSocket refresh
+                                        let server_name_call = server_name.clone();
+                                        let user_id_call = user_id.clone();
+                                        let api_key_call = api_key.clone();
+                                        dispatch_clone.reduce_mut(|state| {
+                                            state.is_refreshing = Some(true);
+                                            state.clone() // Return the modified state
+                                        });
+
+                                        spawn_local(async move {
+                                            if let Err(e) = connect_to_episode_websocket(
+                                                &server_name_call.unwrap(),
+                                                &user_id_call.unwrap(),
+                                                &api_key_call.unwrap().unwrap(),
+                                                true,
+                                            )
+                                            .await
+                                            {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Failed to connect to WebSocket: {:?}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            } else {
+                                                web_sys::console::log_1(
+                                                    &"WebSocket connection established and refresh initiated.".into(),
+                                                );
+                                            }
+
+                                            // Stop the loading animation after the WebSocket operation is complete
+                                            dispatch_clone.reduce_mut(|state| {
+                                                state.is_refreshing = Some(false);
+                                                state.clone() // Return the modified state
+                                            });
                                         });
                                         // Start polling the check_gpodder_settings endpoint
                                     }

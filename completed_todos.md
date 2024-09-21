@@ -13,23 +13,84 @@ Next Minor Version:
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
 - [] Queue adjmustment for mobile devices
+- [] Update queue slider to be centered
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
-- [] Added a People page so that you can see other episodes and podcasts a particular person has been on
-- [] Manually adjust tags for podcast in podcast settings
-- [] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
-- [] Update api key creation and deletion after change dynamically with use_effect
-- [] Update mfa setup slider after setup dynamically with use_effect
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
+- [] Add background task to remove shared episode references in db after 60 days
+- [] Allow for episode plays on episode page when podcast not in db
+- [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
+- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [] Add additional safety parsing to ensure podcasts will display on pod feed page
+- [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
+- [] Implement additional filtering in podcasts
+- [] Adjust people page so that you can drop down or minimize the episodes/podcasts
+- [] Implement episode filtering on episode layout page
+- [] Implement episode filtering on history page
+- [] Implement episode filtering on saved page
+- [] Implement episode filtering on server download page
+- [] Implement episode filtering on local download page
+- [] Implement episode filtering on queue page
+- [] Implement episode filtering on search page
+- [] Add loading spinner when adding podcast via people page
+- [] Fix issues with refreshing
+
+Version 0.6.6
+
+- [x] Manually adjust tags for podcast in podcast settings
+- [x] Dynamically refresh tags on ep-layout when adding and removing them
+- [x] Removed see more button from the episodes_layout, queue, and downloads page
+- [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
+- [x] Speed up people page loading (happens in async now)
+- [x] Add loading component to people page loading process
+- [x] Added category filtering to podcasts page
+- [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [x] Update api key creation and deletion after change dynamically with use_effect
+- [x] Update mfa setup slider after setup dynamically with use_effect
+- [x] Fixed refreshing on episode screen so it no longer breaks the session
+- [x] Fixed refreshing on episode-layout screen so it no longer breaks the session
+- [x] Fixed issue with episode page where refreshing caused it to break
+- [x] Fixed issue with queue where episode couldn't be manually removed
+- [x] Added loading spinner when opening an episode to ensure you don't momentarily see the wrong episode
+- [x] Improve Filtering css so that things align correctly
+- [x] Made the button to add and remove podcasts more consistent (Sometimes it was just not registering)
+- [x] Upgraded pulldown-cmark library
+- [x] Upgraded python mysql-connection library to 9
+- [x] Upgraded chrono-tz rust library
+
+CI/CD:
+
+- [] mac version attached like this:
+dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
+- [] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
+- [] Add in x64 mac releases
+- [] Build in arm cross compile into ubuntu build
+
+Version 0.6.5
+
+- [x] Fixed issue with Podcasts page not refreshing correctly
+- [x] Added Add Custom Feed to Podcasts page
+- [x] Allow for podcast feeds with user and pass
+- [x] Add option to add podcast from feed on podcasts page
+- [x] Ensure podcast loads onto podcast page when adding a new custom one in
+- [x] Adjusted buttons on episode layout page so they dynamically adjust position to fit better
+- [x] Option for user to manually update feeds
+- [x] Update Feed directly after adding a Nextcloud/gpodder sync server instead of waiting for the next refresh
+- [x] Fixed issue with episode refreshing where a panic could occur (This was due to the categories list)
+- [x] Ensured See More Button only shows when needed (Just made the descriptions clickable)
+- [x] Fixed issue with context for podcasts not dynamically updating on the episode layout page once the podcast was added to the db
+- [x] Fixed issue with nextcloud sync on mysql dbs
+- [x] Fixed issue with db setup with mysql
+- [x] Ensured deleting podcast when on the episode layout page it closes the deleted modal
 
 Version 0.6.4
 
 - [x] Added a fallback to the opml import for when the opml file uses text instead of title for the podcast name key
 - [x] Added a new route for the version tag that dynamically updates when the application is compiled. This allows for automation around the version numbers all based around the the Github release tag as the original source of truth.
 - [x] Fixed layout for podcasts when searching
-- [] Support floating point chapters
+- [x] Support floating point chapters
 - [x] Fixed issue with white space at the bottom of every page #229
 - [x] Cleaned up incorrect or not needed logging at startup #219
 - [x] Fixed issue with user stats page where it would lose user context on reload #135
@@ -46,7 +107,7 @@ Version 0.6.4
 - [x] Implemented adjustment on all modals throughout the app so clicking outside them closes them (episode layout confiramtions missing yet - also test all login modals)
 - [x] Implemented adjustment on all modals so that they overlap everything in the app (This was causing issues on small screens)
 - [x] Added Confirmation dialog modal to podcast deletion on /podcasts layout page
-- [] Changed name of bt user to background_tasks to make the user more clear on api key settings display
+- [x] Changed name of bt user to background_tasks to make the user more clear on api key settings display
 
 Version 0.6.3
 

@@ -1,13 +1,46 @@
-FROM python:3.11.2-slim-buster
+# Builder stage for compiling the Actix web application
+FROM rust:bookworm AS builder
 
+# Install build dependencies
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    libssl-dev pkg-config build-essential
+
+# Set the working directory
 WORKDIR /app
 
-COPY . .
+# Copy your application files to the builder stage
+COPY ./pinepods_backend/Cargo.toml ./Cargo.toml
+COPY ./pinepods_backend/src ./src
 
-RUN pip install -r requirements.txt
+# Build the Actix web application in release mode
+RUN cargo build --release
 
-# Copy the startup script
-COPY startup.sh /app/startup.sh
-RUN chmod +x /app/startup.sh
+# Final stage for setting up the runtime environment
+FROM debian:bookworm-slim
 
-CMD ["/app/startup.sh"]
+# Metadata
+LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /app/target/release/pinepods_backend /usr/local/bin/pinepods_backend
+
+COPY ./startup.sh /startup.sh
+RUN chmod +x /startup.sh
+
+# Set the working directory
+WORKDIR /
+
+# Set environment variables if needed
+ENV RUST_LOG=info
+
+# Expose the port that Actix will run on
+EXPOSE 8080
+
+# Start the Actix web server
+CMD ["/startup.sh"]

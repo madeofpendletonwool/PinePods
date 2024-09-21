@@ -1,3 +1,4 @@
+use crate::requests::pod_req::Podcast;
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -1167,12 +1168,14 @@ pub async fn initiate_nextcloud_login(
 ) -> Result<NextcloudInitiateResponse, Error> {
     // Construct the URL with query parameters
     let url = format!("{}/api/data/initiate_nextcloud_login", server_name);
+    web_sys::console::log_1(&url.clone().into());
     let request_body = LoginInitiateRequest {
         user_id,
         nextcloud_url: nextcloud_url.to_string(),
     };
     let json_body = serde_json::to_string(&request_body)
         .map_err(|e| Error::msg(format!("Failed to serialize request body: {}", e)))?;
+    web_sys::console::log_1(&api_key.into());
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
@@ -1437,6 +1440,13 @@ pub async fn call_user_admin_check(
 struct CustomFeedRequest {
     feed_url: String,
     user_id: i32,
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AddCustomPodcastResponse {
+    data: Podcast,
 }
 
 pub async fn call_add_custom_feed(
@@ -1444,13 +1454,16 @@ pub async fn call_add_custom_feed(
     feed_url: &str,
     user_id: &i32,
     api_key: &str,
-) -> Result<String, Error> {
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<Podcast, Error> {
     let url = format!("{}/api/data/add_custom_podcast", server_name);
     let request_body = CustomFeedRequest {
-        feed_url: feed_url.to_string().clone(),
-        user_id: user_id.clone(),
+        feed_url: feed_url.to_string(),
+        user_id: *user_id,
+        username,
+        password,
     };
-    log::info!("url: {:?}", feed_url.to_string().clone());
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
@@ -1460,8 +1473,25 @@ pub async fn call_add_custom_feed(
         .await
         .map_err(Error::msg)?;
 
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "Response Status: {}",
+        response.status()
+    )));
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "Response Headers: {:?}",
+        response.headers()
+    )));
+
     if response.ok() {
-        response.text().await.map_err(Error::msg)
+        let response_text = response.text().await.map_err(Error::msg)?;
+        web_sys::console::log_1(&JsValue::from_str(&format!(
+            "Response Body: {}",
+            response_text
+        )));
+
+        let add_custom_podcast_response: AddCustomPodcastResponse =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(add_custom_podcast_response.data)
     } else {
         Err(Error::msg(format!(
             "Error adding feed: {}",

@@ -18,7 +18,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
-use crate::requests::search_pods::{call_get_podcast_info, test_connection};
+use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
 use std::any::Any;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -424,7 +424,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let api_key_copy = queue_api_key.clone();
             let queue_post = queue_post.clone();
             let request = QueuePodcastRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -459,14 +459,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     // let server_name = server_name.clone();
     let on_remove_queued_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.get_episode_id();
+        let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
             let server_name_copy = remove_queue_server_name.clone();
             let api_key_copy = remove_queue_api_key.clone();
             let queue_post = remove_queue_post.clone();
             let request = QueuePodcastRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -488,7 +488,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             if let Some(ref mut queued_episodes) = state.queued_episodes {
                                 queued_episodes
                                     .episodes
-                                    .retain(|ep| ep.get_episode_id() != episode_id);
+                                    .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
                             }
                             // Optionally, you can update the info_message with success message
                             state.info_message = Some(format!("{}", success_message).to_string());
@@ -517,8 +517,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let api_key_copy = saved_api_key.clone();
             let post_state = save_post.clone();
             let request = SavePodcastRequest {
-                episode_id: episode.get_episode_id(), // changed from episode_title
-                user_id: user_id.unwrap(),            // replace with the actual user ID
+                episode_id: episode.get_episode_id(Some(0)), // changed from episode_title
+                user_id: user_id.unwrap(),                   // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -550,14 +550,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let dispatch_clone = post_dispatch.clone();
     let on_remove_saved_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.get_episode_id();
+        let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
             let server_name_copy = remove_saved_server_name.clone();
             let api_key_copy = remove_saved_api_key.clone();
             let post_state = remove_save_post.clone();
             let request = SavePodcastRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(),
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -573,7 +573,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             if let Some(ref mut saved_episodes) = state.saved_episodes {
                                 saved_episodes
                                     .episodes
-                                    .retain(|ep| ep.get_episode_id() != episode_id);
+                                    .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
                             }
                             // Optionally, you can update the info_message with success message
                             state.info_message = Some(format!("{}", success_message).to_string());
@@ -602,7 +602,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name_copy = download_server_name.clone();
             let api_key_copy = download_api_key.clone();
             let request = DownloadEpisodeRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -640,7 +640,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
         Callback::from(move |_| {
             let post_state = download_local_post.clone();
-            let episode_id = episode.get_episode_id();
+            let episode_id = episode.get_episode_id(Some(0));
             let request = EpisodeRequest {
                 episode_id,
                 user_id: user_id_copy.unwrap(),
@@ -732,7 +732,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
         Callback::from(move |_| {
             let post_state = download_local_post.clone();
-            let episode_id = episode.get_episode_id();
+            let episode_id = episode.get_episode_id(Some(0));
 
             let future = async move {
                 let filename = format!("episode_{}.mp3", episode_id);
@@ -769,14 +769,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let dispatch_clone = post_dispatch.clone();
     let on_remove_downloaded_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.get_episode_id();
+        let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
             let post_state = remove_download_post.clone();
             let server_name_copy = remove_download_server_name.clone();
             let api_key_copy = remove_download_api_key.clone();
             let request = DownloadEpisodeRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -798,7 +798,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             if let Some(ref mut downloaded_episodes) = state.downloaded_episodes {
                                 downloaded_episodes
                                     .episodes
-                                    .retain(|ep| ep.get_episode_id() != episode_id);
+                                    .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
                             }
                             // Optionally, you can update the info_message with success message
                             state.info_message = Some(format!("{}", success_message).to_string());
@@ -823,14 +823,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let uncomplete_dispatch_clone = post_dispatch.clone();
     let on_uncomplete_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.get_episode_id();
+        let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = uncomplete_dispatch_clone.clone();
             let post_state = uncomplete_download_post.clone();
             let server_name_copy = uncomplete_server_name.clone();
             let api_key_copy = uncomplete_api_key.clone();
             let request = MarkEpisodeCompletedRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -881,14 +881,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let dispatch_clone = post_dispatch.clone();
     let on_complete_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.get_episode_id();
+        let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
             let post_state = complete_download_post.clone();
             let server_name_copy = complete_server_name.clone();
             let api_key_copy = complete_api_key.clone();
             let request = MarkEpisodeCompletedRequest {
-                episode_id: episode.get_episode_id(),
+                episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
             };
             let server_name = server_name_copy; // replace with the actual server name
@@ -933,7 +933,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
-    let check_episode_id = props.episode.get_episode_id();
+    let check_episode_id = props.episode.get_episode_id(Some(0));
     let is_completed = post_state
         .completed_episodes
         .as_ref()
@@ -1068,7 +1068,7 @@ pub fn empty_message(header: &str, paragraph: &str) -> Html {
 pub trait EpisodeTrait {
     fn get_episode_artwork(&self) -> String;
     fn get_episode_title(&self) -> String;
-    fn get_episode_id(&self) -> i32;
+    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32;
     fn clone_box(&self) -> Box<dyn EpisodeTrait>;
     // fn eq(&self, other: &dyn EpisodeTrait) -> bool;
     fn as_any(&self) -> &dyn Any;
@@ -1111,7 +1111,7 @@ impl EpisodeTrait for Episode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1134,7 +1134,7 @@ impl EpisodeTrait for QueuedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1156,7 +1156,7 @@ impl EpisodeTrait for SavedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1178,7 +1178,7 @@ impl EpisodeTrait for HistoryEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1196,7 +1196,7 @@ impl EpisodeTrait for EpisodeDownload {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1218,7 +1218,7 @@ impl EpisodeTrait for SearchEpisode {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1240,8 +1240,42 @@ impl EpisodeTrait for SearchNewEpisode {
         self.title.clone().unwrap()
     }
 
-    fn get_episode_id(&self) -> i32 {
-        self.episode_id.clone().unwrap()
+    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+        if let Some(id) = self.episode_id {
+            id
+        } else if let Some(fallback_id) = fallback_id {
+            fallback_id
+        } else {
+            panic!("No episode ID available");
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for PeopleEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.feedImage.clone().unwrap()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+        if let Some(id) = self.id {
+            id
+        } else if let Some(fallback_id) = fallback_id {
+            fallback_id
+        } else {
+            panic!("No episode ID available");
+        }
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
@@ -1309,7 +1343,7 @@ pub fn episode_item(
             0.0 // Avoid division by zero
         }
     });
-    let checkbox_ep = episode.get_episode_id();
+    let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
 
     #[wasm_bindgen]
@@ -1359,15 +1393,16 @@ pub fn episode_item(
                     {
                         html! {
                             <div class="item-description-text hidden md:block">
-                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                <div
+                                    class={format!("item_container-text episode-description-container {}", description_class)}
+                                    onclick={toggle_expanded}  // Make the description container clickable
+                                >
                                     <SafeHtml html={description} />
                                 </div>
-                                <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                    { if is_expanded { "See Less" } else { "See More" } }
-                                </a>
                             </div>
                         }
                     }
+
                     <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2" style="flex-grow: 0; flex-shrink: 0; width: auto;">
                         <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
@@ -1452,7 +1487,7 @@ pub fn download_episode_item(
             0.0
         }
     });
-    let checkbox_ep = episode.get_episode_id();
+    let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
 
     #[wasm_bindgen]
@@ -1503,12 +1538,12 @@ pub fn download_episode_item(
                     {
                         html! {
                             <div class="item-description-text hidden md:block">
-                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                <div
+                                    class={format!("item_container-text episode-description-container {}", description_class)}
+                                    onclick={toggle_expanded}  // Make the description container clickable
+                                >
                                     <SafeHtml html={description} />
                                 </div>
-                                <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                    { if is_expanded { "See Less" } else { "See More" } }
-                                </a>
                             </div>
                         }
                     }
@@ -1599,7 +1634,7 @@ pub fn queue_episode_item(
             0.0 // Avoid division by zero
         }
     });
-    let checkbox_ep = episode.get_episode_id();
+    let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
 
     #[wasm_bindgen]
@@ -1613,17 +1648,6 @@ pub fn queue_episode_item(
         "desc-collapsed".to_string()
     };
 
-    // // Wrap ontouchend callback to ensure class is removed
-    // let wrapped_ontouchend = {
-    //     let element_ref = element_ref_drag.clone();
-    //     Callback::from(move |e: TouchEvent| {
-    //         if let Some(element) = element_ref.cast::<HtmlElement>() {
-    //             element.class_list().remove_1("dragging").unwrap();
-    //         }
-    //         ontouchend.emit(e);
-    //     })
-    // };
-
     html! {
         <>
         <div
@@ -1633,7 +1657,7 @@ pub fn queue_episode_item(
             ondragenter={ondragenter.clone()}
             ondragover={ondragover.clone()}
             ondrop={ondrop.clone()}
-            data-id={episode.get_episode_id().to_string()}
+            data-id={episode.get_episode_id(Some(0)).to_string()}
         >
             <div class="drag-handle-wrapper flex items-center h-full">
                 <button class="drag-handle" style="cursor: grab;">
@@ -1674,12 +1698,12 @@ pub fn queue_episode_item(
                     {
                         html! {
                             <div class="item-description-text hidden md:block">
-                                <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                <div
+                                    class={format!("item_container-text episode-description-container {}", description_class)}
+                                    onclick={toggle_expanded}  // Make the description container clickable
+                                >
                                     <SafeHtml html={description} />
                                 </div>
-                                <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                    { if is_expanded { "See Less" } else { "See More" } }
-                                </a>
                             </div>
                         }
                     }
@@ -1737,5 +1761,29 @@ pub fn queue_episode_item(
 
             </div>
             </>
+    }
+}
+
+
+#[derive(Properties, PartialEq)]
+pub struct LoadingModalProps {
+    pub name: String,
+    pub is_visible: bool,
+}
+
+#[function_component(LoadingModal)]
+pub fn loading_modal(props: &LoadingModalProps) -> Html {
+    if !props.is_visible {
+        return html! {};
+    }
+
+    html! {
+        <div class="modal-overlay flex items-center justify-center">
+            <div class="modal-content text-center">
+                <div class="spinner mx-auto mb-4"></div>
+                <p class="modal-title">{ format!("Searching everywhere for {}...", props.name) }</p>
+                <p class="modal-subtitle mt-2">{"This may take a moment"}</p>
+            </div>
+        </div>
     }
 }

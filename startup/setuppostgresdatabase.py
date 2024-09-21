@@ -62,6 +62,16 @@ try:
     # create a cursor to execute SQL statements
     cursor = cnx.cursor()
 
+    def ensure_usernames_lowercase(cnx):
+        with cnx.cursor() as cursor:
+            cursor.execute('SELECT UserID, Username FROM "Users"')
+            users = cursor.fetchall()
+            for user_id, username in users:
+                if username != username.lower():
+                    cursor.execute('UPDATE "Users" SET Username = %s WHERE UserID = %s', (username.lower(), user_id))
+                    print(f"Updated Username for UserID {user_id} to lowercase")
+
+
     # Execute SQL command to create tables
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS "Users" (
@@ -84,6 +94,8 @@ try:
             GpodderToken VARCHAR(255) DEFAULT ''
         )
     """)
+
+    ensure_usernames_lowercase(cnx)
 
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS "APIKeys" (
@@ -176,14 +188,21 @@ try:
                     UPDATE "Users"
                     SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
                     WHERE Username = %s
-                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False, 'guest'))
-                logging.info("Updated existing 'guest' user to 'bt' user.")
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
+                logging.info("Updated existing 'guest' user to 'background_tasks' user.")
+            elif user_exists(cursor, 'bt'):
+                cursor.execute("""
+                    UPDATE "Users"
+                    SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
+                    WHERE Username = %s
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'bt'))
+                logging.info("Updated existing 'guest' user to 'background_tasks' user.")
             else:
                 cursor.execute("""
                     INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (Username) DO NOTHING
-                """, ('Background Tasks', 'bt', 'inactive', hashed_password, False))
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False))
         except Exception as e:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)
@@ -284,12 +303,51 @@ try:
                 AutoDownload BOOLEAN DEFAULT FALSE,
                 StartSkip INT DEFAULT 0,
                 EndSkip INT DEFAULT 0,
+                Username TEXT,
+                Password TEXT,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
+
+    def add_user_pass_columns_if_not_exist(cursor, cnx):
+        try:
+            # Check if the columns exist
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name IN ('username', 'password')
+            """)
+            existing_columns = cursor.fetchall()
+            existing_columns = [col[0] for col in existing_columns]
+
+            # Add Username column if it doesn't exist
+            if 'username' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN "Username" TEXT
+                """)
+                print("Added 'Username' column to 'Podcasts' table.")
+
+            # Add Password column if it doesn't exist
+            if 'password' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN "Password" TEXT
+                """)
+                print("Added 'Password' column to 'Podcasts' table.")
+
+            cnx.commit()  # Ensure changes are committed
+        except Exception as e:
+            print(f"Error adding columns to Podcasts table: {e}")
+
+    # Usage
+    add_user_pass_columns_if_not_exist(cursor, cnx)
+
+
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 
@@ -325,6 +383,21 @@ try:
     create_index_if_not_exists(cursor, "idx_podcasts_userid", "Podcasts", "UserID")
     create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
     create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "SharedEpisodes" (
+                SharedEpisodeID SERIAL PRIMARY KEY,
+                EpisodeID INT,
+                UrlKey TEXT,
+                ExpirationDate TIMESTAMP,
+                FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
+            )
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating SharedEpisodes table: {e}")
+
 
 
     try:

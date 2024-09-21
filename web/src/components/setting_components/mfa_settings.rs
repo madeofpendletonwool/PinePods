@@ -4,10 +4,10 @@ use crate::requests::setting_reqs::{
     call_disable_mfa, call_generate_mfa_secret, call_mfa_settings, call_verify_temp_mfa,
 };
 use std::borrow::Borrow;
+use wasm_bindgen::JsCast;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use wasm_bindgen::JsCast;
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {
@@ -56,6 +56,39 @@ pub fn mfa_options() -> Html {
                 || {}
             },
         );
+    }
+    let audio_dispatch_refresh = audio_dispatch.clone();
+    // Re-fetch MFA status after setup is complete
+    {
+        let mfa_status = mfa_status.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        use_effect_with(mfa_status.clone(), move |_| {
+            let mfa_status = mfa_status.clone();
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let user_id = user_id.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                    match call_mfa_settings(server_name, api_key.unwrap(), user_id.unwrap()).await {
+                        Ok(mfa_settings_response) => {
+                            mfa_status.set(mfa_settings_response);
+                        }
+                        Err(e) => {
+                            audio_dispatch_refresh.reduce_mut(|audio_state| {
+                                audio_state.error_message =
+                                    Option::from(format!("Error getting MFA status: {}", e))
+                            });
+                        }
+                    }
+                }
+            });
+
+            || ()
+        });
     }
     // let html_self_service = self_service_status.clone();
     let loading = use_state(|| false);
@@ -166,6 +199,7 @@ pub fn mfa_options() -> Html {
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = server_name.clone();
         let code = code.clone();
+        let mfa_status_clone = mfa_status.clone();
 
         Callback::from(move |_| {
             let api_key = api_key.clone();
@@ -174,6 +208,7 @@ pub fn mfa_options() -> Html {
             let page_state = page_state.clone();
             let code = code.clone();
             let audio_dispatch = audio_dispatch.clone();
+            let mfa_status_update = mfa_status_clone.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 match call_verify_temp_mfa(
@@ -188,6 +223,8 @@ pub fn mfa_options() -> Html {
                         if response.verified {
                             // Handle successful verification, e.g., updating UI state or navigating
                             page_state.set(PageState::Hidden); // Example: hiding MFA prompt
+                            mfa_status_update.set(true); // Update MFA status
+                                                         // refresh_mfa_status.emit(());
                         } else {
                             audio_dispatch.reduce_mut(|audio_state| {
                                 audio_state.error_message =

@@ -11,6 +11,7 @@ use components::episode::Episode;
 use components::episodes_layout::EpisodeLayout;
 use components::history::PodHistory;
 use components::home::Home;
+use components::person::Person;
 use components::podcast_layout::PodLayout;
 use components::podcasts::Podcasts;
 use components::queue::Queue;
@@ -18,6 +19,7 @@ use components::saved::Saved;
 use components::search::Search;
 use components::search_new::SearchNew;
 use components::settings::Settings;
+use components::shared_episode::SharedEpisode;
 use components::user_stats::UserStats;
 
 #[cfg(feature = "server_build")]
@@ -62,9 +64,11 @@ fn switch(route: Route) -> Html {
         Route::LogOut => html! { <LogOut /> },
         Route::SearchNew => html! { <SearchNew /> },
         Route::PodLayout => html! { <PodLayout /> },
+        Route::SharedEpisode { url_key } => html! { <SharedEpisode url_key={url_key.clone()} /> },
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Podcasts => html! { <Podcasts /> },
         Route::Episode => html! { <Episode /> },
+        Route::Person { name } => html! { <Person name={name.clone()} /> },
         #[cfg(not(feature = "server_build"))]
         Route::LocalDownloads => html! { <LocalDownloads /> },
         #[cfg(feature = "server_build")]

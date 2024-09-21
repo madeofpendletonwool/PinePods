@@ -1,8 +1,10 @@
 name: Notifications on release
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Publish Pinepods Image to DockerHub"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       message_text:
@@ -21,15 +23,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Fetch the latest release
+        id: fetch_release
+        run: |
+          latest_release=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.tag_name')
+          release_url=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.html_url')
+          echo "Latest release version: $latest_release"
+          echo "Release URL: $release_url"
+          echo "::set-output name=version::$latest_release"
+          echo "::set-output name=release_url::$release_url"
+
       - name: Set release message
         id: set_message
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            version="${{ github.event.release.tag_name }}"
-            message="Pinepods Version $version Released!\nCheck out the release [here](${{ github.event.release.html_url }})"
-            echo "::set-output name=message::$message"
-          else
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "::set-output name=message::${{ github.event.inputs.message_text }}"
+          else
+            version="${{ steps.fetch_release.outputs.version }}"
+            release_url="${{ steps.fetch_release.outputs.release_url }}"
+            message="Pinepods Version $version Released! Check out the release [here]($release_url)"
+            echo "::set-output name=message::$message"
           fi
 
       - name: Discord notification to announce deployment

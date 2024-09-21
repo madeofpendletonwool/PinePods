@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, empty_message, UseScrollToTop};
+use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -464,20 +464,25 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             {
                                 html! {
                                     <div class="item-description-text hidden md:block">
-                                        <div class={format!("item_container-text episode-description-container {}", description_class)}>
+                                        <div
+                                            class={format!("item_container-text episode-description-container {}", description_class)}
+                                            onclick={toggle_expanded}  // Make the description container clickable
+                                            id={format!("desc-{}", podcast.id)}
+                                        >
                                             <SafeHtml html={podcast_description_clone} />
                                         </div>
-                                        <a class="link hover:underline cursor-pointer mt-4" onclick={toggle_expanded}>
-                                            { if desc_expanded { "See Less" } else { "See More" } }
-                                        </a>
                                     </div>
                                 }
                             }
+
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
-                        <button class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} style="width: 60px; height: 60px;">
-                            <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
-                            // { button_text }
+                        <button 
+                            class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} 
+                            style="width: 60px; height: 60px;"
+                            onclick={toggle_podcast}
+                        >
+                            <span class="material-icons">{ button_text }</span>
                         </button>
                     </div>
                 }
