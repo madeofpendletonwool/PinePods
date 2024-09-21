@@ -4472,6 +4472,7 @@ def get_queue_value(result, key, default=None):
 
 
 def remove_queued_pod(database_type, cnx, episode_id, user_id):
+    print(f'ep id: {episode_id}')
     if database_type == "postgresql":
         from psycopg.rows import dict_row
         cnx.row_factory = dict_row
@@ -4494,22 +4495,31 @@ def remove_queued_pod(database_type, cnx, episode_id, user_id):
     cursor.execute(get_queue_data_query, (episode_id, user_id))
     queue_data = cursor.fetchone()
 
-    logging.debug(f"Queue data: {queue_data}")
+    print(f"Queue data: {queue_data}")
 
     if queue_data is None:
-        logging.warning(f"No queued episode found with ID {episode_id}")
+        print(f"No queued episode found with ID {episode_id}")
         cursor.close()
         return None
 
     # Handle both dictionary and tuple results
-    episode_id = get_queue_value(queue_data, "EpisodeID")
-    removed_queue_position = get_queue_value(queue_data, "QueuePosition")
-
+    # episode_id = get_queue_value(queue_data, "EpisodeID")
+    removed_queue_position = queue_data['queueposition'] if database_type == "postgresql" else queue_data['QueuePosition']
+    
+    print(f'delete on the way')
     delete_query = (
         'DELETE FROM "EpisodeQueue" WHERE UserID = %s AND EpisodeID = %s' if database_type == "postgresql" else
         "DELETE FROM EpisodeQueue WHERE UserID = %s AND EpisodeID = %s"
     )
     cursor.execute(delete_query, (user_id, episode_id))
+    affected_rows = cursor.rowcount
+    print(f'Rows affected by delete: {affected_rows}')
+    
+    if affected_rows == 0:
+        print(f"No rows were deleted. UserID: {user_id}, EpisodeID: {episode_id}")
+        return {"status": "error", "message": "No matching row found for deletion"}
+
+    print(f'ep deleted')
     cnx.commit()
 
     update_queue_query = (
@@ -4519,7 +4529,7 @@ def remove_queued_pod(database_type, cnx, episode_id, user_id):
     cursor.execute(update_queue_query, (user_id, removed_queue_position))
     cnx.commit()
 
-    logging.info(f"Successfully removed episode from queue.")
+    print(f"Successfully removed episode from queue.")
     cursor.close()
 
     return {"status": "success"}
