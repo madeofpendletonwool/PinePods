@@ -2,7 +2,7 @@ name: Notifications on release
 
 on:
   workflow_run:
-    workflows: ["Publish Pinepods Image to DockerHub"]
+    workflows: ["Publish Pinepods Multi-Architecture Image to DockerHub"]
     types:
       - completed
   workflow_dispatch:
