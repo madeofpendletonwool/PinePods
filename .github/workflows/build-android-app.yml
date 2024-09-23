@@ -1,0 +1,148 @@
+name: Build Android Pinepods App
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
+
+jobs:
+  build:
+    name: Build Android Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set Image Tag (Unix)
+        if: matrix.os != 'windows-latest'
+        run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
+      - name: Set Image Tag (Windows)
+        if: matrix.os == 'windows-latest'
+        run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $Env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: 1.79
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Depends install
+        if: ${{ env.DEPENDS_SETUP == 'true' }}
+        run: |
+          sudo apt update
+          sudo apt install -qy libgtk-3-dev
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: wasm-addition
+        run: |
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install Trunk
+        run: |
+          cargo binstall trunk -y
+
+      - name: Install Tauri
+        run: |
+          cargo install tauri-cli@2.0.0-rc.16 --locked
+
+      - name: Update Tauri version (UNIX)
+        run: |
+          cd web/src-tauri
+          # Use different sed syntax for macOS
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          else
+            sed -i "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          fi
+          cat tauri.conf.json
+        shell: bash
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r21e
+          add-to-path: false
+
+      - name: setup Android signing
+        run: |
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PW }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+
+      - name: Build | Compile (UNIX)
+        run: |
+          export ANDROID_HOME=$HOME/.android/sdk
+          export NDK_HOME=$NDK_JOB_HOME
+          cd web/src-tauri
+          cargo tauri icon icons/Square512x512.png
+          cat tauri.conf.json
+          cargo tauri android build --apk
+          cargo tauri android build --aab
+        shell: bash
+        env:
+          NDK_JOB_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+      - name: Archive build 1 (apk)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build
+          path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Archive build 2 (aab)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Archive build 2 (Ubuntu)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Archive build 3 (Ubuntu)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Upload release asset (Ubuntu - DEB)
+      #   if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ github.event.release.upload_url }}
+      #     asset_path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
+      #     asset_name: ${{ env.ARTIFACT_NAME1 }}
+      #     asset_content_type: application/vnd.debian.binary-package
+
+      # - name: Upload release asset (Ubuntu - AppImage)
+      #   if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ github.event.release.upload_url }}
+      #     asset_path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+      #     asset_name: ${{ env.ARTIFACT_NAME2 }}
+      #     asset_content_type: application/x-executable

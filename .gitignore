@@ -86,3 +86,4 @@ clients/mac-app/pinepods.spec
 web/target/*
 web/.idea/*
 web/Cargo.lock
+keystore.properties

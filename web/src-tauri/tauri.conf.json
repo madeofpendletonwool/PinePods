@@ -2,59 +2,19 @@
   "build": {
     "beforeBuildCommand": "trunk build",
     "beforeDevCommand": "trunk serve",
-    "devPath": "http://localhost:8080",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:8080",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "Pinepods",
-    "version": "1.2.4"
-  },
-  "tauri": {
-    "systemTray": {
+  "identifier": "com.gooseberrydevelopment.pinepods",
+  "productName": "Pinepods",
+  "version": "1.2.4",
+  "app": {
+    "trayIcon": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true
     },
-    "allowlist": {
-      "all": false
-    },
-    "bundle": {
-      "active": true,
-      "category": "DeveloperTool",
-      "copyright": "",
-      "deb": {
-        "depends": []
-      },
-      "externalBin": [],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.gooseberrydevelopment.pinepods",
-      "longDescription": "",
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "resources": [],
-      "shortDescription": "",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
-    },
     "security": {
       "csp": null
-    },
-    "updater": {
-      "active": false
     },
     "windows": [
       {
@@ -65,5 +25,42 @@
         "width": 1200
       }
     ]
+  },
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "copyright": "",
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "android": {
+      "versionCode": 100
+    },
+    "externalBin": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "longDescription": "",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "resources": [],
+    "shortDescription": "",
+    "targets": "all",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
   }
 }
