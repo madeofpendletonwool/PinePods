@@ -36,6 +36,8 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on search page
 - [] Add loading spinner when adding podcast via people page
 - [] Fix issues with refreshing
+- [] People Table with background jobs to update people found in podcasts
+- [] Subscribe to people
 
 Version 0.6.6
 
