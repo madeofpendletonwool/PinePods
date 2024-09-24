@@ -59,10 +59,13 @@ Mobile:
 - [] On mobile further squish image to fit more on screen?
 - [] On mobile long press to add to saved etc...?
 - [] On mobile local Downloads is page broken - doesn't open
-- [] client local download function broken. Need android compiling alternative to reqwest
 - [] Mobile loading screen causes search to jump to right and playing pod to go too low
 - [] On mobile nextcloud doesn't redirect back after adding
+- [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
 
+Probably done
+
+- [] client local download function broken. Need android compiling alternative to reqwest
 
 Version 0.7.0
 
