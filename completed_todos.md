@@ -4,7 +4,6 @@ This is the list of previous todos that are now completed
 
 Major Version:
 
-- [] Android App
 - [] iOS App
 
 Next Minor Version:
@@ -36,8 +35,38 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on search page
 - [] Add loading spinner when adding podcast via people page
 - [] Fix issues with refreshing
+
+- [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
 - [] People Table with background jobs to update people found in podcasts
 - [] Subscribe to people
+
+- [] Full Screen Episode should have clickable podcast header to open pod page
+- [] Podcasts alternative view - 3 per line
+
+- [] Some pods not loading in from opml import - better opml validation. Say number importing. Webhook?
+- [] Make new category button more obvious. 
+- [] Make category delete button bigger
+- [] Android play/pause episode metadata
+
+Mobile: 
+
+- [] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
+- [] On mobile get queue adjust working
+- [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
+- [] On mobile make the action buttons larger
+- [] On mobile make the volume slider drop below Shownotes
+- [] When pod is playing play and skip are too far left, also make image raise full screen as well as title. Maybe drag to raise?
+- [] On mobile further squish image to fit more on screen?
+- [] On mobile long press to add to saved etc...?
+- [] On mobile local Downloads is page broken - doesn't open
+- [] client local download function broken. Need android compiling alternative to reqwest
+- [] Mobile loading screen causes search to jump to right and playing pod to go too low
+- [] On mobile nextcloud doesn't redirect back after adding
+
+
+Version 0.7.0
+
+- [x] Android App
 
 Version 0.6.6
 
