@@ -104,16 +104,14 @@ jobs:
       - name: Archive build 1 (apk)
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.os }}-build
+          name: apk-build
           path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
-        if: ${{ matrix.os == 'ubuntu-latest' }}
 
-      # - name: Archive build 2 (aab)
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: ${{ matrix.os }}-build
-      #     path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
-      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Archive build 2 (aab)
+        uses: actions/upload-artifact@v3
+        with:
+          name: aab-build
+          path: ./web/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/release/app-universal-release.aab
 
       # - name: Archive build 2 (Ubuntu)
       #   uses: actions/upload-artifact@v3
