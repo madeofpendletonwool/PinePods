@@ -58,6 +58,7 @@ jobs:
       - name: wasm-addition
         run: |
           rustup target add wasm32-unknown-unknown
+          rustup target add aarch64-linux-android
 
       - name: Install Trunk
         run: |
