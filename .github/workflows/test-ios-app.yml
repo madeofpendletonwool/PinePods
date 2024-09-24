@@ -58,7 +58,7 @@ jobs:
           cd web/src-tauri
           cargo tauri icon icons/Square1024x1024.png
           cargo tauri ios init
-          cargo tauri ios build 
+          cargo tauri ios build --release
       # --release --export-method app-store-connect
 
       - name: Upload IPA
