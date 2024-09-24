@@ -27,6 +27,21 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v3
 
+      - name: Clean Preinstalled Android SDK
+        run: rm -rf $ANDROID_SDK_ROOT
+
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r21e
+          add-to-path: false
+
+
       - uses: hecrj/setup-rust-action@v2
         with:
           rust-version: 1.79
@@ -65,16 +80,6 @@ jobs:
           fi
           cat tauri.conf.json
         shell: bash
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-
-      - uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r21e
-          add-to-path: false
 
       - name: setup Android signing
         run: |
