@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: aab-build
-          path: ./web/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/release/app-universal-release.aab
+          path: ./web/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
 
       # - name: Archive build 2 (Ubuntu)
       #   uses: actions/upload-artifact@v3

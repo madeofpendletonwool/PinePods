@@ -8,6 +8,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 use tauri::command;
+use std::io::copy;
+use std::fs::File;
 
 // Define the structure for the file entries
 #[derive(Serialize, Deserialize)]
@@ -54,20 +56,22 @@ fn get_app_dir() -> Result<String, String> {
 #[command]
 async fn download_file(url: String, filename: String) -> Result<(), String> {
     let proj_dirs = get_project_dirs()?;
-    let app_dir = proj_dirs.data_dir();
+    let app_dir: PathBuf = proj_dirs.data_dir().to_path_buf();
     if !app_dir.exists() {
-        fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
+        fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
     }
 
-    // let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
-    // let content = response.bytes().await.map_err(|e| e.to_string())?;
+    let url = url.clone();
+    let filename = filename.clone();
 
-    // tokio::task::block_in_place(|| {
-    //     let mut file = fs::File::create(app_dir.join(&filename)).map_err(|e| e.to_string())?;
-    //     file.write_all(&content).map_err(|e| e.to_string())
-    // })?;
-
-    Ok(())
+    // Use tokio::task::spawn_blocking for blocking operations
+    tokio::task::spawn_blocking(move || {
+        let response = ureq::get(&url).call().map_err(|e| e.to_string())?;
+        let mut reader = response.into_reader();
+        let mut file = File::create(app_dir.join(&filename)).map_err(|e| e.to_string())?;
+        copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
