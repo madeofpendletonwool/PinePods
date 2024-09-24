@@ -56,7 +56,7 @@ jobs:
       - name: Build iOS app
         run: |
           cd web/src-tauri
-          cargo tauri icon src-tauri/icons/Square1024x1024.png
+          cargo tauri icon icons/Square1024x1024.png
           cargo tauri ios build 
       # --release --export-method app-store-connect
 

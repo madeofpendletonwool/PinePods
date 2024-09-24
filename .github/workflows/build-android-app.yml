@@ -36,7 +36,7 @@ jobs:
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r21e
+          ndk-version: r27b
           add-to-path: false
 
 
@@ -94,6 +94,7 @@ jobs:
           cd web/src-tauri
           cargo tauri icon icons/Square512x512.png
           cat tauri.conf.json
+          cargo tauri android init
           cargo tauri android build --apk
           cargo tauri android build --aab
         shell: bash
