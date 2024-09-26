@@ -43,6 +43,13 @@ import asyncio
 import io
 import qrcode
 import qrcode.image.svg
+from urllib.parse import urlparse, urlunparse
+import datetime
+import feedparser
+import dateutil.parser
+import re
+import requests
+from requests.auth import HTTPBasicAuth
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -50,6 +57,7 @@ sys.path.append('/pinepods')
 import database_functions.functions
 import database_functions.auth_functions
 import database_functions.app_functions
+import database_functions.import_progress
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -724,6 +732,81 @@ async def get_podcast_details(
             podcast_link=podcast_values['pod_website'],
         )
 
+class ImportProgressResponse(BaseModel):
+    current: int
+    current_podcast: str
+    total: int
+
+@app.get("/api/data/import_progress/{user_id}")
+async def get_import_progress(
+    user_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == user_id or is_web_key:
+        # Fetch the import progress from the database
+        current, total, current_podcast = database_functions.import_progress.import_progress_manager.get_progress(user_id)
+        return ImportProgressResponse(current=current, total=total, current_podcast=current_podcast)
+    else:
+        raise HTTPException(status_code=403, detail="You can only fetch import progress for yourself!")
+
+class OPMLImportRequest(BaseModel):
+    podcasts: List[str]
+    user_id: int
+
+@app.post("/api/data/import_opml")
+async def api_import_opml(
+    import_request: OPMLImportRequest,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == import_request.user_id or is_web_key:
+        # Start the import process in the background
+        background_tasks.add_task(process_opml_import, import_request, database_type)
+        return {"success": True, "message": "Import process started"}
+    else:
+        raise HTTPException(status_code=403, detail="You can only import podcasts for yourself!")
+
+
+def process_opml_import(import_request: OPMLImportRequest, database_type):
+    total_podcasts = len(import_request.podcasts)
+    database_functions.import_progress.import_progress_manager.start_import(import_request.user_id, total_podcasts)
+
+    for index, podcast_url in enumerate(import_request.podcasts, start=1):
+        try:
+            # Create a new database connection for each podcast
+            cnx = create_database_connection()
+            podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, import_request.user_id, None, None, False)
+            database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id)
+            database_functions.import_progress.import_progress_manager.update_progress(import_request.user_id, index, podcast_url)
+        except Exception as e:
+            print(f"Error importing podcast {podcast_url}: {str(e)}")
+        finally:
+            # Close the database connection
+            cnx.close()
+
+        # Add a small delay to allow other requests to be processed
+        # await asyncio.sleep(0.1)
+        time.sleep(0.1)
+
+    database_functions.import_progress.import_progress_manager.clear_progress(import_request.user_id)
+
+    
 class PodcastFeedData(BaseModel):
     podcast_feed: str
 

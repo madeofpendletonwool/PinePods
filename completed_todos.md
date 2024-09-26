@@ -43,12 +43,11 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Full Screen Episode should have clickable podcast header to open pod page
 - [] Podcasts alternative view - 3 per line
 
-- [] Some pods not loading in from opml import - better opml validation. Say number importing. Webhook?
-- [] Make new category button more obvious. 
+- [] Make new category button more obvious.
 - [] Make category delete button bigger
 - [] Android play/pause episode metadata
 
-Mobile: 
+Mobile:
 
 - [] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
 - [] On mobile get queue adjust working
@@ -63,6 +62,9 @@ Mobile:
 - [] On mobile nextcloud doesn't redirect back after adding
 - [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
 
+
+- [ ] Seriously dig into podcast 3x layout
+
 Probably done
 
 - [] client local download function broken. Need android compiling alternative to reqwest
@@ -70,6 +72,9 @@ Probably done
 Version 0.7.0
 
 - [x] Android App
+
+- [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
+- [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
 
 Version 0.6.6
 
