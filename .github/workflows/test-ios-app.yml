@@ -59,6 +59,8 @@ jobs:
           cargo tauri icon icons/Square1024x1024.png
           cargo tauri ios init
           cargo tauri ios build
+          cargo tauri icon src-tauri/icons/Square1024x1024.png
+          cargo tauri ios build 
       # --release --export-method app-store-connect
 
       - name: Upload IPA
@@ -118,14 +120,3 @@ jobs:
       #     asset_path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
       #     asset_name: ${{ env.ARTIFACT_NAME1 }}
       #     asset_content_type: application/vnd.debian.binary-package
-
-      # - name: Upload release asset (Ubuntu - AppImage)
-      #   if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ github.event.release.upload_url }}
-      #     asset_path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
-      #     asset_name: ${{ env.ARTIFACT_NAME2 }}
-      #     asset_content_type: application/x-executable
