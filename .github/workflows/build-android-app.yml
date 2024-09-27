@@ -16,20 +16,33 @@ jobs:
 
     steps:
       - name: Set Image Tag (Unix)
-        if: matrix.os != 'windows-latest'
         run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
-
-      - name: Set Image Tag (Windows)
-        if: matrix.os == 'windows-latest'
-        run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $Env:GITHUB_ENV
-        shell: pwsh
 
       - name: Setup | Checkout
         uses: actions/checkout@v3
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27b
+          add-to-path: false
+
+
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.79
+          rust-version: 1.81
           targets: wasm32-unknown-unknown
 
       - name: Install cargo-binstall
@@ -45,6 +58,7 @@ jobs:
       - name: wasm-addition
         run: |
           rustup target add wasm32-unknown-unknown
+          rustup target add aarch64-linux-android
 
       - name: Install Trunk
         run: |
@@ -66,6 +80,14 @@ jobs:
           cat tauri.conf.json
         shell: bash
 
+
+      - name: setup Android signing
+        run: |
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > web/src-tauri/gen/android/keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PW }}" >> web/src-tauri/gen/android/keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> web/src-tauri/gen/android/keystore.properties
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -84,6 +106,7 @@ jobs:
           base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
           echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
 
+
       - name: Build | Compile (UNIX)
         run: |
           export ANDROID_HOME=$HOME/.android/sdk
@@ -91,6 +114,7 @@ jobs:
           cd web/src-tauri
           cargo tauri icon icons/Square512x512.png
           cat tauri.conf.json
+          cargo tauri android init
           cargo tauri android build --apk
           cargo tauri android build --aab
         shell: bash
@@ -100,9 +124,15 @@ jobs:
       - name: Archive build 1 (apk)
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.os }}-build
+          name: apk-build
           path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      - name: Archive build 2 (aab)
+        uses: actions/upload-artifact@v3
+        with:
+          name: aab-build
+          path: ./web/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
+
 
       # - name: Archive build 2 (aab)
       #   uses: actions/upload-artifact@v3
@@ -136,13 +166,3 @@ jobs:
       #     asset_name: ${{ env.ARTIFACT_NAME1 }}
       #     asset_content_type: application/vnd.debian.binary-package
 
-      # - name: Upload release asset (Ubuntu - AppImage)
-      #   if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ github.event.release.upload_url }}
-      #     asset_path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
-      #     asset_name: ${{ env.ARTIFACT_NAME2 }}
-      #     asset_content_type: application/x-executable

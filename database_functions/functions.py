@@ -16,6 +16,12 @@ from psycopg.rows import dict_row
 from requests.exceptions import RequestException
 from fastapi import HTTPException
 from mysql.connector import ProgrammingError
+import feedparser
+import dateutil.parser
+import re
+import requests
+from requests.auth import HTTPBasicAuth
+from urllib.parse import urlparse, urlunparse
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -423,26 +429,48 @@ def get_first_episode_id(cnx, database_type, podcast_id):
     finally:
         cursor.close()
 
-def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username=None, password=None, websocket=False):
-    import datetime
-    import feedparser
-    import dateutil.parser
-    import re
-    import requests
-    from requests.auth import HTTPBasicAuth
+def try_fetch_feed(url, username=None, password=None):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    auth = HTTPBasicAuth(username, password) if username and password else None
+    try:
+        response = requests.get(
+            url,
+            auth=auth,
+            headers=headers,
+            timeout=30,
+            allow_redirects=True,
+            # verify=False  # Be cautious with this in production!
+        )
+        response.raise_for_status()
+        return response.content
+    except RequestException as e:
+        print(f"Error fetching {url}: {str(e)}")
+        return None
 
+def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username=None, password=None, websocket=False):
+    import feedparser
     first_episode_id = None
 
-    if username and password:
-        response = requests.get(feed_url, auth=HTTPBasicAuth(username, password))
-        if response.status_code != 200:
-            raise ValueError(f"Failed to fetch feed with status code: {response.status_code}")
-        episode_dump = feedparser.parse(response.content)
-    else:
-        response = requests.get(feed_url)
-        if response.status_code != 200:
-            raise ValueError(f"Failed to fetch feed with status code: {response.status_code}")
-        episode_dump = feedparser.parse(response.content)
+    # Try to fetch the feed
+    content = try_fetch_feed(feed_url, username, password)
+
+    if content is None:
+        # If the original URL fails, try switching between www and non-www
+        parsed_url = urlparse(feed_url)
+        if parsed_url.netloc.startswith('www.'):
+            alternate_netloc = parsed_url.netloc[4:]
+        else:
+            alternate_netloc = 'www.' + parsed_url.netloc
+
+        alternate_url = urlunparse(parsed_url._replace(netloc=alternate_netloc))
+        content = try_fetch_feed(alternate_url, username, password)
+
+    if content is None:
+        raise ValueError(f"Failed to fetch feed from both {feed_url} and its www/non-www alternative")
+
+    episode_dump = feedparser.parse(content)
 
     cursor = cnx.cursor()
 
@@ -794,7 +822,7 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
         pod_id = podcast_id
         episode_id = None  # or handle this based on your logic
 
-    
+
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
@@ -802,7 +830,7 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
         cursor = cnx.cursor(dictionary=True)
 
     print(f"pulling pod deets for podcast ID: {pod_id}, episode ID: {episode_id}")
-    
+
     # Use only the pod_id for the query
     if database_type == "postgresql":
         query = """
@@ -1094,15 +1122,11 @@ def refresh_pods_for_user(cnx, database_type, user_id):
 
 
 
-
 def refresh_pods(cnx, database_type):
-    import concurrent.futures
-
     print('refresh begin')
     cursor = cnx.cursor()
-
     if database_type == "postgresql":
-        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM "Podcasts"'
+        select_podcasts = 'SELECT "PodcastID", "FeedURL", "ArtworkURL", "AutoDownload", "Username", "Password" FROM "Podcasts"'
     else:  # MySQL or MariaDB
         select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM Podcasts"
 
@@ -1110,32 +1134,38 @@ def refresh_pods(cnx, database_type):
     result_set = cursor.fetchall()  # fetch the result set
 
     for result in result_set:
-        if isinstance(result, tuple):
-            podcast_id, feed_url, artwork_url, auto_download, username, password = result
-        elif isinstance(result, dict):
-            if database_type == "postgresql":
-                podcast_id = result["podcastid"]
-                feed_url = result["feedurl"]
-                artwork_url = result["artworkurl"]
-                auto_download = result["autodownload"]
-                username = result["username"]
-                password = result["password"]
+        try:
+            if isinstance(result, tuple):
+                podcast_id, feed_url, artwork_url, auto_download, username, password = result
+            elif isinstance(result, dict):
+                if database_type == "postgresql":
+                    podcast_id = result["podcastid"]
+                    feed_url = result["feedurl"]
+                    artwork_url = result["artworkurl"]
+                    auto_download = result["autodownload"]
+                    username = result["username"]
+                    password = result["password"]
+                else:
+                    podcast_id = result["PodcastID"]
+                    feed_url = result["FeedURL"]
+                    artwork_url = result["ArtworkURL"]
+                    auto_download = result["AutoDownload"]
+                    username = result["Username"]
+                    password = result["Password"]
             else:
-                podcast_id = result["PodcastID"]
-                feed_url = result["FeedURL"]
-                artwork_url = result["ArtworkURL"]
-                auto_download = result["AutoDownload"]
-                username = result["Username"]
-                password = result["Password"]
-        else:
-            raise ValueError(f"Unexpected result type: {type(result)}")
+                raise ValueError(f"Unexpected result type: {type(result)}")
 
-        print(f'Running for :{podcast_id}')
-        add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username, password)
+            print(f'Running for: {podcast_id}')
+            add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username, password)
+        except Exception as e:
+            print(f"Error refreshing podcast {podcast_id}: {str(e)}")
+            # Optionally, you could update a status field in your database to mark this podcast as having issues
+            # update_podcast_status(cnx, database_type, podcast_id, "error", str(e))
+            continue  # Move on to the next podcast
 
     cursor.close()
+    # Don't close the connection here if it's managed outside this function
     # cnx.close()
-
 
 
 def remove_unavailable_episodes(cnx, database_type):
@@ -4505,7 +4535,7 @@ def remove_queued_pod(database_type, cnx, episode_id, user_id):
     # Handle both dictionary and tuple results
     # episode_id = get_queue_value(queue_data, "EpisodeID")
     removed_queue_position = queue_data['queueposition'] if database_type == "postgresql" else queue_data['QueuePosition']
-    
+
     print(f'delete on the way')
     delete_query = (
         'DELETE FROM "EpisodeQueue" WHERE UserID = %s AND EpisodeID = %s' if database_type == "postgresql" else
@@ -4514,7 +4544,7 @@ def remove_queued_pod(database_type, cnx, episode_id, user_id):
     cursor.execute(delete_query, (user_id, episode_id))
     affected_rows = cursor.rowcount
     print(f'Rows affected by delete: {affected_rows}')
-    
+
     if affected_rows == 0:
         print(f"No rows were deleted. UserID: {user_id}, EpisodeID: {episode_id}")
         return {"status": "error", "message": "No matching row found for deletion"}

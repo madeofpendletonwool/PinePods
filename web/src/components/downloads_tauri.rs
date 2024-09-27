@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
-use tauri_sys::tauri;
+use tauri_sys::core;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
@@ -54,9 +54,9 @@ pub async fn download_file(url: String, filename: String) -> Result<(), JsValue>
 
     // Serialize and invoke the Tauri command
     let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    tauri::invoke::<_, ()>("download_file", &args)
+    core::invoke_result::<_, ()>("download_file", &args)
         .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to invoke download: {}", e)))
+        .map_err(|e| JsValue::from_str(&format!("Failed to invoke download: {:?}", e)))
 }
 
 pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue> {
@@ -69,7 +69,7 @@ pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue>
         filepath: file_path.to_string(),
     };
 
-    tauri::invoke::<_, String>("start_file_server", &args)
+    core::invoke_result::<_, String>("start_file_server", &args)
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {}", e)))
 }
@@ -89,9 +89,9 @@ pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsVa
 
     // Serialize and invoke the Tauri command
     let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    tauri::invoke::<_, ()>("update_local_db", &args)
+    core::invoke_result::<_, ()>("update_local_db", &args)
         .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to update local DB: {}", e)))
+        .map_err(|e| JsValue::from_str(&format!("Failed to update local DB: {:?}", e)))
 }
 
 pub async fn remove_episode_from_local_db(episode_id: i32) -> Result<(), JsValue> {
@@ -104,13 +104,13 @@ pub async fn remove_episode_from_local_db(episode_id: i32) -> Result<(), JsValue
         episodeid: episode_id,
     };
 
-    tauri::invoke::<_, ()>("remove_from_local_db", &args)
+    core::invoke_result::<_, ()>("remove_from_local_db", &args)
         .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {}", e)))
+        .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {:?}", e)))
 }
 
 pub async fn fetch_local_episodes() -> Result<Vec<EpisodeDownload>, JsValue> {
-    tauri::invoke::<_, Vec<EpisodeDownload>>("get_local_episodes", &())
+    core::invoke_result::<_, Vec<EpisodeDownload>>("get_local_episodes", &())
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to fetch local episodes: {:?}", e)))
 }
@@ -130,16 +130,18 @@ pub async fn update_podcast_database(podcast_details: PodcastDetails) -> Result<
 
     // Serialize and invoke the Tauri command
     let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    tauri::invoke::<_, ()>("update_podcast_db", &args)
+    core::invoke_result::<_, ()>("update_podcast_db", &args)
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to update podcast DB: {:?}", e)))
 }
 
 pub async fn fetch_local_podcasts() -> Result<Vec<Podcast>, JsValue> {
-    tauri::invoke::<_, Vec<Podcast>>("get_local_podcasts", &())
+    core::invoke_result::<_, Vec<Podcast>>("get_local_podcasts", &())
         .await
         .map_err(|e| JsValue::from_str(&format!("Failed to fetch local podcasts: {:?}", e)))
 }
+
+
 
 // Define the arguments for the Tauri command
 #[derive(Serialize, Deserialize)]
