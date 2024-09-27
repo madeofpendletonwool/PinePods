@@ -37,9 +37,9 @@ jobs:
       - name: Set environment variables
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            echo "ARTIFACT_NAME1=pinepods_${{ env.IMAGE_TAG }}_amd64.deb" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=pinepods_${{ env.IMAGE_TAG }}_amd64.AppImage" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME3=pinepods-${{ env.IMAGE_TAG }}-1.x86_64.rpm" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_amd64.deb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_amd64.AppImage" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME3=Pinepods-${{ env.IMAGE_TAG }}-1.x86_64.rpm" >> $GITHUB_ENV
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_x64-setup.exe" >> $Env:GITHUB_ENV
             echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
@@ -59,7 +59,6 @@ jobs:
           echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
-
 
       - name: Setup | Checkout
         uses: actions/checkout@v3
@@ -188,7 +187,6 @@ jobs:
             ./web/src-tauri/target/release/bundle/nsis/${{ env.ARTIFACT_NAME1 }}
             ./web/src-tauri/target/release/bundle/msi/${{ env.ARTIFACT_NAME2 }}
         if: ${{ matrix.os == 'windows-latest' }}
-
 
       - name: Upload release asset (Ubuntu - DEB)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
