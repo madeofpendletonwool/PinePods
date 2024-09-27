@@ -5,7 +5,8 @@ def update_version(file_path, new_version):
     with open(file_path, 'r') as file:
         config = json.load(file)
 
-    config['package']['version'] = new_version
+    # Update the version at the root level
+    config['version'] = new_version
 
     with open(file_path, 'w') as file:
         json.dump(config, file, indent=2)
