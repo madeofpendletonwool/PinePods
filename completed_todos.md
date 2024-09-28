@@ -73,6 +73,9 @@ Probably done
 Version 0.7.0
 
 - [x] Android App
+- [x] Flatpak Clien
+- [x] Snap Client
+- [x] aur client
 
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
