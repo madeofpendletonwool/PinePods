@@ -64,6 +64,7 @@ Mobile:
 
 
 - [ ] Seriously dig into podcast 3x layout
+- [ ] Finalize loading states so you don't see login page when you are already authenticated
 
 Probably done
 
