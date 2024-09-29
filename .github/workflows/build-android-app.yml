@@ -24,21 +24,17 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: '17'
-          distribution: 'temurin'
-
-
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
 
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
           ndk-version: r27b
           add-to-path: false
-
 
       - uses: hecrj/setup-rust-action@v2
         with:
@@ -80,7 +76,6 @@ jobs:
           cat tauri.conf.json
         shell: bash
 
-
       - name: setup Android signing
         run: |
           echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > web/src-tauri/gen/android/keystore.properties
@@ -91,13 +86,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-
-      - uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r21e
-          add-to-path: false
-
       - name: setup Android signing
         run: |
           cd src-tauri/gen/android
@@ -105,7 +93,6 @@ jobs:
           echo "password=${{ secrets.ANDROID_KEY_PW }}" >> keystore.properties
           base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
           echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
-
 
       - name: Build | Compile (UNIX)
         run: |
@@ -132,7 +119,6 @@ jobs:
         with:
           name: aab-build
           path: ./web/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
-
 
       # - name: Archive build 2 (aab)
       #   uses: actions/upload-artifact@v3
@@ -165,4 +151,3 @@ jobs:
       #     asset_path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
       #     asset_name: ${{ env.ARTIFACT_NAME1 }}
       #     asset_content_type: application/vnd.debian.binary-package
-
