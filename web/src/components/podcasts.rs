@@ -1,22 +1,32 @@
 use super::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, FilterState, ExpandedDescriptions, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
+use crate::requests::pod_req::Podcast;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponse, RemovePodcastValues};
 use crate::requests::setting_reqs::call_add_custom_feed;
 use gloo_timers::callback::Timeout;
+use serde::Deserialize;
+use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
-use std::collections::HashSet;
 use yewdux::prelude::*;
+
+// Add this enum to define the layout options
+#[derive(Clone, PartialEq, Debug, Deserialize, Default)]
+pub enum PodcastLayout {
+    #[default]
+    List,
+    Grid,
+}
 
 enum AppStateMsg {
     // ... other messages ...
@@ -46,6 +56,202 @@ impl Reducer<AppState> for AppStateMsg {
         }
 
         state
+    }
+}
+
+fn render_layout_toggle(
+    dispatch: Dispatch<AppState>,
+    current_layout: Option<PodcastLayout>,
+) -> Html {
+    let onclick = dispatch.reduce_mut_callback(|state| {
+        state.podcast_layout = match state.podcast_layout {
+            Some(PodcastLayout::List) => Some(PodcastLayout::Grid),
+            Some(PodcastLayout::Grid) => Some(PodcastLayout::List),
+            None => Some(PodcastLayout::Grid),
+        };
+    });
+
+    html! {
+        <button
+            class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+            onclick={onclick}
+        >
+            <span class="material-icons icon-space">
+                {match current_layout {
+                    Some(PodcastLayout::List) => "grid_view",
+                    Some(PodcastLayout::Grid) => "view_list",
+                    None => "view_list",
+                }}
+            </span>
+            <span class="text-lg">{"Toggle Layout"}</span>
+        </button>
+    }
+}
+
+fn render_podcasts(
+    podcasts: &[Podcast],
+    layout: Option<PodcastLayout>,
+    dispatch: Dispatch<AppState>,
+    history: &BrowserHistory,
+    api_key: Option<Option<String>>,
+    server_name: Option<String>,
+    user_id: Option<i32>,
+    desc_state: Rc<ExpandedDescriptions>,
+    desc_dispatch: Dispatch<ExpandedDescriptions>,
+) -> Html {
+    match layout {
+        None | Some(PodcastLayout::List) => {
+            html! {
+                <div>
+                    {podcasts.iter().map(|podcast| {
+                        let api_key_iter = api_key.clone();
+                        let server_name_iter = server_name.clone().unwrap();
+                        let history_clone = history.clone();
+
+                        let dispatch_clone = dispatch.clone();
+                        let podcast_id_loop = podcast.podcastid.clone();
+                        let podcast_description_clone = podcast.description.clone();
+
+                        let on_title_click = create_on_title_click(
+                            dispatch_clone.clone(),
+                            server_name_iter,
+                            api_key_iter,
+                            &history_clone,
+                            podcast.podcastname.clone(),
+                            podcast.feedurl.clone(),
+                            podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
+                            podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                            podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
+                            podcast.explicit.clone(),
+                            podcast.episodecount.clone(),
+                            Some(podcast.categories.clone()),
+                            podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                            user_id.unwrap(),
+                        );
+
+                        let id_string = &podcast.podcastid.clone().to_string();
+                        let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
+                        #[wasm_bindgen]
+                        extern "C" {
+                            #[wasm_bindgen(js_namespace = window)]
+                            fn toggleDescription(guid: &str, expanded: bool);
+                        }
+                        let toggle_expanded = {
+                            let desc_dispatch = desc_dispatch.clone();
+                            let episode_guid = podcast.podcastid.clone().to_string();
+
+                            Callback::from(move |_: MouseEvent| {
+                                let guid = episode_guid.clone();
+                                desc_dispatch.reduce_mut(move |state| {
+                                    if state.expanded_descriptions.contains(&guid) {
+                                        state.expanded_descriptions.remove(&guid);
+                                        toggleDescription(&guid, false);
+                                    } else {
+                                        state.expanded_descriptions.insert(guid.clone());
+                                        toggleDescription(&guid, true);
+                                    }
+                                });
+                            })
+                        };
+
+                        let description_class = if desc_expanded {
+                            "desc-expanded".to_string()
+                        } else {
+                            "desc-collapsed".to_string()
+                        };
+
+                        html! {
+                            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+                                <div class="flex flex-col w-auto object-cover pl-4">
+                                    <img
+                                        src={podcast.artworkurl.clone()}
+                                        onclick={on_title_click.clone()}
+                                        alt={format!("Cover for {}", podcast.podcastname.clone())}
+                                        class="episode-image"
+                                    />
+                                </div>
+                                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                                    <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
+                                        { &podcast.podcastname }
+                                    </p>
+                                    <hr class="my-2 border-t hidden md:block"/>
+                                    <div class="item-description-text hidden md:block">
+                                        <div
+                                            class={format!("item_container-text episode-description-container {}", description_class)}
+                                            onclick={toggle_expanded}
+                                            id={format!("desc-{}", podcast.podcastid)}
+                                        >
+                                            <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
+                                        </div>
+                                    </div>
+                                    <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
+                                </div>
+                                <button
+                                    class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
+                                    style="width: 60px; height: 60px;"
+                                    onclick={dispatch_clone.reduce_mut_callback(move |state| {
+                                        if let Some(podcasts) = &mut state.podcast_feed_return {
+                                            podcasts.pods = Some(
+                                                podcasts
+                                                    .pods
+                                                    .as_ref()
+                                                    .unwrap_or(&vec![])
+                                                    .iter()
+                                                    .filter(|p| p.podcastid != podcast_id_loop)
+                                                    .cloned()
+                                                    .collect(),
+                                            );
+                                        }
+                                    })}
+                                >
+                                    <span class="material-icons">{"delete"}</span>
+                                </button>
+                            </div>
+                        }
+                    }).collect::<Html>()}
+                </div>
+            }
+        }
+        Some(PodcastLayout::Grid) => {
+            html! {
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {podcasts.iter().map(|podcast| {
+                        let on_click = create_on_title_click(
+                            dispatch.clone(),
+                            server_name.clone().unwrap(),
+                            api_key.clone(),
+                            history,
+                            podcast.podcastname.clone(),
+                            podcast.feedurl.clone(),
+                            podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
+                            podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                            podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
+                            podcast.explicit.clone(),
+                            podcast.episodecount.clone(),
+                            Some(podcast.categories.clone()),
+                            podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                            user_id.unwrap(),
+                        );
+
+                        html! {
+                            <div
+                                class="podcast-grid-item cursor-pointer transition-all duration-300 hover:shadow-lg rounded-lg overflow-hidden"
+                                onclick={on_click}
+                            >
+                                <img
+                                    src={podcast.artworkurl.clone().unwrap_or_default()}
+                                    alt={format!("Cover for {}", podcast.podcastname)}
+                                    class="w-full h-48 object-cover"
+                                />
+                                <div class="p-4 bg-opacity-75 bg-gray-800 absolute bottom-0 left-0 right-0 transition-opacity duration-300 opacity-0 hover:opacity-100">
+                                    <h3 class="text-white text-lg font-semibold">{&podcast.podcastname}</h3>
+                                </div>
+                            </div>
+                        }
+                    }).collect::<Html>()}
+                </div>
+            }
+        }
     }
 }
 
@@ -142,7 +348,8 @@ pub fn podcasts() -> Html {
                                 let mut categories = HashSet::new();
                                 for podcast in &fetched_podcasts {
                                     if !podcast.categories.is_empty() {
-                                        let podcast_categories: Vec<&str> = podcast.categories.split(',').collect();
+                                        let podcast_categories: Vec<&str> =
+                                            podcast.categories.split(',').collect();
                                         for cat in podcast_categories {
                                             categories.insert(cat.trim().to_string());
                                         }
@@ -155,7 +362,6 @@ pub fn podcasts() -> Html {
                                 filter_effect.reduce_mut(|filter_state| {
                                     filter_state.category_filter_list = Some(category_list);
                                 });
-                                
                             }
                             Err(e) => web_sys::console::log_1(
                                 &format!("Unable to parse Podcasts: {:?}", &e).into(),
@@ -485,9 +691,7 @@ pub fn podcasts() -> Html {
             if let Some(pods) = podcasts.as_ref().and_then(|p| p.pods.as_ref()) {
                 if let Some(cat) = selected_cat.as_ref() {
                     pods.iter()
-                        .filter(|podcast| {
-                            podcast.categories.split(',').any(|c| c.trim() == cat)
-                        })
+                        .filter(|podcast| podcast.categories.split(',').any(|c| c.trim() == cat))
                         .cloned()
                         .collect::<Vec<_>>()
                 } else {
@@ -510,9 +714,6 @@ pub fn podcasts() -> Html {
         selected_category.set(None);
         // Reset other filter states here as well
     });
-
-    
-    
 
     html! {
         <>
@@ -551,7 +752,8 @@ pub fn podcasts() -> Html {
                                 <span class="material-icons icon-space">{"clear"}</span>
                                 <span class="text-lg">{"Clear Filter"}</span>
                             </button>
-            
+                            {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
+
                             // Category dropdown
                             <div class="filter-dropdown font-bold rounded">
                                 {
@@ -582,8 +784,8 @@ pub fn podcasts() -> Html {
                     html! {}
                 }
             }
-            
-                     
+
+
             {
                 if let Some(podcasts) = state.podcast_feed_return.clone() {
                     let int_podcasts = podcasts.clone();
@@ -598,112 +800,124 @@ pub fn podcasts() -> Html {
                                 </div>
                                     }
                         } else {
-                            { filtered_pods.iter().map(|podcast| {
-                                // Your existing podcast rendering logic
-                                let api_key_iter = api_key.clone();
-                                let server_name_iter = server_name.clone().unwrap();
-                                let history = history_clone.clone();
-    
-                                let dispatch = dispatch.clone();
-                                let podcast_id_loop = podcast.podcastid.clone();
-                                let podcast_description_clone = podcast.description.clone();
-    
-                                let on_title_click = create_on_title_click(
-                                    dispatch.clone(),
-                                    server_name_iter,
-                                    api_key_iter,
-                                    &history,
-                                    podcast.podcastname.clone(),
-                                    podcast.feedurl.clone(),
-                                    podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
-                                    podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
-                                    podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
-                                    podcast.explicit.clone(),
-                                    podcast.episodecount.clone(),
-                                    Some(podcast.categories.clone()),
-                                    podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
-    
-                                    user_id.unwrap(),
-                                );
-    
-                                let id_string = &podcast.podcastid.clone().to_string();
-                                let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
-                                #[wasm_bindgen]
-                                extern "C" {
-                                    #[wasm_bindgen(js_namespace = window)]
-                                    fn toggleDescription(guid: &str, expanded: bool);
-                                }
-                                let toggle_expanded = {
-                                    let desc_dispatch = desc_dispatch.clone();
-                                    let episode_guid = podcast.podcastid.clone().to_string();
-    
-                                    Callback::from(move |_: MouseEvent| {
-                                        let guid = episode_guid.clone();
-                                        desc_dispatch.reduce_mut(move |state| {
-                                            if state.expanded_descriptions.contains(&guid) {
-                                                state.expanded_descriptions.remove(&guid); // Collapse the description
-                                                toggleDescription(&guid, false); // Call JavaScript function
-                                            } else {
-                                                state.expanded_descriptions.insert(guid.clone()); // Expand the description
-                                                toggleDescription(&guid, true); // Call JavaScript function
-                                            }
-                                        });
-                                    })
-                                };
-    
-                                let description_class = if desc_expanded {
-                                    "desc-expanded".to_string()
-                                } else {
-                                    "desc-collapsed".to_string()
-                                };
-    
-                                html! {
-                                    <div>
-                                    <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
-                                            <div class="flex flex-col w-auto object-cover pl-4">
-                                                <img
-                                                    src={podcast.artworkurl.clone()}
-                                                    onclick={on_title_click.clone()}
-                                                    alt={format!("Cover for {}", podcast.podcastname.clone())}
-                                                    class="episode-image"
-                                                />
-                                            </div>
-                                            <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                                <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
-                                                    { &podcast.podcastname }
-                                                </p>
-                                                <hr class="my-2 border-t hidden md:block"/>
-                                                {
-                                                    html! {
-                                                        <div class="item-description-text hidden md:block">
-                                                            <div
-                                                                class={format!("item_container-text episode-description-container {}", description_class)}
-                                                                onclick={toggle_expanded}  // Make the description container clickable
-                                                                id={format!("desc-{}", podcast.podcastid)}
-                                                            >
-                                                                <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                }
-    
-                                                <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
-                                            </div>
-                                            <button 
-                                                class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} 
-                                                style="width: 60px; height: 60px;"
-                                                onclick={toggle_delete.reform(move |_| podcast_id_loop)}
-                                            >
-                                                <span class="material-icons" >{"delete"}</span>
-                                            </button>
-    
-                                        </div>
-                                    </div>
-                                }
+                            // render_podcasts(&filtered_pods, state.podcast_layout.clone(), dispatch.clone(), &history)
+                            render_podcasts(
+                                &filtered_pods,
+                                state.podcast_layout.clone(),
+                                dispatch.clone(),
+                                &history,
+                                api_key.clone(),
+                                server_name.clone(),
+                                user_id,
+                                desc_state,
+                                desc_dispatch.clone(),
+                            )
+                            // { filtered_pods.iter().map(|podcast| {
+                            //     // Your existing podcast rendering logic
+                            //     let api_key_iter = api_key.clone();
+                            //     let server_name_iter = server_name.clone().unwrap();
+                            //     let history = history_clone.clone();
 
-                            }).collect::<Html>() }
+                            //     let dispatch = dispatch.clone();
+                            //     let podcast_id_loop = podcast.podcastid.clone();
+                            //     let podcast_description_clone = podcast.description.clone();
+
+                            //     let on_title_click = create_on_title_click(
+                            //         dispatch.clone(),
+                            //         server_name_iter,
+                            //         api_key_iter,
+                            //         &history,
+                            //         podcast.podcastname.clone(),
+                            //         podcast.feedurl.clone(),
+                            //         podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
+                            //         podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                            //         podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
+                            //         podcast.explicit.clone(),
+                            //         podcast.episodecount.clone(),
+                            //         Some(podcast.categories.clone()),
+                            //         podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+
+                            //         user_id.unwrap(),
+                            //     );
+
+                            //     let id_string = &podcast.podcastid.clone().to_string();
+                            //     let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
+                            //     #[wasm_bindgen]
+                            //     extern "C" {
+                            //         #[wasm_bindgen(js_namespace = window)]
+                            //         fn toggleDescription(guid: &str, expanded: bool);
+                            //     }
+                            //     let toggle_expanded = {
+                            //         let desc_dispatch = desc_dispatch.clone();
+                            //         let episode_guid = podcast.podcastid.clone().to_string();
+
+                            //         Callback::from(move |_: MouseEvent| {
+                            //             let guid = episode_guid.clone();
+                            //             desc_dispatch.reduce_mut(move |state| {
+                            //                 if state.expanded_descriptions.contains(&guid) {
+                            //                     state.expanded_descriptions.remove(&guid); // Collapse the description
+                            //                     toggleDescription(&guid, false); // Call JavaScript function
+                            //                 } else {
+                            //                     state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                            //                     toggleDescription(&guid, true); // Call JavaScript function
+                            //                 }
+                            //             });
+                            //         })
+                            //     };
+
+                            //     let description_class = if desc_expanded {
+                            //         "desc-expanded".to_string()
+                            //     } else {
+                            //         "desc-collapsed".to_string()
+                            //     };
+
+                            //     html! {
+                            //         <div>
+                            //         <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+                            //                 <div class="flex flex-col w-auto object-cover pl-4">
+                            //                     <img
+                            //                         src={podcast.artworkurl.clone()}
+                            //                         onclick={on_title_click.clone()}
+                            //                         alt={format!("Cover for {}", podcast.podcastname.clone())}
+                            //                         class="episode-image"
+                            //                     />
+                            //                 </div>
+                            //                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                            //                     <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
+                            //                         { &podcast.podcastname }
+                            //                     </p>
+                            //                     <hr class="my-2 border-t hidden md:block"/>
+                            //                     {
+                            //                         html! {
+                            //                             <div class="item-description-text hidden md:block">
+                            //                                 <div
+                            //                                     class={format!("item_container-text episode-description-container {}", description_class)}
+                            //                                     onclick={toggle_expanded}  // Make the description container clickable
+                            //                                     id={format!("desc-{}", podcast.podcastid)}
+                            //                                 >
+                            //                                     <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
+                            //                                 </div>
+                            //                             </div>
+                            //                         }
+                            //                     }
+
+                            //                     <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
+                            //                 </div>
+                            //                 <button
+                            //                     class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
+                            //                     style="width: 60px; height: 60px;"
+                            //                     onclick={toggle_delete.reform(move |_| podcast_id_loop)}
+                            //                 >
+                            //                     <span class="material-icons" >{"delete"}</span>
+                            //                 </button>
+
+                            //             </div>
+                            //         </div>
+                            //     }
+
+                            // }).collect::<Html>() }
                         }
-                        
+
 
                     } else {
                         html! {

@@ -8,11 +8,8 @@ Major Version:
 
 Next Minor Version:
 
-- [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
-- [] Queue adjmustment for mobile devices
-- [] Update queue slider to be centered
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
@@ -25,7 +22,6 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 - [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
 - [] Implement additional filtering in podcasts
-- [] Adjust people page so that you can drop down or minimize the episodes/podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
 - [] Implement episode filtering on saved page
@@ -33,41 +29,46 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on local download page
 - [] Implement episode filtering on queue page
 - [] Implement episode filtering on search page
-- [] Add loading spinner when adding podcast via people page
-- [] Fix issues with refreshing
-
-- [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
-- [] People Table with background jobs to update people found in podcasts
-- [] Subscribe to people
 
 - [] Full Screen Episode should have clickable podcast header to open pod page
-- [] Podcasts alternative view - 3 per line
 
 - [] Make new category button more obvious.
 - [] Make category delete button bigger
-- [] Android play/pause episode metadata
 
 Mobile:
 
 - [] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
-- [] On mobile get queue adjust working
 - [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
 - [] On mobile make the action buttons larger
 - [] On mobile make the volume slider drop below Shownotes
 - [] When pod is playing play and skip are too far left, also make image raise full screen as well as title. Maybe drag to raise?
 - [] On mobile further squish image to fit more on screen?
 - [] On mobile long press to add to saved etc...?
-- [] On mobile local Downloads is page broken - doesn't open
+- [] On mobile local Downloads page is broken - doesn't open
 - [] Mobile loading screen causes search to jump to right and playing pod to go too low
 - [] On mobile nextcloud doesn't redirect back after adding
 - [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
 
+pre-0.7.0:
 
-- [ ] Seriously dig into podcast 3x layout
-- [ ] Finalize loading states so you don't see login page when you are already authenticated
+- [] People Table with background jobs to update people found in podcasts
+- [] Subscribe to people
+- [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
+- [] Queue adjmustment for mobile devices
+- [] Update queue slider to be centered
+- [] Add loading spinner when adding podcast via people page
+- [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
+- [] Fix issues with refreshing
+- [] Android play/pause episode metadata
+- [] On mobile get queue adjust working
+- [] Finalize loading states so you don't see login page when you are already authenticated
 
-Probably done
+done but needs testing
 
+- [ ] Seriously dig into podcast 3x layout - Works but couple issues
+      deleting pod doesn't work from page and
+      needs layout change so that it doesn't scale down on small screens
+      Change so that full image is shown. Not zoomed view of it
 - [] client local download function broken. Need android compiling alternative to reqwest
 
 Version 0.7.0

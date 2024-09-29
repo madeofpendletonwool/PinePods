@@ -182,7 +182,12 @@ body {
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.5);; /* Equivalent to bg-black bg-opacity-50 */
+    background-color: rgba(
+        0,
+        0,
+        0,
+        0.5
+    ); /* Equivalent to bg-black bg-opacity-50 */
     z-index: 50;
 }
 
@@ -197,20 +202,24 @@ body {
     width: 4rem; /* Equivalent to h-16 w-16 */
     height: 4rem;
     border-top: 2px solid var(--link-color); /* Equivalent to border-t-2 border-blue-500 */
-    border-bottom: 2px solid var(--link-color);; /* Equivalent to border-b-2 */
+    border-bottom: 2px solid var(--link-color); /* Equivalent to border-b-2 */
     border-radius: 50%; /* Equivalent to rounded-full */
     animation: spin 1s linear infinite; /* Equivalent to animate-spin */
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 .modal-title {
     font-size: 1.25rem; /* Equivalent to text-xl */
     font-weight: 600; /* Equivalent to font-semibold */
-    color: var(--text-color)
+    color: var(--text-color);
 }
 
 .modal-subtitle {
@@ -1030,26 +1039,32 @@ body {
 
 /* Style for the options in the dropdown */
 .filter-dropdown select option {
-    background-color: var(--button-color);  /* Light grey background */
-    color: var(--text-color, #333);              /* Dark grey text */
+    background-color: var(--button-color); /* Light grey background */
+    color: var(--text-color, #333); /* Dark grey text */
     padding: 10px;
 }
 
 /* Style for the hover state of options */
 .filter-dropdown select option:hover,
 .filter-dropdown select option:focus {
-    background-color: var(--dropdown-hover-bg-color, #e0e0e0);  /* Slightly darker on hover */
-    color: var(--dropdown-hover-text-color, #000);              /* Black text on hover */
+    background-color: var(
+        --dropdown-hover-bg-color,
+        #e0e0e0
+    ); /* Slightly darker on hover */
+    color: var(--dropdown-hover-text-color, #000); /* Black text on hover */
 }
 
 /* Style for the selected option */
 .filter-dropdown select option:checked {
-    background-color: var(--dropdown-selected-bg-color, #d0d0d0);  /* Even darker for selected */
-    color: var(--dropdown-selected-text-color, #000);              /* Black text for selected */
+    background-color: var(
+        --dropdown-selected-bg-color,
+        #d0d0d0
+    ); /* Even darker for selected */
+    color: var(
+        --dropdown-selected-text-color,
+        #000
+    ); /* Black text for selected */
 }
-  
-  
-  
 
 .input-black {
     color: black; /* Set the text color to white to make it readable */
@@ -1077,6 +1092,31 @@ body {
 
 .share:hover {
     background-color: var(--hover-color);
+}
+
+.podcast-grid-item {
+    position: relative;
+    overflow: hidden;
+}
+
+.podcast-grid-item:hover {
+    transform: scale(1.05);
+}
+
+.podcast-grid-item img {
+    transition: transform 0.3s ease;
+}
+
+.podcast-grid-item:hover img {
+    transform: scale(1.1);
+}
+
+.podcast-grid-item .bg-opacity-75 {
+    transition: opacity 0.3s ease;
+}
+
+.podcast-grid-item:hover .bg-opacity-75 {
+    opacity: 1;
 }
 
 .import-box {
