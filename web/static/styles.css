@@ -182,7 +182,12 @@ body {
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.5);; /* Equivalent to bg-black bg-opacity-50 */
+    background-color: rgba(
+        0,
+        0,
+        0,
+        0.5
+    ); /* Equivalent to bg-black bg-opacity-50 */
     z-index: 50;
 }
 
@@ -197,20 +202,24 @@ body {
     width: 4rem; /* Equivalent to h-16 w-16 */
     height: 4rem;
     border-top: 2px solid var(--link-color); /* Equivalent to border-t-2 border-blue-500 */
-    border-bottom: 2px solid var(--link-color);; /* Equivalent to border-b-2 */
+    border-bottom: 2px solid var(--link-color); /* Equivalent to border-b-2 */
     border-radius: 50%; /* Equivalent to rounded-full */
     animation: spin 1s linear infinite; /* Equivalent to animate-spin */
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 .modal-title {
     font-size: 1.25rem; /* Equivalent to text-xl */
     font-weight: 600; /* Equivalent to font-semibold */
-    color: var(--text-color)
+    color: var(--text-color);
 }
 
 .modal-subtitle {
@@ -1030,26 +1039,32 @@ body {
 
 /* Style for the options in the dropdown */
 .filter-dropdown select option {
-    background-color: var(--button-color);  /* Light grey background */
-    color: var(--text-color, #333);              /* Dark grey text */
+    background-color: var(--button-color); /* Light grey background */
+    color: var(--text-color, #333); /* Dark grey text */
     padding: 10px;
 }
 
 /* Style for the hover state of options */
 .filter-dropdown select option:hover,
 .filter-dropdown select option:focus {
-    background-color: var(--dropdown-hover-bg-color, #e0e0e0);  /* Slightly darker on hover */
-    color: var(--dropdown-hover-text-color, #000);              /* Black text on hover */
+    background-color: var(
+        --dropdown-hover-bg-color,
+        #e0e0e0
+    ); /* Slightly darker on hover */
+    color: var(--dropdown-hover-text-color, #000); /* Black text on hover */
 }
 
 /* Style for the selected option */
 .filter-dropdown select option:checked {
-    background-color: var(--dropdown-selected-bg-color, #d0d0d0);  /* Even darker for selected */
-    color: var(--dropdown-selected-text-color, #000);              /* Black text for selected */
+    background-color: var(
+        --dropdown-selected-bg-color,
+        #d0d0d0
+    ); /* Even darker for selected */
+    color: var(
+        --dropdown-selected-text-color,
+        #000
+    ); /* Black text for selected */
 }
-  
-  
-  
 
 .input-black {
     color: black; /* Set the text color to white to make it readable */
@@ -1079,6 +1094,90 @@ body {
     background-color: var(--hover-color);
 }
 
+.podcast-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.podcast-grid-item {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
+    cursor: pointer;
+}
+
+.touch-none {
+    touch-action: none;
+}
+
+.podcast-grid-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.podcast-image-container {
+    position: relative;
+    width: 100%;
+    padding-top: 100%; /* This creates a 1:1 aspect ratio */
+    overflow: hidden;
+}
+
+.podcast-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.podcast-grid-item:hover .podcast-image {
+    transform: scale(1.1);
+}
+
+.podcast-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.podcast-grid-item:hover .podcast-info {
+    opacity: 1;
+}
+
+.podcast-title-grid {
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Ensure the grid stays at 3 columns even on smaller screens */
+@media (max-width: 768px) {
+    .podcast-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .podcast-title-grid {
+        font-size: 0.75rem;
+    }
+}
 .import-box {
     background-color: var(--container-background);
     border-color: var(--border-color);
@@ -1145,6 +1244,7 @@ body {
     align-items: center;
     /* Add this line */
     overflow: visible;
+    transition: transform 0.1s ease;
 }
 
 .align-top-cover {

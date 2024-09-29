@@ -1,5 +1,6 @@
 use crate::components::audio::AudioPlayerProps;
 use crate::components::podcast_layout::ClickedFeedURL;
+use crate::components::podcasts::PodcastLayout;
 use crate::requests::login_requests::AddUserRequest;
 use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
@@ -114,6 +115,7 @@ pub struct AppState {
     pub date_format: Option<String>,
     pub podcast_added: Option<bool>,
     pub completed_episodes: Option<Vec<i32>>,
+    pub podcast_layout: Option<PodcastLayout>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
