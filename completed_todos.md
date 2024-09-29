@@ -54,8 +54,6 @@ pre-0.7.0:
 - [] People Table with background jobs to update people found in podcasts
 - [] Subscribe to people
 - [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
-- [] Queue adjmustment for mobile devices
-- [] Update queue slider to be centered
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
 - [] Fix issues with refreshing
@@ -65,10 +63,11 @@ pre-0.7.0:
 
 done but needs testing
 
+- [] Queue adjmustment for mobile devices
+    Finally works, but scrolling when holding at bottom of page doesn't work
 - [ ] Seriously dig into podcast 3x layout - Works but couple issues
-      deleting pod doesn't work from page and
-      needs layout change so that it doesn't scale down on small screens
-      Change so that full image is shown. Not zoomed view of it
+      deleting pod doesn't work from page
+      select category no longer pulls in categories
 - [] client local download function broken. Need android compiling alternative to reqwest
 
 Version 0.7.0
@@ -80,6 +79,7 @@ Version 0.7.0
 
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
+- [x] Update queue slider to be centered
 
 Version 0.6.6
 

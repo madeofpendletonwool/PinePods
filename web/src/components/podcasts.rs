@@ -214,7 +214,7 @@ fn render_podcasts(
         }
         Some(PodcastLayout::Grid) => {
             html! {
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="podcast-grid">
                     {podcasts.iter().map(|podcast| {
                         let on_click = create_on_title_click(
                             dispatch.clone(),
@@ -232,19 +232,20 @@ fn render_podcasts(
                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                             user_id.unwrap(),
                         );
-
                         html! {
                             <div
-                                class="podcast-grid-item cursor-pointer transition-all duration-300 hover:shadow-lg rounded-lg overflow-hidden"
+                                class="podcast-grid-item"
                                 onclick={on_click}
                             >
-                                <img
-                                    src={podcast.artworkurl.clone().unwrap_or_default()}
-                                    alt={format!("Cover for {}", podcast.podcastname)}
-                                    class="w-full h-48 object-cover"
-                                />
-                                <div class="p-4 bg-opacity-75 bg-gray-800 absolute bottom-0 left-0 right-0 transition-opacity duration-300 opacity-0 hover:opacity-100">
-                                    <h3 class="text-white text-lg font-semibold">{&podcast.podcastname}</h3>
+                                <div class="podcast-image-container">
+                                    <img
+                                        src={podcast.artworkurl.clone().unwrap_or_default()}
+                                        alt={format!("Cover for {}", podcast.podcastname)}
+                                        class="podcast-image"
+                                    />
+                                </div>
+                                <div class="podcast-info">
+                                    <h3 class="podcast-title-grid">{&podcast.podcastname}</h3>
                                 </div>
                             </div>
                         }
@@ -731,10 +732,13 @@ pub fn podcasts() -> Html {
                 html! {
                     <div>
                         <div class="flex justify-between">
-                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_filter_dropdown}>
-                                <span class="material-icons icon-space">{"filter_alt"}</span>
-                                <span class="text-lg">{"Filter"}</span>
-                            </button>
+                            <div>
+                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_filter_dropdown}>
+                                    <span class="material-icons icon-space">{"filter_alt"}</span>
+                                    <span class="text-lg">{"Filter"}</span>
+                                </button>
+                                {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
+                            </div>
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_custom_modal}>
                                 <span class="material-icons icon-space">{"add_box"}</span>
                                 <span class="text-lg">{"Add Custom Feed"}</span>
@@ -752,8 +756,6 @@ pub fn podcasts() -> Html {
                                 <span class="material-icons icon-space">{"clear"}</span>
                                 <span class="text-lg">{"Clear Filter"}</span>
                             </button>
-                            {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
-
                             // Category dropdown
                             <div class="filter-dropdown font-bold rounded">
                                 {

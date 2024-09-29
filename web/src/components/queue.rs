@@ -21,6 +21,7 @@ use crate::components::episodes_layout::UIStateMsg;
 use crate::requests::login_requests::use_check_authentication;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use web_sys::Element;
 use web_sys::{window, DragEvent, HtmlElement};
 
 #[function_component(Queue)]
@@ -40,6 +41,10 @@ pub fn queue() -> Html {
     let session_state = post_state.clone();
     let loading = use_state(|| true);
     let dragging = use_state(|| None);
+    let touch_start_y = use_state(|| 0.0);
+    let touch_start_x = use_state(|| 0.0);
+    let is_dragging = use_state(|| false);
+    let dragged_element = use_state(|| None::<web_sys::Element>);
 
     let api_key = post_state
         .auth_details
@@ -253,10 +258,12 @@ pub fn queue() -> Html {
                                     let dragging = dragging.clone();
                                     let dispatch = dispatch.clone();
                                     let episodes = queued_eps.clone();
+                                    let server_drop = server_name.clone();
+                                    let api_drop = api_key.clone();
                                     Callback::from(move |e: DragEvent| {
                                         let user_id = user_id.clone();
-                                        let server_name = server_name.clone();
-                                        let api_key = api_key.clone();
+                                        let server_name = server_drop.clone();
+                                        let api_key = api_drop.clone();
                                         e.prevent_default();
                                         let mut target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
                                         while !target.has_attribute("data-id") {
@@ -304,6 +311,148 @@ pub fn queue() -> Html {
                                         dragging.set(None);
                                     })
                                 };
+
+
+
+                                let ontouchstart = {
+                                    let touch_start_y = touch_start_y.clone();
+                                    let touch_start_x = touch_start_x.clone();
+                                    let is_dragging = is_dragging.clone();
+                                    let dragged_element = dragged_element.clone();
+                                    Callback::from(move |e: TouchEvent| {
+                                        if let Some(touch) = e.touches().get(0) {
+                                            if let Some(target) = e.target() {
+                                                if let Some(element) = target.dyn_ref::<Element>() {
+                                                    if element.closest(".item-container").is_ok() {
+                                                        touch_start_y.set(touch.client_y() as f64);
+                                                        touch_start_x.set(touch.client_x() as f64);
+                                                        is_dragging.set(true);
+                                                        dragged_element.set(element.closest(".item-container").ok().flatten());
+                                                        e.prevent_default();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    })
+                                };
+
+                                let ontouchmove = {
+                                    let touch_start_y = touch_start_y.clone();
+                                    let touch_start_x = touch_start_x.clone();
+                                    let is_dragging = is_dragging.clone();
+                                    let dragged_element = dragged_element.clone();
+                                    Callback::from(move |e: TouchEvent| {
+                                        e.stop_propagation();
+                                        e.prevent_default();
+                                        if *is_dragging {
+                                            if let Some(touch) = e.touches().get(0) {
+                                                let current_y = touch.client_y() as f64;
+                                                let current_x = touch.client_x() as f64;
+                                                let delta_y = current_y - *touch_start_y;
+                                                let delta_x = current_x - *touch_start_x;
+
+                                                if let Some(element) = (*dragged_element).clone() {
+                                                    let style = element.dyn_ref::<HtmlElement>().unwrap().style();
+                                                    style.set_property("transform", &format!("translate({}px, {}px)", delta_x, delta_y)).unwrap();
+                                                    style.set_property("z-index", "1000").unwrap();
+                                                }
+                                            }
+                                            e.prevent_default();
+                                        }
+                                    })
+                                };
+
+
+                                let ontouchend = {
+                                    let dragged_element = dragged_element.clone();
+                                    let is_dragging = is_dragging.clone();
+                                    let dispatch = dispatch.clone();
+                                    let episodes = queued_eps.clone();
+                                    Callback::from(move |e: TouchEvent| {
+                                        if *is_dragging {
+                                            if let Some(dragged) = (*dragged_element).clone() {
+                                                let dragged_rect = dragged.get_bounding_client_rect();
+                                                let dragged_center_y = dragged_rect.top() + dragged_rect.height() / 2.0;
+
+                                                let mut closest_element = None;
+                                                let mut min_distance = f64::MAX;
+
+                                                // Find the closest element
+                                                if let Some(parent) = dragged.parent_element() {
+                                                    if let Ok(children) = parent.query_selector_all(".item-container") {
+                                                        let length = children.length();
+                                                        for i in 0..length {
+                                                            if let Some(node) = children.item(i) {
+                                                                if let Some(element) = node.dyn_ref::<Element>() {
+                                                                    if element != &dragged {
+                                                                        let rect = element.get_bounding_client_rect();
+                                                                        let center_y = rect.top() + rect.height() / 2.0;
+                                                                        let distance = (center_y - dragged_center_y).abs();
+
+                                                                        if distance < min_distance {
+                                                                            min_distance = distance;
+                                                                            closest_element = Some(element.clone());
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // Reorder the elements
+                                                if let Some(target) = closest_element {
+                                                    let dragged_id = dragged.get_attribute("data-id").unwrap().parse::<i32>().unwrap();
+                                                    let target_id = target.get_attribute("data-id").unwrap().parse::<i32>().unwrap();
+
+                                                    let mut episodes_vec = episodes.episodes.clone();
+                                                    let dragged_index = episodes_vec
+                                                        .iter()
+                                                        .position(|x| x.episodeid == dragged_id)
+                                                        .unwrap();
+                                                    let target_index = episodes_vec
+                                                        .iter()
+                                                        .position(|x| x.episodeid == target_id)
+                                                        .unwrap();
+
+                                                    // Remove the dragged item and reinsert it at the target position
+                                                    let dragged_item = episodes_vec.remove(dragged_index);
+                                                    episodes_vec.insert(target_index, dragged_item);
+
+                                                    // Extract episode IDs
+                                                    let episode_ids: Vec<i32> = episodes_vec.iter().map(|ep| ep.episodeid).collect();
+
+                                                    dispatch.reduce_mut(|state| {
+                                                        state.queued_episodes = Some(QueuedEpisodesResponse {
+                                                            episodes: episodes_vec.clone(),
+                                                        });
+                                                    });
+
+                                                    // Make a backend call to update the order on the server side
+                                                    let server_name = server_name.clone();
+                                                    let api_key = api_key.clone();
+                                                    let user_id = user_id.clone();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        if let Err(err) = pod_req::call_reorder_queue(&server_name.unwrap(), &api_key.unwrap(), &user_id.unwrap(), &episode_ids).await {
+                                                            web_sys::console::log_1(&format!("Failed to update order on server: {:?}", err).into());
+                                                        }
+                                                    });
+                                                }
+
+                                                // Reset the dragged element's style
+                                                if let Some(element) = dragged.dyn_ref::<HtmlElement>() {
+                                                    element.style().set_property("transform", "none").unwrap();
+                                                    element.style().set_property("z-index", "auto").unwrap();
+                                                }
+                                            }
+                                            e.prevent_default();
+                                        }
+                                        is_dragging.set(false);
+                                        dragged_element.set(None);
+                                    })
+                                };
+
+
 
                                 queued_eps.episodes.into_iter().map(|episode| {
                             let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -413,6 +562,9 @@ pub fn queue() -> Html {
                                 ondragenter.clone(),
                                 ondragover.clone(),
                                 ondrop.clone(),
+                                ontouchstart.clone(),
+                                ontouchmove.clone(),
+                                ontouchend.clone(),
                             );
 
                             item

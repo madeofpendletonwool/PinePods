@@ -1621,6 +1621,9 @@ pub fn queue_episode_item(
     ondragenter: Callback<DragEvent>,
     ondragover: Callback<DragEvent>,
     ondrop: Callback<DragEvent>,
+    ontouchstart: Callback<TouchEvent>,
+    ontouchmove: Callback<TouchEvent>,
+    ontouchend: Callback<TouchEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1650,20 +1653,23 @@ pub fn queue_episode_item(
 
     html! {
         <>
-        <div
-            class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full"
-            draggable="true"
-            ondragstart={ondragstart.clone()}
-            ondragenter={ondragenter.clone()}
-            ondragover={ondragover.clone()}
-            ondrop={ondrop.clone()}
-            data-id={episode.get_episode_id(Some(0)).to_string()}
-        >
-            <div class="drag-handle-wrapper flex items-center h-full">
-                <button class="drag-handle" style="cursor: grab;">
-                    <span class="material-icons">{"drag_indicator"}</span>
-                </button>
-            </div>
+            <div
+                class="item-container border-solid border flex mb-4 shadow-md rounded-lg touch-none"
+                draggable="true"
+                ondragstart={ondragstart.clone()}
+                ondragenter={ondragenter.clone()}
+                ondragover={ondragover.clone()}
+                ondrop={ondrop.clone()}
+                ontouchstart={ontouchstart}
+                ontouchmove={ontouchmove}
+                ontouchend={ontouchend}
+                data-id={episode.get_episode_id(Some(0)).to_string()}
+            >
+                <div class="drag-handle-wrapper flex items-center justify-center w-10 h-full">
+                    <button class="drag-handle cursor-grab">
+                        <span class="material-icons">{"drag_indicator"}</span>
+                    </button>
+                </div>
             {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
@@ -1763,7 +1769,6 @@ pub fn queue_episode_item(
             </>
     }
 }
-
 
 #[derive(Properties, PartialEq)]
 pub struct LoadingModalProps {
