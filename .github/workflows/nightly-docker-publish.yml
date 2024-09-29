@@ -2,8 +2,7 @@ name: Publish Pinepods Nightly Multi-Architecture Image to DockerHub
 
 on:
   schedule:
-    - cron: "0 0 * * *" # This will run at 12 AM UTC every day
-  workflow_dispatch: # Kept for manual triggering if needed
+    - cron: "23 1 * * *"
 
 env:
   REGISTRY: docker.io
