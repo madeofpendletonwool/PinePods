@@ -56,13 +56,19 @@ pre-0.7.0:
 - [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
-- [] Fix issues with refreshing
 - [] Android play/pause episode metadata
 - [] On mobile get queue adjust working
 - [] Finalize loading states so you don't see login page when you are already authenticated
 
 done but needs testing
 
+- [] Fix issues with refreshing
+    Refreshing now works with websocket and it grabs the data, however, there's a problem adding it dynamically to the page. We need to auto stack in the found episodes
+    episode id seems to come through as zero. Rather than the actual id
+        example data:
+        ```
+        Received new episode: EpisodeWebsocketResponse { episode_id: 0, podcast_id: 36, title: "582: On the CUPS of Disaster", description: Some("<p>W Flathub\">Install Frog on Linux | Flathub</a> — Extract text from images, websites, videos, and QR codes by taking a picture of the source.</li><li><a href=\"https://flathub.org/apps/de.leopoldluley.Clapgrep\" title=\"Clapgrep\">Clapgrep</a> — Ever had a folder full of PDF files, where you knew, somewhere in there, is what you're looking for. But you did not know in which file. So you had to search each of them at a time...</li></ul>"), audio_url: "https://aphid.fireside.fm/d/1437767933/f31a453c-fa15-491f-8618-3f71f1d565e5/ffb365c2-37c4-42b6-8b40-95649c0e790e.mp3", artwork_url: Some("https://assets.fireside.fm/file/fireside-images/podcasts/images/f/f31a453c-fa15-491f-8618-3f71f1d565e5/cover.jpg"), release_datetime: "2024-09-29 14:00:00", duration: 4050, completed: false }
+        ```
 - [] Queue adjmustment for mobile devices
     Finally works, but scrolling when holding at bottom of page doesn't work
 - [ ] Seriously dig into podcast 3x layout - Works but couple issues
