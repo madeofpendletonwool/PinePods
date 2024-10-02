@@ -50,6 +50,36 @@ try:
     db_password = os.environ.get("DB_PASSWORD", "password")
     db_name = os.environ.get("DB_NAME", "pypods_database")
 
+    # Function to create the database if it doesn't exist
+    def create_database_if_not_exists():
+        try:
+            # Connect to the default 'postgres' database
+            with psycopg.connect(
+                host=db_host,
+                port=db_port,
+                user=db_user,
+                password=db_password,
+                dbname='postgres'
+            ) as conn:
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    # Check if the database exists
+                    cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+                    exists = cur.fetchone()
+                    if not exists:
+                        logging.info(f"Database {db_name} does not exist. Creating...")
+                        print(f"Database {db_name} does not exist. Creating...")
+                        cur.execute(f"CREATE DATABASE {db_name}")
+                        logging.info(f"Database {db_name} created successfully.")
+                    else:
+                        logging.info(f"Database {db_name} already exists.")
+        except Exception as e:
+            logging.error(f"Error creating database: {e}")
+            raise
+
+    # Create the database if it doesn't exist
+    create_database_if_not_exists()
+
     # Create database connector
     cnx = psycopg.connect(
         host=db_host,

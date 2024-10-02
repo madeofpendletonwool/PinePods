@@ -806,7 +806,7 @@ def process_opml_import(import_request: OPMLImportRequest, database_type):
 
     database_functions.import_progress.import_progress_manager.clear_progress(import_request.user_id)
 
-    
+
 class PodcastFeedData(BaseModel):
     podcast_feed: str
 
@@ -1762,9 +1762,13 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
             print(f"Task created for user {user_id}")
             # Keep the WebSocket connection alive while the task is running
             while not task.done():
-                await asyncio.sleep(1)  # Keep the event loop alive
-                if websocket.client_state != WebSocketState.CONNECTED:
-                    print("WebSocket disconnected. Cancelling task.")
+                try:
+                    await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    # This is expected, we're just using it to keep the connection alive
+                    pass
+                except Exception as e:
+                    print(f"WebSocket disconnected: {str(e)}. Cancelling task.")
                     task.cancel()
                     break
 
