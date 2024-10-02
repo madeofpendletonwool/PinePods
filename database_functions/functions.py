@@ -1126,7 +1126,7 @@ def refresh_pods(cnx, database_type):
     print('refresh begin')
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        select_podcasts = 'SELECT "PodcastID", "FeedURL", "ArtworkURL", "AutoDownload", "Username", "Password" FROM "Podcasts"'
+        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM "Podcasts"'
     else:  # MySQL or MariaDB
         select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM Podcasts"
 
