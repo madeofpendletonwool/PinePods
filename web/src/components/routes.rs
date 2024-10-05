@@ -29,6 +29,8 @@ pub enum Route {
     UserStats,
     #[at("/sign_out")]
     LogOut,
+    #[at("/person/:name")]
+    Person { name: String },
     #[at("/pod_layout")]
     PodLayout,
     #[at("/search_new")]
@@ -39,4 +41,6 @@ pub enum Route {
     EpisodeLayout,
     #[at("/episode")]
     Episode,
+    #[at("/shared_episode/:url_key")]
+    SharedEpisode { url_key: String },
 }

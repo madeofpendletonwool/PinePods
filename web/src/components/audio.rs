@@ -7,10 +7,11 @@ use crate::requests::pod_req::EpisodeDownload;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
-    call_get_auto_skip_times, call_get_podcast_id_from_ep, call_get_queued_episodes,
-    call_increment_listen_time, call_increment_played, call_mark_episode_completed,
-    call_queue_episode, call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
+    call_get_auto_skip_times, call_get_episode_id, call_get_podcast_id_from_ep,
+    call_get_queued_episodes, call_increment_listen_time, call_increment_played,
+    call_mark_episode_completed, call_queue_episode, call_record_listen_duration,
+    call_remove_queued_episode, HistoryAddRequest, MarkEpisodeCompletedRequest,
+    QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
 use std::cell::Cell;
@@ -20,6 +21,7 @@ use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
 use web_sys::{window, HtmlAudioElement, HtmlInputElement};
@@ -160,31 +162,38 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let api_key = api_key.clone(); // Clone to make it owned
                     let server_name = server_name.clone(); // Clone to make it owned
 
-                    wasm_bindgen_futures::spawn_local(async move {
-                        let chap_request = FetchPodcasting2DataRequest {
-                            episode_id,
-                            user_id,
-                        };
-                        match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request)
+                    // Only proceed if the episode_id is not zero
+                    if episode_id != 0 {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let chap_request = FetchPodcasting2DataRequest {
+                                episode_id,
+                                user_id,
+                            };
+                            match call_fetch_podcasting_2_data(
+                                &server_name,
+                                &api_key,
+                                &chap_request,
+                            )
                             .await
-                        {
-                            Ok(response) => {
-                                let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
-                                let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
-                                let people = response.people.clone(); // Clone people to avoid move issue
-                                dispatch.reduce_mut(|state| {
-                                    state.episode_chapters = Some(chapters);
-                                    state.episode_transcript = Some(transcripts);
-                                    state.episode_people = Some(people);
-                                });
+                            {
+                                Ok(response) => {
+                                    let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
+                                    let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
+                                    let people = response.people.clone(); // Clone people to avoid move issue
+                                    dispatch.reduce_mut(|state| {
+                                        state.episode_chapters = Some(chapters);
+                                        state.episode_transcript = Some(transcripts);
+                                        state.episode_people = Some(people);
+                                    });
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Error fetching chapters: {}", e).into(),
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                web_sys::console::log_1(
-                                    &format!("Error fetching chapters: {}", e).into(),
-                                );
-                            }
-                        }
-                    });
+                        });
+                    }
                 }
                 || ()
             }
@@ -235,6 +244,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let closure_episode_id = episode_id.clone();
         let offline_status = offline_status.clone();
         move |_| {
+            web_sys::console::log_1(&"Setting up interval".into());
+            //print the ep id
+            web_sys::console::log_1(&format!("Episode ID: {:?}", closure_episode_id).into());
             let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
             let interval_handle_clone = interval_handle.clone();
             let interval = Interval::new(1000, move || {
@@ -242,12 +254,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let time_in_seconds = audio_element.current_time();
                     let duration = audio_element.duration(); // Assuming you can get the duration from the audio_element
                     let end_pos_sec = end_pos.clone(); // Get the end position
+                    web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
+                    web_sys::console::log_1(&format!("Duration: {}", duration).into());
+                    web_sys::console::log_1(&format!("End Pos: {:?}", end_pos_sec).into());
                     let complete_api_key = closure_api_key.clone();
                     let complete_server_name = closure_server_name.clone();
                     let complete_user_id = closure_user_id.clone();
                     let complete_episode_id = closure_episode_id.clone();
                     let offline_status_loop = offline_status.unwrap_or(false);
                     if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
+                        web_sys::console::log_1(&"Episode completed".into());
                         audio_element.pause().unwrap_or(());
                         // Manually trigger the `ended` event
                         let event = web_sys::Event::new("ended").unwrap();
@@ -298,17 +314,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             interval_handle.set(None);
                         }
                     } else {
+                        web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
                         let hours = (time_in_seconds / 3600.0).floor() as i32;
                         let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
                         let seconds = (time_in_seconds % 60.0).floor() as i32;
                         let formatted_time = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-
+                        web_sys::console::log_1(
+                            &format!("Formatted Time: {}", formatted_time).into(),
+                        );
                         // Calculate progress as a percentage
                         let progress_percentage = if duration > 0.0 {
                             time_in_seconds / duration * 100.0
                         } else {
                             0.0
                         };
+                        web_sys::console::log_1(
+                            &format!("Progress: {}", progress_percentage).into(),
+                        );
 
                         audio_dispatch.reduce_mut(move |state_clone| {
                             // Update the global state with the current time
@@ -1093,8 +1115,21 @@ pub fn on_play_click(
         let app_dispatch = audio_dispatch.clone();
         let episode_url = episode_url_for_wasm.clone();
         let episode_title = episode_title_for_wasm.clone();
+        web_sys::console::log_1(&JsValue::from_str("Checking if episode is in db"));
+        web_sys::console::log_1(&JsValue::from_str(&episode_title_for_wasm));
+        web_sys::console::log_1(&JsValue::from_str(&episode_url_for_wasm));
+        web_sys::console::log_1(&JsValue::from_str(&episode_artwork_for_wasm));
+        web_sys::console::log_1(&JsValue::from_str(&episode_duration_for_wasm.to_string()));
+        web_sys::console::log_1(&JsValue::from_str(&episode_id_for_wasm.to_string()));
+        // web_sys::console::log_1(&JsValue::from_str(&listen_duration_for_closure.to_string()));
+        web_sys::console::log_1(&JsValue::from_str(&api_key));
+        web_sys::console::log_1(&JsValue::from_str(&user_id.to_string()));
+        web_sys::console::log_1(&JsValue::from_str(&server_name));
+
+        web_sys::console::log_1(&JsValue::from_str(&episode_id_for_wasm.to_string()));
         spawn_local(async move {
-            let episode_exists = call_check_episode_in_db(
+            // First, check if the episode exists in the database
+            let mut episode_exists = call_check_episode_in_db(
                 &check_server_name.clone(),
                 &check_api_key.clone(),
                 check_user_id.clone(),
@@ -1103,9 +1138,60 @@ pub fn on_play_click(
             )
             .await
             .unwrap_or(false); // Default to false if the call fails
+
+            let mut episode_id = episode_id_for_wasm;
+
+            // If the episode exists but the current `episode_id` is `0`, retrieve the correct `episode_id`
+            if episode_exists && episode_id == 0 {
+                match call_get_episode_id(
+                    &check_server_name,
+                    &check_api_key,
+                    &check_user_id,
+                    &episode_title,
+                    &episode_url,
+                )
+                .await
+                {
+                    Ok(new_episode_id) => {
+                        if new_episode_id == 0 {
+                            // Handle the case where the episode ID is still 0 (None scenario)
+                            web_sys::console::log_1(&JsValue::from_str(
+                                "Episode ID returned is still 0, setting episode_exists to false",
+                            ));
+                            episode_exists = false;
+                        } else {
+                            web_sys::console::log_1(&JsValue::from_str(&format!(
+                                "New episode ID: {}",
+                                new_episode_id
+                            )));
+                            episode_id = new_episode_id;
+                        }
+                    }
+                    Err(_) => {
+                        // If the call failed, assume the episode doesn't exist
+                        web_sys::console::log_1(&JsValue::from_str(
+                            "Failed to get episode ID, setting episode_exists to false",
+                        ));
+                        episode_exists = false;
+                    }
+                }
+            }
+            web_sys::console::log_1(&JsValue::from_str(&format!(
+                "post episode ID: {}",
+                episode_id
+            )));
+            // If the episode exists, update the global state with the episode ID
+            web_sys::console::log_1(&JsValue::from_str(&format!(
+                "Episode exists: {}",
+                episode_exists
+            )));
+
+            // Update the global state to indicate whether the episode exists in the DB
             app_dispatch.reduce_mut(move |global_state| {
                 global_state.episode_in_db = Some(episode_exists);
             });
+
+            // Now proceed with adding the history entry if the episode exists
             if episode_exists {
                 let history_server_name = check_server_name.clone();
                 let history_api_key = check_api_key.clone();
@@ -1120,10 +1206,13 @@ pub fn on_play_click(
                     call_add_history(&history_server_name, history_api_key, &history_add);
                 match add_history_future.await {
                     Ok(_) => {
-                        // web_sys::console::log_1(&"Successfully added history".into());
+                        web_sys::console::log_1(&JsValue::from_str("History successfully added"));
                     }
-                    Err(_e) => {
-                        // web_sys::console::log_1(&format!("Failed to add history: {:?}", e).into());
+                    Err(e) => {
+                        web_sys::console::log_1(&JsValue::from_str(&format!(
+                            "Failed to add history: {:?}",
+                            e
+                        )));
                     }
                 }
 
@@ -1160,10 +1249,10 @@ pub fn on_play_click(
             );
             match add_history_future.await {
                 Ok(_) => {
-                    // web_sys::console::log_1(&"Successfully incremented playcount".into());
+                    web_sys::console::log_1(&"Successfully incremented playcount".into());
                 }
                 Err(_e) => {
-                    // web_sys::console::log_1(&format!("Failed to increment: {:?}", e).into());
+                    web_sys::console::log_1(&format!("Failed to increment: {:?}", _e).into());
                 }
             }
         });
@@ -1179,66 +1268,95 @@ pub fn on_play_click(
             let src = episode_url_for_wasm.clone();
             src
         };
+        web_sys::console::log_1(&JsValue::from_str("about to not run pod id if 0"));
 
         wasm_bindgen_futures::spawn_local(async move {
-            match call_get_podcast_id_from_ep(
-                &server_name,
-                &Some(api_key.clone()),
-                episode_id,
-                user_id,
-            )
-            .await
-            {
-                Ok(podcast_id) => {
-                    match call_get_auto_skip_times(
-                        &server_name,
-                        &Some(api_key.clone()),
-                        user_id,
-                        podcast_id,
-                    )
-                    .await
-                    {
-                        Ok((start_skip, end_skip)) => {
-                            let start_pos_sec =
-                                listen_duration_for_closure.unwrap_or(0).max(start_skip) as f64;
-                            let end_pos_sec = end_skip as f64;
+            if episode_id != 0 {
+                web_sys::console::log_1(&JsValue::from_str("must not be zero"));
+                match call_get_podcast_id_from_ep(
+                    &server_name,
+                    &Some(api_key.clone()),
+                    episode_id,
+                    user_id,
+                )
+                .await
+                {
+                    Ok(podcast_id) => {
+                        match call_get_auto_skip_times(
+                            &server_name,
+                            &Some(api_key.clone()),
+                            user_id,
+                            podcast_id,
+                        )
+                        .await
+                        {
+                            Ok((start_skip, end_skip)) => {
+                                let start_pos_sec =
+                                    listen_duration_for_closure.unwrap_or(0).max(start_skip) as f64;
+                                let end_pos_sec = end_skip as f64;
 
-                            audio_dispatch.reduce_mut(move |audio_state| {
-                                audio_state.audio_playing = Some(true);
-                                audio_state.playback_speed = 1.0;
-                                audio_state.audio_volume = 100.0;
-                                audio_state.offline = Some(false);
-                                audio_state.currently_playing = Some(AudioPlayerProps {
-                                    src: src.clone(),
-                                    title: episode_title_for_wasm.clone(),
-                                    artwork_url: episode_artwork_for_wasm.clone(),
-                                    duration: episode_duration_for_wasm.clone().to_string(),
-                                    episode_id: episode_id_for_wasm.clone(),
-                                    duration_sec: episode_duration_for_wasm.clone() as f64,
-                                    start_pos_sec,
-                                    end_pos_sec: end_pos_sec as f64,
-                                    offline: false,
+                                audio_dispatch.reduce_mut(move |audio_state| {
+                                    audio_state.audio_playing = Some(true);
+                                    audio_state.playback_speed = 1.0;
+                                    audio_state.audio_volume = 100.0;
+                                    audio_state.offline = Some(false);
+                                    audio_state.currently_playing = Some(AudioPlayerProps {
+                                        src: src.clone(),
+                                        title: episode_title_for_wasm.clone(),
+                                        artwork_url: episode_artwork_for_wasm.clone(),
+                                        duration: episode_duration_for_wasm.clone().to_string(),
+                                        episode_id: episode_id_for_wasm.clone(),
+                                        duration_sec: episode_duration_for_wasm.clone() as f64,
+                                        start_pos_sec,
+                                        end_pos_sec: end_pos_sec as f64,
+                                        offline: false,
+                                    });
+                                    audio_state.set_audio_source(src.to_string());
+                                    if let Some(audio) = &audio_state.audio_element {
+                                        audio.set_current_time(start_pos_sec);
+                                        let _ = audio.play();
+                                    }
+                                    audio_state.audio_playing = Some(true);
                                 });
-                                audio_state.set_audio_source(src.to_string());
-                                if let Some(audio) = &audio_state.audio_element {
-                                    audio.set_current_time(start_pos_sec);
-                                    let _ = audio.play();
-                                }
-                                audio_state.audio_playing = Some(true);
-                            });
-                        }
+                            }
 
-                        Err(e) => {
-                            web_sys::console::log_1(
-                                &format!("Error getting skip times: {}", e).into(),
-                            );
+                            Err(e) => {
+                                web_sys::console::log_1(
+                                    &format!("Error getting skip times: {}", e).into(),
+                                );
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    web_sys::console::log_1(&format!("Error getting podcast ID: {}", e).into());
-                }
-            };
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Error getting podcast ID: {}", e).into());
+                    }
+                };
+            } else {
+                // Directly play the episode without skip times
+                web_sys::console::log_1(&JsValue::from_str("must be zero"));
+                audio_dispatch.reduce_mut(move |audio_state| {
+                    audio_state.audio_playing = Some(true);
+                    audio_state.playback_speed = 1.0;
+                    audio_state.audio_volume = 100.0;
+                    audio_state.offline = Some(false);
+                    audio_state.currently_playing = Some(AudioPlayerProps {
+                        src: src.clone(),
+                        title: episode_title_for_wasm.clone(),
+                        artwork_url: episode_artwork_for_wasm.clone(),
+                        duration: episode_duration_for_wasm.clone().to_string(),
+                        episode_id: episode_id_for_wasm.clone(),
+                        duration_sec: episode_duration_for_wasm.clone() as f64,
+                        start_pos_sec: 0.0,
+                        end_pos_sec: 0.0,
+                        offline: false,
+                    });
+                    audio_state.set_audio_source(src.to_string());
+                    if let Some(audio) = &audio_state.audio_element {
+                        let _ = audio.play();
+                    }
+                    audio_state.audio_playing = Some(true);
+                });
+            }
         });
     })
 }
@@ -1299,6 +1417,58 @@ pub fn on_play_click_offline(
                     );
                 }
             }
+        });
+    })
+}
+
+
+pub fn on_play_click_shared(
+    episode_url: String,
+    episode_title: String,
+    episode_artwork: String,
+    episode_duration: i32,
+    episode_id: i32,
+    audio_dispatch: Dispatch<UIState>,
+) -> Callback<MouseEvent> {
+    Callback::from(move |_: MouseEvent| {
+        let episode_url = episode_url.clone();
+        let episode_title = episode_title.clone();
+        let episode_artwork = episode_artwork.clone();
+        let episode_duration = episode_duration.clone();
+        let episode_id = episode_id.clone();
+        let audio_dispatch = audio_dispatch.clone();
+
+        web_sys::console::log_1(&JsValue::from_str("Playing shared episode..."));
+        web_sys::console::log_1(&JsValue::from_str(&episode_title));
+        web_sys::console::log_1(&JsValue::from_str(&episode_url));
+        web_sys::console::log_1(&JsValue::from_str(&episode_artwork));
+        web_sys::console::log_1(&JsValue::from_str(&episode_duration.to_string()));
+        web_sys::console::log_1(&JsValue::from_str(&episode_id.to_string()));
+
+        // No user-specific checks or DB operations needed, just play the episode
+        wasm_bindgen_futures::spawn_local(async move {
+            audio_dispatch.reduce_mut(move |audio_state| {
+                audio_state.audio_playing = Some(true);
+                audio_state.playback_speed = 1.0;
+                audio_state.audio_volume = 100.0;
+                audio_state.offline = Some(false);
+                audio_state.currently_playing = Some(AudioPlayerProps {
+                    src: episode_url.clone(),
+                    title: episode_title.clone(),
+                    artwork_url: episode_artwork.clone(),
+                    duration: episode_duration.to_string(),
+                    episode_id: episode_id,
+                    duration_sec: episode_duration as f64,
+                    start_pos_sec: 0.0, // Start playing from the beginning
+                    end_pos_sec: 0.0,
+                    offline: true,
+                });
+                audio_state.set_audio_source(episode_url.clone());
+                if let Some(audio) = &audio_state.audio_element {
+                    let _ = audio.play();
+                }
+                audio_state.audio_playing = Some(true);
+            });
         });
     })
 }

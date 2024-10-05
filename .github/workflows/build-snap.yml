@@ -1,0 +1,65 @@
+name: Build Pinepods Snap
+
+on:
+  workflow_run:
+    workflows: ["Build Tauri Clients"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (for testing)"
+        required: true
+        default: "test"
+
+jobs:
+  build-snap:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
+            echo "VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
+          fi
+
+      - name: Install Snap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y snapd
+
+      - name: Install Snapcraft
+        run: |
+          sudo snap install core22
+          sudo snap install snapcraft --classic
+
+      - name: Prepare Snap configuration
+        run: |
+          cp clients/snap/snapcraft.yaml ./snapcraft.yaml
+          sed -i "s|version: '.*'|version: '$VERSION'|" snapcraft.yaml
+          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" snapcraft.yaml
+          sed -i "s|Icon=appname|Icon=/usr/share/icons/hicolor/128x128/apps/com.gooseberrydevelopment.pinepods.png|" snapcraft.yaml
+
+      - name: Build Snap
+        run: |
+          sudo snapcraft --use-lxd
+
+      - name: Archive Snap files
+        run: |
+          mkdir snap_output
+          cp *.snap snap_output/
+          cp snapcraft.yaml snap_output/
+          tar -czvf snap_files.tar.gz snap_output
+
+      - name: Upload Snap archive
+        uses: actions/upload-artifact@v3
+        with:
+          name: snap-files
+          path: snap_files.tar.gz

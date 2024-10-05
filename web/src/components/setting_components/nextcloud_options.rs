@@ -111,7 +111,6 @@ pub fn nextcloud_options() -> Html {
 
     // Handler for initiating authentication
     let on_authenticate_click = {
-        let is_refreshing = state.is_refreshing.unwrap_or(false);
         let app_dispatch = _dispatch.clone();
         let server_url = server_url.clone();
         let server_url_initiate = server_url.clone();
@@ -185,7 +184,6 @@ pub fn nextcloud_options() -> Html {
                                                         state.clone() // Return the modified state
                                                     });
 
-                                                    let is_refreshing_clone = is_refreshing.clone();
                                                     spawn_local(async move {
                                                         if let Err(e) =
                                                             connect_to_episode_websocket(
@@ -273,7 +271,6 @@ pub fn nextcloud_options() -> Html {
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
-        let is_refreshing = state.is_refreshing.unwrap_or(false);
         let auth_status = auth_status.clone();
         Callback::from(move |_| {
             let audio_dispatch = audio_dispatch.clone();
@@ -335,7 +332,6 @@ pub fn nextcloud_options() -> Html {
                                             state.clone() // Return the modified state
                                         });
 
-                                        let is_refreshing_clone = is_refreshing.clone();
                                         spawn_local(async move {
                                             if let Err(e) = connect_to_episode_websocket(
                                                 &server_name_call.unwrap(),

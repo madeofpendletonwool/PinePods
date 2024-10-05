@@ -41,7 +41,8 @@ try:
         user=db_user,
         password=db_password,
         database=db_name,
-        charset='utf8mb4'
+        charset='utf8mb4',
+        collation="utf8mb4_general_ci"
     )
 
     # Create a cursor to execute SQL statements
@@ -196,30 +197,44 @@ try:
 
     def insert_or_update_user(cursor, hashed_password):
         try:
-            if user_exists(cursor, 'guest'):
+            # First, check if 'background_tasks' user exists
+            cursor.execute("SELECT * FROM Users WHERE Username = %s", ('background_tasks',))
+            existing_user = cursor.fetchone()
+
+            if existing_user:
+                # Update existing 'background_tasks' user
                 cursor.execute("""
-                    UPDATE Users
-                    SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
-                    WHERE Username = %s
-                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'guest'))
-                logging.info("Updated existing 'guest' user to 'bt' user.")
-            elif user_exists(cursor, 'bt'):
-                cursor.execute("""
-                    UPDATE Users
-                    SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
-                    WHERE Username = %s
-                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, 'bt'))
-                logging.info("Updated existing 'bt' user.")
+                UPDATE Users
+                SET Fullname = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
+                WHERE Username = %s
+                """, ('Background Tasks', 'inactive', hashed_password, False, 'background_tasks'))
+                logging.info("Updated existing 'background_tasks' user.")
             else:
-                cursor.execute("""
+                # Check for 'guest' or 'bt' users to update
+                cursor.execute("SELECT Username FROM Users WHERE Username IN ('guest', 'bt')")
+                old_user = cursor.fetchone()
+
+                if old_user:
+                    # Update old user to 'background_tasks'
+                    cursor.execute("""
+                    UPDATE Users
+                    SET Fullname = %s, Username = %s, Email = %s, Hashed_PW = %s, IsAdmin = %s
+                    WHERE Username = %s
+                    """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False, old_user[0]))
+                    logging.info(f"Updated existing '{old_user[0]}' user to 'background_tasks' user.")
+                else:
+                    # Insert new 'background_tasks' user
+                    cursor.execute("""
                     INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
                     VALUES (%s, %s, %s, %s, %s)
-                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False))
-                logging.info("Inserted new 'background_tasks' user.")
+                    """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False))
+                    logging.info("Inserted new 'background_tasks' user.")
+
+
         except Exception as e:
             print(f"Error inserting or updating user: {e}")
             logging.error("Error inserting or updating user: %s", e)
-
+            # Rollback the transaction in case of error
 
     try:
         # Generate and hash the password
@@ -387,6 +402,21 @@ try:
     create_index_if_not_exists(cursor, "idx_podcasts_userid", "Podcasts", "UserID")
     create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
     create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
+
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS SharedEpisodes (
+                SharedEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                EpisodeID INT,
+                UrlKey TEXT,
+                ExpirationDate DATETIME,
+                FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+            )
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating SharedEpisodes table: {e}")
 
 
 

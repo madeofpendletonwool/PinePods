@@ -444,24 +444,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         "desc-collapsed".to_string()
     };
 
-    fn should_show_see_more_button(podcast_id: i64) -> bool {
-        let selector = format!(".desc-{}", podcast_id);
-        let desc_container = web_sys::window()
-            .unwrap()
-            .document()
-            .unwrap()
-            .query_selector(&selector)
-            .unwrap();
-
-        if let Some(container) = desc_container {
-            let scroll_height = container.scroll_height();
-            let client_height = container.client_height();
-            return scroll_height > client_height;
-        }
-
-        false
-    }
-
     html! {
         <div>
             {
@@ -495,9 +477,12 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
-                        <button class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} style="width: 60px; height: 60px;">
-                            <span class="material-icons" onclick={toggle_podcast}>{ button_text }</span>
-                            // { button_text }
+                        <button 
+                            class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} 
+                            style="width: 60px; height: 60px;"
+                            onclick={toggle_podcast}
+                        >
+                            <span class="material-icons">{ button_text }</span>
                         </button>
                     </div>
                 }

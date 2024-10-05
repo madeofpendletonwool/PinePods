@@ -371,10 +371,12 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [x] Allow for reading transcrips
 - [x] Add Funding Links when offered
 - [x] Chapter images
+- [x] Sharing System - Episode and Podcast Share implemented. This also includes an option to share individual episodes with users who don't have an account on the server
+- [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
+- [x] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
 - [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
-- [ ] Add Fyyd as searching index
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
 - [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
 - [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
@@ -387,10 +389,7 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
 - [ ] Rating System
 - [ ] Implement Podroll to Podcast page when offered
-- [ ] Sharing System - Podcast Share implemented, episode coming in next minor update!
 - [ ] Option to use login images as background throughout app.
-- [ ] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
-- [ ] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
 - [ ] Side load audio from the web
 
 ### Clients to support

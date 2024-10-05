@@ -18,7 +18,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
-use crate::requests::search_pods::{call_get_podcast_info, test_connection};
+use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
 use std::any::Any;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -1111,7 +1111,7 @@ impl EpisodeTrait for Episode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1134,7 +1134,7 @@ impl EpisodeTrait for QueuedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1156,7 +1156,7 @@ impl EpisodeTrait for SavedEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1178,7 +1178,7 @@ impl EpisodeTrait for HistoryEpisode {
         Box::new(self.clone())
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1196,7 +1196,7 @@ impl EpisodeTrait for EpisodeDownload {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1218,7 +1218,7 @@ impl EpisodeTrait for SearchEpisode {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
 
@@ -1242,6 +1242,34 @@ impl EpisodeTrait for SearchNewEpisode {
 
     fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
         if let Some(id) = self.episode_id {
+            id
+        } else if let Some(fallback_id) = fallback_id {
+            fallback_id
+        } else {
+            panic!("No episode ID available");
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for PeopleEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.feedImage.clone().unwrap()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+        if let Some(id) = self.id {
             id
         } else if let Some(fallback_id) = fallback_id {
             fallback_id
@@ -1593,6 +1621,9 @@ pub fn queue_episode_item(
     ondragenter: Callback<DragEvent>,
     ondragover: Callback<DragEvent>,
     ondrop: Callback<DragEvent>,
+    ontouchstart: Callback<TouchEvent>,
+    ontouchmove: Callback<TouchEvent>,
+    ontouchend: Callback<TouchEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1622,20 +1653,23 @@ pub fn queue_episode_item(
 
     html! {
         <>
-        <div
-            class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full"
-            draggable="true"
-            ondragstart={ondragstart.clone()}
-            ondragenter={ondragenter.clone()}
-            ondragover={ondragover.clone()}
-            ondrop={ondrop.clone()}
-            data-id={episode.get_episode_id(Some(0)).to_string()}
-        >
-            <div class="drag-handle-wrapper flex items-center h-full">
-                <button class="drag-handle" style="cursor: grab;">
-                    <span class="material-icons">{"drag_indicator"}</span>
-                </button>
-            </div>
+            <div
+                class="item-container border-solid border flex mb-4 shadow-md rounded-lg touch-none"
+                draggable="true"
+                ondragstart={ondragstart.clone()}
+                ondragenter={ondragenter.clone()}
+                ondragover={ondragover.clone()}
+                ondrop={ondrop.clone()}
+                ontouchstart={ontouchstart}
+                ontouchmove={ontouchmove}
+                ontouchend={ontouchend}
+                data-id={episode.get_episode_id(Some(0)).to_string()}
+            >
+                <div class="drag-handle-wrapper flex items-center justify-center w-10 h-full">
+                    <button class="drag-handle cursor-grab">
+                        <span class="material-icons">{"drag_indicator"}</span>
+                    </button>
+                </div>
             {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
@@ -1733,5 +1767,28 @@ pub fn queue_episode_item(
 
             </div>
             </>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct LoadingModalProps {
+    pub name: String,
+    pub is_visible: bool,
+}
+
+#[function_component(LoadingModal)]
+pub fn loading_modal(props: &LoadingModalProps) -> Html {
+    if !props.is_visible {
+        return html! {};
+    }
+
+    html! {
+        <div class="modal-overlay flex items-center justify-center">
+            <div class="modal-content text-center">
+                <div class="spinner mx-auto mb-4"></div>
+                <p class="modal-title">{ format!("Searching everywhere for {}...", props.name) }</p>
+                <p class="modal-subtitle mt-2">{"This may take a moment"}</p>
+            </div>
+        </div>
     }
 }
