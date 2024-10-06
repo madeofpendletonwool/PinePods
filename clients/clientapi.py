@@ -50,6 +50,7 @@ import dateutil.parser
 import re
 import requests
 from requests.auth import HTTPBasicAuth
+from contextlib import contextmanager
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -58,6 +59,7 @@ import database_functions.functions
 import database_functions.auth_functions
 import database_functions.app_functions
 import database_functions.import_progress
+import database_functions.valkey_client
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -783,29 +785,33 @@ async def api_import_opml(
         raise HTTPException(status_code=403, detail="You can only import podcasts for yourself!")
 
 
+@contextmanager
+def get_db_connection():
+    connection = None
+    try:
+        connection = create_database_connection()
+        yield connection
+    finally:
+        if connection:
+            if database_type == "postgresql":
+                connection_pool.putconn(connection)
+            else:
+                connection.close()
+
 def process_opml_import(import_request: OPMLImportRequest, database_type):
     total_podcasts = len(import_request.podcasts)
     database_functions.import_progress.import_progress_manager.start_import(import_request.user_id, total_podcasts)
-
     for index, podcast_url in enumerate(import_request.podcasts, start=1):
         try:
-            # Create a new database connection for each podcast
-            cnx = create_database_connection()
-            podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, import_request.user_id, None, None, False)
-            database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id)
-            database_functions.import_progress.import_progress_manager.update_progress(import_request.user_id, index, podcast_url)
+            with get_db_connection() as cnx:
+                podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, import_request.user_id, None, None, False)
+                database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id)
+                database_functions.import_progress.import_progress_manager.update_progress(import_request.user_id, index, podcast_url)
         except Exception as e:
             print(f"Error importing podcast {podcast_url}: {str(e)}")
-        finally:
-            # Close the database connection
-            cnx.close()
-
         # Add a small delay to allow other requests to be processed
-        # await asyncio.sleep(0.1)
         time.sleep(0.1)
-
     database_functions.import_progress.import_progress_manager.clear_progress(import_request.user_id)
-
 
 class PodcastFeedData(BaseModel):
     podcast_feed: str
@@ -3798,6 +3804,8 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         # Execute the startup tasks
         database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
         return {"status": "Startup tasks completed successfully."}
+
+        database_functions.valkey_client.connect()
     except Exception as e:
         logger.error(f"Error in startup tasks: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to complete startup tasks")

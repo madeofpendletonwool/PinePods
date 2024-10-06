@@ -16,6 +16,8 @@ export PINEPODS_PORT=$PINEPODS_PORT
 export PROXY_PROTOCOL=$PROXY_PROTOCOL
 export PINEPODS_PORT=$PINEPODS_PORT
 export DEBUG_MODE=${DEBUG_MODE:-'False'}
+export VALKEY_HOST=${VALKEY_HOST:-'valkey'}
+export VALKEY_PORT=${VALKEY_PORT:-'6379'}
 
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then
   echo "Admin User Information:"

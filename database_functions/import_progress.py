@@ -1,5 +1,6 @@
 import json
-from valkey_client import valkey_client
+from typing import Tuple
+from database_functions.valkey_client import valkey_client
 
 class ImportProgressManager:
     def start_import(self, user_id: int, total_podcasts: int):
@@ -23,8 +24,8 @@ class ImportProgressManager:
         progress_json = valkey_client.get(f"import_progress:{user_id}")
         if progress_json:
             progress = json.loads(progress_json)
-            return (progress.get("current", 0), 
-                    progress.get("total", 0), 
+            return (progress.get("current", 0),
+                    progress.get("total", 0),
                     progress.get("current_podcast", ""))
         return (0, 0, "")
 
