@@ -26,3 +26,4 @@ argon2_cffi
 httpx
 qrcode[pil]
 psycopg[pool]
+redis

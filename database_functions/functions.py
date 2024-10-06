@@ -139,7 +139,7 @@ def add_news_feed_if_not_added(database_type, cnx):
                 cursor.execute("UPDATE AppSettings SET NewsFeedSubscribed = 1")
 
             cnx.commit()
-    except (psycopg.ProgrammingError, mysql.connector.ProgrammingError) as e:
+    except (psycopg.ProgrammingError,create_database_connection mysql.connector.ProgrammingError) as e:
         print(f"Error in add_news_feed_if_not_added: {e}")
         cnx.rollback()
     finally:

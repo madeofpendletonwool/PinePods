@@ -11,6 +11,10 @@ services:
     ports:
       - "5432:5432"
     restart: always
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
@@ -30,7 +34,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
-      # Port Settings
+      # Valkey Settings
+      VALKEY_HOST: post-valkey
+      VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
     volumes:
