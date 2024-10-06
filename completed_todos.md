@@ -83,6 +83,8 @@ Version 0.7.0
 - [x] Snap Client
 - [x] aur client
 
+- [x] Added Valkey to make many processes faster
+- [x] Using valkey to ensure stateless opml imports
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
 - [x] Update queue slider to be centered
