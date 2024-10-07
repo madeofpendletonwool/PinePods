@@ -30,6 +30,8 @@ web-sys = { version = "0.3.69", features = [
     "Performance",
     "PerformanceNavigation",
     "DragEvent",
+    "MutationObserver",
+    "MutationObserverInit",
     "DataTransfer",
     "TouchEvent",
     "TouchList",

@@ -1,15 +1,17 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{ContextButton, LoadingModal, on_shownotes_click, EpisodeTrait, Search_nav, UseScrollToTop};
+use super::gen_components::{
+    on_shownotes_click, ContextButton, EpisodeTrait, LoadingModal, Search_nav, UseScrollToTop,
+};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::{on_play_click, AudioPlayer};
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_time;
-use futures::future::join_all;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
 use crate::components::podcast_layout::ClickedFeedURL;
+use crate::components::virtual_list::{PodcastEpisodeVirtualList, PodcastEpisodeVirtualListProps};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
@@ -24,6 +26,7 @@ use crate::requests::pod_req::{
 use crate::requests::search_pods::call_get_person_info;
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
+use futures::future::join_all;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use std::collections::HashMap;
@@ -224,7 +227,6 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
     let loading_modal_visible = use_state(|| false);
     let loading_name = use_state(|| String::new());
 
-
     html! {
         <div class="inline-block">
             <button
@@ -257,7 +259,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                             let search_state_call = search_state.clone();
                             let loading_modal_visible = loading_modal_visible.clone();
                             let loading_name = loading_name.clone();
-                    
+
 
                             Callback::from(move |_| {
                                 let hostname = host_name.clone();
@@ -270,7 +272,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                 let loading_modal_visible = loading_modal_visible.clone();
                                 let loading_name = loading_name.clone();
                                 loading_name.set(hostname.clone());
-                                loading_modal_visible.set(true);                    
+                                loading_modal_visible.set(true);
 
                                 wasm_bindgen_futures::spawn_local(async move {
                                     let target_url = format!("/person/{}", hostname);
@@ -292,7 +294,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                             let api_key = api_key.clone();
                                             let user_id = user_id;
                                             let search_state = search_state.clone();
-                                        
+
                                             async move {
                                                 web_sys::console::log_1(&format!("Checking podcast: {:?} - {:?}", feed_title, feed_url).into());
                                                 let podcast_exists = call_check_podcast(
@@ -302,7 +304,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                                     &feed_title.clone().unwrap_or_default(),
                                                     &feed_url.clone().unwrap_or_default(),
                                                 ).await.unwrap_or_default().exists;
-                                        
+
                                                 if podcast_exists {
                                                     web_sys::console::log_1(&format!("Podcast exists: {:?} - {:?}", feed_title, feed_url).into());
                                                     if let Ok(podcast_id) = call_get_podcast_id(
@@ -334,7 +336,7 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                                     ).await {
                                                         web_sys::console::log_1(&format!("Fetched Podcast Episode Count: {}", clicked_feed_url.podcast_episode_count).into());
                                                         use rand::Rng;
-                                        
+
                                                         fn generate_monster_id() -> i32 {
                                                             let mut rng = rand::thread_rng();
                                                             1_000_000_000 + rng.gen_range(0..1_000_000_000) as i32
@@ -359,9 +361,9 @@ pub fn host_dropdown(HostDropdownProps { title, hosts }: &HostDropdownProps) -> 
                                                 None
                                             }
                                         }).collect();
-                                        
+
                                         let fetched_podcasts: Vec<_> = join_all(podcast_futures).await.into_iter().filter_map(|p| p).collect();
-                                        
+
                                         // Update the state once with all the fetched podcasts
                                         dispatch.reduce_mut(move |state| {
                                             state.podcast_feed_return = Some(PodcastResponse {
@@ -1241,7 +1243,6 @@ pub fn episode_layout() -> Html {
         let new_category = new_category.clone(); // Assuming this is a state that stores the new category input
 
         Callback::from(move |event: web_sys::MouseEvent| {
-            
             event.prevent_default(); // Prevent the default form submit or page reload behavior
             let app_dispatch = app_dispatch_add.clone();
             if new_category.is_empty() {
@@ -1284,7 +1285,6 @@ pub fn episode_layout() -> Html {
                             }
                         });
                         web_sys::console::log_1(&"Category added successfully".into());
-                        
                     }
                     Err(err) => {
                         web_sys::console::log_1(&format!("Error adding category: {}", err).into());
@@ -1339,7 +1339,9 @@ pub fn episode_layout() -> Html {
                         Ok(_) => {
                             app_dispatch.reduce_mut(|state| {
                                 if let Some(ref mut podcast_info) = state.clicked_podcast_info {
-                                    if let Some(ref mut categories) = podcast_info.podcast_categories {
+                                    if let Some(ref mut categories) =
+                                        podcast_info.podcast_categories
+                                    {
                                         // Filter the HashMap and collect back into HashMap
                                         *categories = categories
                                             .clone()
@@ -1514,7 +1516,7 @@ pub fn episode_layout() -> Html {
                                         html! { <p>{ "Loading..." }</p> }
                                     }
                                 }
-                                
+
                                 </div>
 
                                 <div class="mt-4">
@@ -2085,173 +2087,25 @@ pub fn episode_layout() -> Html {
                                 if let Some(results) = podcast_feed_results {
                                     let podcast_link_clone = clicked_podcast_info.clone().unwrap().podcast_url.clone();
                                     let podcast_title = clicked_podcast_info.clone().unwrap().podcast_title.clone();
+
                                     html! {
-                                        <div>
-                                            { for results.episodes.iter().map(|episode| {
-                                                let history_clone = history.clone();
-                                                let dispatch = _dispatch.clone();
-                                                let search_dispatch = _search_dispatch.clone();
-                                                let search_state_clone = search_state.clone(); // Clone search_state
-
-                                                // Clone the variables outside the closure
-                                                let podcast_link_clone = podcast_link_clone.clone();
-                                                let podcast_title = podcast_title.clone();
-                                                let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
-                                                let episode_title_clone = episode.title.clone().unwrap_or_default();
-                                                let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
-                                                // let episode_duration_clone = episode.duration.clone().unwrap_or_default();
-                                                let episode_duration_clone = episode.duration.clone().unwrap_or_default();
-                                                let episode_duration_in_seconds = match convert_time_to_seconds(&episode_duration_clone) {
-                                                    Ok(seconds) => seconds as i32,
-                                                    Err(e) => {
-                                                        eprintln!("Failed to convert time to seconds: {}", e);
-                                                        0
-                                                    }
-                                                };
-                                                let episode_id_clone = episode.episode_id.unwrap_or(0);
-                                                let mut db_added = false;
-                                                if episode_id_clone == 0 {
-
-                                                } else {
-                                                    db_added = true;
-                                                }
-                                                let episode_id_shownotes = episode_id_clone.clone();
-                                                let server_name_play = server_name.clone();
-                                                let user_id_play = user_id.clone();
-                                                let api_key_play = api_key.clone();
-
-                                                let is_expanded = search_state.expanded_descriptions.contains(
-                                                    &episode.guid.clone().unwrap()
-                                                );
-
-
-                                                let sanitized_description = sanitize_html_with_blank_target(&episode.description.clone().unwrap_or_default());
-
-                                                let (description, _is_truncated) = if is_expanded {
-                                                    (sanitized_description, false)
-                                                } else {
-                                                    truncate_description(sanitized_description, 300)
-                                                };
-
-                                                let search_state_toggle = search_state_clone.clone();
-                                                let toggle_expanded = {
-                                                    let search_dispatch_clone = search_dispatch.clone();
-                                                    let episode_guid = episode.guid.clone().unwrap();
-                                                    Callback::from(move |_: MouseEvent| {
-                                                        let guid_clone = episode_guid.clone();
-                                                        let search_dispatch_call = search_dispatch_clone.clone();
-
-                                                        if search_state_toggle.expanded_descriptions.contains(&guid_clone) {
-                                                            search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                                                        } else {
-                                                            search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                                                        }
-
-                                                    })
-                                                };
-
-
-                                                let state = state.clone();
-
-                                                let on_play_click = on_play_click(
-                                                    episode_url_clone.clone(),
-                                                    episode_title_clone.clone(),
-                                                    episode_artwork_clone.clone(),
-                                                    episode_duration_in_seconds,
-                                                    episode_id_clone.clone(),
-                                                    Some(0),
-                                                    api_key_play.unwrap().unwrap(),
-                                                    user_id_play.unwrap(),
-                                                    server_name_play.unwrap(),
-                                                    dispatch.clone(),
-                                                    state.clone(),
-                                                    None,
-                                                );
-
-                                                let description_class = if is_expanded {
-                                                    "desc-expanded".to_string()
-                                                } else {
-                                                    "desc-collapsed".to_string()
-                                                };
-
-                                                let date_format = match_date_format(search_state_clone.date_format.as_deref());
-                                                let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
-                                                let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
-                                                let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
-                                                let formatted_duration = format_time(episode_duration_in_seconds.into());
-
-                                                let episode_url_for_ep_item = episode_url_clone.clone();
-                                                let shownotes_episode_url = episode_url_clone.clone();
-                                                let should_show_buttons = !episode_url_for_ep_item.is_empty();
-                                                html! {
-                                                    <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
-                                                        <img
-                                                            src={episode.artwork.clone().unwrap_or_default()}
-                                                            alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
-                                                            class="episode-image"/>
-                                                        <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                                            <p class="item_container-text episode-title font-semibold" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added)}>{ &episode.title.clone().unwrap_or_default() }</p>
-                                                            // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
-                                                            {
-                                                                html! {
-                                                                    <div class="item-description-text hidden md:block">
-                                                                        <div
-                                                                            class={format!("item_container-text episode-description-container {}", description_class)}
-                                                                            onclick={toggle_expanded}  // Make the description container clickable
-                                                                        >
-                                                                            <SafeHtml html={description} />
-                                                                        </div>
-                                                                    </div>
-                                                                }
-                                                            }
-                                                            <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2">
-                                                                <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                                                    <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
-                                                                </svg>
-                                                                { format_release }
-                                                            </span>
-                                                            {
-                                                                    html! {
-                                                                        <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
-                                                                    }
-                                                            }
-                                                        </div>
-                                                        {
-                                                            html! {
-                                                                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; heren medium and larger screens
-                                                                    if should_show_buttons {
-                                                                        <button
-                                                                            class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                                                            onclick={on_play_click}
-                                                                        >
-                                                                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
-                                                                        </button>
-                                                                        {
-                                                                            if podcast_added {
-                                                                                let page_type = "episode_layout".to_string();
-
-                                                                                let context_button = html! {
-                                                                                    <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
-                                                                                };
-
-
-                                                                                context_button
-
-                                                                            } else {
-                                                                                html! {}
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                </div>
-                                                            }
-                                                        }
-
-
-                                                    </div>
-                                                }
-                                            })}
-                                        </div>
+                                        <PodcastEpisodeVirtualList
+                                            episodes={results.episodes.clone()}
+                                            item_height={220.0} // Adjust this based on your actual episode item height
+                                            podcast_added={podcast_added}
+                                            search_state={search_state.clone()}
+                                            search_ui_state={state.clone()}
+                                            dispatch={_dispatch.clone()}
+                                            search_dispatch={_search_dispatch.clone()}
+                                            history={history.clone()}
+                                            server_name={server_name.clone()}
+                                            user_id={user_id}
+                                            api_key={api_key.clone()}
+                                            podcast_link={podcast_link_clone}
+                                            podcast_title={podcast_title}
+                                        />
                                     }
+
                                 } else {
                                     html! {
                                         <div class="empty-episodes-container" id="episode-container">

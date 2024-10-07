@@ -1,3 +1,5 @@
+use super::gen_funcs::{format_datetime, match_date_format, parse_date};
+use crate::components::audio::{on_play_click, AudioPlayer};
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
@@ -5,6 +7,9 @@ use crate::components::downloads_tauri::{
 };
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_time;
+use crate::components::gen_funcs::{
+    convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
+};
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
     call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,

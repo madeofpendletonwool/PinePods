@@ -9,6 +9,7 @@ pub(crate) mod saved;
 pub(crate) mod search;
 pub(crate) mod settings;
 pub(crate) mod user_stats;
+pub(crate) mod virtual_list;
 
 mod audio;
 mod click_events;
