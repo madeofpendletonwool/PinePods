@@ -57,8 +57,8 @@ pre-0.7.0:
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
 - [] Android play/pause episode metadata
-- [] On mobile get queue adjust working
 - [] Finalize loading states so you don't see login page when you are already authenticated
+- [] Make virtual lines work for saved queue, downloads, local downloads, and history
 
 done but needs testing
 

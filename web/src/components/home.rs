@@ -255,7 +255,7 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
                 } else if width <= 768.0 {
                     162.0
                 } else {
-                    234.0
+                    221.0
                 };
                 item_height.set(new_item_height);
             });
