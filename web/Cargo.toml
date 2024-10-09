@@ -10,7 +10,7 @@ edition = "2021"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.69", features = [
+web-sys = { version = "0.3.70", features = [
     "CssStyleDeclaration",
     "DomTokenList",
     "HtmlSelectElement",
@@ -38,6 +38,9 @@ web-sys = { version = "0.3.69", features = [
     "Touch",
     "Clipboard",
     "Navigator",
+    "MediaMetadata",
+    "MediaSession",
+    "MediaSessionAction",
     "Permissions",
 ] }
 log = "0.4.22"

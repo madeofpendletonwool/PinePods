@@ -10,6 +10,7 @@ Next Minor Version:
 
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
+- [] Dynamically adjusting local download buttons
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
@@ -53,12 +54,13 @@ pre-0.7.0:
 
 - [] People Table with background jobs to update people found in podcasts
 - [] Subscribe to people
-- [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
 - [] Android play/pause episode metadata
+- [] Stop issues with timeouts on occation with mobile apps
 - [] Finalize loading states so you don't see login page when you are already authenticated
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
+- [] Dynamically adjusting buttons on episode page
 
 done but needs testing
 
@@ -85,6 +87,7 @@ Version 0.7.0
 
 - [x] Added Valkey to make many processes faster
 - [x] Using valkey to ensure stateless opml imports
+- [x] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
 - [x] Update queue slider to be centered
