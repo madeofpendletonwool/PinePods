@@ -125,7 +125,6 @@ pub fn home() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let dispatch = effect_dispatch.clone();
-
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
@@ -134,18 +133,35 @@ pub fn home() -> Html {
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
                                     .collect();
-
+                                let saved_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.saved)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+                                let queued_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.queued)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+                                let downloaded_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.downloaded)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
                                 dispatch.reduce_mut(move |state| {
                                     state.server_feed_results = Some(RecentEps {
                                         episodes: Some(fetched_episodes),
                                     });
                                     state.completed_episodes = Some(completed_episode_ids);
+                                    state.saved_episode_ids = Some(saved_episode_ids);
+                                    state.queued_episode_ids = Some(queued_episode_ids);
+                                    state.downloaded_episode_ids = Some(downloaded_episode_ids);
                                 });
                                 loading_ep.set(false);
                             }
                             Err(e) => {
                                 error_clone.set(Some(e.to_string()));
-                                loading_ep.set(false); // Set loading to false here
+                                loading_ep.set(false);
                             }
                         }
                     });

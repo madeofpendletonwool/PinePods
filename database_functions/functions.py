@@ -139,7 +139,7 @@ def add_news_feed_if_not_added(database_type, cnx):
                 cursor.execute("UPDATE AppSettings SET NewsFeedSubscribed = 1")
 
             cnx.commit()
-    except (psycopg.ProgrammingError,create_database_connection mysql.connector.ProgrammingError) as e:
+    except (psycopg.ProgrammingError, mysql.connector.ProgrammingError) as e:
         print(f"Error in add_news_feed_if_not_added: {e}")
         cnx.rollback()
     finally:
@@ -735,10 +735,16 @@ def return_episodes(database_type, cnx, user_id):
         query = (
             'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, '
-            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID, "Episodes".Completed '
+            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID, "Episodes".Completed, '
+            'CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Saved, '
+            'CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Queued, '
+            'CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Downloaded '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
             'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "UserEpisodeHistory".UserID = %s '
+            'LEFT JOIN "SavedEpisodes" ON "Episodes".EpisodeID = "SavedEpisodes".EpisodeID AND "SavedEpisodes".UserID = %s '
+            'LEFT JOIN "EpisodeQueue" ON "Episodes".EpisodeID = "EpisodeQueue".EpisodeID AND "EpisodeQueue".UserID = %s '
+            'LEFT JOIN "DownloadedEpisodes" ON "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID AND "DownloadedEpisodes".UserID = %s '
             'WHERE "Episodes".EpisodePubDate >= NOW() - INTERVAL \'30 days\' '
             'AND "Podcasts".UserID = %s '
             'ORDER BY "Episodes".EpisodePubDate DESC'
@@ -747,29 +753,33 @@ def return_episodes(database_type, cnx, user_id):
         query = (
             "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID, Episodes.Completed "
+            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID, Episodes.Completed, "
+            "CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Saved, "
+            "CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Queued, "
+            "CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Downloaded "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
             "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
+            "LEFT JOIN SavedEpisodes ON Episodes.EpisodeID = SavedEpisodes.EpisodeID AND SavedEpisodes.UserID = %s "
+            "LEFT JOIN EpisodeQueue ON Episodes.EpisodeID = EpisodeQueue.EpisodeID AND EpisodeQueue.UserID = %s "
+            "LEFT JOIN DownloadedEpisodes ON Episodes.EpisodeID = DownloadedEpisodes.EpisodeID AND DownloadedEpisodes.UserID = %s "
             "WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
             "AND Podcasts.UserID = %s "
             "ORDER BY Episodes.EpisodePubDate DESC"
         )
 
-    cursor.execute(query, (user_id, user_id))
+    cursor.execute(query, (user_id, user_id, user_id, user_id, user_id))
     rows = cursor.fetchall()
-
     cursor.close()
 
     if not rows:
         return []
 
     if database_type != "postgresql":
-        # Convert column names to lowercase for MySQL and ensure `Completed` is a boolean
-        rows = [{k.lower(): (bool(v) if k.lower() == 'completed' else v) for k, v in row.items()} for row in rows]
+        # Convert column names to lowercase for MySQL and ensure boolean fields are actual booleans
+        rows = [{k.lower(): (bool(v) if k.lower() in ['completed', 'saved', 'queued', 'downloaded'] else v) for k, v in row.items()} for row in rows]
 
     return rows
-
 
 
 def return_podcast_episodes(database_type, cnx, user_id, podcast_id):

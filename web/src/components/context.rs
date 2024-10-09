@@ -115,6 +115,10 @@ pub struct AppState {
     pub date_format: Option<String>,
     pub podcast_added: Option<bool>,
     pub completed_episodes: Option<Vec<i32>>,
+    pub saved_episode_ids: Option<Vec<i32>>,
+    pub queued_episode_ids: Option<Vec<i32>>,
+    pub downloaded_episode_ids: Option<Vec<i32>>,
+    pub locally_downloaded_episodes: Option<Vec<i32>>,
     pub podcast_layout: Option<PodcastLayout>,
 }
 

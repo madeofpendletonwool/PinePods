@@ -59,6 +59,9 @@ pub struct Episode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
