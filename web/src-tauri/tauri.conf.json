@@ -1,7 +1,7 @@
 {
   "build": {
-    "beforeBuildCommand": "trunk build",
-    "beforeDevCommand": "trunk serve",
+    "beforeBuildCommand": "RUSTFLAGS='--cfg=web_sys_unstable_apis' trunk build",
+    "beforeDevCommand": "RUSTFLAGS='--cfg=web_sys_unstable_apis' trunk serve",
     "devUrl": "http://localhost:8080",
     "frontendDist": "../dist"
   },
