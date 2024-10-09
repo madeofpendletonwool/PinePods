@@ -921,7 +921,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         let episode = props.episode.clone();
         let download_local_post = audio_dispatch.clone();
 
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let post_state = download_local_post.clone();
             let episode_id = episode.get_episode_id(Some(0));
 
