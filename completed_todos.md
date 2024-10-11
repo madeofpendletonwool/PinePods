@@ -56,10 +56,10 @@ pre-0.7.0:
 - [] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
-- [] Android play/pause episode metadata
 - [] Stop issues with timeouts on occation with mobile apps
-- [] Finalize loading states so you don't see login page when you are already authenticated
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
+- [] Finalize virtual lines so it works like home on episode layout
+- [] On very small screens you no longer get the mini version without the context button
 - [] Dynamically adjusting buttons on episode page
 
 done but needs testing
@@ -86,7 +86,9 @@ Version 0.7.0
 - [x] aur client
 
 - [x] Added Valkey to make many processes faster
+- [x] Finalize loading states so you don't see login page when you are already authenticated
 - [x] Using valkey to ensure stateless opml imports
+- [x] Android play/pause episode metadata
 - [x] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
@@ -114,14 +116,11 @@ Version 0.6.6
 - [x] Upgraded pulldown-cmark library
 - [x] Upgraded python mysql-connection library to 9
 - [x] Upgraded chrono-tz rust library
-
-CI/CD:
-
-- [] mac version attached like this:
+- [x] mac version attached like this:
 dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
-- [] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
-- [] Add in x64 mac releases
-- [] Build in arm cross compile into ubuntu build
+- [x] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
+- [x] Add in x64 mac releases
+- [x] Build in arm cross compile into ubuntu build
 
 Version 0.6.5
 
