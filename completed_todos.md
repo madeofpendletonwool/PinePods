@@ -117,6 +117,11 @@ Version 0.6.6
 - [x] Upgraded python mysql-connection library to 9
 - [x] Upgraded chrono-tz rust library
 - [x] mac version attached like this:
+- [x] Update Rust dependancies
+
+CI/CD:
+
+- [x] mac version attached like this:
 dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
 - [x] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
 - [x] Add in x64 mac releases
