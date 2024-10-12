@@ -59,6 +59,9 @@ pub struct Episode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -2065,18 +2068,37 @@ pub async fn connect_to_episode_websocket(
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
-                match serde_json::from_str::<EpisodeResponse>(&text) {
-                    Ok(episode_response) => {
-                        episodes.push(episode_response.new_episode.clone());
-                        // Logging received message
+                console::log_1(&format!("Received message: {}", text).into());
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(new_episode) = json.get("new_episode") {
+                        match serde_json::from_value::<EpisodeWebsocketResponse>(
+                            new_episode.clone(),
+                        ) {
+                            Ok(episode) => {
+                                episodes.push(episode.clone());
+                                console::log_1(
+                                    &format!("Received new episode: {:?}", episode).into(),
+                                );
+                            }
+                            Err(e) => {
+                                console::log_1(
+                                    &format!(
+                                        "Failed to parse episode: {}. Raw episode data: {:?}",
+                                        e, new_episode
+                                    )
+                                    .into(),
+                                );
+                            }
+                        }
+                    } else if let Some(detail) = json.get("detail") {
+                        console::log_1(&format!("Received status message: {}", detail).into());
+                    } else {
                         console::log_1(
-                            &format!("Received new episode: {:?}", episode_response.new_episode)
-                                .into(),
+                            &format!("Received unknown message format: {}", text).into(),
                         );
                     }
-                    Err(e) => {
-                        console::log_1(&format!("Failed to parse episode: {}", e).into());
-                    }
+                } else {
+                    console::log_1(&format!("Failed to parse JSON: {}", text).into());
                 }
             }
             Ok(Message::Bytes(_)) => {

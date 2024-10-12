@@ -1,0 +1,88 @@
+name: Update AUR Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-aur-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "${{ secrets.GIT_USER }}"
+          git config --global user.email "${{ secrets.GIT_EMAIL }}"
+
+      - name: Set up SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Set up GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.AUR_GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --import
+
+      - name: Clone AUR package
+        run: |
+          git clone ssh://aur@aur.archlinux.org/pinepods.git aur-package
+          cd aur-package
+
+      - name: Update PKGBUILD and .SRCINFO
+        env:
+          NEW_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          # Update PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$NEW_VERSION/" clients/aur/PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" clients/aur/PKGBUILD
+
+          # Update .SRCINFO
+          sed -i "s/^\tpkgver = .*/\tpkgver = $NEW_VERSION/" clients/aur/.SRCINFO
+          sed -i "s/^\tpkgrel = .*/\tpkgrel = 1/" clients/aur/.SRCINFO
+
+          # Copy updated files to AUR package directory
+          cp clients/aur/PKGBUILD clients/aur/.SRCINFO aur-package/
+
+      - name: Update checksums
+        run: |
+          cd aur-package
+          source PKGBUILD
+          declare -A sums
+          for arch in x86_64 aarch64; do
+            url="${source_${arch}[0]}"
+            sum=$(curl -sL "$url" | sha256sum | cut -d' ' -f1)
+            sums[$arch]=$sum
+          done
+          sed -i "s/sha256sums_x86_64=.*/sha256sums_x86_64=('${sums[x86_64]}')/" PKGBUILD
+          sed -i "s/sha256sums_aarch64=.*/sha256sums_aarch64=('${sums[aarch64]}')/" PKGBUILD
+
+          # Update .SRCINFO with new checksums
+          sed -i "s/^\tsha256sums_x86_64 = .*/\tsha256sums_x86_64 = ${sums[x86_64]}/" .SRCINFO
+          sed -i "s/^\tsha256sums_aarch64 = .*/\tsha256sums_aarch64 = ${sums[aarch64]}/" .SRCINFO
+
+      - name: Commit and push changes
+        run: |
+          cd aur-package
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to version ${{ github.event.release.tag_name }}"
+          git push
+
+      - name: Sign the commit
+        run: |
+          cd aur-package
+          git config user.signingkey ${{ secrets.GPG_KEY_ID }}
+          git commit --amend --no-edit -S
+          git push --force

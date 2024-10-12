@@ -4,16 +4,13 @@ This is the list of previous todos that are now completed
 
 Major Version:
 
-- [] Android App
 - [] iOS App
 
 Next Minor Version:
 
-- [] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
-- [] Queue adjmustment for mobile devices
-- [] Update queue slider to be centered
+- [] Dynamically adjusting local download buttons
 - [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
@@ -34,11 +31,73 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on queue page
 - [] Implement episode filtering on search page
 
+- [] Full Screen Episode should have clickable podcast header to open pod page
+
+- [] Make new category button more obvious.
+- [] Make category delete button bigger
+
+Mobile:
+
+- [] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
+- [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
+- [] On mobile make the action buttons larger
+- [] On mobile make the volume slider drop below Shownotes
+- [] When pod is playing play and skip are too far left, also make image raise full screen as well as title. Maybe drag to raise?
+- [] On mobile further squish image to fit more on screen?
+- [] On mobile long press to add to saved etc...?
+- [] On mobile local Downloads page is broken - doesn't open
+- [] Mobile loading screen causes search to jump to right and playing pod to go too low
+- [] On mobile nextcloud doesn't redirect back after adding
+- [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
+
+pre-0.7.0:
+
+- [] People Table with background jobs to update people found in podcasts
+- [] Subscribe to people
+- [] Add loading spinner when adding podcast via people page
+- [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
+- [] Stop issues with timeouts on occation with mobile apps
+- [] Make virtual lines work for saved queue, downloads, local downloads, and history
+- [] Finalize virtual lines so it works like home on episode layout
+- [] On very small screens you no longer get the mini version without the context button
+- [] Dynamically adjusting buttons on episode page
+
+done but needs testing
+
+- [] Fix issues with refreshing
+    Refreshing now works with websocket and it grabs the data, however, there's a problem adding it dynamically to the page. We need to auto stack in the found episodes
+    episode id seems to come through as zero. Rather than the actual id
+        example data:
+        ```
+        Received new episode: EpisodeWebsocketResponse { episode_id: 0, podcast_id: 36, title: "582: On the CUPS of Disaster", description: Some("<p>W Flathub\">Install Frog on Linux | Flathub</a> — Extract text from images, websites, videos, and QR codes by taking a picture of the source.</li><li><a href=\"https://flathub.org/apps/de.leopoldluley.Clapgrep\" title=\"Clapgrep\">Clapgrep</a> — Ever had a folder full of PDF files, where you knew, somewhere in there, is what you're looking for. But you did not know in which file. So you had to search each of them at a time...</li></ul>"), audio_url: "https://aphid.fireside.fm/d/1437767933/f31a453c-fa15-491f-8618-3f71f1d565e5/ffb365c2-37c4-42b6-8b40-95649c0e790e.mp3", artwork_url: Some("https://assets.fireside.fm/file/fireside-images/podcasts/images/f/f31a453c-fa15-491f-8618-3f71f1d565e5/cover.jpg"), release_datetime: "2024-09-29 14:00:00", duration: 4050, completed: false }
+        ```
+- [] Queue adjmustment for mobile devices
+    Finally works, but scrolling when holding at bottom of page doesn't work
+- [ ] Seriously dig into podcast 3x layout - Works but couple issues
+      deleting pod doesn't work from page
+      select category no longer pulls in categories
+- [] client local download function broken. Need android compiling alternative to reqwest
+
+Version 0.7.0
+
+- [x] Android App
+- [x] Flatpak Clien
+- [x] Snap Client
+- [x] aur client
+
+- [x] Added Valkey to make many processes faster
+- [x] Finalize loading states so you don't see login page when you are already authenticated
+- [x] Using valkey to ensure stateless opml imports
+- [x] Android play/pause episode metadata
+- [x] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
+- [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
+- [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
+- [x] Update queue slider to be centered
+
 Version 0.6.6
 
 - [x] Manually adjust tags for podcast in podcast settings
 - [x] Dynamically refresh tags on ep-layout when adding and removing them
-- [] Fixed documentation so backend variables work with new docker standards
 - [x] Removed see more button from the episodes_layout, queue, and downloads page
 - [x] Added a People page so that you can see other episodes and podcasts a particular person has been on
 - [x] Speed up people page loading (happens in async now)
@@ -54,15 +113,19 @@ Version 0.6.6
 - [x] Added loading spinner when opening an episode to ensure you don't momentarily see the wrong episode
 - [x] Improve Filtering css so that things align correctly
 - [x] Made the button to add and remove podcasts more consistent (Sometimes it was just not registering)
-- [] Update Rust dependancies
+- [x] Upgraded pulldown-cmark library
+- [x] Upgraded python mysql-connection library to 9
+- [x] Upgraded chrono-tz rust library
+- [x] mac version attached like this:
+- [x] Update Rust dependancies
 
 CI/CD:
 
-- [] mac version attached like this:
+- [x] mac version attached like this:
 dmg.Pinepods_0.6.5_aarch64.dmg - Also second mac archive build failed
-- [] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
-- [] Add in x64 mac releases
-- [] Build in arm cross compile into ubuntu build
+- [x] Fix the archived builds for linux. Which are huge because we include a ton of appimage info
+- [x] Add in x64 mac releases
+- [x] Build in arm cross compile into ubuntu build
 
 Version 0.6.5
 

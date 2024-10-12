@@ -1,0 +1,122 @@
+name: Build IOS Pinepods App
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
+
+jobs:
+  build:
+    name: Build ios Release
+    runs-on: macOS-latest
+
+    steps:
+      - name: Set Image Tag (Unix)
+        run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: 1.81
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Depends install
+        if: ${{ env.DEPENDS_SETUP == 'true' }}
+        run: |
+          sudo apt update
+          sudo apt install -qy libgtk-3-dev
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: wasm-addition
+        run: |
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install Trunk
+        run: |
+          cargo binstall trunk -y
+
+      - name: Install Tauri
+        run: |
+          cargo install tauri-cli@2.0.0-rc.16 --locked
+      - name: Update Tauri version
+        run: |
+          cd web/src-tauri
+          sed -i '' "s/\"version\": \".*\"/\"version\": \"${IMAGE_TAG}\"/" tauri.conf.json
+          cat tauri.conf.json
+
+      - name: Build iOS app
+        run: |
+          cd web/src-tauri
+          cargo tauri icon icons/Square1024x1024.png
+          cargo tauri ios init
+          cargo tauri ios build
+          cargo tauri icon src-tauri/icons/Square1024x1024.png
+          cargo tauri ios build 
+      # --release --export-method app-store-connect
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v3
+        with:
+          name: Pinepods-iOS
+          path: web/src-tauri/gen/apple/build/arm64/*.ipa
+
+      # - name: Upload to App Store Connect
+      #   env:
+      #     APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      #     APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      #   run: |
+      #     xcrun altool --upload-app --type ios --file "web/src-tauri/gen/apple/build/arm64/*.ipa" --apiKey $APPLE_API_KEY_ID --apiIssuer $APPLE_API_ISSUER
+
+      # - name: Cleanup keychain and provisioning profile
+      #   if: ${{ always() }}
+      #   run: |
+      #     security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
+      #     rm ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision
+
+      # - name: Archive build 1 (apk)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Archive build 2 (aab)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Archive build 2 (Ubuntu)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Archive build 3 (Ubuntu)
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.os }}-build
+      #     path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
+      #   if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      # - name: Upload release asset (Ubuntu - DEB)
+      #   if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ github.event.release.upload_url }}
+      #     asset_path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
+      #     asset_name: ${{ env.ARTIFACT_NAME1 }}
+      #     asset_content_type: application/vnd.debian.binary-package

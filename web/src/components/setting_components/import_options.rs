@@ -8,10 +8,14 @@ use wasm_bindgen::closure::Closure;
 use crate::components::gen_funcs::parse_opml;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
 use crate::requests::search_pods::{call_parse_podcast_channel_info, PodcastInfo};
-
-
+use gloo::timers::callback::Interval;
 // use wasm_bindgen::JsValue;
-// use crate::requests::setting_reqs::{call_backup_user};
+use crate::requests::setting_reqs::{call_podcast_opml_import, fetch_import_progress};
+use wasm_bindgen::JsValue;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+
 fn transform_feed_result_to_values(feed_result: PodcastInfo, podcast_to_add: &PodcastToAdd, user_id: i32) -> PodcastValues {
     let pod_title = podcast_to_add.title.clone();
     let pod_feed_url = podcast_to_add.xml_url.clone();
@@ -92,6 +96,9 @@ pub fn import_options() -> Html {
     let import_pods = use_state(|| Vec::new());
     let show_verification = use_state(|| false);
     let (_audio_state, audio_dispatch) = use_store::<UIState>();
+    let import_progress = use_state(|| 0);
+    let total_podcasts = use_state(|| 0);
+    let current_podcast = use_state(String::default);
 
 
     let onclick = {
@@ -127,32 +134,97 @@ pub fn import_options() -> Html {
     
     let server_name_confirm = server_name.clone();
     let dispatch_wasm = _dispatch.clone();
+
+
+
     let on_confirm = {
         let import_pods = import_pods.clone();
-        let server_name = server_name_confirm.clone();
+        let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
+        let import_progress = import_progress.clone();
+        let total_podcasts = total_podcasts.clone();
+        let current_podcast = current_podcast.clone();
+        let dispatch_wasm_conf = dispatch_wasm.clone();
+    
         Callback::from(move |_| {
-            dispatch_wasm.reduce_mut(|state| state.is_loading = Some(true));
-            // Filter for selected podcasts
-            let server_name = server_name.clone();
-            let api_key = api_key.clone();
-            let dispatch_wasm = dispatch_wasm.clone();
-            let audio_dispatch = audio_dispatch.clone();
-            let selected_podcasts: Vec<PodcastToAdd> = (*import_pods)
+            let dispatch_wasm_call = dispatch_wasm_conf.clone();
+            let audio_dispatch_call = audio_dispatch.clone();
+            dispatch_wasm_call.reduce_mut(|state| state.is_loading = Some(true));
+            let selected_podcasts: Vec<String> = (*import_pods)
                 .iter()
                 .filter(|podcast| podcast.selected)
-                .map(|podcast| PodcastToAdd { title: podcast.title.clone(), xml_url: podcast.xml_url.clone() })
+                .map(|podcast| podcast.xml_url.clone())
                 .collect();
     
-            wasm_bindgen_futures::spawn_local(async move {
-                // Your existing logic to add podcasts
-                if let (Some(server_name), Some(api_key), Some(user_id)) = (server_name.as_ref(), api_key.as_ref(), user_id) {
-                    add_podcasts(server_name, &Some(api_key.clone().unwrap()), user_id, selected_podcasts.clone()).await;
+            total_podcasts.set(selected_podcasts.len());
+    
+            wasm_bindgen_futures::spawn_local({
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let user_id = user_id.clone();
+                let import_progress = import_progress.clone();
+                let current_podcast = current_podcast.clone();
+                let total_podcasts = total_podcasts.clone();
+    
+                async move {
+                    if let (Some(server_name), Some(api_key), Some(user_id)) = (server_name.clone(), api_key.clone(), user_id) {
+                        match call_podcast_opml_import(&server_name, &Some(api_key.clone().unwrap()), user_id, selected_podcasts.clone()).await {
+                            Ok(_) => {
+                                let interval: Rc<RefCell<Option<Interval>>> = Rc::new(RefCell::new(None));
+                                let interval_clone = interval.clone();
+                                web_sys::console::log_1(&JsValue::from_str("opml import success"));
+                            
+                                let callback = Closure::wrap(Box::new(move || {
+                                    let dispatch_wasm = dispatch_wasm_call.clone();
+                                    let audio_dispatch = audio_dispatch_call.clone();
+                                    let server_name = server_name.clone();
+                                    let api_key = api_key.clone();
+                                    let user_id = user_id;
+                                    let import_progress = import_progress.clone();
+                                    let current_podcast = current_podcast.clone();
+                                    let total_podcasts = total_podcasts.clone();
+                                    let interval = interval_clone.clone();
+                                    web_sys::console::log_1(&JsValue::from_str("pod closure"));
+                            
+                                    wasm_bindgen_futures::spawn_local(async move {
+                                        match fetch_import_progress(&server_name, &api_key, user_id).await {
+                                            Ok((current, total, podcast)) => {
+                                                web_sys::console::log_1(&JsValue::from_str("got progress"));
+                                                import_progress.set(current);
+                                                total_podcasts.set(total as usize);
+                                                current_podcast.set(podcast);
+                                                if current >= total {
+                                                    // Import is complete, stop polling
+                                                    if let Some(interval) = interval.borrow_mut().take() {
+                                                        interval.cancel();
+                                                    }
+                                                    dispatch_wasm.reduce_mut(|state| state.is_loading = Some(false));
+                                                    audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("OPML Import Completed!".to_string()));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(&JsValue::from_str("progress failed"));
+                                                log::error!("Failed to fetch import progress: {:?}", e);
+                                            }
+                                        }
+                                    });
+                                }) as Box<dyn Fn()>);
+                            
+                                interval.borrow_mut().replace(Interval::new(5000, move || {
+                                    callback.as_ref().unchecked_ref::<js_sys::Function>().call0(&JsValue::NULL).unwrap();
+                                    // Return () explicitly
+                                    ()
+                                }));
+                            }
+                            Err(e) => {
+                                log::error!("Failed to import OPML: {:?}", e);
+                                dispatch_wasm_call.reduce_mut(|state| state.is_loading = Some(false));
+                                audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Failed to import OPML".to_string()));
+                            }
+                        }
+                    }
                 }
-                dispatch_wasm.reduce_mut(|state| state.is_loading = Some(false));
-                audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Selected Podcasts Added!".to_string()));
-
             });
         })
     };
@@ -175,6 +247,14 @@ pub fn import_options() -> Html {
                                     {"The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. The loading animation will disappear once all complete. Be patient!"}
                                 </p>
                                 <button class="settings-button" onclick={on_confirm}>{"Add them!"}</button>
+                            </div>
+                            <div class="mt-4">
+                                <p class="item_container-text">
+                                    {format!("Progress: {}/{}", *import_progress, *total_podcasts)}
+                                </p>
+                                <p class="item_container-text">
+                                    {format!("Currently importing: {}", *current_podcast)}
+                                </p>
                             </div>
                             {
                                 for (*import_pods).iter().enumerate().map(|(index, podcast)| {

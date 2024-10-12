@@ -1,5 +1,5 @@
 # Builder stage for compiling the Yew application
-FROM rust:alpine3.19 as builder
+FROM rust:alpine3.19 AS builder
 
 # Install build dependencies
 RUN apk update && apk upgrade && \
@@ -25,7 +25,7 @@ COPY ./web /app
 WORKDIR /app
 
 # Build the Yew application in release mode
-RUN trunk build --features server_build --release
+RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
 
 # Final stage for setting up runtime environment
 FROM alpine:3.19
@@ -67,7 +67,7 @@ COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
 RUN chmod +x /pinepods/startup/startup.sh
 
-ENV APP_ROOT /pinepods
+ENV APP_ROOT=/pinepods
 
 # Define the build argument
 ARG PINEPODS_VERSION

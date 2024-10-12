@@ -1,4 +1,4 @@
-mysql-connector-python==8.1.0
+mysql-connector-python
 requests
 python-dateutil
 python-dateutil
@@ -26,3 +26,4 @@ argon2_cffi
 httpx
 qrcode[pil]
 psycopg[pool]
+redis

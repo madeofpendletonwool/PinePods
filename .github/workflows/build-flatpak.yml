@@ -1,0 +1,105 @@
+name: Build Pinepods Flatpak
+
+on:
+  workflow_run:
+    workflows: ["Build Tauri Clients"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (for testing)"
+        required: true
+        default: "test"
+
+env:
+  FLATPAK_ID: com.gooseberrydevelopment.pinepods
+
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
+            echo "VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
+          fi
+
+      - name: Install Flatpak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      - name: Install Flatpak SDK
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
+
+      - name: Update manifest version and URL
+        run: |
+          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+          DEB_URL=$(grep url clients/flatpak/com.gooseberrydevelopment.pinepods.yml | awk '{print $2}')
+          SHA256=$(curl -sL $DEB_URL | sha256sum | cut -d' ' -f1)
+          sed -i "s|sha256: .*|sha256: $SHA256|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --repo=repo --force-clean build-dir clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+
+      - name: Create Flatpak bundle
+        run: |
+          flatpak build-bundle repo ${{ env.FLATPAK_ID }}.flatpak ${{ env.FLATPAK_ID }}
+
+      - name: Archive Flatpak files
+        run: |
+          mkdir flatpak_output
+          cp ${{ env.FLATPAK_ID }}.flatpak flatpak_output/
+          cp clients/flatpak/com.gooseberrydevelopment.pinepods.yml flatpak_output/
+          tar -czvf flatpak_files.tar.gz flatpak_output
+
+      - name: Upload Flatpak archive
+        uses: actions/upload-artifact@v3
+        with:
+          name: flatpak-files
+          path: flatpak_files.tar.gz
+
+    # # Submit to flathub
+    #   - name: Setup Git for Flathub submission
+    #     run: |
+    #       git config --global user.name "GitHub Action"
+    #       git config --global user.email "action@github.com"
+
+    #   - name: Clone Flathub repository
+    #     run: |
+    #       git clone --branch=new-pr https://github.com/flathub/flathub.git
+
+    #   - name: Prepare Flathub submission
+    #     env:
+    #       VERSION: ${{ github.event.release.tag_name }}
+    #     run: |
+    #       cd flathub
+    #       git checkout -b ${{ env.FLATPAK_ID }}-${{ env.VERSION }}
+    #       cp ../clients/flatpak/com.gooseberrydevelopment.pinepods.yml .
+    #       git add com.gooseberrydevelopment.pinepods.yml
+    #       git commit -m "Update ${{ env.FLATPAK_ID }} to ${{ env.VERSION }}"
+    #       git push origin ${{ env.FLATPAK_ID }}-${{ env.VERSION }}
+
+    #   - name: Create Pull Request
+    #     uses: peter-evans/create-pull-request@v5
+    #     with:
+    #       token: ${{ secrets.GITHUB_TOKEN }}
+    #       commit-message: Update ${{ env.FLATPAK_ID }} to ${{ env.VERSION }}
+    #       title: Update ${{ env.FLATPAK_ID }} to ${{ env.VERSION }}
+    #       body: |
+    #         This PR updates ${{ env.FLATPAK_ID }} to version ${{ env.VERSION }}.
+    #       branch: ${{ env.FLATPAK_ID }}-${{ env.VERSION }}
+    #       base: new-pr
+    #       repository: flathub/flathub

@@ -14,17 +14,19 @@ use crate::requests::pod_req::{
     QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
+use js_sys::Array;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
 use std::path::Path;
 use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
-use web_sys::{window, HtmlAudioElement, HtmlInputElement};
+use web_sys::{window, HtmlAudioElement, HtmlInputElement, Navigator};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -567,6 +569,134 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             || ()
         }
     });
+
+    // // Try importing each type individually
+    // // #[cfg(feature = "MediaMetadata")]
+    // use web_sys::MediaMetadata;
+
+    // // #[cfg(feature = "MediaSession")]
+    // use web_sys::MediaSession;
+
+    // // #[cfg(feature = "MediaSessionAction")]
+    // use web_sys::MediaSessionAction;
+
+    // #[wasm_bindgen(start)]
+    // pub fn run() {
+    //     // This will help us verify that the unstable APIs flag is recognized
+    //     #[cfg(web_sys_unstable_apis)]
+    //     web_sys::console::log_1(&"Unstable APIs are enabled".into());
+
+    //     #[cfg(not(web_sys_unstable_apis))]
+    //     web_sys::console::log_1(&"Unstable APIs are NOT enabled".into());
+
+    //     // Check which types are available
+    //     #[cfg(feature = "MediaMetadata")]
+    //     web_sys::console::log_1(&"MediaMetadata is available".into());
+
+    //     #[cfg(feature = "MediaSession")]
+    //     web_sys::console::log_1(&"MediaSession is available".into());
+
+    //     #[cfg(feature = "MediaSessionAction")]
+    //     web_sys::console::log_1(&"MediaSessionAction is available".into());
+
+    //     // Try to use Navigator, which should definitely be available
+    //     if let Some(window) = web_sys::window() {
+    //         let navigator: Navigator = window.navigator();
+    //         web_sys::console::log_1(&"Navigator is available".into());
+    //     }
+    // }
+
+    // Add this near the top of the component, after other use_effect calls
+    {
+        let audio_state = audio_state.clone();
+        let audio_dispatch = _audio_dispatch.clone();
+
+        use_effect_with(audio_state.clone(), move |_| {
+            if let Some(window) = web_sys::window() {
+                let navigator: Navigator = window.navigator();
+
+                // Set up media session
+                if let Ok(media_session) =
+                    js_sys::Reflect::get(&navigator, &JsValue::from_str("mediaSession"))
+                {
+                    let media_session: web_sys::MediaSession = media_session.dyn_into().unwrap();
+
+                    // Update metadata
+                    if let Some(audio_props) = &audio_state.currently_playing {
+                        let metadata = web_sys::MediaMetadata::new().unwrap();
+                        metadata.set_title(&audio_props.title);
+
+                        // Create a JavaScript array for the artwork
+                        let artwork_array = Array::new();
+                        let artwork_object = js_sys::Object::new();
+                        js_sys::Reflect::set(
+                            &artwork_object,
+                            &"src".into(),
+                            &audio_props.artwork_url.clone().into(),
+                        )
+                        .unwrap();
+                        js_sys::Reflect::set(&artwork_object, &"sizes".into(), &"512x512".into())
+                            .unwrap();
+                        js_sys::Reflect::set(&artwork_object, &"type".into(), &"image/jpeg".into())
+                            .unwrap();
+                        artwork_array.push(&artwork_object);
+
+                        // Set the artwork using the JavaScript array
+                        metadata.set_artwork(&artwork_array.into());
+
+                        media_session.set_metadata(Some(&metadata));
+                    }
+                    let audio_dispatch_play = audio_dispatch.clone();
+                    // Set up action handlers
+                    let play_pause_callback = Closure::wrap(Box::new(move || {
+                        audio_dispatch_play.reduce_mut(UIState::toggle_playback);
+                    })
+                        as Box<dyn FnMut()>);
+                    media_session.set_action_handler(
+                        web_sys::MediaSessionAction::Play,
+                        Some(play_pause_callback.as_ref().unchecked_ref()),
+                    );
+                    media_session.set_action_handler(
+                        web_sys::MediaSessionAction::Pause,
+                        Some(play_pause_callback.as_ref().unchecked_ref()),
+                    );
+                    play_pause_callback.forget();
+                    let audio_state_back = audio_state.clone();
+                    let audio_dispatch_back = audio_dispatch.clone();
+                    let seek_backward_callback = Closure::wrap(Box::new(move || {
+                        if let Some(audio_element) = audio_state_back.audio_element.as_ref() {
+                            let new_time = audio_element.current_time() - 15.0;
+                            audio_element.set_current_time(new_time);
+                            audio_dispatch_back
+                                .reduce_mut(|state| state.update_current_time(new_time));
+                        }
+                    })
+                        as Box<dyn FnMut()>);
+                    media_session.set_action_handler(
+                        web_sys::MediaSessionAction::Seekbackward,
+                        Some(seek_backward_callback.as_ref().unchecked_ref()),
+                    );
+                    seek_backward_callback.forget();
+
+                    let seek_forward_callback = Closure::wrap(Box::new(move || {
+                        if let Some(audio_element) = audio_state.audio_element.as_ref() {
+                            let new_time = audio_element.current_time() + 15.0;
+                            audio_element.set_current_time(new_time);
+                            audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
+                        }
+                    })
+                        as Box<dyn FnMut()>);
+                    media_session.set_action_handler(
+                        web_sys::MediaSessionAction::Seekforward,
+                        Some(seek_forward_callback.as_ref().unchecked_ref()),
+                    );
+                    seek_forward_callback.forget();
+                }
+            }
+
+            || ()
+        });
+    }
 
     // Toggle playback
     let toggle_playback = {
@@ -1420,7 +1550,6 @@ pub fn on_play_click_offline(
         });
     })
 }
-
 
 pub fn on_play_click_shared(
     episode_url: String,

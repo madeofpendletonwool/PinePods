@@ -54,6 +54,7 @@ pub fn login() -> Html {
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
     let info_message = _state.info_message.clone();
+    let loading = use_state(|| true);
     // Define the initial state
     let page_state = use_state(|| PageState::Default);
     let self_service_enabled = use_state(|| false); // State to store self-service status
@@ -112,13 +113,19 @@ pub fn login() -> Html {
         });
     }
     let effect_displatch = dispatch.clone();
+    let effect_loading = loading.clone();
     // User Auto Login with saved state
     use_effect_with((), {
-        // let error_clone_use = error_message_clone.clone();
+        web_sys::console::log_1(&"start of effect".into());
         let history = history.clone();
         move |_| {
+            web_sys::console::log_1(&"moving in".into());
+            effect_loading.set(true);
+            web_sys::console::log_1(&"moving in2".into());
             if let Some(window) = web_sys::window() {
+                web_sys::console::log_1(&"moving in3".into());
                 if let Ok(local_storage) = window.local_storage() {
+                    web_sys::console::log_1(&"moving in4".into());
                     if let Some(storage) = local_storage {
                         if let Ok(Some(stored_theme)) = storage.get_item("selected_theme") {
                             // Set the theme using your existing theme change function
@@ -126,8 +133,9 @@ pub fn login() -> Html {
                                 &stored_theme,
                             );
                         }
-
+                        web_sys::console::log_1(&"pre user".into());
                         if let Ok(Some(user_state)) = storage.get_item("userState") {
+                            web_sys::console::log_1(&"post user".into());
                             let app_state_result = AppState::deserialize(&user_state);
 
                             if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
@@ -245,21 +253,23 @@ pub fn login() -> Html {
                                                                             }
                                                                         });
                                                                             let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                                            effect_loading
+                                                                                .set(false);
                                                                             history.push(
                                                                                 &redirect_route,
                                                                             ); // Redirect to the requested or home page
                                                                         }
                                                                         Err(_) => {
-                                                                            // API key is not valid, redirect to login
+                                                                            effect_loading
+                                                                                .set(false);
                                                                             history.push("/");
                                                                         }
                                                                     }
                                                                 },
                                                             );
                                                         } else {
-                                                            console::log_1(
-                                                                &"Auth details are None".into(),
-                                                            );
+                                                            // API key is not valid, redirect to login
+                                                            effect_loading.set(false);
                                                         }
                                                     }
                                                 }
@@ -271,9 +281,12 @@ pub fn login() -> Html {
                                             &format!("Error deserializing auth state: {:?}", e)
                                                 .into(),
                                         );
+                                        effect_loading.set(false);
                                     }
                                 }
                             }
+                        } else {
+                            effect_loading.set(false);
                         }
                     }
                 }
@@ -541,7 +554,6 @@ pub fn login() -> Html {
     let stop_propagation = Callback::from(|e: MouseEvent| {
         e.stop_propagation();
     });
-
 
     let on_fullname_change = {
         let fullname = fullname.clone();
@@ -1291,6 +1303,16 @@ pub fn login() -> Html {
 
     html! {
         <>
+        if *loading {
+            <div class="loading-animation fixed inset-0 flex justify-center items-center bg-opacity-80 z-50">
+                <div class="frame1"></div>
+                <div class="frame2"></div>
+                <div class="frame3"></div>
+                <div class="frame4"></div>
+                <div class="frame5"></div>
+                <div class="frame6"></div>
+            </div>
+        } else {
         <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
         {
             match *page_state {
@@ -1385,6 +1407,7 @@ pub fn login() -> Html {
                 </div>
             </div>
             </div>
+        }
         </>
 
     }

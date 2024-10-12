@@ -1499,3 +1499,71 @@ pub async fn call_add_custom_feed(
         )))
     }
 }
+
+pub async fn call_podcast_opml_import(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcasts: Vec<String>,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/import_opml", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::json!({
+        "podcasts": podcasts,
+        "user_id": user_id
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Error importing OPML: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportProgressResponse {
+    current: i32,
+    total: i32,
+    current_podcast: String,
+}
+
+pub async fn fetch_import_progress(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+) -> Result<(i32, i32, String), Error> {
+    let url = format!("{}/api/data/import_progress/{}", server_name, user_id);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    web_sys::console::log_1(
+        &format!("import prog: {:?}", &response).into(),
+    );
+    if response.ok() {
+        let progress_response: ImportProgressResponse = response.json().await?;
+        Ok((progress_response.current, progress_response.total, progress_response.current_podcast))
+    } else {
+        Err(Error::msg(format!(
+            "Error fetching import progress: {}",
+            response.status_text()
+        )))
+    }
+}
