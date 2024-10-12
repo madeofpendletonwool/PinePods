@@ -87,3 +87,6 @@ tauri-sys = { git = "https://github.com/madeofpendletonwool/tauri-sys", version 
 [features]
 default = []
 server_build = []
+
+# [profile.release]
+# lto = true
