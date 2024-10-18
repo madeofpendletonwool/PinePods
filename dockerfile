@@ -20,9 +20,15 @@ RUN apk add trunk@edge
 RUN rustup target add wasm32-unknown-unknown && \
     cargo install wasm-bindgen-cli
 
-# Add your application files to the builder stage
-COPY ./web /app
+# Add application files to the builder stage
+COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
+COPY ./web/dist /app/dist
+COPY ./web/src /app/src
+COPY ./web/static /app/static
+COPY ./web/target /app/target
+
 WORKDIR /app
+
 
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release

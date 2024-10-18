@@ -416,6 +416,23 @@ try:
 
     try:
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "People" (
+                PersonID SERIAL PRIMARY KEY,
+                Name TEXT,
+                PeopleDBID INT,
+                AssociatedPodcasts TEXT,
+                UserID INT,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+            );
+
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating People table: {e}")
+
+
+    try:
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS "SharedEpisodes" (
                 SharedEpisodeID SERIAL PRIMARY KEY,
                 EpisodeID INT,

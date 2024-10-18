@@ -406,6 +406,22 @@ try:
 
     try:
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS People (
+                PersonID INT AUTO_INCREMENT PRIMARY KEY,
+                Name TEXT,
+                PeopleDBID INT,
+                AssociatedPodcasts TEXT,
+                UserID INT,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID)
+            );
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating SharedEpisodes table: {e}")
+
+
+    try:
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS SharedEpisodes (
                 SharedEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
                 EpisodeID INT,

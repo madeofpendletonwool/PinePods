@@ -3692,6 +3692,77 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="You can only bump the queue for yourself!")
 
+class PersonSubscribeRequest(BaseModel):
+    person_name: str
+    podcast_id: int
+
+@app.post("/api/data/person/subscribe/{user_id}/{person_id}")
+async def api_subscribe_to_person(
+    user_id: int,
+    person_id: int,
+    request: PersonSubscribeRequest,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid or unauthorized API key")
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id == user_id or is_web_key:
+        success = database_functions.functions.subscribe_to_person(cnx, database_type, user_id, person_id, request.person_name, request.podcast_id)
+        if success:
+            return {"message": "Successfully subscribed to person"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to subscribe to person")
+    else:
+        raise HTTPException(status_code=403, detail="You can only subscribe for yourself!")
+
+class UnsubscribeRequest(BaseModel):
+    person_name: str
+
+@app.delete("/api/data/person/unsubscribe/{user_id}/{person_id}")
+async def api_unsubscribe_from_person(
+    user_id: int,
+    person_id: int,
+    request: UnsubscribeRequest,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid or unauthorized API key")
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id == user_id or is_web_key:
+        success = database_functions.functions.unsubscribe_from_person(cnx, database_type, user_id, person_id, request.person_name)
+        if success:
+            return {"message": "Successfully unsubscribed from person"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to unsubscribe from person")
+    else:
+        raise HTTPException(status_code=403, detail="You can only unsubscribe for yourself!")
+
+@app.get("/api/data/person/subscriptions/{user_id}")
+async def api_get_person_subscriptions(
+    user_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid or unauthorized API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == user_id or is_web_key:
+        subscriptions = database_functions.functions.get_person_subscriptions(cnx, database_type, user_id)
+        return {"subscriptions": subscriptions}
+    else:
+        raise HTTPException(status_code=403, detail="You can only view your own subscriptions!")
+
+
 @app.get("/api/data/stream/{episode_id}")
 async def stream_episode(
     episode_id: int,

@@ -22,6 +22,7 @@ import re
 import requests
 from requests.auth import HTTPBasicAuth
 from urllib.parse import urlparse, urlunparse
+from typing import List
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -2931,7 +2932,6 @@ def enable_disable_self_service(cnx, database_type):
 
 
 def verify_api_key(cnx, database_type, passed_key):
-    print(f'heres your key {passed_key} (length: {len(passed_key)})')
     cursor = cnx.cursor()
     if database_type == "postgresql":
         query = 'SELECT * FROM "APIKeys" WHERE APIKey = %s'
@@ -5441,6 +5441,117 @@ def queue_bump(database_type, cnx, ep_url, title, user_id):
 
     return {"detail": f"{title} moved to the front of the queue."}
 
+
+
+def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, podcast_id: int) -> bool:
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            # Check if a person with the same PeopleDBID (if not 0) or Name (if PeopleDBID is 0) exists
+            if person_id != 0:
+                query = """
+                    SELECT PersonID, AssociatedPodcasts FROM "People"
+                    WHERE UserID = %s AND PeopleDBID = %s
+                """
+                cursor.execute(query, (user_id, person_id))
+            else:
+                query = """
+                    SELECT PersonID, AssociatedPodcasts FROM "People"
+                    WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
+                """
+                cursor.execute(query, (user_id, person_name))
+
+            existing_person = cursor.fetchone()
+
+            if existing_person:
+                # Person exists, update AssociatedPodcasts
+                person_id, associated_podcasts = existing_person
+                podcast_list = associated_podcasts.split(',') if associated_podcasts else []
+                if str(podcast_id) not in podcast_list:
+                    podcast_list.append(str(podcast_id))
+                    new_associated_podcasts = ','.join(podcast_list)
+                    update_query = """
+                        UPDATE "People" SET AssociatedPodcasts = %s
+                        WHERE PersonID = %s
+                    """
+                    cursor.execute(update_query, (new_associated_podcasts, person_id))
+            else:
+                # Person doesn't exist, insert new record
+                insert_query = """
+                    INSERT INTO "People" (UserID, PeopleDBID, Name, AssociatedPodcasts)
+                    VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(insert_query, (user_id, person_id, person_name, str(podcast_id)))
+
+        else:  # MySQL or MariaDB
+            # Similar logic for MySQL/MariaDB
+            pass
+
+        cnx.commit()
+        return True
+    except Exception as e:
+        print(f"Error subscribing to person: {e}")
+        cnx.rollback()
+        return False
+    finally:
+        cursor.close()
+
+def unsubscribe_from_person(cnx, database_type, user_id: int, person_id: int, person_name: str) -> bool:
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            if person_id != 0:
+                query = 'DELETE FROM "People" WHERE UserID = %s AND PeopleDBID = %s'
+                cursor.execute(query, (user_id, person_id))
+            else:
+                query = 'DELETE FROM "People" WHERE UserID = %s AND Name = %s AND PeopleDBID = 0'
+                cursor.execute(query, (user_id, person_name))
+        else:  # MySQL or MariaDB
+            if person_id != 0:
+                query = "DELETE FROM People WHERE UserID = %s AND PeopleDBID = %s"
+                cursor.execute(query, (user_id, person_id))
+            else:
+                query = "DELETE FROM People WHERE UserID = %s AND Name = %s AND PeopleDBID = 0"
+                cursor.execute(query, (user_id, person_name))
+        cnx.commit()
+        return True
+    except Exception as e:
+        print(f"Error unsubscribing from person: {e}")
+        cnx.rollback()
+        return False
+    finally:
+        cursor.close()
+
+def get_person_subscriptions(cnx, database_type, user_id: int) -> List[dict]:
+    try:
+        if database_type == "postgresql":
+            cursor = cnx.cursor(row_factory=dict_row)
+            query = 'SELECT * FROM "People" WHERE UserID = %s'
+        else:  # MySQL or MariaDB
+            cursor = cnx.cursor(dictionary=True)
+            query = "SELECT * FROM People WHERE UserID = %s"
+
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchall()
+
+        # Convert result to list of dicts and ensure correct data types
+        formatted_result = []
+        for row in result:
+            formatted_row = {
+                'personid': int(row['personid']),
+                'name': row['name'],
+                'peopledbid': int(row['peopledbid']) if row['peopledbid'] is not None else None,
+                'associatedpodcasts': row['associatedpodcasts'],
+                'userid': int(row['userid'])
+            }
+            formatted_result.append(formatted_row)
+
+        return formatted_result
+    except Exception as e:
+        print(f"Error getting person subscriptions: {e}")
+        return []
+    finally:
+        cursor.close()
 
 
 

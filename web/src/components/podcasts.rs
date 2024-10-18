@@ -83,7 +83,7 @@ fn render_layout_toggle(
                     None => "view_list",
                 }}
             </span>
-            <span class="text-lg">{"Toggle Layout"}</span>
+            <span class="text-lg">{"Layout"}</span>
         </button>
     }
 }

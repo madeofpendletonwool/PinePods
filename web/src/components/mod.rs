@@ -2,6 +2,7 @@
 pub(crate) mod app_drawer;
 pub(crate) mod history;
 pub(crate) mod home;
+pub(crate) mod host_component;
 pub mod misc_func;
 pub(crate) mod queue;
 pub(crate) mod routes;

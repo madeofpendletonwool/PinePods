@@ -2,15 +2,12 @@ use super::gen_components::{empty_message, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::SafeHtml;
-use crate::components::episodes_layout::{HostDropdown, UIStateMsg};
+use crate::components::episodes_layout::{SafeHtml, UIStateMsg};
 use crate::components::gen_funcs::{
-    format_datetime, format_time, match_date_format, parse_date,
-    sanitize_html_with_blank_target,
+    format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
-use crate::requests::pod_req::{
-    call_get_episode_by_url_key
-};
+use crate::components::host_component::HostDropdown;
+use crate::requests::pod_req::call_get_episode_by_url_key;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -121,7 +118,11 @@ pub fn shared_episode(props: &SharedProps) -> Html {
             // Fetch the server name from the current URL
             let window = web_sys::window().expect("no global window exists");
             let location = window.location();
-            let server_name = format!("{}//{}", location.protocol().unwrap(), location.host().unwrap()); // Extracts the protocol and host
+            let server_name = format!(
+                "{}//{}",
+                location.protocol().unwrap(),
+                location.host().unwrap()
+            ); // Extracts the protocol and host
 
             web_sys::console::log_1(&format!("Server name: {}", server_name).into());
 
@@ -149,8 +150,7 @@ pub fn shared_episode(props: &SharedProps) -> Html {
                             loading_clone.set(false);
                         }
                         Err(e) => {
-                            error_clone
-                                .set(Some(format!("Error fetching shared episode: {}", e)));
+                            error_clone.set(Some(format!("Error fetching shared episode: {}", e)));
                         }
                     }
                 });
@@ -162,7 +162,6 @@ pub fn shared_episode(props: &SharedProps) -> Html {
         });
     }
     web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("ep setup"));
-
 
     // let completion_status = use_state(|| false); // State to track completion status
 
@@ -307,21 +306,21 @@ pub fn shared_episode(props: &SharedProps) -> Html {
                                                     html! {}
                                                 }
                                             }
-                                            {
-                                                if let Some(people) = &audio_state.episode_page_people {
-                                                    if !people.is_empty() {
-                                                        html! {
-                                                            <div class="header-info">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} />
-                                                            </div>
-                                                        }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
+                                            // {
+                                            //     if let Some(people) = &audio_state.episode_page_people {
+                                            //         if !people.is_empty() {
+                                            //             html! {
+                                            //                 <div class="header-info">
+                                            //                     <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} />
+                                            //                 </div>
+                                            //             }
+                                            //         } else {
+                                            //             html! {}
+                                            //         }
+                                            //     } else {
+                                            //         html! {}
+                                            //     }
+                                            // }
                                         </div>
                                     </div>
                                     <div class="episode-action-buttons">

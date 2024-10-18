@@ -1243,6 +1243,7 @@ pub struct Person {
     pub group: Option<String>,
     pub img: Option<String>,
     pub href: Option<String>,
+    pub id: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
