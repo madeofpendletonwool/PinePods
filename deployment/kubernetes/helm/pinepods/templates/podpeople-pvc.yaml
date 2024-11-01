@@ -1,0 +1,17 @@
+{{- if and .Values.podpeople.enabled .Values.podpeople.persistence.enabled (not .Values.podpeople.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pinepods.fullname" . }}-podpeople
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.podpeople.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.podpeople.persistence.size }}
+  {{- if .Values.podpeople.persistence.storageClass }}
+  storageClassName: {{ .Values.podpeople.persistence.storageClass }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,36 @@
+# templates/pvc.yaml
+{{- if and .Values.persistence.enabled (not .Values.persistence.downloads.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pinepods.fullname" . }}-downloads
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.downloads.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.downloads.size }}
+  {{- if .Values.persistence.downloads.storageClass }}
+  storageClassName: {{ .Values.persistence.downloads.storageClass }}
+  {{- end }}
+---
+{{- end }}
+{{- if and .Values.persistence.enabled (not .Values.persistence.backups.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pinepods.fullname" . }}-backups
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.backups.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.backups.size }}
+  {{- if .Values.persistence.backups.storageClass }}
+  storageClassName: {{ .Values.persistence.backups.storageClass }}
+  {{- end }}
+{{- end }}
