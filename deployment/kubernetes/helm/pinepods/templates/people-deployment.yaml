@@ -1,0 +1,47 @@
+{{- if .Values.podpeople.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pinepods.fullname" . }}-podpeople
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+    app.kubernetes.io/component: podpeople
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "pinepods.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: podpeople
+  template:
+    metadata:
+      labels:
+        {{- include "pinepods.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: podpeople
+    spec:
+      containers:
+        - name: podpeople
+          image: "{{ .Values.podpeople.image.repository }}:{{ .Values.podpeople.image.tag }}"
+          imagePullPolicy: {{ .Values.podpeople.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.podpeople.service.port }}
+              protocol: TCP
+          env:
+            - name: ADMIN_USERNAME
+              value: {{ .Values.podpeople.auth.adminUsername | quote }}
+            - name: ADMIN_PASSWORD
+              value: {{ .Values.podpeople.auth.adminPassword | quote }}
+            - name: SEARCH_API_URL
+              {{- if .Values.backend.enabled }}
+              value: "http://{{ include "pinepods.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+              {{- else }}
+              value: {{ .Values.podpeople.searchApiUrl | quote }}
+              {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/podpeople-data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ if .Values.podpeople.persistence.existingClaim }}{{ .Values.podpeople.persistence.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-podpeople{{ end }}
+{{- end }}

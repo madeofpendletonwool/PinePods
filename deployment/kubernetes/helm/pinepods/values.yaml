@@ -1,0 +1,261 @@
+# Default values for pinepods.
+# This is a YAML-formatted file.
+
+## Number of pinepods pods to run
+replicaCount: 1
+
+## Container image configuration
+image:
+  # -- Repository to pull the container image from
+  repository: madeofpendletonwool/pinepods
+  # -- Tag of the image to pull
+  # Default uses 'latest' but it's recommended to use a specific version
+  tag: latest
+  # -- Image pull policy
+  # Defaults to IfNotPresent but consider using Always if using latest tag - You know, if you like living on the edge. You could even use nightly.
+  pullPolicy: IfNotPresent
+
+## Service configuration for exposing the pinepods application
+service:
+  # -- Kubernetes service type
+  # Valid values are ClusterIP, NodePort, LoadBalancer
+  type: ClusterIP
+  # -- Port the service will listen on
+  port: 8040
+  # -- Optional nodePort to use when service type is NodePort
+  # If not set, Kubernetes will automatically allocate one
+  # nodePort: 30007
+
+## Ingress configuration for exposing the application to external traffic
+ingress:
+  # -- Enable ingress resource
+  enabled: true
+  # -- Ingress class name
+  className: ""
+  # -- Additional ingress annotations
+  annotations: {
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+  }
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  # -- Ingress hosts configuration
+  hosts:
+    - host: pinepods.mydomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration for ingress
+  tls: []
+  # - secretName: chart-example-tls
+  #   hosts:
+  #     - chart-example.local
+
+## Persistence configuration
+persistence:
+  # -- Enable persistent storage
+  enabled: true
+  downloads:
+    # -- Storage class for downloads PVC
+    # If empty, default StorageClass will be used
+    storageClass: ""
+    # -- Access mode for downloads PVC
+    accessMode: ReadWriteOnce
+    # -- Size of downloads PVC
+    size: 5Gi
+    # -- Use existing PVC for downloads
+    # If set, a new PVC will not be created
+    existingClaim: ""
+  backups:
+    # -- Storage class for backups PVC
+    storageClass: ""
+    # -- Access mode for backups PVC
+    accessMode: ReadWriteOnce
+    # -- Size of backups PVC
+    size: 2Gi
+    # -- Use existing PVC for backups
+    existingClaim: ""
+
+## PostgreSQL configuration
+postgresql:
+  # -- Enable PostgreSQL deployment
+  # Set to false if using external database
+  enabled: true
+  auth:
+    # -- PostgreSQL username
+    username: postgres
+    # -- PostgreSQL password
+    # Consider using a secret for production environments
+    password: "supersecretpassword"
+    # -- PostgreSQL database name
+    database: pinepods_database
+  resources: {}
+  # Run on control planes if needed
+  # tolerations:
+  #   - key: "node-role.kubernetes.io/control-plane"
+  #     operator: "Exists"
+  #     effect: "NoSchedule"
+  persistence:
+    # -- Enable PostgreSQL persistence
+    enabled: true
+    # -- Storage class for PostgreSQL PVC
+    storageClass: ""
+    # -- Size of PostgreSQL PVC
+    size: 3Gi
+    # -- Use existing PVC for PostgreSQL
+    existingClaim: ""
+
+# External database configuration
+# Only used when postgresql.enabled is false
+externalDatabase:
+  host: ""
+  port: 5432
+  user: postgres
+  password: ""
+  database: pinepods_database
+
+resources: {}
+
+## Valkey configuration
+valkey:
+  # -- Enable Valkey deployment
+  enabled: true
+  architecture: standalone  # This prevents replica creation
+  auth:
+    enabled: false
+  replica:
+    replicaCount: 0  # Ensure no replicas are created
+  primary:
+    persistence:
+      enabled: false 
+  # Service configuration
+  service:
+    # -- Valkey port
+    port: 6379
+
+## Application environment variables
+env:
+  # -- Search API URL for podcast search functionality - Change these only if you're hosting the backend and the podcast people database yourself
+  SEARCH_API_URL: "https://search.pinepods.online/api/search"
+  PEOPLE_API_URL: "https://people.pinepods.online/api/hosts"
+  # User Configuration
+  # -- Default admin username
+  USERNAME: "admin"
+  # -- Default admin password
+  # Consider using a secret for production environments
+  PASSWORD: "password"
+  # -- Admin full name
+  FULLNAME: "Admin User"
+  # -- Admin email address
+  EMAIL: "admin@example.com"
+  
+  # Database Configuration
+  # -- Database type (postgresql only for now)
+  DB_TYPE: "postgresql"
+  # -- Database user
+  # This should match postgresql.auth.username if using included PostgreSQL
+  DB_USER: "postgres"
+  # -- Database name
+  # This should match postgresql.auth.database if using included PostgreSQL
+  DB_NAME: "pinepods_database"
+  # -- Database port
+  DB_PORT: "5432"
+  
+  # Valkey Configuration
+  # -- Valkey host
+  # This is automatically set in deployment template - do not change
+  # VALKEY_HOST: "post-valkey"
+  # -- Valkey port
+  # This is automatically set in deployment template - do not change
+  # VALKEY_PORT: "6379"
+  
+  # Application Configuration
+  # -- Debug mode
+  # Set to true for additional logging
+  DEBUG_MODE: "false"
+
+## Pod Security Context
+securityContext: {}
+  # fsGroup: 2000
+  # runAsUser: 1000
+  # runAsNonRoot: true
+
+## Container Security Context
+containerSecurityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+## Node selector for pod assignment
+nodeSelector: {}
+
+## Pod tolerations
+tolerations: []
+
+## Pod affinity
+affinity: {}
+
+
+## Optional Backend configuration
+## backend is the itunes and podcast index search API. This is publically maintained at https://search.pinepods.online. If you want to maintain it yourself you can though
+backend:
+  # -- Enable backend deployment
+  enabled: true
+  image:
+    repository: madeofpendletonwool/pinepods_backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5000
+  # -- Backend secrets
+  secrets:
+    apiKey: "MYPODCASTINDEXKEY"
+    apiSecret: "MYPODCASTINDEXSECRET"
+  ingress:
+    enabled: true
+    className: ""
+    annotations: {}
+    hosts:
+      - host: backend.mydomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+
+## PodPeople DB configuration
+## Podpeople is a publically available website in which you can get details on guests and hosts for podcasts that don't maintain podcast 2.0 in their feeds.
+## If you do want to maintain it yourself you'll probably want to download a copy of the database here: https://podpeople.pinepods.online 
+podpeople:
+  # -- Enable PodPeople DB deployment
+  enabled: true
+  image:
+    repository: madeofpendletonwool/podpeople_db
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8085
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 1Gi
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+  auth:
+    adminUsername: "admin"
+    adminPassword: "password"
+  # Change this only if you aren't hosting the backend. If you aren't you probably want it to be https://search.pinepods.online
+  searchApiUrl: "http://pinepods-backend:{{ .Values.backend.service.port }}" # Only used if backend.enabled is false
+  ingress:
+    enabled: true
+    className: ""
+    annotations: {}
+    hosts:
+      - host: podpeople.mydomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
