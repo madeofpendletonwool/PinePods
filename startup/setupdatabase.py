@@ -309,6 +309,7 @@ try:
     # Create the Podcasts table if it doesn't exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                         PodcastID INT AUTO_INCREMENT PRIMARY KEY,
+                        PodcastIndexID INT,
                         PodcastName TEXT,
                         ArtworkURL TEXT,
                         Author TEXT,

@@ -1,9 +1,7 @@
 use crate::components::context::AppState;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{call_check_podcast, call_get_podcast_id};
-use crate::requests::search_pods::{
-    call_get_podcast_episodes, call_parse_podcast_url,
-};
+use crate::requests::search_pods::{call_get_podcast_episodes, call_parse_podcast_url};
 use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::Callback;
@@ -48,6 +46,7 @@ pub fn create_on_title_click(
             });
 
         let podcast_values = ClickedFeedURL {
+            podcast_id: 0,
             podcast_title: podcast_title.clone(),
             podcast_url: podcast_url.clone(),
             podcast_description: podcast_description.clone(),
@@ -57,6 +56,7 @@ pub fn create_on_title_click(
             podcast_episode_count: podcast_episode_count.clone(),
             podcast_categories: podcast_categories_map.clone(),
             podcast_link: podcast_link.clone(),
+            podcast_index_id: 0,
         };
 
         let dispatch = dispatch.clone();

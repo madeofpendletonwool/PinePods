@@ -51,6 +51,14 @@ import re
 import requests
 from requests.auth import HTTPBasicAuth
 from contextlib import contextmanager
+import signal
+
+def sigterm_handler(_signo, _stack_frame):
+    # Perform cleanup here
+    print("Received SIGTERM. Shutting down...")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, sigterm_handler)
 
 # Internal Modules
 sys.path.append('/pinepods')
@@ -107,6 +115,7 @@ reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
 api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
+people_url = os.environ.get("PEOPLE_API_URL", "https://people.pinepods.online/api/hosts")
 
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
@@ -891,7 +900,26 @@ def parse_transcripts(feed_content: str, audio_url: str) -> List[Dict[str, Optio
         print(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
     return transcripts
 
-def parse_people(feed_content: str, audio_url: Optional[str] = None) -> List[Dict[str, Optional[str]]]:
+def get_podpeople_hosts(podcast_index_id: int) -> List[Dict[str, Optional[str]]]:
+    url = f"{people_url}/{podcast_index_id}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        hosts_data = response.json()
+        if hosts_data:
+            return [{
+                "name": host.get("name"),
+                "role": host.get("role", "Host"),
+                "group": None,
+                "img": host.get("img"),
+                "href": host.get("link")
+            } for host in hosts_data]
+        return []
+    except requests.RequestException as e:
+        logging.error(f"Error fetching data from podpeople_db: {e}")
+        return []
+
+def parse_people(feed_content: str, audio_url: Optional[str] = None, podcast_index_id: Optional[int] = None) -> List[Dict[str, Optional[str]]]:
     people = []
     try:
         root = ET.fromstring(feed_content)
@@ -925,8 +953,14 @@ def parse_people(feed_content: str, audio_url: Optional[str] = None) -> List[Dic
                     "href": person_element.attrib.get('href')
                 })
     except ET.ParseError as e:
-        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
-    return people
+        logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")
+
+    # If no people found in the feed, fall back to podpeople_db
+    if not people and podcast_index_id:
+        people = get_podpeople_hosts(podcast_index_id)
+
+    # If still no people found, return an empty list (original behavior)
+    return people  # This will be an empty list if no people were found in either source
 
 @app.get("/api/data/fetch_podcasting_2_data")
 async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
@@ -944,6 +978,7 @@ async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get
     print(f'Got the feed: {podcast_feed}')
     episode_url = episode_metadata['episodeurl']
     podcast_feed_url = podcast_feed['feedurl']
+    podcast_index_id = database_functions.functions.get_podcast_index_id(cnx, database_type, podcast_id)
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         response = await client.get(podcast_feed_url)
@@ -954,7 +989,9 @@ async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get
     print(f"Fetched feed content: {feed_content[:200]}")
     chapters_url = parse_chapters(feed_content, episode_url)
     transcripts = parse_transcripts(feed_content, episode_url)
-    people = parse_people(feed_content, episode_url)
+    # people = parse_people(feed_content, episode_url)
+    people = parse_people(feed_content, episode_url, podcast_index_id)
+
 
     chapters_data = []
     if chapters_url:
@@ -1043,6 +1080,27 @@ def parse_hosts(feed_content: str) -> List[Dict[str, Optional[str]]]:
         logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
     return people
 
+def get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_index_id):
+    # First, try to parse hosts from the feed content
+    hosts = parse_hosts(feed_content)
+
+    # If no hosts found, try podpeople_db
+    if not hosts:
+        if podcast_index_id:
+            hosts = get_podpeople_hosts(podcast_index_id)
+
+    # If still no hosts found, return a default host
+    if not hosts:
+        hosts = [{
+            "name": "Unknown Host",
+            "role": "Host",
+            "description": "No host information available.",
+            "img": None,
+            "href": None
+        }]
+
+    return hosts
+
 @app.get("/api/data/fetch_podcasting_2_pod_data")
 async def fetch_podcasting_2_pod_data(podcast_id: int, user_id: int, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
@@ -1060,7 +1118,8 @@ async def fetch_podcasting_2_pod_data(podcast_id: int, user_id: int, cnx=Depends
 
     logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
 
-    people = parse_hosts(feed_content)
+    # people = parse_hosts(feed_content)
+    people = get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_feed['podcastindexid'])
     podroll = parse_podroll(feed_content)
     funding = parse_funding(feed_content)
     value = parse_value(feed_content)
@@ -1167,34 +1226,41 @@ class PodcastValuesModel(BaseModel):
     pod_explicit: bool
     user_id: int
 
-# app = FastAPI()
-
+class AddPodcastRequest(BaseModel):
+    podcast_values: PodcastValuesModel
+    podcast_index_id: int = Field(default=0)
 
 @app.post("/api/data/add_podcast")
-async def api_add_podcast(podcast_values: PodcastValuesModel,
-                          cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-
+async def api_add_podcast(
+    request: AddPodcastRequest,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == podcast_values.user_id or is_web_key:
-        # Check if user has nextcloud enabled and add to subscription list
-        if database_functions.functions.check_gpodder_settings(database_type, cnx, podcast_values.user_id):
-            gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, podcast_values.user_id)
-            gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, podcast_values.user_id)
+    if key_id == request.podcast_values.user_id or is_web_key:
+        if database_functions.functions.check_gpodder_settings(database_type, cnx, request.podcast_values.user_id):
+            gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, request.podcast_values.user_id)
+            gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, request.podcast_values.user_id)
             if gpod_type == "nextcloud":
-                database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url)
+                database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url)
             else:
-                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_values.pod_feed_url, "pinepods")
-        podcast_id, first_episode_id = database_functions.functions.add_podcast(cnx, database_type, podcast_values.dict(), podcast_values.user_id)
+                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url, "pinepods")
+
+        podcast_id, first_episode_id = database_functions.functions.add_podcast(
+            cnx,
+            database_type,
+            request.podcast_values.dict(),
+            request.podcast_values.user_id,
+            podcast_index_id=request.podcast_index_id
+        )
+
         if podcast_id:
             return {"success": True, "podcast_id": podcast_id, "first_episode_id": first_episode_id}
         else:

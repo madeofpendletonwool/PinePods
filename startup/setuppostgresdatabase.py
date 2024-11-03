@@ -320,6 +320,7 @@ try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS "Podcasts" (
                 PodcastID SERIAL PRIMARY KEY,
+                PodcastIndexID INT,
                 PodcastName TEXT,
                 ArtworkURL TEXT,
                 Author TEXT,

@@ -146,11 +146,33 @@ def add_news_feed_if_not_added(database_type, cnx):
     finally:
         cursor.close()
 
-def add_podcast(cnx, database_type, podcast_values, user_id, username=None, password=None):
+def add_podcast(cnx, database_type, podcast_values, user_id, username=None, password=None, podcast_index_id=0):
     cursor = cnx.cursor()
     print(f"Podcast values '{podcast_values}'")
     print(f'pod pod user: {username}')
     print(f'pod pod pass {password}')
+
+    # If podcast_index_id is 0, try to fetch it from the API
+    if podcast_index_id == 0:
+        api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
+        search_url = f"{api_url}?query={podcast_values['pod_title']}"
+
+        try:
+            response = requests.get(search_url)
+            response.raise_for_status()
+            data = response.json()
+
+            if data['status'] == 'true' and data['feeds']:
+                for feed in data['feeds']:
+                    if feed['title'] == podcast_values['pod_title']:
+                        podcast_index_id = feed['id']
+                        break
+
+            if podcast_index_id == 0:
+                print(f"Couldn't find PodcastIndexID for {podcast_values['pod_title']}")
+        except Exception as e:
+            print(f"Error fetching PodcastIndexID: {e}")
+
 
     try:
         # Check if the podcast already exists for the user
@@ -185,17 +207,18 @@ def add_podcast(cnx, database_type, podcast_values, user_id, username=None, pass
         if database_type == "postgresql":
             add_podcast_query = """
                 INSERT INTO "Podcasts"
-                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password)
-                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
+                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password, PodcastIndexID)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
             """
             explicit = podcast_values['pod_explicit']
         else:  # MySQL or MariaDB
             add_podcast_query = """
                 INSERT INTO Podcasts
-                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password)
-                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
+                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password, PodcastIndexID)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
             """
             explicit = 1 if podcast_values['pod_explicit'] else 0
+
 
         print("Inserting into db")
         print(podcast_values['pod_title'])
@@ -220,7 +243,8 @@ def add_podcast(cnx, database_type, podcast_values, user_id, username=None, pass
                 explicit,
                 user_id,
                 username,
-                password
+                password,
+                podcast_index_id
             ))
 
             if database_type == "postgresql":
@@ -1046,13 +1070,13 @@ def return_pods(database_type, cnx, user_id):
 
     if database_type == "postgresql":
         query = (
-            'SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit '
+            'SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit, PodcastIndexID '
             'FROM "Podcasts" '
             'WHERE UserID = %s'
         )
     else:  # MySQL or MariaDB
         query = (
-            "SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit "
+            "SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit, PodcastIndexID "
             "FROM Podcasts "
             "WHERE UserID = %s"
         )
@@ -1652,6 +1676,22 @@ def get_episode_ids_for_podcast(cnx, database_type, podcast_id):
     # Extract episode IDs from the results
     episode_ids = [row[0] if isinstance(row, tuple) else row.get('episodeid') for row in results]
     return episode_ids
+
+def get_podcast_index_id(cnx, database_type, podcast_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT PodcastIndexID FROM "Podcasts" WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            query = "SELECT PodcastIndexID FROM Podcasts WHERE PodcastID = %s"
+
+        cursor.execute(query, (podcast_id,))
+        result = cursor.fetchone()
+        if result:
+            return result[0] if isinstance(result, tuple) else result.get("podcastindexid")
+        return None
+    finally:
+        cursor.close()
 
 
 

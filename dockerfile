@@ -1,5 +1,5 @@
 # Builder stage for compiling the Yew application
-FROM rust:alpine3.19 AS builder
+FROM rust:alpine AS builder
 
 # Install build dependencies
 RUN apk update && apk upgrade && \
@@ -34,7 +34,7 @@ WORKDIR /app
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
 
 # Final stage for setting up runtime environment
-FROM alpine:3.19
+FROM alpine
 
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"

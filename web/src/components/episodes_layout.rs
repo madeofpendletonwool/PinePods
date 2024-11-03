@@ -308,9 +308,10 @@ pub fn episode_layout() -> Html {
 
                         let podcast_title = url_params.get("podcast_title").unwrap_or_default();
                         let podcast_url = url_params.get("podcast_url").unwrap_or_default();
-
+                        let podcast_index_id = 0;
                         if !podcast_title.is_empty() && !podcast_url.is_empty() {
                             let podcast_info = ClickedFeedURL {
+                                podcast_id: 0,
                                 podcast_title: podcast_title.clone(),
                                 podcast_url: podcast_url.clone(),
                                 podcast_description: String::new(),
@@ -320,6 +321,7 @@ pub fn episode_layout() -> Html {
                                 podcast_episode_count: 0,
                                 podcast_categories: None,
                                 podcast_link: String::new(),
+                                podcast_index_id,
                             };
 
                             let api_key = api_key.clone();
@@ -1420,6 +1422,7 @@ pub fn episode_layout() -> Html {
             Callback::from(move |_: MouseEvent| {
                 // Ensure this is triggered only by a MouseEvent
                 let callback_podcast_id = added_id.clone();
+                let podcast_id_og = Some(pod_values.clone().unwrap().podcast_id.clone());
                 let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
                 let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
                 let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
@@ -1477,6 +1480,7 @@ pub fn episode_layout() -> Html {
                         &api_key_wasm,
                         user_id_wasm,
                         &pod_values_clone,
+                        podcast_id_og,
                     )
                     .await
                     {

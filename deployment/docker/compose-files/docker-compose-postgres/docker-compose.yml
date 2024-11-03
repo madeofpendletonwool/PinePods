@@ -22,6 +22,7 @@ services:
     environment:
       # Basic Server Info
       SEARCH_API_URL: "https://search.pinepods.online/api/search"
+      PEOPLE_API_URL: "https://people.pinepods.online/api/hosts"
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
