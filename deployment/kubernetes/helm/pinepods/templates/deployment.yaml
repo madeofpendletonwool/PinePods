@@ -15,6 +15,7 @@ spec:
     metadata:
       labels:
         {{- include "pinepods.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: main
     spec:
       containers:
         - name: {{ .Chart.Name }}

@@ -14,3 +14,4 @@ spec:
       {{- end }}
   selector:
     {{- include "pinepods.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: main
