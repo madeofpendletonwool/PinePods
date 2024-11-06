@@ -2,6 +2,9 @@
 mod components;
 mod requests;
 
+#[cfg(test)]
+mod tests;
+
 use components::routes::Route;
 // use components::login::Login;
 // use components::login::ChangeServer;
