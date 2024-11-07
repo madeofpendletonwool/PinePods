@@ -148,9 +148,6 @@ def add_news_feed_if_not_added(database_type, cnx):
 
 def add_podcast(cnx, database_type, podcast_values, user_id, username=None, password=None, podcast_index_id=0):
     cursor = cnx.cursor()
-    print(f"Podcast values '{podcast_values}'")
-    print(f'pod pod user: {username}')
-    print(f'pod pod pass {password}')
 
     # If podcast_index_id is 0, try to fetch it from the API
     if podcast_index_id == 0:
