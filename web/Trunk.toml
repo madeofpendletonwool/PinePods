@@ -1,0 +1,16 @@
+[build]
+target = "index.html"
+dist = "dist"
+release = true
+
+# [watch]
+# ignore = ["dist/**"]
+
+# [serve]
+# Add any serve-specific configurations here if needed
+
+[clean]
+dist = "dist"
+
+# Specify the required Trunk version if needed
+# trunk-version = "^0.19.0"

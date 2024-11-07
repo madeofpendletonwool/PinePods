@@ -59,6 +59,9 @@ pub struct Episode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -126,16 +129,29 @@ pub struct PodcastStatusResponse {
 pub async fn call_add_podcast(
     server_name: &str,
     api_key: &Option<String>,
-    _user_id: i32,
+    user_id: i32,
     added_podcast: &PodcastValues,
+    podcast_index_id: Option<i64>,
 ) -> Result<PodcastStatusResponse, Error> {
     let url = format!("{}/api/data/add_podcast", server_name);
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| Error::msg("API key is missing"))?;
 
-    // Serialize `added_podcast` into JSON
-    let json_body = serde_json::to_string(added_podcast)?;
+    // Create a new struct that includes PodcastValues and the optional podcast_index_id
+    #[derive(Serialize)]
+    struct AddPodcastRequest {
+        podcast_values: PodcastValues,
+        podcast_index_id: Option<i64>,
+    }
+
+    let request_body = AddPodcastRequest {
+        podcast_values: added_podcast.clone(),
+        podcast_index_id,
+    };
+
+    // Serialize the new struct into JSON
+    let json_body = serde_json::to_string(&request_body)?;
 
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -145,9 +161,7 @@ pub async fn call_add_podcast(
         .await?;
 
     if response.ok() {
-        // Read the response as JSON
         let response_body = response.json::<PodcastStatusResponse>().await?;
-        // Optionally, you can log the response body as JSON string
         web_sys::console::log_1(&serde_json::to_string(&response_body).unwrap().into());
         Ok(response_body)
     } else {
@@ -271,6 +285,7 @@ pub struct Podcast {
     pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
     #[serde(deserialize_with = "bool_from_int")]
     pub explicit: bool,
+    pub podcastindexid: i64,
 }
 
 pub async fn call_get_podcasts(
@@ -1240,6 +1255,7 @@ pub struct Person {
     pub group: Option<String>,
     pub img: Option<String>,
     pub href: Option<String>,
+    pub id: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1643,6 +1659,7 @@ pub struct PodcastDetails {
     pub websiteurl: String,
     pub explicit: bool,
     pub userid: i32,
+    pub podcastindexid: i64,
 }
 
 #[derive(Deserialize)]

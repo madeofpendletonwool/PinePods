@@ -20,12 +20,18 @@ RUN apk update
 # Install the desired package from the edge community repository
 RUN apk add trunk@edge
 
-# Add your application files to the builder stage
-COPY . /app
-WORKDIR /app/web
+# Add application files to the builder stage
+COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
+COPY ./web/dist /app/dist
+COPY ./web/src /app/src
+COPY ./web/static /app/static
+COPY ./web/target /app/target
+
+WORKDIR /app
+
 
 # Build the Yew application in release mode
-RUN trunk build --features server_build --release
+RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
 
 # Final stage for setting up runtime environment
 FROM alpine:3.19

@@ -6,7 +6,7 @@ use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::{
-    format_datetime, parse_date, sanitize_html_with_blank_target, DateFormat,
+    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::Episode as EpisodeData;
@@ -18,9 +18,11 @@ use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
 use crate::requests::login_requests::use_check_authentication;
+use gloo::events::EventListener;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
+use web_sys::{Element, HtmlElement};
 
 use wasm_bindgen::prelude::*;
 
@@ -123,7 +125,6 @@ pub fn home() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let dispatch = effect_dispatch.clone();
-
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
@@ -132,18 +133,35 @@ pub fn home() -> Html {
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
                                     .collect();
-
+                                let saved_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.saved)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+                                let queued_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.queued)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+                                let downloaded_episode_ids: Vec<i32> = fetched_episodes
+                                    .iter()
+                                    .filter(|ep| ep.downloaded)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
                                 dispatch.reduce_mut(move |state| {
                                     state.server_feed_results = Some(RecentEps {
                                         episodes: Some(fetched_episodes),
                                     });
                                     state.completed_episodes = Some(completed_episode_ids);
+                                    state.saved_episode_ids = Some(saved_episode_ids);
+                                    state.queued_episode_ids = Some(queued_episode_ids);
+                                    state.downloaded_episode_ids = Some(downloaded_episode_ids);
                                 });
                                 loading_ep.set(false);
                             }
                             Err(e) => {
                                 error_clone.set(Some(e.to_string()));
-                                loading_ep.set(false); // Set loading to false here
+                                loading_ep.set(false);
                             }
                         }
                     });
@@ -182,13 +200,12 @@ pub fn home() -> Html {
                                     "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
                                 )
                             } else {
-                                episodes.into_iter().map(|episode| {
-                                    html! {
-                                        <Episode
-                                            episode={episode.clone()}
-                                        />
-                                    }
-                                }).collect::<Html>()
+                                html! {
+                                    <VirtualList
+                                        episodes={episodes}
+                                        page_type="home"
+                                    />
+                                }
                             }
                         } else {
                             empty_message(
@@ -224,16 +241,112 @@ pub fn home() -> Html {
     }
 }
 
+#[derive(Properties, PartialEq)]
+pub struct VirtualListProps {
+    pub episodes: Vec<EpisodeData>,
+    pub page_type: String,
+}
+
+#[function_component(VirtualList)]
+pub fn virtual_list(props: &VirtualListProps) -> Html {
+    let scroll_pos = use_state(|| 0.0);
+    let container_ref = use_node_ref();
+    let container_height = use_state(|| 0.0);
+    let item_height = use_state(|| 234.0); // Default item height
+
+    // Effect to set initial container height, item height, and listen for window resize
+    {
+        let container_height = container_height.clone();
+        let item_height = item_height.clone();
+        use_effect_with((), move |_| {
+            let window = window().expect("no global `window` exists");
+            let window_clone = window.clone();
+            let update_sizes = Callback::from(move |_| {
+                let height = window_clone.inner_height().unwrap().as_f64().unwrap();
+                container_height.set(height - 100.0); // Adjust 100 based on your layout
+
+                let width = window_clone.inner_width().unwrap().as_f64().unwrap();
+                let new_item_height = if width <= 530.0 {
+                    122.0
+                } else if width <= 768.0 {
+                    162.0
+                } else {
+                    221.0
+                };
+                item_height.set(new_item_height);
+            });
+
+            // Set initial sizes
+            update_sizes.emit(());
+
+            // Listen for window resize
+            let listener = EventListener::new(&window, "resize", move |_| {
+                update_sizes.emit(());
+            });
+
+            move || drop(listener)
+        });
+    }
+
+    // Effect for scroll handling
+    {
+        let scroll_pos = scroll_pos.clone();
+        let container_ref = container_ref.clone();
+        use_effect_with(container_ref.clone(), move |container_ref| {
+            let container = container_ref.cast::<HtmlElement>().unwrap();
+            let listener = EventListener::new(&container, "scroll", move |event| {
+                let target = event.target().unwrap().unchecked_into::<Element>();
+                scroll_pos.set(target.scroll_top() as f64);
+            });
+            move || drop(listener)
+        });
+    }
+
+    let start_index = (*scroll_pos / *item_height).floor() as usize;
+    let end_index = (((*scroll_pos + *container_height) / *item_height).ceil() as usize)
+        .min(props.episodes.len());
+
+    let visible_episodes = (start_index..end_index)
+        .map(|index| {
+            let episode = props.episodes[index].clone();
+            html! {
+                <Episode
+                    key={episode.episodeid}
+                    episode={episode.clone()}
+                    page_type={props.page_type.clone()}
+                />
+            }
+        })
+        .collect::<Html>();
+
+    let total_height = props.episodes.len() as f64 * *item_height;
+    let offset_y = start_index as f64 * *item_height;
+
+    html! {
+        <div ref={container_ref} style={format!("height: {}px; overflow-y: auto;", *container_height)}>
+            <div style={format!("height: {}px; position: relative;", total_height)}>
+                <div style={format!("position: absolute; top: {}px; left: 0; right: 0;", offset_y)}>
+                    { visible_episodes }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = window)]
+    fn toggleDescription(guid: &str, expanded: bool);
+}
 #[derive(Properties, PartialEq, Clone)]
 pub struct EpisodeProps {
-    pub episode: EpisodeData, // Assuming EpisodeData contains all episode details
-                              // Add callbacks for play and shownotes if they can't be internally handled
+    pub episode: EpisodeData,
+    pub page_type: String, // New prop to determine the context (e.g., "home", "saved")
 }
 
 #[function_component(Episode)]
 pub fn episode(props: &EpisodeProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    // let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -245,30 +358,6 @@ pub fn episode(props: &EpisodeProps) -> Html {
 
     let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
 
-    let dispatch = dispatch.clone();
-
-    let episode_url_clone = props.episode.episodeurl.clone();
-    let episode_title_clone = props.episode.episodetitle.clone();
-    let episode_artwork_clone = props.episode.episodeartwork.clone();
-    let episode_duration_clone = props.episode.episodeduration.clone();
-    let episode_id_clone = props.episode.episodeid.clone();
-    let episode_listened_clone = props.episode.listenduration.clone();
-
-    let sanitized_description =
-        sanitize_html_with_blank_target(&props.episode.episodedescription.clone());
-
-    // let (description, _is_truncated) = if desc_expanded {
-    //     (sanitized_description, false)
-    // } else {
-    //     truncate_description(sanitized_description, 300)
-    // };
-
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_namespace = window)]
-        fn toggleDescription(guid: &str, expanded: bool);
-    }
-
     let toggle_expanded = {
         let desc_dispatch = desc_dispatch.clone();
         let episode_guid = props.episode.episodeid.clone().to_string();
@@ -277,37 +366,26 @@ pub fn episode(props: &EpisodeProps) -> Html {
             let guid = episode_guid.clone();
             desc_dispatch.reduce_mut(move |state| {
                 if state.expanded_descriptions.contains(&guid) {
-                    state.expanded_descriptions.remove(&guid); // Collapse the description
-                    toggleDescription(&guid, false); // Call JavaScript function
+                    state.expanded_descriptions.remove(&guid);
+                    toggleDescription(&guid, false);
                 } else {
-                    state.expanded_descriptions.insert(guid.clone()); // Expand the description
-                    toggleDescription(&guid, true); // Call JavaScript function
+                    state.expanded_descriptions.insert(guid.clone());
+                    toggleDescription(&guid, true);
                 }
             });
         })
     };
 
-    let episode_url_for_closure = episode_url_clone.clone();
-    let episode_title_for_closure = episode_title_clone.clone();
-    let episode_artwork_for_closure = episode_artwork_clone.clone();
-    let episode_duration_for_closure = episode_duration_clone.clone();
-    let listener_duration_for_closure = episode_listened_clone.clone();
-    let episode_id_for_closure = episode_id_clone.clone();
-    let user_id_play = user_id.clone();
-    let server_name_play = server_name.clone();
-    let api_key_play = api_key.clone();
-    let audio_dispatch = audio_dispatch.clone();
-
     let on_play_click = on_play_click(
-        episode_url_for_closure.clone(),
-        episode_title_for_closure.clone(),
-        episode_artwork_for_closure.clone(),
-        episode_duration_for_closure.clone(),
-        episode_id_for_closure.clone(),
-        listener_duration_for_closure.clone(),
-        api_key_play.unwrap().unwrap(),
-        user_id_play.unwrap(),
-        server_name_play.unwrap(),
+        props.episode.episodeurl.clone(),
+        props.episode.episodetitle.clone(),
+        props.episode.episodeartwork.clone(),
+        props.episode.episodeduration.clone(),
+        props.episode.episodeid.clone(),
+        props.episode.listenduration.clone(),
+        api_key.unwrap().unwrap(),
+        user_id.unwrap(),
+        server_name.unwrap(),
         audio_dispatch.clone(),
         audio_state.clone(),
         None,
@@ -316,52 +394,40 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let on_shownotes_click = on_shownotes_click(
         history_clone.clone(),
         dispatch.clone(),
-        Some(episode_id_for_closure.clone()),
-        Some(String::from("home")),
-        Some(String::from("home")),
-        Some(String::from("home")),
+        Some(props.episode.episodeid.clone()),
+        Some(props.page_type.clone()),
+        Some(props.page_type.clone()),
+        Some(props.page_type.clone()),
         true,
     );
 
-    let date_format = match state.date_format.as_deref() {
-        Some("MDY") => DateFormat::MDY,
-        Some("DMY") => DateFormat::DMY,
-        Some("YMD") => DateFormat::YMD,
-        Some("JUL") => DateFormat::JUL,
-        Some("ISO") => DateFormat::ISO,
-        Some("USA") => DateFormat::USA,
-        Some("EUR") => DateFormat::EUR,
-        Some("JIS") => DateFormat::JIS,
-        _ => DateFormat::ISO, // default to ISO if the format is not recognized
-    };
-
+    let date_format = match_date_format(state.date_format.as_deref());
     let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
-    let episode_url_for_ep_item = episode_url_clone.clone();
-    // let datetime = parse_date(&episode.EpisodePubDate, &state.user_tz, &state.date_format);
     let format_release = format!(
         "{}",
         format_datetime(&datetime, &state.hour_preference, date_format)
     );
-    let check_episode_id = props.episode.episodeid.clone();
+
     let is_completed = state
         .completed_episodes
         .as_ref()
         .unwrap_or(&vec![])
-        .contains(&check_episode_id);
+        .contains(&props.episode.episodeid);
+
     let item = episode_item(
         Box::new(props.episode.clone()),
-        sanitized_description.clone(),
+        sanitize_html_with_blank_target(&props.episode.episodedescription),
         desc_expanded,
         &format_release,
         on_play_click,
         on_shownotes_click,
         toggle_expanded,
-        episode_duration_clone,
-        episode_listened_clone,
-        "home",
+        props.episode.episodeduration,
+        props.episode.listenduration,
+        &props.page_type,
         Callback::from(|_| {}),
         false,
-        episode_url_for_ep_item,
+        props.episode.episodeurl.clone(),
         is_completed,
     );
 

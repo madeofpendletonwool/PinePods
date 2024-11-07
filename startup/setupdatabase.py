@@ -309,6 +309,7 @@ try:
     # Create the Podcasts table if it doesn't exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
                         PodcastID INT AUTO_INCREMENT PRIMARY KEY,
+                        PodcastIndexID INT,
                         PodcastName TEXT,
                         ArtworkURL TEXT,
                         Author TEXT,
@@ -402,6 +403,22 @@ try:
     create_index_if_not_exists(cursor, "idx_podcasts_userid", "Podcasts", "UserID")
     create_index_if_not_exists(cursor, "idx_episodes_podcastid", "Episodes", "PodcastID")
     create_index_if_not_exists(cursor, "idx_episodes_episodepubdate", "Episodes", "EpisodePubDate")
+
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS People (
+                PersonID INT AUTO_INCREMENT PRIMARY KEY,
+                Name TEXT,
+                PeopleDBID INT,
+                AssociatedPodcasts TEXT,
+                UserID INT,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID)
+            );
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating SharedEpisodes table: {e}")
 
 
     try:

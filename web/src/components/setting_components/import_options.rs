@@ -1,25 +1,27 @@
-use std::collections::HashMap;
-use yew::prelude::*;
-use wasm_bindgen::JsCast;
-use yewdux::prelude::*;
-use crate::components::context::{UIState, AppState};
-use web_sys::{FileReader, HtmlInputElement};
-use wasm_bindgen::closure::Closure;
+use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::parse_opml;
 use crate::requests::pod_req::{call_add_podcast, PodcastValues};
 use crate::requests::search_pods::{call_parse_podcast_channel_info, PodcastInfo};
 use gloo::timers::callback::Interval;
+use std::collections::HashMap;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use web_sys::{FileReader, HtmlInputElement};
+use yew::prelude::*;
+use yewdux::prelude::*;
 // use wasm_bindgen::JsValue;
 use crate::requests::setting_reqs::{call_podcast_opml_import, fetch_import_progress};
-use wasm_bindgen::JsValue;
 use std::cell::RefCell;
 use std::rc::Rc;
+use wasm_bindgen::JsValue;
 
-
-fn transform_feed_result_to_values(feed_result: PodcastInfo, podcast_to_add: &PodcastToAdd, user_id: i32) -> PodcastValues {
+fn transform_feed_result_to_values(
+    feed_result: PodcastInfo,
+    podcast_to_add: &PodcastToAdd,
+    user_id: i32,
+) -> PodcastValues {
     let pod_title = podcast_to_add.title.clone();
     let pod_feed_url = podcast_to_add.xml_url.clone();
-
 
     // Simplified: Using first episode details or default values
     let pod_artwork = feed_result.artwork_url.unwrap_or_default();
@@ -28,7 +30,6 @@ fn transform_feed_result_to_values(feed_result: PodcastInfo, podcast_to_add: &Po
     let pod_website = feed_result.website;
     let pod_explicit = feed_result.explicit;
     let pod_episode_count = feed_result.episode_count;
-
 
     // Placeholder for categories, as an example
     let categories = HashMap::new();
@@ -43,10 +44,9 @@ fn transform_feed_result_to_values(feed_result: PodcastInfo, podcast_to_add: &Po
         pod_feed_url,
         pod_website,
         pod_explicit,
-        user_id
+        user_id,
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct PodcastToAdd {
@@ -61,31 +61,39 @@ struct PodcastToImport {
     selected: bool,
 }
 
-
-async fn add_podcasts(server_name: &str, api_key: &Option<String>, user_id: i32, podcasts: Vec<PodcastToAdd>) {
+async fn add_podcasts(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcasts: Vec<PodcastToAdd>,
+) {
     for podcast in podcasts.into_iter() {
         // Parse podcast URL to get feed details
         match call_parse_podcast_channel_info(&podcast.xml_url).await {
             Ok(feed_result) => {
                 let add_podcast = PodcastToAdd {
                     title: podcast.title.clone(),
-                    xml_url: podcast.xml_url.clone()
+                    xml_url: podcast.xml_url.clone(),
                 };
                 // Assuming you transform `feed_result` into `PodcastValues` needed by `call_add_podcast`
-                let podcast_values = transform_feed_result_to_values(feed_result, &add_podcast, user_id);
+                let podcast_values =
+                    transform_feed_result_to_values(feed_result, &add_podcast, user_id);
+                let podcast_id = Some(0);
 
                 // Add podcast to the server
-                match call_add_podcast(server_name, api_key, user_id, &podcast_values).await {
+                match call_add_podcast(server_name, api_key, user_id, &podcast_values, podcast_id)
+                    .await
+                {
                     Ok(_) => log::info!("Podcast added successfully: {}", podcast.title.clone()),
-                    Err(e) => log::error!("Failed to add podcast {}: {:?}", podcast.title.clone(), e),
+                    Err(e) => {
+                        log::error!("Failed to add podcast {}: {:?}", podcast.title.clone(), e)
+                    }
                 }
-            },
+            }
             Err(e) => log::error!("Failed to parse podcast URL {}: {:?}", podcast.xml_url, e),
         }
     }
 }
-
-
 
 #[function_component(ImportOptions)]
 pub fn import_options() -> Html {
@@ -99,7 +107,6 @@ pub fn import_options() -> Html {
     let import_progress = use_state(|| 0);
     let total_podcasts = use_state(|| 0);
     let current_podcast = use_state(String::default);
-
 
     let onclick = {
         let import_pods = import_pods.clone();
@@ -118,7 +125,11 @@ pub fn import_options() -> Html {
                             let text = text.as_string().unwrap();
                             let import_data: Vec<PodcastToImport> = parse_opml(&text)
                                 .into_iter()
-                                .map(|(title, xml_url)| PodcastToImport { title, xml_url, selected: true })
+                                .map(|(title, xml_url)| PodcastToImport {
+                                    title,
+                                    xml_url,
+                                    selected: true,
+                                })
                                 .collect();
                             import_pods.set(import_data);
                             show_verification.set(true);
@@ -131,11 +142,9 @@ pub fn import_options() -> Html {
             }
         })
     };
-    
+
     let server_name_confirm = server_name.clone();
     let dispatch_wasm = _dispatch.clone();
-
-
 
     let on_confirm = {
         let import_pods = import_pods.clone();
@@ -146,7 +155,7 @@ pub fn import_options() -> Html {
         let total_podcasts = total_podcasts.clone();
         let current_podcast = current_podcast.clone();
         let dispatch_wasm_conf = dispatch_wasm.clone();
-    
+
         Callback::from(move |_| {
             let dispatch_wasm_call = dispatch_wasm_conf.clone();
             let audio_dispatch_call = audio_dispatch.clone();
@@ -156,9 +165,9 @@ pub fn import_options() -> Html {
                 .filter(|podcast| podcast.selected)
                 .map(|podcast| podcast.xml_url.clone())
                 .collect();
-    
+
             total_podcasts.set(selected_podcasts.len());
-    
+
             wasm_bindgen_futures::spawn_local({
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
@@ -166,15 +175,25 @@ pub fn import_options() -> Html {
                 let import_progress = import_progress.clone();
                 let current_podcast = current_podcast.clone();
                 let total_podcasts = total_podcasts.clone();
-    
+
                 async move {
-                    if let (Some(server_name), Some(api_key), Some(user_id)) = (server_name.clone(), api_key.clone(), user_id) {
-                        match call_podcast_opml_import(&server_name, &Some(api_key.clone().unwrap()), user_id, selected_podcasts.clone()).await {
+                    if let (Some(server_name), Some(api_key), Some(user_id)) =
+                        (server_name.clone(), api_key.clone(), user_id)
+                    {
+                        match call_podcast_opml_import(
+                            &server_name,
+                            &Some(api_key.clone().unwrap()),
+                            user_id,
+                            selected_podcasts.clone(),
+                        )
+                        .await
+                        {
                             Ok(_) => {
-                                let interval: Rc<RefCell<Option<Interval>>> = Rc::new(RefCell::new(None));
+                                let interval: Rc<RefCell<Option<Interval>>> =
+                                    Rc::new(RefCell::new(None));
                                 let interval_clone = interval.clone();
                                 web_sys::console::log_1(&JsValue::from_str("opml import success"));
-                            
+
                                 let callback = Closure::wrap(Box::new(move || {
                                     let dispatch_wasm = dispatch_wasm_call.clone();
                                     let audio_dispatch = audio_dispatch_call.clone();
@@ -186,41 +205,67 @@ pub fn import_options() -> Html {
                                     let total_podcasts = total_podcasts.clone();
                                     let interval = interval_clone.clone();
                                     web_sys::console::log_1(&JsValue::from_str("pod closure"));
-                            
+
                                     wasm_bindgen_futures::spawn_local(async move {
-                                        match fetch_import_progress(&server_name, &api_key, user_id).await {
+                                        match fetch_import_progress(&server_name, &api_key, user_id)
+                                            .await
+                                        {
                                             Ok((current, total, podcast)) => {
-                                                web_sys::console::log_1(&JsValue::from_str("got progress"));
+                                                web_sys::console::log_1(&JsValue::from_str(
+                                                    "got progress",
+                                                ));
                                                 import_progress.set(current);
                                                 total_podcasts.set(total as usize);
                                                 current_podcast.set(podcast);
                                                 if current >= total {
                                                     // Import is complete, stop polling
-                                                    if let Some(interval) = interval.borrow_mut().take() {
+                                                    if let Some(interval) =
+                                                        interval.borrow_mut().take()
+                                                    {
                                                         interval.cancel();
                                                     }
-                                                    dispatch_wasm.reduce_mut(|state| state.is_loading = Some(false));
-                                                    audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("OPML Import Completed!".to_string()));
+                                                    dispatch_wasm.reduce_mut(|state| {
+                                                        state.is_loading = Some(false)
+                                                    });
+                                                    audio_dispatch.reduce_mut(|audio_state| {
+                                                        audio_state.info_message = Option::from(
+                                                            "OPML Import Completed!".to_string(),
+                                                        )
+                                                    });
                                                 }
                                             }
                                             Err(e) => {
-                                                web_sys::console::log_1(&JsValue::from_str("progress failed"));
-                                                log::error!("Failed to fetch import progress: {:?}", e);
+                                                web_sys::console::log_1(&JsValue::from_str(
+                                                    "progress failed",
+                                                ));
+                                                log::error!(
+                                                    "Failed to fetch import progress: {:?}",
+                                                    e
+                                                );
                                             }
                                         }
                                     });
-                                }) as Box<dyn Fn()>);
-                            
+                                })
+                                    as Box<dyn Fn()>);
+
                                 interval.borrow_mut().replace(Interval::new(5000, move || {
-                                    callback.as_ref().unchecked_ref::<js_sys::Function>().call0(&JsValue::NULL).unwrap();
+                                    callback
+                                        .as_ref()
+                                        .unchecked_ref::<js_sys::Function>()
+                                        .call0(&JsValue::NULL)
+                                        .unwrap();
                                     // Return () explicitly
                                     ()
                                 }));
                             }
                             Err(e) => {
                                 log::error!("Failed to import OPML: {:?}", e);
-                                dispatch_wasm_call.reduce_mut(|state| state.is_loading = Some(false));
-                                audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Failed to import OPML".to_string()));
+                                dispatch_wasm_call
+                                    .reduce_mut(|state| state.is_loading = Some(false));
+                                audio_dispatch_call.reduce_mut(|audio_state| {
+                                    audio_state.info_message =
+                                        Option::from("Failed to import OPML".to_string())
+                                });
                             }
                         }
                     }
@@ -228,7 +273,6 @@ pub fn import_options() -> Html {
             });
         })
     };
-    
 
     html! {
         <div class="p-4">
@@ -266,7 +310,7 @@ pub fn import_options() -> Html {
                                             import_pods.set(new_import_pods);
                                         })
                                     };
-                                
+
                                     html! {
                                         <div class="podcast import-list">
                                             <label onclick={toggle_selection}>
@@ -275,8 +319,8 @@ pub fn import_options() -> Html {
                                             </label>
                                         </div>
                                     }
-                                })                                
-                                
+                                })
+
                             }
                         </div>
                     }
@@ -285,6 +329,6 @@ pub fn import_options() -> Html {
                 }
             }
         </div>
-        
+
     }
 }

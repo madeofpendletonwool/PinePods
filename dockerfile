@@ -1,5 +1,5 @@
 # Builder stage for compiling the Yew application
-FROM rust:alpine3.19 AS builder
+FROM rust:alpine AS builder
 
 # Install build dependencies
 RUN apk update && apk upgrade && \
@@ -20,15 +20,21 @@ RUN apk add trunk@edge
 RUN rustup target add wasm32-unknown-unknown && \
     cargo install wasm-bindgen-cli
 
-# Add your application files to the builder stage
-COPY ./web /app
+# Add application files to the builder stage
+COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
+COPY ./web/dist /app/dist
+COPY ./web/src /app/src
+COPY ./web/static /app/static
+COPY ./web/target /app/target
+
 WORKDIR /app
 
+
 # Build the Yew application in release mode
-RUN trunk build --features server_build --release
+RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
 
 # Final stage for setting up runtime environment
-FROM alpine:3.19
+FROM alpine
 
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"

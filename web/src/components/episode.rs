@@ -4,20 +4,20 @@ use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::SafeHtml;
-use crate::components::episodes_layout::{HostDropdown, UIStateMsg};
+use crate::components::episodes_layout::{SafeHtml, UIStateMsg};
 use crate::components::gen_funcs::{
     convert_time_to_seconds, format_datetime, format_time, match_date_format, parse_date,
     sanitize_html_with_blank_target,
 };
+use crate::components::host_component::HostDropdown;
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
-    call_download_episode, call_fetch_podcasting_2_data, call_get_episode_id,
-    call_mark_episode_completed, call_create_share_link, call_mark_episode_uncompleted, call_queue_episode,
-    call_save_episode, DownloadEpisodeRequest, EpisodeInfo, EpisodeMetadataResponse,
-    EpisodeRequest, FetchPodcasting2DataRequest, MarkEpisodeCompletedRequest, QueuePodcastRequest,
-    SavePodcastRequest,
+    call_create_share_link, call_download_episode, call_fetch_podcasting_2_data,
+    call_get_episode_id, call_mark_episode_completed, call_mark_episode_uncompleted,
+    call_queue_episode, call_save_episode, DownloadEpisodeRequest, EpisodeInfo,
+    EpisodeMetadataResponse, EpisodeRequest, FetchPodcasting2DataRequest,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest,
 };
 use crate::requests::search_pods::call_parse_podcast_url;
 use wasm_bindgen::closure::Closure;
@@ -32,7 +32,9 @@ use yewdux::prelude::*;
 fn get_current_url() -> String {
     let window = window().expect("no global `window` exists");
     let location = window.location();
-    location.href().unwrap_or_else(|_| "Unable to retrieve URL".to_string())
+    location
+        .href()
+        .unwrap_or_else(|_| "Unable to retrieve URL".to_string())
 }
 
 #[function_component(Episode)]
@@ -664,10 +666,6 @@ pub fn epsiode() -> Html {
     //     }
     // });
 
-
-
-
-
     {
         let state = state.clone();
         let completion_status = completion_status.clone();
@@ -729,7 +727,9 @@ pub fn epsiode() -> Html {
 
             wasm_bindgen_futures::spawn_local(async move {
                 let api_key_copy = api_key.clone();
-                if let (Some(_api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref()) {
+                if let (Some(_api_key), Some(server_name)) =
+                    (api_key.as_ref(), server_name.as_ref())
+                {
                     match call_create_share_link(
                         &server_name,
                         &api_key_copy.unwrap().unwrap(),
@@ -743,7 +743,9 @@ pub fn epsiode() -> Html {
                             page_state_copy.set(PageState::Shown); // Show the modal
                         }
                         Err(e) => {
-                            web_sys::console::log_1(&format!("Error creating share link: {}", e).into());
+                            web_sys::console::log_1(
+                                &format!("Error creating share link: {}", e).into(),
+                            );
                         }
                     }
                 }
@@ -752,38 +754,37 @@ pub fn epsiode() -> Html {
     };
 
     // Define the modal for showing the shareable link
-    let share_url_modal =
-        html! {
-            <div id="share_url_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                            <h3 class="text-xl font-semibold">
-                                {"Copy Shared Link"}
-                            </h3>
-                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{"Close modal"}</span>
-                            </button>
+    let share_url_modal = html! {
+        <div id="share_url_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                        <h3 class="text-xl font-semibold">
+                            {"Copy Shared Link"}
+                        </h3>
+                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                            </svg>
+                            <span class="sr-only">{"Close modal"}</span>
+                        </button>
+                    </div>
+                    <div class="p-4 md:p-5">
+                        <div>
+                            <label for="share_link" class="block mb-2 text-sm font-medium">{"Share this link with anyone you'd like to be able to listen to this episode. They don't even need an account on the server to use this!"}</label>
+                            <input type="text" id="share_link" class="input-black w-full px-3 py-2 border border-gray-300 rounded-md" value={shared_url.as_ref().map(|url| url.clone()).unwrap_or_else(|| "".to_string())} readonly=true />
+                            // <button class="copy-button" onclick={copy_to_clipboard.clone()}>{ "Copy to clipboard" }</button>
                         </div>
-                        <div class="p-4 md:p-5">
-                            <div>
-                                <label for="share_link" class="block mb-2 text-sm font-medium">{"Share this link with anyone you'd like to be able to listen to this episode. They don't even need an account on the server to use this!"}</label>
-                                <input type="text" id="share_link" class="input-black w-full px-3 py-2 border border-gray-300 rounded-md" value={shared_url.as_ref().map(|url| url.clone()).unwrap_or_else(|| "".to_string())} readonly=true />
-                                // <button class="copy-button" onclick={copy_to_clipboard.clone()}>{ "Copy to clipboard" }</button>
-                            </div>
-                            <div>
-                                <label for="share_link" class="block mb-2 text-sm font-medium">{"If they do have an account you can just send the user the current link on this web page:"}</label>
-                                <input type="text" id="share_link" class="input-black w-full px-3 py-2 border border-gray-300 rounded-md" value={get_current_url()} readonly=true />
-                                // <button class="copy-button" onclick={copy_to_clipboard.clone()}>{ "Copy to clipboard" }</button>
-                            </div>
+                        <div>
+                            <label for="share_link" class="block mb-2 text-sm font-medium">{"If they do have an account you can just send the user the current link on this web page:"}</label>
+                            <input type="text" id="share_link" class="input-black w-full px-3 py-2 border border-gray-300 rounded-md" value={get_current_url()} readonly=true />
+                            // <button class="copy-button" onclick={copy_to_clipboard.clone()}>{ "Copy to clipboard" }</button>
                         </div>
                     </div>
                 </div>
             </div>
-        };
+        </div>
+    };
 
     html! {
         <>
@@ -1221,7 +1222,7 @@ pub fn epsiode() -> Html {
                                                     if !people.is_empty() {
                                                         html! {
                                                             <div class="header-info-episode">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} />
+                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} />
                                                             </div>
                                                         }
                                                     } else {
@@ -1347,7 +1348,7 @@ pub fn epsiode() -> Html {
                                                     if !people.is_empty() {
                                                         html! {
                                                             <div class="header-info">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} />
+                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} />
                                                             </div>
                                                         }
                                                     } else {

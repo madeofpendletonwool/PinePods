@@ -22,6 +22,7 @@ use yewdux::use_store;
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ClickedFeedURL {
     // Add fields according to your API's JSON response
+    pub podcast_id: i64,
     pub podcast_title: String,
     pub podcast_url: String,
     pub podcast_description: String,
@@ -31,6 +32,7 @@ pub struct ClickedFeedURL {
     pub podcast_episode_count: i32,
     pub podcast_categories: Option<HashMap<String, String>>,
     pub podcast_link: String,
+    pub podcast_index_id: i64,
 }
 
 #[function_component(PodLayout)]
@@ -198,6 +200,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let toggle_podcast = {
         let podcast_add = podcast_add.clone();
 
+        let podcast_id_og = podcast_add.id.clone();
         let pod_title_og = podcast_add.title.clone();
         let pod_artwork_og = podcast_add.artwork.clone();
         let pod_author_og = podcast_add.author.clone();
@@ -275,6 +278,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 });
             } else {
                 // If the podcast was not added, add it to the set and call add_podcast.
+                let podcast_id_og = podcast_id_og.clone();
                 let pod_title_og = pod_title_og.clone();
                 let pod_artwork_og = pod_artwork_og.clone();
                 let pod_author_og = pod_author_og.clone();
@@ -286,6 +290,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 let pod_explicit_og = pod_explicit_og.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
+                    let pod_id = Some(podcast_id_og.clone());
                     let pod_title = pod_title_og.clone();
                     let pod_artwork = pod_artwork_og.clone();
                     let pod_author = pod_author_og.clone();
@@ -313,6 +318,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                         &api_key.unwrap(),
                         user_id.unwrap(),
                         &podcast_values,
+                        pod_id,
                     )
                     .await
                     {
@@ -339,6 +345,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         })
     };
 
+    let podcast_id_clone = podcast.id.clone();
     let podcast_title_clone = podcast.title.clone();
     let podcast_url_clone = podcast.url.clone();
     let podcast_description_clone = podcast.description.clone();
@@ -363,6 +370,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let server_name_click = server_name.clone();
             let api_key_click = api_key.clone();
+            let podcast_id = podcast_id_clone.clone();
             let podcast_title = podcast_title_clone.clone();
             let podcast_url = podcast_url_clone.clone();
             let podcast_description = podcast_description_clone.clone();
@@ -372,9 +380,11 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let podcast_episode_count = podcast_episode_count_clone.clone();
             let podcast_categories = podcast_categories_clone.clone();
             let podcast_link = podcast_link_clone.clone();
+            let podcast_index_id = 0;
             web_sys::console::log_1(&format!("cats after click: {:?}", podcast_categories).into());
             e.prevent_default(); // Prevent the default anchor behavior
             let podcast_values = ClickedFeedURL {
+                podcast_id,
                 podcast_title,
                 podcast_url: podcast_url.clone(),
                 podcast_description,
@@ -384,6 +394,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 podcast_episode_count,
                 podcast_categories,
                 podcast_link,
+                podcast_index_id,
             };
             let dispatch = dispatch.clone();
             let history = history.clone(); // Clone again for use inside async block
@@ -477,8 +488,8 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
-                        <button 
-                            class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")} 
+                        <button
+                            class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")}
                             style="width: 60px; height: 60px;"
                             onclick={toggle_podcast}
                         >

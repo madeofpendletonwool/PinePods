@@ -1,3 +1,5 @@
+use super::gen_funcs::{format_datetime, match_date_format, parse_date};
+use crate::components::audio::{on_play_click, AudioPlayer};
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
@@ -5,6 +7,9 @@ use crate::components::downloads_tauri::{
 };
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_time;
+use crate::components::gen_funcs::{
+    convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
+};
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
     call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
@@ -19,12 +24,14 @@ use crate::requests::pod_req::{
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
 use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
+use gloo_events::EventListener;
 use std::any::Any;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
+use web_sys::HtmlElement;
 use web_sys::{console, window, HtmlInputElement, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
@@ -105,8 +112,7 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
     let history = BrowserHistory::new();
-    let dispatch = Dispatch::<AppState>::global();
-    let state: Rc<AppState> = dispatch.get();
+    let (state, dispatch) = use_store::<AppState>();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
     let (_app_state, dispatch) = use_store::<AppState>();
@@ -355,15 +361,49 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let dropdown_ref = NodeRef::default();
+    let dropdown_ref = use_node_ref();
+    let button_ref = use_node_ref();
 
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
         Callback::from(move |e: MouseEvent| {
-            e.stop_propagation(); // Stop the event from propagating further
+            e.stop_propagation();
             dropdown_open.set(!*dropdown_open);
         })
     };
+
+    // Close dropdown when clicking outside
+    {
+        let dropdown_open = dropdown_open.clone();
+        let dropdown_ref = dropdown_ref.clone();
+        let button_ref = button_ref.clone();
+
+        use_effect_with((*dropdown_open, ()), move |_| {
+            let document = window().unwrap().document().unwrap();
+            let dropdown_open = dropdown_open.clone();
+            let dropdown_ref = dropdown_ref.clone();
+            let button_ref = button_ref.clone();
+
+            let listener = EventListener::new(&document, "click", move |event| {
+                if *dropdown_open {
+                    let target = event.target().unwrap().dyn_into::<HtmlElement>().unwrap();
+                    if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
+                        if let Some(button_element) = button_ref.cast::<HtmlElement>() {
+                            if !dropdown_element.contains(Some(&target))
+                                && !button_element.contains(Some(&target))
+                            {
+                                dropdown_open.set(false);
+                            }
+                        }
+                    }
+                }
+            });
+
+            move || {
+                drop(listener);
+            }
+        });
+    }
 
     {
         let dropdown_open = dropdown_open.clone(); // Clone for use in the effect hook
@@ -413,9 +453,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         });
     }
 
+    let check_episode_id = props.episode.get_episode_id(Some(0));
+
     let queue_api_key = api_key.clone();
     let queue_server_name = server_name.clone();
-    let queue_post = audio_dispatch.clone();
+    let queue_post = post_dispatch.clone();
     // let server_name = server_name.clone();
     let on_add_to_queue = {
         let episode = props.episode.clone();
@@ -423,6 +465,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name_copy = queue_server_name.clone();
             let api_key_copy = queue_api_key.clone();
             let queue_post = queue_post.clone();
+            let episode_clone = episode.clone();
             let request = QueuePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
@@ -436,7 +479,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     Ok(success_message) => {
                         queue_post.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", success_message))
+                            state.info_message = Option::from(format!("{}", success_message));
+                            if let Some(ref mut queued_episodes) = state.queued_episode_ids {
+                                queued_episodes.push(episode_clone.get_episode_id(Some(0)));
+                            }
                         });
                     }
                     Err(e) => {
@@ -490,6 +536,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                     .episodes
                                     .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
                             }
+                            if let Some(ref mut queued_episode_ids) = state.queued_episode_ids {
+                                queued_episode_ids.retain(|&id| id != episode_id);
+                            }
                             // Optionally, you can update the info_message with success message
                             state.info_message = Some(format!("{}", success_message).to_string());
                         });
@@ -507,15 +556,39 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let is_queued = post_state
+        .queued_episode_ids
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&check_episode_id.clone());
+
+    let on_toggle_queue = {
+        let on_add_to_queue = on_add_to_queue.clone();
+        let on_remove_queued_episode = on_remove_queued_episode.clone();
+        // let is_queued = post_state
+        //     .queued_episode_ids
+        //     .as_ref()
+        //     .unwrap_or(&vec![])
+        //     .contains(&props.episode.get_episode_id(Some(0)));
+        Callback::from(move |_| {
+            if is_queued {
+                on_remove_queued_episode.emit(());
+            } else {
+                on_add_to_queue.emit(());
+            }
+        })
+    };
+
     let saved_api_key = api_key.clone();
     let saved_server_name = server_name.clone();
-    let save_post = audio_dispatch.clone();
+    let save_post = post_dispatch.clone();
     let on_save_episode = {
         let episode = props.episode.clone();
         Callback::from(move |_| {
             let server_name_copy = saved_server_name.clone();
             let api_key_copy = saved_api_key.clone();
             let post_state = save_post.clone();
+            let episode_clone = episode.clone();
             let request = SavePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)), // changed from episode_title
                 user_id: user_id.unwrap(),                   // replace with the actual user ID
@@ -528,7 +601,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 match call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
                     Ok(success_message) => {
                         post_state.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", success_message))
+                            state.info_message = Option::from(format!("{}", success_message));
+                            if let Some(ref mut saved_episodes) = state.saved_episode_ids {
+                                saved_episodes.push(episode_clone.get_episode_id(Some(0)));
+                            }
                         });
                     }
                     Err(e) => {
@@ -575,6 +651,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                     .episodes
                                     .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
                             }
+                            if let Some(ref mut saved_episode_ids) = state.saved_episode_ids {
+                                saved_episode_ids.retain(|&id| id != episode_id);
+                            }
                             // Optionally, you can update the info_message with success message
                             state.info_message = Some(format!("{}", success_message).to_string());
                         });
@@ -592,15 +671,39 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let is_saved = post_state
+        .saved_episode_ids
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&check_episode_id.clone());
+
+    let on_toggle_save = {
+        let on_save_episode = on_save_episode.clone();
+        let on_remove_saved_episode = on_remove_saved_episode.clone();
+        // let is_saved = post_state
+        //     .saved_episode_ids
+        //     .as_ref()
+        //     .unwrap_or(&vec![])
+        //     .contains(&props.episode.get_episode_id(Some(0)));
+        Callback::from(move |_| {
+            if is_saved {
+                on_remove_saved_episode.emit(());
+            } else {
+                on_save_episode.emit(());
+            }
+        })
+    };
+
     let download_api_key = api_key.clone();
     let download_server_name = server_name.clone();
-    let download_post = audio_dispatch.clone();
+    let download_post = post_dispatch.clone();
     let on_download_episode = {
         let episode = props.episode.clone();
         Callback::from(move |_| {
             let post_state = download_post.clone();
             let server_name_copy = download_server_name.clone();
             let api_key_copy = download_api_key.clone();
+            let episode_clone = episode.clone();
             let request = DownloadEpisodeRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
@@ -615,7 +718,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     Ok(success_message) => {
                         post_state.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", success_message))
+                            state.info_message = Option::from(format!("{}", success_message));
+                            if let Some(ref mut downloaded_episodes) = state.downloaded_episode_ids
+                            {
+                                downloaded_episodes.push(episode_clone.get_episode_id(Some(0)));
+                            }
                         });
                     }
                     Err(e) => {
@@ -630,6 +737,89 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             // dropdown_open.set(false);
         })
     };
+
+    let remove_download_api_key = api_key.clone();
+    let remove_download_server_name = server_name.clone();
+    let remove_download_post = audio_dispatch.clone();
+    let dispatch_clone = post_dispatch.clone();
+    let on_remove_downloaded_episode = {
+        let episode = props.episode.clone();
+        let episode_id = props.episode.get_episode_id(Some(0));
+        Callback::from(move |_| {
+            let post_dispatch = dispatch_clone.clone();
+            let post_state = remove_download_post.clone();
+            let server_name_copy = remove_download_server_name.clone();
+            let api_key_copy = remove_download_api_key.clone();
+            let request = DownloadEpisodeRequest {
+                episode_id: episode.get_episode_id(Some(0)),
+                user_id: user_id.unwrap(), // replace with the actual user ID
+            };
+            let server_name = server_name_copy; // replace with the actual server name
+            let api_key = api_key_copy; // replace with the actual API key
+            let future = async move {
+                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
+                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
+                match call_remove_downloaded_episode(
+                    &server_name.unwrap(),
+                    &api_key.flatten(),
+                    &request,
+                )
+                .await
+                {
+                    Ok(success_message) => {
+                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
+                        post_dispatch.reduce_mut(|state| {
+                            // Here, you should remove the episode from the downloaded_episodes
+                            if let Some(ref mut downloaded_episodes) = state.downloaded_episodes {
+                                downloaded_episodes
+                                    .episodes
+                                    .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
+                            }
+                            if let Some(ref mut downloaded_episode_ids) =
+                                state.downloaded_episode_ids
+                            {
+                                downloaded_episode_ids.retain(|&id| id != episode_id);
+                            }
+                            // Optionally, you can update the info_message with success message
+                            state.info_message = Some(format!("{}", success_message).to_string());
+                        });
+                    }
+                    Err(e) => {
+                        post_state.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", e))
+                        });
+                        // Handle error, e.g., display the error message
+                    }
+                }
+            };
+            wasm_bindgen_futures::spawn_local(future);
+            // dropdown_open.set(false);
+        })
+    };
+
+    let is_downloaded = post_state
+        .downloaded_episode_ids
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&check_episode_id.clone());
+
+    let on_toggle_download = {
+        let on_download = on_download_episode.clone();
+        let on_remove_download = on_remove_downloaded_episode.clone();
+        // let is_queued = post_state
+        //     .queued_episode_ids
+        //     .as_ref()
+        //     .unwrap_or(&vec![])
+        //     .contains(&props.episode.get_episode_id(Some(0)));
+        Callback::from(move |_| {
+            if is_downloaded {
+                on_remove_download.emit(());
+            } else {
+                on_download.emit(());
+            }
+        })
+    };
+
     #[cfg(not(feature = "server_build"))]
     let on_local_episode_download = {
         let episode = props.episode.clone();
@@ -730,7 +920,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         let episode = props.episode.clone();
         let download_local_post = audio_dispatch.clone();
 
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let post_state = download_local_post.clone();
             let episode_id = episode.get_episode_id(Some(0));
 
@@ -760,60 +950,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             };
 
             wasm_bindgen_futures::spawn_local(future);
-        })
-    };
-
-    let remove_download_api_key = api_key.clone();
-    let remove_download_server_name = server_name.clone();
-    let remove_download_post = audio_dispatch.clone();
-    let dispatch_clone = post_dispatch.clone();
-    let on_remove_downloaded_episode = {
-        let episode = props.episode.clone();
-        let episode_id = props.episode.get_episode_id(Some(0));
-        Callback::from(move |_| {
-            let post_dispatch = dispatch_clone.clone();
-            let post_state = remove_download_post.clone();
-            let server_name_copy = remove_download_server_name.clone();
-            let api_key_copy = remove_download_api_key.clone();
-            let request = DownloadEpisodeRequest {
-                episode_id: episode.get_episode_id(Some(0)),
-                user_id: user_id.unwrap(), // replace with the actual user ID
-            };
-            let server_name = server_name_copy; // replace with the actual server name
-            let api_key = api_key_copy; // replace with the actual API key
-            let future = async move {
-                // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
-                match call_remove_downloaded_episode(
-                    &server_name.unwrap(),
-                    &api_key.flatten(),
-                    &request,
-                )
-                .await
-                {
-                    Ok(success_message) => {
-                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
-                        post_dispatch.reduce_mut(|state| {
-                            // Here, you should remove the episode from the downloaded_episodes
-                            if let Some(ref mut downloaded_episodes) = state.downloaded_episodes {
-                                downloaded_episodes
-                                    .episodes
-                                    .retain(|ep| ep.get_episode_id(Some(0)) != episode_id);
-                            }
-                            // Optionally, you can update the info_message with success message
-                            state.info_message = Some(format!("{}", success_message).to_string());
-                        });
-                    }
-                    Err(e) => {
-                        post_state.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
-                        });
-                        // Handle error, e.g., display the error message
-                    }
-                }
-            };
-            wasm_bindgen_futures::spawn_local(future);
-            // dropdown_open.set(false);
         })
     };
 
@@ -933,7 +1069,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
-    let check_episode_id = props.episode.get_episode_id(Some(0));
     let is_completed = post_state
         .completed_episodes
         .as_ref()
@@ -954,26 +1089,51 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let close_dropdown = {
+        let dropdown_open = dropdown_open.clone();
+        Callback::from(move |_| {
+            dropdown_open.set(false);
+        })
+    };
+
+    let wrap_action = |action: Callback<MouseEvent>| {
+        let close = close_dropdown.clone();
+        Callback::from(move |e: MouseEvent| {
+            action.emit(e);
+            close.emit(());
+        })
+    };
+
     #[cfg(feature = "server_build")]
     let download_button = html! {
-        <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Download Episode" }</li>
+        <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
+            { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+        </li>
     };
 
     #[cfg(not(feature = "server_build"))]
     let download_button = html! {
         <>
-            <li class="dropdown-option" onclick={on_download_episode.clone()}>{ "Server Download" }</li>
-            <li class="dropdown-option" onclick={on_local_episode_download.clone()}>{ "Local Download" }</li>
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
+                { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+            </li>
+            <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>{ "Local Download" }</li>
         </>
     };
 
     #[cfg(not(feature = "server_build"))]
     let local_download_options = html! {
         <>
-            <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
-            <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
-            <li class="dropdown-option" onclick={on_remove_locally_downloaded_episode.clone()}>{ "Remove Downloaded Episode" }</li>
-            <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
+                { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+            </li>
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
+                { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+            </li>
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
+                { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+            </li>
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
         </>
     };
 
@@ -983,30 +1143,47 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let action_buttons = match props.page_type.as_str() {
         "saved" => html! {
             <>
-                <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
-                <li class="dropdown-option" onclick={on_remove_saved_episode.clone()}>{ "Remove Saved Episode" }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
+                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                </li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
+                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                </li>
                 {
+                    // Handle download_button as VNode
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>
+                    { if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
+                </li>
             </>
         },
         "queue" => html! {
             <>
-                <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
-                <li class="dropdown-option" onclick={on_remove_queued_episode.clone()}>{ "Remove from Queue" }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
+                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                </li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
+                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                </li>
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         "downloads" => html! {
             <>
-                <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
-                <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
-                <li class="dropdown-option" onclick={on_remove_downloaded_episode.clone()}>{ "Remove Downloaded Episode" }</li>
-                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
+                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                </li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
+                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                </li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
+                    { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+                </li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
         "local_downloads" => html! {
@@ -1016,42 +1193,40 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         _ => html! {
             // Default set of buttons for other page types
             <>
-                <li class="dropdown-option" onclick={on_add_to_queue.clone()}>{ "Queue Episode" }</li>
-                <li class="dropdown-option" onclick={on_save_episode.clone()}>{ "Save Episode" }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
+                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                </li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
+                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                </li>
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={on_toggle_complete.clone()}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },
     };
 
     html! {
-        <>
-            <div class="relative show-on-large">
+        <div class="context-button-wrapper">
             <button
-                id="dropdown-button"
+                ref={button_ref.clone()}
                 onclick={toggle_dropdown.clone()}
                 class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
             >
                 <span class="material-icons large-material-icons md:text-6xl text-4xl">{"more_vert"}</span>
             </button>
-            // Dropdown Content
-            {
-                if *dropdown_open {
-                    html! {
-                        <div ref={dropdown_ref.clone()} class="dropdown-content-class border border-solid absolute z-10 divide-y rounded-lg shadow w-48">
-                            <ul class="dropdown-container py-2 text-sm text-gray-700">
-                                { action_buttons }
-                            </ul>
-                        </div>
-                    }
-                } else {
-                    html! {}
-                }
+            if *dropdown_open {
+                <div
+                    ref={dropdown_ref.clone()}
+                    class="dropdown-content-class border border-solid absolute z-50 divide-y rounded-lg shadow w-48"
+                >
+                    <ul class="dropdown-container py-2 text-sm text-gray-700">
+                        { action_buttons }
+                    </ul>
+                </div>
             }
         </div>
-        </>
     }
 }
 
@@ -1345,6 +1520,61 @@ pub fn episode_item(
     });
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
+    let container_height = {
+        if let Some(window) = window() {
+            if let Ok(width) = window.inner_width() {
+                if let Some(width) = width.as_f64() {
+                    if width <= 530.0 {
+                        "122px"
+                    } else if width <= 768.0 {
+                        "162px"
+                    } else {
+                        "221px"
+                    }
+                } else {
+                    "221px" // Default if we can't get the width as f64
+                }
+            } else {
+                "221px" // Default if we can't get inner_width
+            }
+        } else {
+            "221px" // Default if we can't get window
+        }
+    };
+
+    // let container_ref = use_node_ref();
+    // let touch_timer: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
+    // let context_button_ref = use_node_ref();
+
+    // let on_touch_start = {
+    //     let touch_timer = touch_timer.clone();
+    //     let context_button_ref = context_button_ref.clone();
+    //     Callback::from(move |e: TouchEvent| {
+    //         e.prevent_default();
+    //         let context_button = context_button_ref.cast::<web_sys::HtmlElement>().unwrap();
+    //         let timer = web_sys::window()
+    //             .unwrap()
+    //             .set_timeout_with_callback_and_timeout_and_arguments_0(
+    //                 &Closure::wrap(Box::new(move || {
+    //                     context_button.click();
+    //                 }) as Box<dyn FnMut>)
+    //                 .into_js_value(),
+    //                 500, // 500ms for long press
+    //             )
+    //             .unwrap();
+    //         *touch_timer.borrow_mut() = Some(timer);
+    //     })
+    // };
+
+    // let on_touch_end = {
+    //     let touch_timer = touch_timer.clone();
+    //     Callback::from(move |_: TouchEvent| {
+    //         if let Some(timer) = *touch_timer.borrow() {
+    //             web_sys::window().unwrap().clear_timeout_with_handle(timer);
+    //             *touch_timer.borrow_mut() = None;
+    //         }
+    //     })
+    // };
 
     #[wasm_bindgen]
     extern "C" {
@@ -1357,8 +1587,13 @@ pub fn episode_item(
         "desc-collapsed".to_string()
     };
     html! {
-        <div>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+        <div
+            // ref={container_ref}
+            // ontouchstart={on_touch_start}
+            // ontouchend={on_touch_end}
+            // ontouchmove={on_touch_end.clone()} // Cancel on move as well
+        >
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style={format!("height: {}; overflow: hidden;", container_height)}>
                 {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
@@ -1376,10 +1611,10 @@ pub fn episode_item(
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
-                        <p class="item_container-text episode-title font-semibold">
-                            { episode.get_episode_title() }
-                        </p>
-                        {
+                    <p class="item_container-text episode-title font-semibold line-clamp-2">
+                        { episode.get_episode_title() }
+                    </p>
+                    {
                             if completed.clone() {
                                 html! {
                                     <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
@@ -1459,6 +1694,70 @@ pub fn episode_item(
         </div>
     }
 }
+
+// #[derive(Properties, PartialEq)]
+// pub struct EpisodeTitleProps {
+//     pub title: String,
+//     pub max_lines: usize,
+// }
+
+// #[function_component(EpisodeTitle)]
+// pub fn episode_title(props: &EpisodeTitleProps) -> Html {
+//     let title_ref = use_node_ref();
+//     let font_size = use_state(|| 16.0); // Starting font size
+
+//     {
+//         let title_ref = title_ref.clone();
+//         let font_size = font_size.clone();
+//         let title = props.title.clone();
+//         let max_lines = props.max_lines;
+
+//         use_effect_with(title, move |_| {
+//             if let Some(title_element) = title_ref.cast::<web_sys::HtmlElement>() {
+//                 let mut current_font_size = *font_size;
+//                 title_element
+//                     .style()
+//                     .set_property("font-size", &format!("{}px", current_font_size))
+//                     .unwrap();
+
+//                 while title_element.scroll_height() > title_element.client_height()
+//                     && current_font_size > 10.0
+//                 {
+//                     current_font_size -= 0.5;
+//                     title_element
+//                         .style()
+//                         .set_property("font-size", &format!("{}px", current_font_size))
+//                         .unwrap();
+//                 }
+
+//                 if title_element.scroll_height() > title_element.client_height() {
+//                     let mut truncated_text = title_element.inner_text();
+//                     while title_element.scroll_height() > title_element.client_height()
+//                         && !truncated_text.is_empty()
+//                     {
+//                         truncated_text.pop();
+//                         if truncated_text.ends_with(' ') {
+//                             truncated_text.pop();
+//                         }
+//                         truncated_text.push_str("...");
+//                         title_element.set_inner_text(&truncated_text);
+//                     }
+//                 }
+
+//                 font_size.set(current_font_size);
+//             }
+//         });
+//     }
+
+//     html! {
+//         <div
+//             ref={title_ref}
+//             style={format!("font-size: {}px; line-height: 1.2em; max-height: {}em; overflow: hidden;", *font_size, props.max_lines as f32 * 1.2)}
+//         >
+//             {props.title.clone()}
+//         </div>
+//     }
+// }
 
 pub fn download_episode_item(
     episode: Box<dyn EpisodeTrait>,

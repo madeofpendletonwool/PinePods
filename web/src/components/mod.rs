@@ -2,6 +2,7 @@
 pub(crate) mod app_drawer;
 pub(crate) mod history;
 pub(crate) mod home;
+pub(crate) mod host_component;
 pub mod misc_func;
 pub(crate) mod queue;
 pub(crate) mod routes;
@@ -9,6 +10,7 @@ pub(crate) mod saved;
 pub(crate) mod search;
 pub(crate) mod settings;
 pub(crate) mod user_stats;
+pub(crate) mod virtual_list;
 
 mod audio;
 mod click_events;

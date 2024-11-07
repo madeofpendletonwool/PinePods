@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# Function to handle shutdown
+shutdown() {
+    echo "Shutting down..."
+    supervisorctl stop all
+    kill -TERM "$child"
+    wait "$child"
+    exit 0
+}
+
+# Set up signal handling
+trap shutdown SIGTERM SIGINT
+
 export DB_USER=$DB_USER
 export DB_PASSWORD=$DB_PASSWORD
 export DB_HOST=$DB_HOST
@@ -12,6 +24,7 @@ export EMAIL=${EMAIL:-'admin@pinepods.online'}
 export PASSWORD=${PASSWORD:-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c14 ; echo '')}
 export REVERSE_PROXY=$REVERSE_PROXY
 export API_URL=$API_URL
+export PEOPLE_URL=$PEOPLE_URL
 export PINEPODS_PORT=$PINEPODS_PORT
 export PROXY_PROTOCOL=$PROXY_PROTOCOL
 export PINEPODS_PORT=$PINEPODS_PORT
@@ -78,3 +91,8 @@ supervisord -c /pinepods/startup/supervisord.conf
 fi
 # Create Admin User
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
+# Store the PID of supervisord
+child=$!
+
+# Wait for supervisord to exit
+wait "$child"

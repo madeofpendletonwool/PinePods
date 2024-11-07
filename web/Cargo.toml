@@ -10,7 +10,7 @@ edition = "2021"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.69", features = [
+web-sys = { version = "0.3.70", features = [
     "CssStyleDeclaration",
     "DomTokenList",
     "HtmlSelectElement",
@@ -30,12 +30,17 @@ web-sys = { version = "0.3.69", features = [
     "Performance",
     "PerformanceNavigation",
     "DragEvent",
+    "MutationObserver",
+    "MutationObserverInit",
     "DataTransfer",
     "TouchEvent",
     "TouchList",
     "Touch",
     "Clipboard",
     "Navigator",
+    "MediaMetadata",
+    "MediaSession",
+    "MediaSessionAction",
     "Permissions",
 ] }
 log = "0.4.22"
@@ -82,3 +87,6 @@ tauri-sys = { git = "https://github.com/madeofpendletonwool/tauri-sys", version 
 [features]
 default = []
 server_build = []
+
+# [profile.release]
+# lto = true
