@@ -6,3 +6,8 @@ dependencies:
   - name: postgresql
     version: 15.5.14
     repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: valkey
+    version: 2.0.1
+    repository: https://charts.bitnami.com/bitnami
+    condition: valkey.enabled

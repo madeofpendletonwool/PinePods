@@ -1,0 +1,42 @@
+{{- if and .Values.podpeople.enabled .Values.podpeople.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pinepods.fullname" . }}-podpeople
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+    app.kubernetes.io/component: podpeople
+  {{- with .Values.podpeople.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.podpeople.ingress.className }}
+  ingressClassName: {{ .Values.podpeople.ingress.className }}
+  {{- end }}
+  {{- if .Values.podpeople.ingress.tls }}
+  tls:
+    {{- range .Values.podpeople.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.podpeople.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "pinepods.fullname" $ }}-podpeople
+                port:
+                  number: {{ $.Values.podpeople.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}

@@ -112,8 +112,7 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
     let history = BrowserHistory::new();
-    let dispatch = Dispatch::<AppState>::global();
-    let state: Rc<AppState> = dispatch.get();
+    let (state, dispatch) = use_store::<AppState>();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
     let (_app_state, dispatch) = use_store::<AppState>();

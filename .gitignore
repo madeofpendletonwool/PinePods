@@ -87,3 +87,38 @@ web/target/*
 web/.idea/*
 web/Cargo.lock
 keystore.properties
+
+
+# Virtual Environment
+venv/
+.venv/
+ENV/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+coverage.xml
+.hypothesis/
+
+# Environment variables
+.env
+.env.test
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test database
+*.sqlite3
+*.db
+
+# Log files
+*.log
+
+# Local test directory
+tests_local/
