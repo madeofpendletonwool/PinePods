@@ -1,75 +1,82 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "pinepods.fullname" . }}
   labels:
-    app: {{ .Chart.Name }}
+    {{- include "pinepods.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate  # Ensures clean volume handling
   selector:
     matchLabels:
-      app: {{ .Chart.Name }}
+      {{- include "pinepods.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ .Chart.Name }}
+        {{- include "pinepods.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: main
     spec:
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.service.port }}
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
           env:
-            - name: SEARCH_API_URL
-              value: {{ .Values.env.SEARCH_API_URL | quote }}
-            - name: USERNAME
-              value: {{ .Values.env.USERNAME | quote }}
-            - name: PASSWORD
-              value: {{ .Values.env.PASSWORD | quote }}
-            - name: FULLNAME
-              value: {{ .Values.env.FULLNAME | quote }}
-            - name: EMAIL
-              value: {{ .Values.env.EMAIL | quote }}
-            - name: DB_TYPE
-              value: {{ .Values.env.DB_TYPE | quote }}
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "pinepods.fullname" $ }}-config
+                  key: {{ $key }}
+            {{- end }}
             - name: DB_HOST
-              value: {{ .Values.env.DB_HOST | quote }}
-            - name: DB_PORT
-              value: {{ .Values.env.DB_PORT | quote }}
-            - name: DB_USER
-              value: {{ .Values.env.DB_USER | quote }}
+              value: {{ include "pinepods.postgresql.fullname" . }}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-postgresql
-                  key: postgres-password
-            - name: DB_NAME
-              value: {{ .Values.env.DB_NAME | quote }}
-            - name: DEBUG_MODE
-              value: {{ .Values.env.DEBUG_MODE | quote }}
+                  name: {{ include "pinepods.fullname" . }}-secret
+                  key: DB_PASSWORD
+            - name: VALKEY_HOST
+              value: {{ include "pinepods.valkey.fullname" . }}
+            - name: VALKEY_PORT
+              value: "{{ .Values.valkey.service.port }}"
           volumeMounts:
+            {{- if .Values.persistence.enabled }}
             - name: downloads
               mountPath: /opt/pinepods/downloads
             - name: backups
               mountPath: /opt/pinepods/backups
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /api/pinepods_check
-              port: {{ .Values.service.port }}
-            initialDelaySeconds: 60
+              port: http
+            initialDelaySeconds: 120
             periodSeconds: 30
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /api/pinepods_check
-              port: {{ .Values.service.port }}
-            initialDelaySeconds: 60
-            periodSeconds: 30
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
       volumes:
+        {{- if .Values.persistence.enabled }}
         - name: downloads
           persistentVolumeClaim:
-            claimName: downloads-pvc
+            claimName: {{ if .Values.persistence.downloads.existingClaim }}{{ .Values.persistence.downloads.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-downloads{{ end }}
         - name: backups
           persistentVolumeClaim:
-            claimName: backups-pvc
-
+            claimName: {{ if .Values.persistence.backups.existingClaim }}{{ .Values.persistence.backups.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-backups{{ end }}
+        {{- end }}
