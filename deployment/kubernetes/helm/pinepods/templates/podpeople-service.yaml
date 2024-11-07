@@ -1,0 +1,19 @@
+{{- if .Values.podpeople.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pinepods.fullname" . }}-podpeople
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+    app.kubernetes.io/component: podpeople
+spec:
+  type: {{ .Values.podpeople.service.type }}
+  ports:
+    - port: {{ .Values.podpeople.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "pinepods.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: podpeople
+{{- end }}
