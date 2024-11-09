@@ -25,6 +25,7 @@ pub struct PodcastSearchResult {
 #[allow(non_snake_case)]
 pub struct UnifiedPodcast {
     pub(crate) id: i64,
+    pub(crate) index_id: i64,
     pub(crate) title: String,
     pub(crate) url: String,
     #[allow(non_snake_case)]
@@ -49,6 +50,7 @@ impl From<Podcast> for UnifiedPodcast {
     fn from(podcast: Podcast) -> Self {
         UnifiedPodcast {
             id: podcast.id,
+            index_id: podcast.id,
             title: podcast.title,
             url: podcast.url,
             originalUrl: podcast.originalUrl,
@@ -81,6 +83,7 @@ impl From<ITunesPodcast> for UnifiedPodcast {
 
         UnifiedPodcast {
             id: podcast.trackId,
+            index_id: 0,
             title: podcast.trackName,
             url: podcast.feedUrl.clone(),
             originalUrl: podcast.feedUrl,
@@ -255,26 +258,43 @@ pub async fn call_get_podcast_info(
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
     web_sys::console::log_1(&JsValue::from_str(&url));
-
-    let response = Request::get(&url)
-        .send()
-        .await
-        .map_err(|err| anyhow::Error::new(err))?;
-
+    let response = Request::get(&url).send().await.map_err(|err| {
+        web_sys::console::log_1(&JsValue::from_str(&format!("Request error: {:?}", err)));
+        anyhow::Error::new(err)
+    })?;
     if response.ok() {
-        let response_text = response
-            .text()
-            .await
-            .map_err(|err| anyhow::Error::new(err))?;
+        let response_text = response.text().await.map_err(|err| {
+            web_sys::console::log_1(&JsValue::from_str(&format!(
+                "Text parsing error: {:?}",
+                err
+            )));
+            anyhow::Error::new(err)
+        })?;
 
-        let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
-        // web_sys::console::log_1(search_results.clone());
-        Ok(search_results)
+        // Log the raw response
+        web_sys::console::log_1(&JsValue::from_str(&format!(
+            "Raw response: {}",
+            response_text
+        )));
+
+        // Try to parse and log any deserialization errors
+        match serde_json::from_str::<PodcastSearchResult>(&response_text) {
+            Ok(search_results) => Ok(search_results),
+            Err(err) => {
+                web_sys::console::log_1(&JsValue::from_str(&format!(
+                    "Deserialization error: {:?}\nResponse text: {}",
+                    err, response_text
+                )));
+                Err(anyhow::Error::msg(format!(
+                    "Failed to parse response: {}",
+                    err
+                )))
+            }
+        }
     } else {
-        Err(anyhow::Error::msg(format!(
-            "Failed to fetch podcast info: {}",
-            response.status_text()
-        )))
+        let error_msg = format!("Failed to fetch podcast info: {}", response.status_text());
+        web_sys::console::log_1(&JsValue::from_str(&error_msg));
+        Err(anyhow::Error::msg(error_msg))
     }
 }
 

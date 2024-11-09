@@ -251,6 +251,7 @@ pub fn epsiode() -> Html {
                                                                     podcastname: podcast_title
                                                                         .clone(),
                                                                     podcastid: 0,
+                                                                    podcastindexid: 0,
                                                                     feedurl: ep_url.clone(),
                                                                     episodepubdate: ep
                                                                         .pub_date
@@ -281,6 +282,7 @@ pub fn epsiode() -> Html {
                                                     });
 
                                                     // Update the URL with the parameters if they are not already there
+                                                    web_sys::console::log_1(&"preloadfalse".into());
                                                     let mut new_url =
                                                         window.location().origin().unwrap();
                                                     new_url.push_str(
@@ -343,6 +345,7 @@ pub fn epsiode() -> Html {
                                                                     podcastname: podcast_title
                                                                         .clone(),
                                                                     podcastid: 0,
+                                                                    podcastindexid: 0,
                                                                     feedurl: ep_url.clone(),
                                                                     episodepubdate: ep
                                                                         .pub_date
@@ -371,6 +374,7 @@ pub fn epsiode() -> Html {
                                                             Some(podcast_title.clone());
                                                     });
                                                     // Update the URL with the parameters if they are not already there
+                                                    web_sys::console::log_1(&"preloadfalse".into());
                                                     let mut new_url =
                                                         window.location().origin().unwrap();
                                                     new_url.push_str(
@@ -473,6 +477,7 @@ pub fn epsiode() -> Html {
                                                 ep.duration.unwrap_or_default().as_str(),
                                             );
                                             if let Ok(episodeduration) = time_sec {
+                                                web_sys::console::log_1(&"preloadfalse3".into());
                                                 let episodeduration: i32 =
                                                     episodeduration.try_into().unwrap_or(0);
                                                 dispatch.reduce_mut(move |state| {
@@ -484,6 +489,7 @@ pub fn epsiode() -> Html {
                                                                     .unwrap_or_default(),
                                                                 podcastname: podcast_title.clone(),
                                                                 podcastid: 0,
+                                                                podcastindexid: 0,
                                                                 feedurl: feed_url.clone(),
                                                                 episodepubdate: ep
                                                                     .pub_date
@@ -524,7 +530,7 @@ pub fn epsiode() -> Html {
                                 user_id: user_id.clone(),
                             };
                             effect_ep_in_db.set(true);
-
+                            web_sys::console::log_1(&"preepmetadata".into());
                             wasm_bindgen_futures::spawn_local(async move {
                                 match pod_req::call_get_episode_metadata(
                                     &server_name,
@@ -534,10 +540,11 @@ pub fn epsiode() -> Html {
                                 .await
                                 {
                                     Ok(fetched_episode) => {
+                                        web_sys::console::log_1(&"preloadfalse4".into());
                                         let episode_url = fetched_episode.feedurl.clone();
                                         let podcast_title = fetched_episode.podcastname.clone();
                                         let audio_url = fetched_episode.episodeurl.clone();
-
+                                        web_sys::console::log_1(&"Fetched the ep".into());
                                         dispatch.reduce_mut(move |state| {
                                             state.fetched_episode = Some(EpisodeMetadataResponse {
                                                 episode: fetched_episode,
@@ -591,6 +598,7 @@ pub fn epsiode() -> Html {
             ),
             {
                 let dispatch = audio_dispatch.clone();
+                web_sys::console::log_1(&"Getting 2.0 data".into());
                 move |(episode_id, user_id, api_key, server_name)| {
                     if let (Some(episode_id), Some(user_id), Some(api_key), Some(server_name)) =
                         (episode_id, user_id, api_key, server_name)
@@ -615,6 +623,7 @@ pub fn epsiode() -> Html {
                                 Ok(response) => {
                                     let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
                                     let people = response.people.clone(); // Clone people to avoid move issue
+                                    web_sys::console::log_1(&"gots some 2.0 data".into());
                                     dispatch.reduce_mut(|state| {
                                         state.episode_page_transcript = Some(transcripts);
                                         state.episode_page_people = Some(people);
@@ -1111,6 +1120,7 @@ pub fn epsiode() -> Html {
                                                 server_name.unwrap(),
                                                 api_key,
                                                 &history,
+                                                details.podcastindexid,
                                                 details.podcastname,
                                                 details.feedurl,
                                                 details.description,
@@ -1222,7 +1232,7 @@ pub fn epsiode() -> Html {
                                                     if !people.is_empty() {
                                                         html! {
                                                             <div class="header-info-episode">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} />
+                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} podcast_index_id={episode.episode.podcastindexid} />
                                                             </div>
                                                         }
                                                     } else {
@@ -1348,7 +1358,7 @@ pub fn epsiode() -> Html {
                                                     if !people.is_empty() {
                                                         html! {
                                                             <div class="header-info">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} />
+                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} podcast_index_id={episode.episode.podcastindexid} />
                                                             </div>
                                                         }
                                                     } else {

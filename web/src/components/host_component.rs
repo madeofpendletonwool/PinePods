@@ -36,6 +36,7 @@ pub struct HostDropdownProps {
     pub hosts: Vec<Person>,
     pub podcast_feed_url: String, // Add this to help create a unique identifier
     pub podcast_id: i32,
+    pub podcast_index_id: i64,
 }
 
 fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
@@ -118,6 +119,7 @@ pub fn host_dropdown(
         hosts,
         podcast_feed_url,
         podcast_id,
+        podcast_index_id,
     }: &HostDropdownProps,
 ) -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
@@ -143,6 +145,10 @@ pub fn host_dropdown(
         let is_open = is_open.clone();
         Callback::from(move |_| is_open.set(!*is_open))
     };
+
+    let has_no_known_hosts = hosts.len() == 1
+        && hosts[0].name == "Unknown Host"
+        && hosts[0].role == Some("Host".to_string());
 
     let history = BrowserHistory::new();
 
@@ -538,7 +544,10 @@ pub fn host_dropdown(
             }
         }
     };
-
+    let host_url = format!(
+        "https://people.pinepods.online/podcast/{}",
+        podcast_index_id
+    );
     html! {
         <div class="inline-block">
             <button
@@ -554,9 +563,24 @@ pub fn host_dropdown(
                 </svg>
             </button>
             if *is_open {
-                <div class="flex space-x-4 mt-2">
-                    { for hosts.iter().map(render_host) }
-                </div>
+                if has_no_known_hosts {
+                    <div class="mt-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <p class="text-gray-700 dark:text-gray-300">
+                            {"No hosts found. "}
+                            <a
+                                href={host_url}
+                                target="_blank"
+                                class="text-blue-500 hover:text-blue-600 hover:underline"
+                            >
+                                {"Add hosts for this podcast here"}
+                            </a>
+                        </p>
+                    </div>
+                } else {
+                    <div class="flex space-x-4 mt-2">
+                        { for hosts.iter().map(render_host) }
+                    </div>
+                }
             }
         </div>
     }

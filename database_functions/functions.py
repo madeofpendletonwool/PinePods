@@ -3969,7 +3969,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT "Podcasts".PodcastID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
+            'SELECT "Podcasts".PodcastID, "Podcasts".PodcastIndexID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
             '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
             '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
             'FROM "Episodes" '
@@ -3980,7 +3980,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id):
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT Podcasts.PodcastID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
+            "SELECT Podcasts.PodcastID, Podcasts.PodcastIndexID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
             "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
             "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
             "FROM Episodes "

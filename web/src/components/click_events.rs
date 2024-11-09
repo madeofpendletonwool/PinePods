@@ -13,6 +13,7 @@ pub fn create_on_title_click(
     server_name: String,
     api_key: Option<Option<String>>,
     history: &BrowserHistory,
+    podcast_index_id: i64,
     podcast_title: String,
     podcast_url: String,
     podcast_description: String,
@@ -56,7 +57,7 @@ pub fn create_on_title_click(
             podcast_episode_count: podcast_episode_count.clone(),
             podcast_categories: podcast_categories_map.clone(),
             podcast_link: podcast_link.clone(),
-            podcast_index_id: 0,
+            podcast_index_id: podcast_index_id.clone(),
         };
 
         let dispatch = dispatch.clone();

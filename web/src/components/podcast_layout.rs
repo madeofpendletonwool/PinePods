@@ -346,6 +346,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     };
 
     let podcast_id_clone = podcast.id.clone();
+    let podcast_index_clone = podcast.index_id.clone();
     let podcast_title_clone = podcast.title.clone();
     let podcast_url_clone = podcast.url.clone();
     let podcast_description_clone = podcast.description.clone();
@@ -380,7 +381,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let podcast_episode_count = podcast_episode_count_clone.clone();
             let podcast_categories = podcast_categories_clone.clone();
             let podcast_link = podcast_link_clone.clone();
-            let podcast_index_id = 0;
+            let podcast_index_id = podcast_index_clone.clone();
             web_sys::console::log_1(&format!("cats after click: {:?}", podcast_categories).into());
             e.prevent_default(); // Prevent the default anchor behavior
             let podcast_values = ClickedFeedURL {

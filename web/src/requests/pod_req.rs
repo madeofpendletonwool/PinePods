@@ -1108,6 +1108,7 @@ pub struct EpisodeInfo {
     pub episodetitle: String,
     pub podcastname: String,
     pub podcastid: i32,
+    pub podcastindexid: i64,
     pub feedurl: String,
     pub episodepubdate: String,
     pub episodedescription: String,

@@ -368,6 +368,7 @@ pub fn episode_layout() -> Html {
                                     server_name,
                                     Some(Some(api_key.clone().unwrap())),
                                     &click_history,
+                                    podcast_details.podcast_index_id,
                                     podcast_details.podcast_title,
                                     podcast_details.podcast_url,
                                     podcast_details.podcast_description,
@@ -1713,8 +1714,16 @@ pub fn episode_layout() -> Html {
                                                     if let Some(people) = &state.podcast_people {
                                                         if !people.is_empty() {
                                                             html! {
-                                                                <div class="header-info">
-                                                                    <HostDropdown title="Hosts" hosts={people.clone()} podcast_feed_url={podcast_info.podcast_link} podcast_id={pod_id_drop} />
+                                                                <div class="header-info relative">
+                                                                    <div class="max-w-full overflow-x-auto">  // Allow horizontal scrolling
+                                                                        <HostDropdown
+                                                                            title="Hosts"
+                                                                            hosts={people.clone()}
+                                                                            podcast_feed_url={podcast_info.podcast_link}
+                                                                            podcast_id={*podcast_id}
+                                                                            podcast_index_id={podcast_info.podcast_index_id}
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             }
                                                         } else {
@@ -1822,19 +1831,29 @@ pub fn episode_layout() -> Html {
                                                         <p class="header-text">{ format!("Episode Count: {}", &podcast_info.podcast_episode_count) }</p>
                                                         <p class="header-text">{ format!("Authors: {}", &podcast_info.podcast_author) }</p>
                                                         <p class="header-text">{ format!("Explicit: {}", if podcast_info.podcast_explicit { "Yes" } else { "No" }) }</p>
-                                                        {
-                                                            if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
-                                                                    html! {
-                                                                        <HostDropdown title="Hosts" hosts={people.clone()} podcast_feed_url={podcast_info.podcast_link} podcast_id={*podcast_id} />
-                                                                    }
-                                                                } else {
-                                                                    html! {}
+                                                    {
+                                                        if let Some(people) = &state.podcast_people {
+                                                            if !people.is_empty() {
+                                                                html! {
+                                                                    <div class="header-info relative" style="max-width: 100%; min-width: 0;">  // Added min-width: 0 to allow shrinking
+                                                                        <div class="max-w-full overflow-x-auto">
+                                                                            <HostDropdown
+                                                                                title="Hosts"
+                                                                                hosts={people.clone()}
+                                                                                podcast_feed_url={podcast_info.podcast_link}
+                                                                                podcast_id={*podcast_id}
+                                                                                podcast_index_id={podcast_info.podcast_index_id}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
                                                                 }
                                                             } else {
                                                                 html! {}
                                                             }
+                                                        } else {
+                                                            html! {}
                                                         }
+                                                    }
                                                         <div>
                                                             {
                                                                 if let Some(categories) = &podcast_info.podcast_categories {

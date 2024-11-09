@@ -357,6 +357,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             server_name_iter,
                                             api_key_iter,
                                             &history,
+                                            podcast.podcastindexid.clone(),
                                             podcast.podcastname.clone(),
                                             podcast.feedurl.clone(),
                                             podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
