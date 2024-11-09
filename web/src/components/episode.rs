@@ -96,6 +96,7 @@ pub fn epsiode() -> Html {
     let episode_id = state.selected_episode_id.clone();
     let ep_in_db = use_state(|| false);
     let loading = use_state(|| true); // Initial loading state set to true
+    let ep_2_loading = use_state(|| true);
 
     {
         let audio_dispatch = audio_dispatch.clone();
@@ -598,11 +599,16 @@ pub fn epsiode() -> Html {
             ),
             {
                 let dispatch = audio_dispatch.clone();
+                let ep_2_loading_clone = ep_2_loading.clone();
                 web_sys::console::log_1(&"Getting 2.0 data".into());
                 move |(episode_id, user_id, api_key, server_name)| {
                     if let (Some(episode_id), Some(user_id), Some(api_key), Some(server_name)) =
                         (episode_id, user_id, api_key, server_name)
                     {
+                        dispatch.reduce_mut(|state| {
+                            state.episode_page_transcript = None; // Clear old data
+                            state.episode_page_people = None; // Clear old data
+                        });
                         let episode_id = *episode_id; // Dereference the option
                         let user_id = *user_id; // Dereference the option
                         let api_key = api_key.clone(); // Clone to make it owned
@@ -628,6 +634,7 @@ pub fn epsiode() -> Html {
                                         state.episode_page_transcript = Some(transcripts);
                                         state.episode_page_people = Some(people);
                                     });
+                                    ep_2_loading_clone.set(false);
                                 }
                                 Err(e) => {
                                     web_sys::console::log_1(
@@ -1228,18 +1235,29 @@ pub fn epsiode() -> Html {
                                                 }
                                             }
                                             {
-                                                if let Some(people) = &audio_state.episode_page_people {
-                                                    if !people.is_empty() {
-                                                        html! {
-                                                            <div class="header-info-episode">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} podcast_index_id={episode.episode.podcastindexid} />
-                                                            </div>
+                                                if !*ep_2_loading {  // Only show if not loading
+                                                    if let Some(people) = &audio_state.episode_page_people {
+                                                        if !people.is_empty() {
+                                                            html! {
+                                                                // Added overflow-x-auto and horizontal scrolling classes
+                                                                <div class="header-info mb-2 overflow-x-auto whitespace-nowrap scroll-container">
+                                                                    <HostDropdown
+                                                                        title="In This Episode"
+                                                                        hosts={people.clone()}
+                                                                        podcast_feed_url={episode.episode.episodeurl}
+                                                                        podcast_id={episode.episode.podcastid}
+                                                                        podcast_index_id={episode.episode.podcastindexid}
+                                                                    />
+                                                                </div>
+                                                            }
+                                                        } else {
+                                                            html! {}
                                                         }
                                                     } else {
                                                         html! {}
                                                     }
                                                 } else {
-                                                    html! {}
+                                                    html! {}  // Show nothing while loading
                                                 }
                                             }
                                         </div>
@@ -1306,10 +1324,12 @@ pub fn epsiode() -> Html {
                                 <div class="episode-layout-container">
                                     <div class="episode-top-info">
                                         <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
-                                        <div class="episode-details">
+                                        // Add overflow-hidden to episode-details to prevent children from expanding it
+                                        <div class="episode-details overflow-hidden">
                                             <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
-                                            <div class="flex items-center space-x-2 cursor-pointer">
-                                                <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                            // Add max-w-full to ensure title container stays within bounds
+                                            <div class="flex items-center space-x-2 cursor-pointer max-w-full">
+                                                <h2 class="episode-title truncate">{ &episode.episode.episodetitle }</h2>
                                                 {
                                                     if *completion_status.clone() {
                                                         html! {
@@ -1354,12 +1374,25 @@ pub fn epsiode() -> Html {
                                                 }
                                             }
                                             {
-                                                if let Some(people) = &audio_state.episode_page_people {
-                                                    if !people.is_empty() {
-                                                        html! {
-                                                            <div class="header-info">
-                                                                <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} podcast_id={episode.episode.podcastid} podcast_index_id={episode.episode.podcastindexid} />
-                                                            </div>
+                                                if !*ep_2_loading {
+                                                    if let Some(people) = &audio_state.episode_page_people {
+                                                        if !people.is_empty() {
+                                                            html! {
+                                                                // Modified container classes
+                                                                <div class="header-info mb-2 w-full overflow-hidden">
+                                                                    <div class="overflow-x-auto whitespace-nowrap" style="max-width: calc(100% - 2rem);">
+                                                                        <HostDropdown
+                                                                            title="In This Episode"
+                                                                            hosts={people.clone()}
+                                                                            podcast_feed_url={episode.episode.episodeurl}
+                                                                            podcast_id={episode.episode.podcastid}
+                                                                            podcast_index_id={episode.episode.podcastindexid}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                        } else {
+                                                            html! {}
                                                         }
                                                     } else {
                                                         html! {}

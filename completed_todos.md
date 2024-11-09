@@ -68,11 +68,10 @@ done but needs testing
 
 
 People stuff left:
-- [] Flesh out podpeopledb
+- [x] Flesh out podpeopledb
 - [] Add check for person associated with other added pods after subbing to a person
-- [] Add call to pod people db to see if a person exists associated with a given podcast - Get pod people id if so
 - [] Pre-emtively 'cache' podcasts that a host is a part of
-- [] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
+- [x] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
 
 Version 0.7.0
 
@@ -83,7 +82,7 @@ Version 0.7.0
 
 - [x] Added Valkey to make many processes faster
 - [] People Table with background jobs to update people found in podcasts
-- [] Subscribe to people
+- [x] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
 - [] Stop issues with timeouts on occation with mobile apps
@@ -91,7 +90,8 @@ Version 0.7.0
 - [] Finalize virtual lines so it works like home on episode layout
 - [] On very small screens you no longer get the mini version without the context button
 - [] Dynamically adjusting buttons on episode page
-- [] PodcastPeople DB up and running and can be contributed to
+- [x] PodcastPeople DB up and running and can be contributed to
+- [] Show currently updating podcast in refresh feed button at top of screen
 - [x] Finalize loading states so you don't see login page when you are already authenticated
 - [x] Using valkey to ensure stateless opml imports
 - [x] Android play/pause episode metadata
