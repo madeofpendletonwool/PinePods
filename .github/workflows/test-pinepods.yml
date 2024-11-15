@@ -1,11 +1,10 @@
 name: Test Pinepods
 on:
-  # pull_request:
-  #   types:
-  #     - opened
-  #     - synchronize
-  #   branches: [ master ]
-    workflow_dispatch:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    branches: [ main ]
 
 jobs:
   test:
