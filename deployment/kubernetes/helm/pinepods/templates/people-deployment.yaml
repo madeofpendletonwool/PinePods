@@ -31,11 +31,17 @@ spec:
               value: {{ .Values.podpeople.auth.adminUsername | quote }}
             - name: ADMIN_PASSWORD
               value: {{ .Values.podpeople.auth.adminPassword | quote }}
+            - name: NTFY_URL
+              value: {{ .Values.podpeople.environment.ntfyUrl | quote }}
+            - name: NTFY_TOPIC
+              value: {{ .Values.podpeople.environment.ntfyTopic | quote }}
+            - name: BASE_URL
+              value: {{ .Values.podpeople.environment.baseurl | quote }}
             - name: SEARCH_API_URL
               {{- if .Values.backend.enabled }}
               value: "http://{{ include "pinepods.fullname" . }}-backend:{{ .Values.backend.service.port }}"
               {{- else }}
-              value: {{ .Values.podpeople.searchApiUrl | quote }}
+              value: {{ .Values.podpeople.environment.searchApiUrl | quote }}
               {{- end }}
           volumeMounts:
             - name: data
