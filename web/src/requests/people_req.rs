@@ -1,12 +1,14 @@
+use crate::requests::pod_req::Episode;
 use anyhow::Error;
 use gloo::net::http::Request;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct PersonSubscription {
     pub personid: i32,
     pub userid: i32,
     pub name: String,
+    pub image: String,
     pub peopledbid: Option<i32>,
     pub associatedpodcasts: Option<String>,
 }
@@ -17,6 +19,7 @@ pub async fn call_subscribe_to_person(
     user_id: i32,
     person_id: i32,
     person_name: &str,
+    person_img: &Option<String>,
     podcast_id: i32,
 ) -> Result<(), Error> {
     let url = format!(
@@ -29,6 +32,7 @@ pub async fn call_subscribe_to_person(
         .body(
             serde_json::json!({
                 "person_name": person_name,
+                "person_img": person_img,
                 "podcast_id": podcast_id
             })
             .to_string(),
@@ -96,4 +100,53 @@ pub async fn call_get_person_subscriptions(
     let response_text = response.text().await?;
     let subscriptions_response: SubscriptionsResponse = serde_json::from_str(&response_text)?;
     Ok(subscriptions_response.subscriptions)
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct PersonEpisode {
+    pub episodeid: i32,
+    pub episodetitle: String,
+    pub episodedescription: String,
+    pub episodeurl: String,
+    pub episodeartwork: Option<String>, // Changed to Option since it can be null
+    pub episodepubdate: String,
+    pub episodeduration: i32,
+    pub podcastname: String,
+    pub saved: bool,
+    pub downloaded: bool,
+    pub listenduration: i32, // Changed based on response format
+}
+
+#[derive(Deserialize)]
+pub struct PersonEpisodesResponse {
+    episodes: Vec<PersonEpisode>,
+}
+
+pub async fn call_get_person_episodes(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    person_id: i32,
+) -> Result<Vec<PersonEpisode>, Error> {
+    let url = format!(
+        "{}/api/data/person/episodes/{}/{}",
+        server_name, user_id, person_id
+    );
+
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+
+    if !response.ok() {
+        return Err(Error::msg(format!(
+            "Failed to fetch person episodes: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    web_sys::console::log_1(&format!("Raw response: {}", response_text).into());
+
+    let episodes_response: PersonEpisodesResponse = serde_json::from_str(&response_text)?;
+    web_sys::console::log_1(&format!("Parsed episodes: {:?}", episodes_response.episodes).into());
+
+    Ok(episodes_response.episodes)
 }

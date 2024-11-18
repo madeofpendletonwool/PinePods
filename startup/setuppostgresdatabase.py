@@ -420,6 +420,7 @@ try:
             CREATE TABLE IF NOT EXISTS "People" (
                 PersonID SERIAL PRIMARY KEY,
                 Name TEXT,
+                PersonImg TEXT,
                 PeopleDBID INT,
                 AssociatedPodcasts TEXT,
                 UserID INT,
@@ -430,6 +431,31 @@ try:
         cnx.commit()
     except Exception as e:
         print(f"Error creating People table: {e}")
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "PeopleEpisodes" (
+                EpisodeID SERIAL PRIMARY KEY,
+                PersonID INT,
+                PodcastID INT,
+                EpisodeTitle TEXT,
+                EpisodeDescription TEXT,
+                EpisodeURL TEXT,
+                EpisodeArtwork TEXT,
+                EpisodePubDate TIMESTAMP,
+                EpisodeDuration INT,
+                AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (PersonID) REFERENCES "People"(PersonID),
+                FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+            );
+
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating People table: {e}")
+
+    create_index_if_not_exists(cursor, "idx_people_episodes_person", "PeopleEpisodes", "PersonID")
+    create_index_if_not_exists(cursor, "idx_people_episodes_podcast", "PeopleEpisodes", "PodcastID")
 
 
     try:

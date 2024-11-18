@@ -146,6 +146,7 @@ def add_news_feed_if_not_added(database_type, cnx):
     finally:
         cursor.close()
 
+
 def add_podcast(cnx, database_type, podcast_values, user_id, username=None, password=None, podcast_index_id=0):
     cursor = cnx.cursor()
 
@@ -299,6 +300,139 @@ def add_podcast(cnx, database_type, podcast_values, user_id, username=None, pass
     return True
 
 
+def add_person_podcast(cnx, database_type, podcast_values, user_id, username=None, password=None, podcast_index_id=0):
+    cursor = cnx.cursor()
+
+    # If podcast_index_id is 0, try to fetch it from the API
+    if podcast_index_id == 0:
+        api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
+        search_url = f"{api_url}?query={podcast_values['pod_title']}"
+
+        try:
+            response = requests.get(search_url)
+            response.raise_for_status()
+            data = response.json()
+
+            if data['status'] == 'true' and data['feeds']:
+                for feed in data['feeds']:
+                    if feed['title'] == podcast_values['pod_title']:
+                        podcast_index_id = feed['id']
+                        break
+
+            if podcast_index_id == 0:
+                print(f"Couldn't find PodcastIndexID for {podcast_values['pod_title']}")
+        except Exception as e:
+            print(f"Error fetching PodcastIndexID: {e}")
+
+
+    try:
+        # Check if the podcast already exists for the user
+        if database_type == "postgresql":
+            query = 'SELECT PodcastID FROM "Podcasts" WHERE FeedURL = %s AND UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "SELECT PodcastID FROM Podcasts WHERE FeedURL = %s AND UserID = %s"
+
+        cursor.execute(query, (podcast_values['pod_feed_url'], user_id))
+        result = cursor.fetchone()
+        print(f"Result: {result}")
+        print("Checked for existing podcast")
+
+        if result is not None:
+            # Podcast already exists for the user, return False
+            cursor.close()
+            return False
+
+        # Extract category names and convert to comma-separated string
+        categories = podcast_values['categories']
+        print(f"Categories: {categories}")
+
+        if isinstance(categories, dict):
+            category_list = ', '.join(categories.values())
+        elif isinstance(categories, list):
+            category_list = ', '.join(categories)
+        elif isinstance(categories, str):
+            category_list = categories
+        else:
+            category_list = ''
+
+        if database_type == "postgresql":
+            add_podcast_query = """
+                INSERT INTO "Podcasts"
+                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password, PodcastIndexID)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s) RETURNING PodcastID
+            """
+            explicit = podcast_values['pod_explicit']
+        else:  # MySQL or MariaDB
+            add_podcast_query = """
+                INSERT INTO Podcasts
+                (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, FeedURL, WebsiteURL, Explicit, UserID, Username, Password, PodcastIndexID)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
+            """
+            explicit = 1 if podcast_values['pod_explicit'] else 0
+
+
+        print("Inserting into db")
+        print(podcast_values['pod_title'])
+        print(podcast_values['pod_artwork'])
+        print(podcast_values['pod_author'])
+        print(category_list)
+        print(podcast_values['pod_description'])
+        print(podcast_values['pod_episode_count'])
+        print(podcast_values['pod_feed_url'])
+        print(podcast_values['pod_website'])
+        print(explicit)
+        print(user_id)
+        try:
+            cursor.execute(add_podcast_query, (
+                podcast_values['pod_title'],
+                podcast_values['pod_artwork'],
+                podcast_values['pod_author'],
+                category_list,
+                podcast_values['pod_description'],
+                podcast_values['pod_feed_url'],
+                podcast_values['pod_website'],
+                explicit,
+                user_id,
+                username,
+                password,
+                podcast_index_id
+            ))
+
+            if database_type == "postgresql":
+                podcast_id = cursor.fetchone()
+                if isinstance(podcast_id, tuple):
+                    podcast_id = podcast_id[0]
+                elif isinstance(podcast_id, dict):
+                    podcast_id = podcast_id['podcastid']
+            else:  # MySQL or MariaDB
+                cnx.commit()
+                podcast_id = cursor.lastrowid
+
+            print('pre-id')
+            if podcast_id is None:
+                logging.error("No row was inserted.")
+                print("No row was inserted.")
+                cursor.close()
+                return False
+
+        except Exception as e:
+            logging.error(f"Failed to add podcast: {e}")
+            print(f"Failed to add podcast: {e}")
+            cnx.rollback()
+            cursor.close()
+            return False
+
+    except Exception as e:
+        print(f"Error during podcast insertion or UserStats update: {e}")
+        logging.error(f"Error during podcast insertion or UserStats update: {e}")
+        cnx.rollback()
+        raise
+
+    finally:
+        cursor.close()
+
+    # Return True to indicate success
+    return True
 
 def add_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
@@ -471,6 +605,37 @@ def try_fetch_feed(url, username=None, password=None):
         print(f"Error fetching {url}: {str(e)}")
         return None
 
+def parse_duration(duration_string: str) -> int:
+    # First, check if duration is in seconds (no colons)
+    if ':' not in duration_string:
+        try:
+            # Directly return seconds if no colon is found
+            return int(duration_string)
+        except ValueError:
+            print(f'Error parsing duration from pure seconds: {duration_string}')
+            return 0  # Return 0 or some default value in case of error
+    else:
+        # Handle HH:MM:SS format
+        parts = duration_string.split(':')
+        if len(parts) == 1:
+            # If there's only one part, it's in seconds
+            return int(parts[0])
+        else:
+            while len(parts) < 3:
+                parts.insert(0, '0')  # Prepend zeros if any parts are missing (ensuring HH:MM:SS format)
+            h, m, s = map(int, parts)
+            return h * 3600 + m * 60 + s
+
+# Function to update the episode count
+def update_episode_count(cnx, database_type, cursor, podcast_id):
+    if database_type == "postgresql":
+        update_query = 'UPDATE "Podcasts" SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s'
+    else:  # MySQL or MariaDB
+        update_query = "UPDATE Podcasts SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s"
+
+    cursor.execute(update_query, (podcast_id,))
+    cnx.commit()
+
 def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username=None, password=None, websocket=False):
     import feedparser
     first_episode_id = None
@@ -495,37 +660,6 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
     episode_dump = feedparser.parse(content)
 
     cursor = cnx.cursor()
-
-    def parse_duration(duration_string: str) -> int:
-        # First, check if duration is in seconds (no colons)
-        if ':' not in duration_string:
-            try:
-                # Directly return seconds if no colon is found
-                return int(duration_string)
-            except ValueError:
-                print(f'Error parsing duration from pure seconds: {duration_string}')
-                return 0  # Return 0 or some default value in case of error
-        else:
-            # Handle HH:MM:SS format
-            parts = duration_string.split(':')
-            if len(parts) == 1:
-                # If there's only one part, it's in seconds
-                return int(parts[0])
-            else:
-                while len(parts) < 3:
-                    parts.insert(0, '0')  # Prepend zeros if any parts are missing (ensuring HH:MM:SS format)
-                h, m, s = map(int, parts)
-                return h * 3600 + m * 60 + s
-
-    # Function to update the episode count
-    def update_episode_count(cnx, database_type, cursor, podcast_id):
-        if database_type == "postgresql":
-            update_query = 'UPDATE "Podcasts" SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s'
-        else:  # MySQL or MariaDB
-            update_query = "UPDATE Podcasts SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s"
-
-        cursor.execute(update_query, (podcast_id,))
-        cnx.commit()
 
     new_episodes = []
 
@@ -631,6 +765,113 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         return new_episodes
     return first_episode_id
 
+
+
+def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, feed_url: str):
+    import feedparser
+    try:
+        content = feedparser.parse(feed_url)
+        cursor = cnx.cursor()
+
+        # Start a transaction
+        if database_type == "postgresql":
+            cursor.execute("BEGIN")
+
+        for entry in content.entries:
+            if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]):
+                continue
+
+            # Extract episode information
+            parsed_title = entry.title
+            parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
+            parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
+            parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
+            parsed_artwork_url = (entry.get('itunes_image', {}).get('href') or
+                                getattr(entry, 'image', {}).get('href'))
+
+            # Duration parsing
+            parsed_duration = 0
+            duration_str = getattr(entry, 'itunes_duration', '')
+            if ':' in duration_str:
+                time_parts = list(map(int, duration_str.split(':')))
+                while len(time_parts) < 3:
+                    time_parts.insert(0, 0)
+                h, m, s = time_parts
+                parsed_duration = h * 3600 + m * 60 + s
+            elif duration_str.isdigit():
+                parsed_duration = int(duration_str)
+            elif hasattr(entry, 'itunes_duration_seconds'):
+                parsed_duration = int(entry.itunes_duration_seconds)
+            elif hasattr(entry, 'duration'):
+                parsed_duration = parse_duration(entry.duration)
+            elif hasattr(entry, 'length'):
+                parsed_duration = int(entry.length)
+
+            try:
+                # Check for existing episode with explicit type casting for IDs
+                if database_type == "postgresql":
+                    episode_check_query = """
+                        SELECT EpisodeID FROM "PeopleEpisodes"
+                        WHERE PersonID = %s::integer
+                        AND PodcastID = %s::integer
+                        AND EpisodeURL = %s
+                    """
+                else:
+                    episode_check_query = """
+                        SELECT EpisodeID FROM PeopleEpisodes
+                        WHERE PersonID = %s
+                        AND PodcastID = %s
+                        AND EpisodeURL = %s
+                    """
+
+                cursor.execute(episode_check_query, (person_id, podcast_id, parsed_audio_url))
+                if cursor.fetchone():
+                    continue
+
+                # Insert the new episode
+                if database_type == "postgresql":
+                    episode_insert_query = """
+                        INSERT INTO "PeopleEpisodes"
+                        (PersonID, PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL,
+                        EpisodeArtwork, EpisodePubDate, EpisodeDuration)
+                        VALUES (%s::integer, %s::integer, %s, %s, %s, %s, %s, %s)
+                    """
+                else:
+                    episode_insert_query = """
+                        INSERT INTO PeopleEpisodes
+                        (PersonID, PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL,
+                        EpisodeArtwork, EpisodePubDate, EpisodeDuration)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+
+                cursor.execute(episode_insert_query, (
+                    person_id,
+                    podcast_id,
+                    parsed_title,
+                    parsed_description,
+                    parsed_audio_url,
+                    parsed_artwork_url,
+                    parsed_release_datetime,
+                    parsed_duration
+                ))
+
+            except Exception as e:
+                logging.error(f"Error processing episode {parsed_title}: {str(e)}")
+                if database_type == "postgresql":
+                    cursor.execute("ROLLBACK")
+                continue
+
+        # Commit the transaction
+        cnx.commit()
+
+    except Exception as e:
+        if database_type == "postgresql":
+            cursor.execute("ROLLBACK")
+        logging.error(f"Error processing feed {feed_url}: {str(e)}")
+        raise
+
+    finally:
+        cursor.close()
 
 def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
     cursor = cnx.cursor()
@@ -802,6 +1043,151 @@ def return_episodes(database_type, cnx, user_id):
         rows = [{k.lower(): (bool(v) if k.lower() in ['completed', 'saved', 'queued', 'downloaded'] else v) for k, v in row.items()} for row in rows]
 
     return rows
+
+
+def return_person_episodes(database_type, cnx, user_id: int, person_id: int):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+    else:
+        cursor = cnx.cursor(dictionary=True)
+
+    try:
+        if database_type == "postgresql":
+            query = """
+            SELECT
+                pe.EpisodeID,
+                pe.EpisodeTitle,
+                pe.EpisodeDescription,
+                pe.EpisodeURL,
+                CASE
+                    WHEN pe.EpisodeArtwork IS NULL THEN
+                        (SELECT ArtworkURL FROM "Podcasts" WHERE PodcastID = pe.PodcastID)
+                    ELSE pe.EpisodeArtwork
+                END as EpisodeArtwork,
+                pe.EpisodePubDate,
+                pe.EpisodeDuration,
+                p.PodcastName,
+                CASE
+                    WHEN (
+                        SELECT 1 FROM "Podcasts"
+                        WHERE PodcastID = pe.PodcastID
+                        AND UserID = %s
+                    ) IS NOT NULL THEN
+                    CASE
+                        WHEN s.EpisodeID IS NOT NULL THEN TRUE
+                        ELSE FALSE
+                    END
+                    ELSE FALSE
+                END AS Saved,
+                CASE
+                    WHEN (
+                        SELECT 1 FROM "Podcasts"
+                        WHERE PodcastID = pe.PodcastID
+                        AND UserID = %s
+                    ) IS NOT NULL THEN
+                    CASE
+                        WHEN d.EpisodeID IS NOT NULL THEN TRUE
+                        ELSE FALSE
+                    END
+                    ELSE FALSE
+                END AS Downloaded,
+                CASE
+                    WHEN (
+                        SELECT 1 FROM "Podcasts"
+                        WHERE PodcastID = pe.PodcastID
+                        AND UserID = %s
+                    ) IS NOT NULL THEN
+                    COALESCE(h.ListenDuration, 0)
+                    ELSE 0
+                END AS ListenDuration
+            FROM "PeopleEpisodes" pe
+            INNER JOIN "People" pp ON pe.PersonID = pp.PersonID
+            INNER JOIN "Podcasts" p ON pe.PodcastID = p.PodcastID
+            LEFT JOIN (
+                SELECT * FROM "SavedEpisodes" WHERE UserID = %s
+            ) s ON s.EpisodeID = pe.EpisodeID
+            LEFT JOIN (
+                SELECT * FROM "DownloadedEpisodes" WHERE UserID = %s
+            ) d ON d.EpisodeID = pe.EpisodeID
+            LEFT JOIN (
+                SELECT * FROM "UserEpisodeHistory" WHERE UserID = %s
+            ) h ON h.EpisodeID = pe.EpisodeID
+            WHERE pe.PersonID = %s
+            AND pe.EpisodePubDate >= NOW() - INTERVAL '30 days'
+            ORDER BY pe.EpisodePubDate DESC
+            """
+        else:
+            query = """
+                SELECT
+                    pe.EpisodeID,
+                    pe.EpisodeTitle,
+                    pe.EpisodeDescription,
+                    pe.EpisodeURL,
+                    COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as EpisodeArtwork,
+                    pe.EpisodePubDate,
+                    pe.EpisodeDuration,
+                    p.PodcastName,
+                    IF(
+                        EXISTS(
+                            SELECT 1 FROM Podcasts
+                            WHERE PodcastID = pe.PodcastID
+                            AND UserID = %s
+                        ),
+                        IF(s.EpisodeID IS NOT NULL, TRUE, FALSE),
+                        FALSE
+                    ) AS Saved,
+                    IF(
+                        EXISTS(
+                            SELECT 1 FROM Podcasts
+                            WHERE PodcastID = pe.PodcastID
+                            AND UserID = %s
+                        ),
+                        IF(d.EpisodeID IS NOT NULL, TRUE, FALSE),
+                        FALSE
+                    ) AS Downloaded,
+                    IF(
+                        EXISTS(
+                            SELECT 1 FROM Podcasts
+                            WHERE PodcastID = pe.PodcastID
+                            AND UserID = %s
+                        ),
+                        COALESCE(h.ListenDuration, 0),
+                        0
+                    ) AS ListenDuration
+                FROM PeopleEpisodes pe
+                INNER JOIN People pp ON pe.PersonID = pp.PersonID
+                INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+                LEFT JOIN (
+                    SELECT * FROM SavedEpisodes WHERE UserID = %s
+                ) s ON s.EpisodeID = pe.EpisodeID
+                LEFT JOIN (
+                    SELECT * FROM DownloadedEpisodes WHERE UserID = %s
+                ) d ON d.EpisodeID = pe.EpisodeID
+                LEFT JOIN (
+                    SELECT * FROM UserEpisodeHistory WHERE UserID = %s
+                ) h ON h.EpisodeID = pe.EpisodeID
+                WHERE pe.PersonID = %s
+                ORDER BY pe.EpisodePubDate DESC
+            """
+
+        cursor.execute(query, (user_id,) * 6 + (person_id,))
+        rows = cursor.fetchall()
+
+        if not rows:
+            return []
+
+        if database_type != "postgresql":
+            rows = [{k.lower(): (bool(v) if k.lower() in ['saved', 'downloaded'] else v)
+                    for k, v in row.items()} for row in rows]
+
+        return rows
+
+    except Exception as e:
+        print(f"Error fetching person episodes: {e}")
+        return None
+    finally:
+        cursor.close()
 
 
 def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
@@ -4726,6 +5112,69 @@ def add_shared_episode(database_type, cnx, episode_id, url_key, expiration_date)
         cursor.close()
         return False
 
+def cleanup_old_episodes(cnx, database_type):
+    """
+    Master cleanup function that handles both PeopleEpisodes and SharedEpisodes tables
+    """
+    cleanup_old_people_episodes(cnx, database_type)
+    cleanup_expired_shared_episodes(cnx, database_type)
+
+def cleanup_old_people_episodes(cnx, database_type, days=30):
+    """
+    Remove episodes from PeopleEpisodes that are older than the specified number of days
+    """
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            delete_query = """
+                DELETE FROM "PeopleEpisodes"
+                WHERE AddedDate < CURRENT_TIMESTAMP - INTERVAL '%s days'
+            """
+        else:  # MySQL or MariaDB
+            delete_query = """
+                DELETE FROM PeopleEpisodes
+                WHERE AddedDate < DATE_SUB(NOW(), INTERVAL %s DAY)
+            """
+
+        cursor.execute(delete_query, (days,))
+        deleted_count = cursor.rowcount
+        print(f"Cleaned up {deleted_count} episodes older than {days} days from PeopleEpisodes")
+        cnx.commit()
+
+    except Exception as e:
+        print(f"Error during PeopleEpisodes cleanup: {str(e)}")
+        cnx.rollback()
+    finally:
+        cursor.close()
+
+def cleanup_expired_shared_episodes(cnx, database_type):
+    """
+    Remove expired episodes from SharedEpisodes based on ExpirationDate
+    """
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            delete_query = """
+                DELETE FROM "SharedEpisodes"
+                WHERE ExpirationDate < CURRENT_TIMESTAMP
+            """
+        else:  # MySQL or MariaDB
+            delete_query = """
+                DELETE FROM SharedEpisodes
+                WHERE ExpirationDate < NOW()
+            """
+
+        cursor.execute(delete_query)
+        deleted_count = cursor.rowcount
+        print(f"Cleaned up {deleted_count} expired episodes from SharedEpisodes")
+        cnx.commit()
+
+    except Exception as e:
+        print(f"Error during SharedEpisodes cleanup: {str(e)}")
+        cnx.rollback()
+    finally:
+        cursor.close()
+
 def get_episode_id_by_url_key(database_type, cnx, url_key):
     cursor = cnx.cursor()
 
@@ -5479,8 +5928,7 @@ def queue_bump(database_type, cnx, ep_url, title, user_id):
     return {"detail": f"{title} moved to the front of the queue."}
 
 
-
-def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, podcast_id: int) -> bool:
+def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, person_img: str, podcast_id: int) -> tuple[bool, int]:
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
@@ -5499,61 +5947,142 @@ def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person
                 cursor.execute(query, (user_id, person_name))
 
             existing_person = cursor.fetchone()
-
             if existing_person:
-                # Person exists, update AssociatedPodcasts
+                # Person exists, update AssociatedPodcasts and possibly update image/description
                 person_id, associated_podcasts = existing_person
                 podcast_list = associated_podcasts.split(',') if associated_podcasts else []
                 if str(podcast_id) not in podcast_list:
                     podcast_list.append(str(podcast_id))
                     new_associated_podcasts = ','.join(podcast_list)
                     update_query = """
-                        UPDATE "People" SET AssociatedPodcasts = %s
+                        UPDATE "People"
+                        SET AssociatedPodcasts = %s,
+                            PersonImg = COALESCE(%s, PersonImg)
                         WHERE PersonID = %s
                     """
-                    cursor.execute(update_query, (new_associated_podcasts, person_id))
+                    cursor.execute(update_query, (new_associated_podcasts, person_img, person_id))
+                return True, person_id
             else:
-                # Person doesn't exist, insert new record
+                # Person doesn't exist, insert new record with image and description
                 insert_query = """
-                    INSERT INTO "People" (UserID, PeopleDBID, Name, AssociatedPodcasts)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO "People"
+                    (UserID, PeopleDBID, Name, PersonImg, AssociatedPodcasts)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING PersonID
                 """
-                cursor.execute(insert_query, (user_id, person_id, person_name, str(podcast_id)))
+                cursor.execute(insert_query, (user_id, person_id, person_name, person_img, str(podcast_id)))
+                new_person_id = cursor.fetchone()[0]
+                cnx.commit()
+                return True, new_person_id
 
         else:  # MySQL or MariaDB
-            # Similar logic for MySQL/MariaDB
-            pass
+            # Check if person exists
+            if person_id != 0:
+                query = """
+                    SELECT PersonID, AssociatedPodcasts FROM People
+                    WHERE UserID = %s AND PeopleDBID = %s
+                """
+                cursor.execute(query, (user_id, person_id))
+            else:
+                query = """
+                    SELECT PersonID, AssociatedPodcasts FROM People
+                    WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
+                """
+                cursor.execute(query, (user_id, person_name))
+
+            existing_person = cursor.fetchone()
+            if existing_person:
+                # Person exists, update AssociatedPodcasts and possibly update image/description
+                person_id, associated_podcasts = existing_person
+                podcast_list = associated_podcasts.split(',') if associated_podcasts else []
+                if str(podcast_id) not in podcast_list:
+                    podcast_list.append(str(podcast_id))
+                    new_associated_podcasts = ','.join(podcast_list)
+                    update_query = """
+                        UPDATE People
+                        SET AssociatedPodcasts = %s,
+                            PersonImg = COALESCE(%s, PersonImg)
+                        WHERE PersonID = %s
+                    """
+                    cursor.execute(update_query, (new_associated_podcasts, person_img, person_id))
+                return True, person_id
+            else:
+                # Person doesn't exist, insert new record with image and description
+                insert_query = """
+                    INSERT INTO People
+                    (UserID, PeopleDBID, Name, PersonImg, AssociatedPodcasts)
+                    VALUES (%s, %s, %s, %s, %s)
+                """
+                cursor.execute(insert_query, (user_id, person_id, person_name, person_img, str(podcast_id)))
+                new_person_id = cursor.lastrowid
+                cnx.commit()
+                return True, new_person_id
 
         cnx.commit()
-        return True
+        return False, 0  # In case we somehow get here
     except Exception as e:
         print(f"Error subscribing to person: {e}")
         cnx.rollback()
-        return False
+        return False, 0
     finally:
         cursor.close()
+
 
 def unsubscribe_from_person(cnx, database_type, user_id: int, person_id: int, person_name: str) -> bool:
     cursor = cnx.cursor()
     try:
+        print(f"Attempting to unsubscribe user {user_id} from person {person_name} (ID: {person_id})")
+
         if database_type == "postgresql":
             if person_id != 0:
-                query = 'DELETE FROM "People" WHERE UserID = %s AND PeopleDBID = %s'
-                cursor.execute(query, (user_id, person_id))
+                person_query = 'SELECT PersonID FROM "People" WHERE UserID = %s AND PeopleDBID = %s'
+                cursor.execute(person_query, (user_id, person_id))
             else:
-                query = 'DELETE FROM "People" WHERE UserID = %s AND Name = %s AND PeopleDBID = 0'
-                cursor.execute(query, (user_id, person_name))
-        else:  # MySQL or MariaDB
+                person_query = 'SELECT PersonID FROM "People" WHERE UserID = %s AND Name = %s AND PeopleDBID = 0'
+                cursor.execute(person_query, (user_id, person_name))
+                print(f"Searching for person with query: {person_query} and params: {user_id}, {person_name}")
+        else:
             if person_id != 0:
-                query = "DELETE FROM People WHERE UserID = %s AND PeopleDBID = %s"
-                cursor.execute(query, (user_id, person_id))
+                person_query = "SELECT PersonID FROM People WHERE UserID = %s AND PeopleDBID = %s"
+                cursor.execute(person_query, (user_id, person_id))
             else:
-                query = "DELETE FROM People WHERE UserID = %s AND Name = %s AND PeopleDBID = 0"
-                cursor.execute(query, (user_id, person_name))
+                person_query = "SELECT PersonID FROM People WHERE UserID = %s AND Name = %s AND PeopleDBID = 0"
+                cursor.execute(person_query, (user_id, person_name))
+
+        result = cursor.fetchone()
+        print(f"Query result: {result}")
+
+        if not result:
+            print(f"No person found for user {user_id} with name {person_name}")
+            return False
+
+        person_db_id = result[0]
+        print(f"Found PersonID: {person_db_id}")
+
+        if database_type == "postgresql":
+            episodes_query = 'DELETE FROM "PeopleEpisodes" WHERE PersonID = %s'
+            delete_query = 'DELETE FROM "People" WHERE PersonID = %s'
+        else:
+            episodes_query = "DELETE FROM PeopleEpisodes WHERE PersonID = %s"
+            delete_query = "DELETE FROM People WHERE PersonID = %s"
+
+        print(f"Deleting episodes for PersonID {person_db_id}")
+        cursor.execute(episodes_query, (person_db_id,))
+        episode_count = cursor.rowcount
+        print(f"Deleted {episode_count} episodes")
+
+        print(f"Deleting person record for PersonID {person_db_id}")
+        cursor.execute(delete_query, (person_db_id,))
+        person_count = cursor.rowcount
+        print(f"Deleted {person_count} person records")
+
         cnx.commit()
         return True
     except Exception as e:
-        print(f"Error unsubscribing from person: {e}")
+        print(f"Error unsubscribing from person: {str(e)}")
+        print(f"Error type: {type(e)}")
+        if hasattr(e, '__cause__'):
+            print(f"Cause: {e.__cause__}")
         cnx.rollback()
         return False
     finally:
@@ -5576,10 +6105,12 @@ def get_person_subscriptions(cnx, database_type, user_id: int) -> List[dict]:
         for row in result:
             formatted_row = {
                 'personid': int(row['personid']),
+                'userid': int(row['userid']),
                 'name': row['name'],
+                'image': row['personimg'],
                 'peopledbid': int(row['peopledbid']) if row['peopledbid'] is not None else None,
                 'associatedpodcasts': row['associatedpodcasts'],
-                'userid': int(row['userid'])
+
             }
             formatted_result.append(formatted_row)
 

@@ -1162,7 +1162,7 @@ pub async fn call_get_episode_metadata(
 
     let response_data: EpisodeMetadataResponse = serde_json::from_str(&response_text)
         .map_err(|e| anyhow::Error::msg(format!("Deserialization Error: {}", e)))?;
-
+    web_sys::console::log_1(&"Got the metadata".into());
     Ok(response_data.episode)
 }
 
@@ -1257,6 +1257,7 @@ pub struct Person {
     pub img: Option<String>,
     pub href: Option<String>,
     pub id: Option<i32>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]

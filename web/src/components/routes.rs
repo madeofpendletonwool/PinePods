@@ -33,6 +33,8 @@ pub enum Route {
     Person { name: String },
     #[at("/pod_layout")]
     PodLayout,
+    #[at("/people_subs")]
+    SubscribedPeople,
     #[at("/search_new")]
     SearchNew,
     #[at("/podcasts")]

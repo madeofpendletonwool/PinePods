@@ -21,18 +21,17 @@ use yewdux::use_store;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ClickedFeedURL {
-    // Add fields according to your API's JSON response
-    pub podcast_id: i64,
-    pub podcast_title: String,
-    pub podcast_url: String,
-    pub podcast_description: String,
-    pub podcast_author: String,
-    pub podcast_artwork: String,
-    pub podcast_explicit: bool,
-    pub podcast_episode_count: i32,
-    pub podcast_categories: Option<HashMap<String, String>>,
-    pub podcast_link: String,
-    pub podcast_index_id: i64,
+    pub podcastid: i64,      // Changed from podcast_id
+    pub podcastname: String, // Changed from podcast_title
+    pub feedurl: String,     // Changed from podcast_url
+    pub description: String, // Changed from podcast_description
+    pub author: String,      // Changed from podcast_author
+    pub artworkurl: String,  // Changed from podcast_artwork
+    pub explicit: bool,      // Changed from podcast_explicit
+    pub episodecount: i32,   // Changed from podcast_episode_count
+    pub categories: Option<HashMap<String, String>>,
+    pub websiteurl: String,  // Changed from podcast_link
+    pub podcastindexid: i64, // Changed from podcast_index_id
 }
 
 #[function_component(PodLayout)]
@@ -385,17 +384,17 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             web_sys::console::log_1(&format!("cats after click: {:?}", podcast_categories).into());
             e.prevent_default(); // Prevent the default anchor behavior
             let podcast_values = ClickedFeedURL {
-                podcast_id,
-                podcast_title,
-                podcast_url: podcast_url.clone(),
-                podcast_description,
-                podcast_author,
-                podcast_artwork,
-                podcast_explicit,
-                podcast_episode_count,
-                podcast_categories,
-                podcast_link,
-                podcast_index_id,
+                podcastid: podcast_id,
+                podcastname: podcast_title,
+                feedurl: podcast_url.clone(),
+                description: podcast_description,
+                author: podcast_author,
+                artworkurl: podcast_artwork,
+                explicit: podcast_explicit,
+                episodecount: podcast_episode_count,
+                categories: podcast_categories,
+                websiteurl: podcast_link,
+                podcastindexid: podcast_index_id,
             };
             let dispatch = dispatch.clone();
             let history = history.clone(); // Clone again for use inside async block

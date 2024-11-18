@@ -311,17 +311,17 @@ pub fn episode_layout() -> Html {
                         let podcast_index_id = 0;
                         if !podcast_title.is_empty() && !podcast_url.is_empty() {
                             let podcast_info = ClickedFeedURL {
-                                podcast_id: 0,
-                                podcast_title: podcast_title.clone(),
-                                podcast_url: podcast_url.clone(),
-                                podcast_description: String::new(),
-                                podcast_author: String::new(),
-                                podcast_artwork: String::new(),
-                                podcast_explicit: false,
-                                podcast_episode_count: 0,
-                                podcast_categories: None,
-                                podcast_link: String::new(),
-                                podcast_index_id,
+                                podcastid: 0,
+                                podcastname: podcast_title.clone(),
+                                feedurl: podcast_url.clone(),
+                                description: String::new(),
+                                author: String::new(),
+                                artworkurl: String::new(),
+                                explicit: false,
+                                episodecount: 0,
+                                categories: None,
+                                websiteurl: String::new(),
+                                podcastindexid: podcast_index_id,
                             };
 
                             let api_key = api_key.clone();
@@ -332,8 +332,8 @@ pub fn episode_layout() -> Html {
                                     &server_name,
                                     &api_key.clone().unwrap(),
                                     user_id,
-                                    podcast_info.podcast_title.as_str(),
-                                    podcast_info.podcast_url.as_str(),
+                                    podcast_info.podcastname.as_str(),
+                                    podcast_info.feedurl.as_str(),
                                 )
                                 .await
                                 .unwrap_or_default()
@@ -344,8 +344,9 @@ pub fn episode_layout() -> Html {
                                     &server_name,
                                     &api_key.clone().unwrap(),
                                     user_id,
-                                    podcast_info.podcast_title.as_str(),
-                                    podcast_info.podcast_url.as_str(),
+                                    podcast_info.podcastname.as_str(),
+                                    podcast_info.feedurl.as_str(),
+                                    podcast_info.podcastindexid,
                                     added,
                                     Some(false),
                                 )
@@ -360,7 +361,7 @@ pub fn episode_layout() -> Html {
                                     })
                                 }
                                 let podcast_categories_str =
-                                    categories_to_string(podcast_details.podcast_categories);
+                                    categories_to_string(podcast_details.details.categories);
 
                                 // Execute the same process as when a podcast is clicked
                                 let on_title_click = create_on_title_click(
@@ -368,16 +369,16 @@ pub fn episode_layout() -> Html {
                                     server_name,
                                     Some(Some(api_key.clone().unwrap())),
                                     &click_history,
-                                    podcast_details.podcast_index_id,
-                                    podcast_details.podcast_title,
-                                    podcast_details.podcast_url,
-                                    podcast_details.podcast_description,
-                                    podcast_details.podcast_author,
-                                    podcast_details.podcast_artwork,
-                                    podcast_details.podcast_explicit,
-                                    podcast_details.podcast_episode_count,
+                                    podcast_details.details.podcastindexid,
+                                    podcast_details.details.podcastname,
+                                    podcast_details.details.feedurl,
+                                    podcast_details.details.description,
+                                    podcast_details.details.author,
+                                    podcast_details.details.artworkurl,
+                                    podcast_details.details.explicit,
+                                    podcast_details.details.episodecount,
                                     podcast_categories_str, // assuming no categories in local storage
-                                    podcast_details.podcast_link,
+                                    podcast_details.details.websiteurl,
                                     user_id,
                                 );
                                 emit_click(on_title_click);
@@ -387,9 +388,9 @@ pub fn episode_layout() -> Html {
                                 let mut new_url = location.origin().unwrap();
                                 new_url.push_str(&location.pathname().unwrap());
                                 new_url.push_str("?podcast_title=");
-                                new_url.push_str(&urlencoding::encode(&podcast_info.podcast_title));
+                                new_url.push_str(&urlencoding::encode(&podcast_info.podcastname));
                                 new_url.push_str("&podcast_url=");
-                                new_url.push_str(&urlencoding::encode(&podcast_info.podcast_url));
+                                new_url.push_str(&urlencoding::encode(&podcast_info.feedurl));
                                 pod_load_url.set(new_url.clone());
                             });
                         }
@@ -404,9 +405,9 @@ pub fn episode_layout() -> Html {
                         let mut new_url = location.origin().unwrap();
                         new_url.push_str(&location.pathname().unwrap());
                         new_url.push_str("?podcast_title=");
-                        new_url.push_str(&urlencoding::encode(&podcast.podcast_title));
+                        new_url.push_str(&urlencoding::encode(&podcast.podcastname));
                         new_url.push_str("&podcast_url=");
-                        new_url.push_str(&urlencoding::encode(&podcast.podcast_url));
+                        new_url.push_str(&urlencoding::encode(&podcast.feedurl));
 
                         history
                             .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&new_url))
@@ -420,8 +421,8 @@ pub fn episode_layout() -> Html {
                                 &server_name,
                                 &api_key.unwrap(),
                                 user_id,
-                                podcast.podcast_title.as_str(),
-                                podcast.podcast_url.as_str(),
+                                podcast.podcastname.as_str(),
+                                podcast.feedurl.as_str(),
                             )
                             .await
                             .unwrap_or_default()
@@ -452,9 +453,9 @@ pub fn episode_layout() -> Html {
                 let mut new_url = location.origin().unwrap();
                 new_url.push_str(&location.pathname().unwrap());
                 new_url.push_str("?podcast_title=");
-                new_url.push_str(&urlencoding::encode(&info.podcast_title));
+                new_url.push_str(&urlencoding::encode(&info.podcastname));
                 new_url.push_str("&podcast_url=");
-                new_url.push_str(&urlencoding::encode(&info.podcast_url));
+                new_url.push_str(&urlencoding::encode(&info.feedurl));
                 pod_url.set(new_url.clone());
                 load_link.set(false);
 
@@ -710,8 +711,8 @@ pub fn episode_layout() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let page_state = page_state.clone();
-            let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-            let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
+            let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
+            let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
             app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
@@ -1041,14 +1042,14 @@ pub fn episode_layout() -> Html {
                     Ok(_) => {
                         app_dispatch.reduce_mut(|state| {
                             if let Some(ref mut podcast_info) = state.clicked_podcast_info {
-                                if let Some(ref mut categories) = podcast_info.podcast_categories {
+                                if let Some(ref mut categories) = podcast_info.categories {
                                     // Add the new category to the HashMap
                                     categories.insert(cat_name_dis.clone(), cat_name_dis.clone());
                                 } else {
                                     // Initialize the HashMap if it's None
                                     let mut new_map = HashMap::new();
                                     new_map.insert(cat_name_dis.clone(), cat_name_dis);
-                                    podcast_info.podcast_categories = Some(new_map);
+                                    podcast_info.categories = Some(new_map);
                                 }
                             }
                         });
@@ -1107,9 +1108,7 @@ pub fn episode_layout() -> Html {
                         Ok(_) => {
                             app_dispatch.reduce_mut(|state| {
                                 if let Some(ref mut podcast_info) = state.clicked_podcast_info {
-                                    if let Some(ref mut categories) =
-                                        podcast_info.podcast_categories
-                                    {
+                                    if let Some(ref mut categories) = podcast_info.categories {
                                         // Filter the HashMap and collect back into HashMap
                                         *categories = categories
                                             .clone()
@@ -1132,52 +1131,6 @@ pub fn episode_layout() -> Html {
             || ()
         });
     }
-
-    // let onclick_remove = {
-    //     // let dispatch = dispatch.clone();
-    //     let server_name = server_name.clone();
-    //     let api_key = api_key.clone();
-    //     let user_id = user_id; // Dereference to get the actual value
-    //     let podcast_id = *podcast_id; // Dereference to get the actual value
-    //     let category_name = (*cat_name_remove).clone(); // let category_name = category_name.clone(); // Assume this is coming from the correct state
-
-    //     Callback::from(move |event: web_sys::MouseEvent| {
-    //         event.prevent_default();
-
-    //         // let dispatch = dispatch.clone();
-    //         let server_name = server_name.clone().unwrap();
-    //         let api_key = api_key.clone().unwrap();
-    //         let user_id = user_id.unwrap();
-    //         let podcast_id = podcast_id;
-    //         let category_name = category_name.clone();
-    //         web_sys::console::log_1(
-    //             &format!("Category that we're removing: {}", category_name).into(),
-    //         );
-
-    //         wasm_bindgen_futures::spawn_local(async move {
-    //             let request_data = RemoveCategoryRequest {
-    //                 podcast_id,
-    //                 user_id,
-    //                 category: category_name,
-    //             };
-
-    //             // Await the async function
-    //             let response = call_remove_category(&server_name, &api_key, &request_data).await;
-
-    //             // Match on the awaited response
-    //             match response {
-    //                 Ok(resp) => {
-    //                     web_sys::console::log_1(&format!("Category removed!: {}", resp).into());
-    //                 }
-    //                 Err(err) => {
-    //                     web_sys::console::log_1(
-    //                         &format!("Error removing category: {}", err).into(),
-    //                     );
-    //                 }
-    //             }
-    //         });
-    //     })
-    // };
 
     // Define the modal components
     let clicked_feed = clicked_podcast_info.clone();
@@ -1254,7 +1207,7 @@ pub fn episode_layout() -> Html {
                                 {
                                     if let Some(feed) = clicked_feed.as_ref() {
                                         // If clicked_feed is populated, proceed with rendering categories
-                                        if let Some(categories) = feed.podcast_categories.clone() {
+                                        if let Some(categories) = feed.categories.clone() {
                                             let categories = Rc::new(categories);
                                             html! {
                                                 <>
@@ -1423,22 +1376,16 @@ pub fn episode_layout() -> Html {
             Callback::from(move |_: MouseEvent| {
                 // Ensure this is triggered only by a MouseEvent
                 let callback_podcast_id = added_id.clone();
-                let podcast_id_og = Some(pod_values.clone().unwrap().podcast_id.clone());
-                let pod_title_og = pod_values.clone().unwrap().podcast_title.clone();
-                let pod_artwork_og = pod_values.clone().unwrap().podcast_artwork.clone();
-                let pod_author_og = pod_values.clone().unwrap().podcast_author.clone();
-                let categories_og = pod_values
-                    .clone()
-                    .unwrap()
-                    .podcast_categories
-                    .unwrap()
-                    .clone();
-                let pod_description_og = pod_values.clone().unwrap().podcast_description.clone();
-                let pod_episode_count_og =
-                    pod_values.clone().unwrap().podcast_episode_count.clone();
-                let pod_feed_url_og = pod_values.clone().unwrap().podcast_url.clone();
-                let pod_website_og = pod_values.clone().unwrap().podcast_link.clone();
-                let pod_explicit_og = pod_values.clone().unwrap().podcast_explicit.clone();
+                let podcast_id_og = Some(pod_values.clone().unwrap().podcastid.clone());
+                let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
+                let pod_artwork_og = pod_values.clone().unwrap().artworkurl.clone();
+                let pod_author_og = pod_values.clone().unwrap().author.clone();
+                let categories_og = pod_values.clone().unwrap().categories.unwrap().clone();
+                let pod_description_og = pod_values.clone().unwrap().description.clone();
+                let pod_episode_count_og = pod_values.clone().unwrap().episodecount.clone();
+                let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
+                let pod_website_og = pod_values.clone().unwrap().websiteurl.clone();
+                let pod_explicit_og = pod_values.clone().unwrap().explicit.clone();
                 let app_dispatch = app_dispatch.clone();
                 app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
@@ -1607,9 +1554,9 @@ pub fn episode_layout() -> Html {
                         <>
                             {
                                 if let Some(podcast_info) = pod_layout_data {
-                                    let sanitized_title = podcast_info.podcast_title.replace(|c: char| !c.is_alphanumeric(), "-");
+                                    let sanitized_title = podcast_info.podcastname.replace(|c: char| !c.is_alphanumeric(), "-");
                                     let desc_id = format!("desc-{}", sanitized_title);
-                                    let pod_link = podcast_info.podcast_link.clone();
+                                    let pod_link = podcast_info.websiteurl.clone();
 
                                     let toggle_description = {
                                         let desc_id = desc_id.clone();
@@ -1628,7 +1575,7 @@ pub fn episode_layout() -> Html {
                                             });
                                         })
                                     };
-                                    let sanitized_description = sanitize_html(&podcast_info.podcast_description);
+                                    let sanitized_description = sanitize_html(&podcast_info.description);
                                     let layout = if state.is_mobile.unwrap_or(false) {
                                         html! {
                                             <div class="mobile-layout">
@@ -1699,17 +1646,17 @@ pub fn episode_layout() -> Html {
                                                     }
                                                 </div>
                                                 <div class="item-header-mobile-cover-container">
-                                                    <img src={podcast_info.podcast_artwork.clone()} alt={format!("Cover for {}", &podcast_info.podcast_title)} class="item-header-mobile-cover"/>
+                                                    <img src={podcast_info.artworkurl.clone()} alt={format!("Cover for {}", &podcast_info.podcastname)} class="item-header-mobile-cover"/>
                                                 </div>
 
-                                                <h2 class="item-header-title">{ &podcast_info.podcast_title }</h2>
+                                                <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
                                                 <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
                                                     { sanitized_description }
                                                     <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                 </div>
-                                                <p class="header-info">{ format!("Episode Count: {}", &podcast_info.podcast_episode_count) }</p>
-                                                <p class="header-info">{ format!("Authors: {}", &podcast_info.podcast_author) }</p>
-                                                <p class="header-info">{ format!("Explicit: {}", if podcast_info.podcast_explicit { "Yes" } else { "No" }) }</p>
+                                                <p class="header-info">{ format!("Episode Count: {}", &podcast_info.episodecount) }</p>
+                                                <p class="header-info">{ format!("Authors: {}", &podcast_info.author) }</p>
+                                                <p class="header-info">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
                                                 {
                                                     if let Some(people) = &state.podcast_people {
                                                         if !people.is_empty() {
@@ -1719,9 +1666,9 @@ pub fn episode_layout() -> Html {
                                                                         <HostDropdown
                                                                             title="Hosts"
                                                                             hosts={people.clone()}
-                                                                            podcast_feed_url={podcast_info.podcast_link}
+                                                                            podcast_feed_url={podcast_info.feedurl}
                                                                             podcast_id={*podcast_id}
-                                                                            podcast_index_id={podcast_info.podcast_index_id}
+                                                                            podcast_index_id={podcast_info.podcastindexid}
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -1736,7 +1683,7 @@ pub fn episode_layout() -> Html {
                                                 <div>
                                                 <div class="categories-container">
                                                 {
-                                                    if let Some(categories) = &podcast_info.podcast_categories {
+                                                    if let Some(categories) = &podcast_info.categories {
                                                         html! {
                                                             for categories.iter().map(|(_, category_name)| {
                                                                 html! { <span class="category-box">{ category_name }</span> }
@@ -1752,13 +1699,13 @@ pub fn episode_layout() -> Html {
                                             </div>
                                         }
                                     } else {
-                                        let pod_link = podcast_info.podcast_link.clone();
+                                        let pod_link = podcast_info.feedurl.clone();
                                         html! {
                                             <div class="item-header">
-                                                <img src={podcast_info.podcast_artwork.clone()} alt={format!("Cover for {}", &podcast_info.podcast_title)} class="item-header-cover"/>
+                                                <img src={podcast_info.artworkurl.clone()} alt={format!("Cover for {}", &podcast_info.podcastname)} class="item-header-cover"/>
                                                 <div class="item-header-info">
                                                     <div class="title-button-container">
-                                                        <h2 class="item-header-title">{ &podcast_info.podcast_title }</h2>
+                                                        <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
                                                         {
                                                             if search_state.podcast_added.unwrap() {
                                                                 html! {
@@ -1828,9 +1775,9 @@ pub fn episode_layout() -> Html {
                                                     }
                                                     <div class="item-header-info">
 
-                                                        <p class="header-text">{ format!("Episode Count: {}", &podcast_info.podcast_episode_count) }</p>
-                                                        <p class="header-text">{ format!("Authors: {}", &podcast_info.podcast_author) }</p>
-                                                        <p class="header-text">{ format!("Explicit: {}", if podcast_info.podcast_explicit { "Yes" } else { "No" }) }</p>
+                                                        <p class="header-text">{ format!("Episode Count: {}", &podcast_info.episodecount) }</p>
+                                                        <p class="header-text">{ format!("Authors: {}", &podcast_info.author) }</p>
+                                                        <p class="header-text">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
                                                     {
                                                         if let Some(people) = &state.podcast_people {
                                                             if !people.is_empty() {
@@ -1840,9 +1787,9 @@ pub fn episode_layout() -> Html {
                                                                             <HostDropdown
                                                                                 title="Hosts"
                                                                                 hosts={people.clone()}
-                                                                                podcast_feed_url={podcast_info.podcast_link}
+                                                                                podcast_feed_url={podcast_info.feedurl}
                                                                                 podcast_id={*podcast_id}
-                                                                                podcast_index_id={podcast_info.podcast_index_id}
+                                                                                podcast_index_id={podcast_info.podcastindexid}
                                                                             />
                                                                         </div>
                                                                     </div>
@@ -1856,7 +1803,7 @@ pub fn episode_layout() -> Html {
                                                     }
                                                         <div>
                                                             {
-                                                                if let Some(categories) = &podcast_info.podcast_categories {
+                                                                if let Some(categories) = &podcast_info.categories {
                                                                     html! {
                                                                         for categories.values().map(|category_name| {
                                                                             html! { <span class="category-box">{ category_name }</span> }
@@ -1881,8 +1828,8 @@ pub fn episode_layout() -> Html {
                             }
                             {
                                 if let Some(results) = podcast_feed_results {
-                                    let podcast_link_clone = clicked_podcast_info.clone().unwrap().podcast_url.clone();
-                                    let podcast_title = clicked_podcast_info.clone().unwrap().podcast_title.clone();
+                                    let podcast_link_clone = clicked_podcast_info.clone().unwrap().feedurl.clone();
+                                    let podcast_title = clicked_podcast_info.clone().unwrap().podcastname.clone();
 
                                     html! {
                                         <PodcastEpisodeVirtualList

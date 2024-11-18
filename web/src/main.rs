@@ -14,6 +14,7 @@ use components::episode::Episode;
 use components::episodes_layout::EpisodeLayout;
 use components::history::PodHistory;
 use components::home::Home;
+use components::people_subs::SubscribedPeople;
 use components::person::Person;
 use components::podcast_layout::PodLayout;
 use components::podcasts::Podcasts;
@@ -61,6 +62,7 @@ fn switch(route: Route) -> Html {
         Route::Saved => html! { <Saved /> },
         Route::Settings => html! { <Settings /> },
         Route::PodHistory => html! { <PodHistory /> },
+        Route::SubscribedPeople => html! { <SubscribedPeople /> },
         Route::Downloads => html! { <Downloads /> },
         Route::Search => html! { <Search on_search={Callback::from(move |_| {})} /> },
         Route::UserStats => html! { <UserStats /> },

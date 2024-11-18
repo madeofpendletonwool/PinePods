@@ -69,9 +69,13 @@ done but needs testing
 
 People stuff left:
 - [x] Flesh out podpeopledb
-- [] Add check for person associated with other added pods after subbing to a person
-- [] Pre-emtively 'cache' podcasts that a host is a part of
+- [x] Add check for person associated with other added pods after subbing to a person
+- [x] Pre-emtively 'cache' podcasts that a host is a part of
 - [x] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
+- [] Fix issue when subscribing to host not in podpeopledb. - Resolves to 0
+- [] Fix issue unsubscribing from host
+- [] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
+- [] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
 
 Version 0.7.0
 

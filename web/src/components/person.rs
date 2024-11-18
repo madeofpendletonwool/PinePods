@@ -143,6 +143,14 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
+    let is_expanded = use_state(|| true); // Start expanded by default
+    let episodes_expanded = use_state(|| true); // Start expanded by default
+
+    // Get the person data from the state
+    let person_data = audio_state
+        .podcast_people
+        .as_ref()
+        .and_then(|people| people.iter().find(|person| person.name == *name));
 
     // Initialize the state for all podcasts
     let added_podcasts_state = use_state(|| {
@@ -305,16 +313,140 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         })
     };
 
+    fn get_proxied_image_url(server_name: &str, original_url: &str) -> String {
+        let proxied_url = format!(
+            "{}/api/proxy/image?url={}",
+            server_name,
+            urlencoding::encode(original_url)
+        );
+        web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
+        proxied_url
+    }
+
     html! {
         <>
             <div class="main-container">
                 <Search_nav />
                 <UseScrollToTop />
+                {
+                    if let Some(person) = person_data {
+                        html! {
+                            <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
+                                <div class="flex items-center gap-6">
+                                    // Image section with fallback
+                                    <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
+                                        {
+                                            if let Some(img_url) = &person.img {
+                                                let proxied_url = get_proxied_image_url(&server_name.clone().unwrap(), img_url);
+                                                html! {
+                                                    <img
+                                                        src={proxied_url}
+                                                        alt={format!("{}'s profile", person.name)}
+                                                        class="w-full h-full object-cover"
+                                                    />
+                                                }
+                                            } else {
+                                                html! {
+                                                    <div class="w-full h-full bg-gray-300 flex items-center justify-center">
+                                                        <span class="material-icons text-4xl text-gray-500">
+                                                            {"person"}
+                                                        </span>
+                                                    </div>
+                                                }
+                                            }
+                                        }
+                                    </div>
+
+                                    // Person details
+                                    <div class="flex-grow">
+                                        <h1 class="text-2xl font-bold mb-2 item_container-text">
+                                            {&person.name}
+                                        </h1>
+                                        <div class="flex flex-wrap gap-2 mb-2">
+                                            {
+                                                if let Some(role) = &person.role {
+                                                    html! {
+                                                        <span class="inline-block bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
+                                                            {role}
+                                                        </span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                            {
+                                                if let Some(group) = &person.group {
+                                                    html! {
+                                                        <span class="inline-block bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                                                            {group}
+                                                        </span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
+                                        {
+                                            if let Some(description) = &person.description {
+                                                html! {
+                                                    <p class="text-sm item_container-text">
+                                                        {description}
+                                                    </p>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    } else {
+                        html! {
+                            <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
+                                <div class="flex items-center gap-6">
+                                    <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
+                                        <div class="w-full h-full bg-gray-300 flex items-center justify-center">
+                                            <span class="material-icons text-4xl text-gray-500">
+                                                {"person"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="flex-grow">
+                                        <h1 class="text-2xl font-bold mb-2 item_container-text">
+                                            {name}
+                                        </h1>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                }
                 <div class="p-4">
-                    <h1 class="text-2xl item_container-text font-bold text-center mb-6">{ format!("Podcasts and Episodes featuring {}", name) }</h1>
                     <div class="mb-8">
+                    <div class="flex justify-between items-center mb-4 cursor-pointer"
+                         onclick={let is_expanded = is_expanded.clone();
+                                 Callback::from(move |_| is_expanded.set(!*is_expanded))}>
                         <h2 class="item_container-text text-xl font-semibold">{"Podcasts this person appears in"}</h2>
+                        <span class={classes!(
+                            "material-icons",
+                            "transition-transform",
+                            "duration-300",
+                            if *is_expanded { "rotate-180" } else { "rotate-0" }
+                        )}>
+                            {"expand_more"}
+                        </span>
+                    </div>
+
+                    // Content section with animation classes
+                    <div class={classes!(
+                        "transition-all",
+                        "duration-300",
+                        "overflow-hidden",
+                        if *is_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
+                    )}>
                         {
+
                             if let Some(podcasts) = state.podcast_feed_return.clone() {
                                 let int_podcasts = podcasts.clone();
                                 if let Some(pods) = int_podcasts.pods.clone() {
@@ -324,7 +456,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                     <div class="empty-episodes-container">
                                         <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
                                         <h1>{ "No Podcasts Found" }</h1>
-                                        <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                        <p>{"This person doesn't seem to appear in any podcasts. Are you sure you got the right person?"}</p>
                                     </div>
                                         }
                                     } else {
@@ -468,9 +600,30 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 }
                             }
                         }
+                        </div>
                     </div>
-                    <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
-                    {
+                    <div class="flex justify-between items-center mb-4 cursor-pointer"
+                         onclick={let episodes_expanded = episodes_expanded.clone();
+                                 Callback::from(move |_| episodes_expanded.set(!*episodes_expanded))}>
+                        <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
+                        <span class={classes!(
+                            "material-icons",
+                            "transition-transform",
+                            "duration-300",
+                            if *episodes_expanded { "rotate-180" } else { "rotate-0" }
+                        )}>
+                            {"expand_more"}
+                        </span>
+                    </div>
+
+                    // Episodes Content with animation
+                    <div class={classes!(
+                        "transition-all",
+                        "duration-300",
+                        "overflow-hidden",
+                        if *episodes_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
+                    )}>
+                        {
                         if let Some(results) = &state.people_feed_results {
                             html! {
                                 <div>
@@ -645,6 +798,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                         }
                     }
+                    </div>
                 </div>
 
                 {
