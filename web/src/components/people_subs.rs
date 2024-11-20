@@ -13,6 +13,9 @@ use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
+use crate::components::gen_funcs::format_datetime;
+use crate::components::gen_funcs::match_date_format;
+use crate::components::gen_funcs::parse_date;
 use crate::requests::login_requests::use_check_authentication;
 use std::rc::Rc;
 
@@ -216,13 +219,6 @@ pub fn subscribed_people() -> Html {
         })
     };
 
-    // let date_format = match_date_format(state.date_format.as_deref());
-    // let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
-    // let format_release = format!(
-    //     "{}",
-    //     format_datetime(&datetime, &state.hour_preference, date_format)
-    // );
-    //
     let people = (*subscribed_people).clone();
     let render_audio = audio_state.clone();
     let render_people = {
@@ -402,6 +398,13 @@ fn render_host_with_episodes(
                             let audio_dispatch = audio_dispatch.clone();
                             let is_local = Option::from(true);
 
+                            let date_format = match_date_format(state.date_format.as_deref());
+                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+                            let format_release = format!(
+                                "{}",
+                                format_datetime(&datetime, &state.hour_preference, date_format)
+                            );
+
                             let on_play_click = on_play_click(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
@@ -425,6 +428,7 @@ fn render_host_with_episodes(
                                 Some(String::from("Not needed")),
                                 Some(String::from("Not needed")),
                                 true,
+                                Some(true),
                             );
 
                             #[wasm_bindgen]
@@ -453,7 +457,7 @@ fn render_host_with_episodes(
                                 Box::new(episode.clone()),
                                 sanitize_html_with_blank_target(&episode.episodedescription),
                                 desc_expanded,
-                                &"0",
+                                &format_release,
                                 on_play_click,
                                 on_shownotes_click,
                                 toggle_expanded,

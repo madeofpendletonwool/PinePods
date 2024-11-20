@@ -550,6 +550,7 @@ pub fn render_podcast_with_episodes(
                                 Some(String::from("Not needed")),
                                 Some(String::from("Not needed")),
                                 true,
+                                None,
                             );
 
                             let date_format = match_date_format(state.date_format.as_deref());

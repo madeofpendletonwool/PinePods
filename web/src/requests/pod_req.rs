@@ -1123,6 +1123,8 @@ pub struct EpisodeInfo {
 pub struct EpisodeRequest {
     pub episode_id: i32,
     pub user_id: i32,
+    #[serde(default)] // This will default to false if not present
+    pub person_episode: bool,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]

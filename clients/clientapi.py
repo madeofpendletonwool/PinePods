@@ -1051,8 +1051,12 @@ async def fetch_podcasting_2_data(
 
     try:
         # Get all the metadata
+        print('getting meta')
         episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
+        print('getting id')
         podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+        print('getting deets')
+
         podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
 
         episode_url = episode_metadata['episodeurl']
@@ -2897,28 +2901,32 @@ async def api_clear_guest_data(cnx=Depends(get_database_connection), api_key: st
 class EpisodeMetadata(BaseModel):
     episode_id: int
     user_id: int
-
+    person_episode: bool = False  # Default to False if not specified
 
 @app.post("/api/data/get_episode_metadata")
 async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
+                                 api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        episode = database_functions.functions.get_episode_metadata(database_type, cnx, data.episode_id, data.user_id)
+        episode = database_functions.functions.get_episode_metadata(
+            database_type,
+            cnx,
+            data.episode_id,
+            data.user_id,
+            data.person_episode
+        )
         return {"episode": episode}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only get metadata for yourself!")
+                          detail="You can only get metadata for yourself!")
+
 
 @app.get("/api/data/generate_mfa_secret/{user_id}")
 async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),
@@ -4120,43 +4128,59 @@ async def process_person_subscription(
 
         # 1. Get podcasts from podpeople
         async with httpx.AsyncClient(timeout=30.0) as client:
-            podpeople_response = await client.get(
-                f"{people_url}/api/hostsearch",
-                params={"name": person_name}
-            )
-            podpeople_response.raise_for_status()
-            podpeople_data = podpeople_response.json()
+            try:
+                podpeople_response = await client.get(
+                    f"{people_url}/api/hostsearch",
+                    params={"name": person_name}
+                )
+                podpeople_response.raise_for_status()
+                podpeople_data = podpeople_response.json()
 
-            if podpeople_data.get("success"):
-                for podcast in podpeople_data.get("podcasts", []):
-                    processed_shows.add((
-                        podcast['title'],
-                        podcast['feed_url'],
-                        podcast['id']
-                    ))
+                # Check if we got valid data
+                if podpeople_data and podpeople_data.get("success"):
+                    for podcast in podpeople_data.get("podcasts", []):
+                        processed_shows.add((
+                            podcast['title'],
+                            podcast['feed_url'],
+                            podcast['id']
+                        ))
+            except Exception as e:
+                print(f"Error getting data from podpeople: {str(e)}")
+                # Continue execution even if podpeople lookup fails
+                pass
 
         # 2. Get podcasts from podcast index
         print(f"API URL configured as: {api_url}")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            index_response = await client.get(
-                f"{api_url}",
-                params={
-                    "query": person_name,
-                    "index": "person",
-                    "search_type": "person"
-                }
-            )
-            index_response.raise_for_status()
-            index_data = index_response.json()
+            try:
+                index_response = await client.get(
+                    f"{api_url}",
+                    params={
+                        "query": person_name,
+                        "index": "person",
+                        "search_type": "person"
+                    }
+                )
+                index_response.raise_for_status()
+                index_data = index_response.json()
 
-            if "items" in index_data:
-                for episode in index_data["items"]:
-                    if all(field is not None for field in [episode.get("feedTitle"), episode.get("feedUrl"), episode.get("feedId")]):
-                        processed_shows.add((
-                            episode["feedTitle"],
-                            episode["feedUrl"],
-                            episode["feedId"]
-                        ))
+                if index_data and "items" in index_data:
+                    for episode in index_data["items"]:
+                        if all(field is not None for field in [episode.get("feedTitle"), episode.get("feedUrl"), episode.get("feedId")]):
+                            processed_shows.add((
+                                episode["feedTitle"],
+                                episode["feedUrl"],
+                                episode["feedId"]
+                            ))
+            except Exception as e:
+                print(f"Error getting data from podcast index: {str(e)}")
+                # Continue execution even if podcast index lookup fails
+                pass
+
+        # Only continue if we found any shows
+        if not processed_shows:
+            print(f"No shows found for person: {person_name}")
+            return
 
         # 3. Process each unique show
         for title, feed_url, feed_id in processed_shows:

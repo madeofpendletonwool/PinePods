@@ -281,6 +281,7 @@ pub fn saved() -> Html {
                                     Some(String::from("saved")),
                                     Some(String::from("saved")),
                                     true,
+                                    None,
                                 );
 
                                 let date_format = match_date_format(state.date_format.as_deref());

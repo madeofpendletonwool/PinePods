@@ -139,7 +139,6 @@ pub fn host_dropdown(
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let subscribed_hosts = use_state(|| HashMap::<String, Vec<i32>>::new());
     let person_ids = use_state(|| HashMap::<String, i32>::new()); // Store person IDs separately
-
     let api_key = search_state
         .auth_details
         .as_ref()

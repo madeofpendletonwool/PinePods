@@ -300,6 +300,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         Some(String::from("search")),
                                         Some(String::from("search")),
                                         true,
+                                        None,
                                     );
 
 

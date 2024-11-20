@@ -978,6 +978,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         dispatch_clone.reduce_mut(move |state| {
                             state.selected_episode_id = Some(episode_id);
+                            state.fetched_episode = None;
                         });
                         history_clone.push("/episode"); // Use the route path
                     });

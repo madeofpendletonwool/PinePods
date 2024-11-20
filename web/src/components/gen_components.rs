@@ -1493,7 +1493,8 @@ pub fn on_shownotes_click(
     shownotes_episode_url: Option<String>,
     episode_audio_url: Option<String>,
     podcast_title: Option<String>,
-    _db_added: bool,
+    db_added: bool,
+    person_episode: Option<bool>, // New parameter
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let dispatch_clone = dispatch.clone();
@@ -1501,14 +1502,18 @@ pub fn on_shownotes_click(
         let shownotes_episode_url_call = shownotes_episode_url.clone();
         let episode_audio_url = episode_audio_url.clone();
         let podcast_title = podcast_title.clone();
+        web_sys::console::log_1(&format!("ep id pre episode: {:?}", episode_id).into());
+        web_sys::console::log_1(&format!("title pre episode: {:?}", podcast_title).into());
         wasm_bindgen_futures::spawn_local(async move {
             dispatch_clone.reduce_mut(move |state| {
                 state.selected_episode_id = episode_id;
                 state.selected_episode_url = shownotes_episode_url_call.clone();
                 state.selected_episode_audio_url = episode_audio_url;
                 state.selected_podcast_title = podcast_title;
+                state.person_episode = person_episode; // Set the new state value
+                state.fetched_episode = None;
             });
-            history_clone.push("/episode"); // Use the route path
+            history_clone.push("/episode");
         });
     })
 }
@@ -2111,7 +2116,9 @@ pub fn person_episode_item(
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
-    let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+    let formatted_listen_duration = span_duration
+        .filter(|&duration| duration > 0)
+        .map(|ld| format_time(ld as f64));
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
             (ld as f64 / episode_duration as f64) * 100.0

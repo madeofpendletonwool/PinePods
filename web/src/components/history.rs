@@ -245,6 +245,7 @@ pub fn history() -> Html {
                                             Some(String::from("history")),
                                             Some(String::from("history")),
                                             true,
+                                            None,
                                         );
 
                                         let date_format = match_date_format(state.date_format.as_deref());

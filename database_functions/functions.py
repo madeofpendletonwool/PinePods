@@ -1266,6 +1266,11 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
     # Execute the query with pod_id and user_id
     cursor.execute(query, (pod_id, user_id))
     details = cursor.fetchone()
+
+    # If not found, try with system user (1)
+    if not details:
+        cursor.execute(query, (pod_id, 1))
+        details = cursor.fetchone()
     cursor.close()
 
     # Process and return the fetched details
@@ -2098,6 +2103,11 @@ def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
             )
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
+
+        # If not found, try with system user (1)
+        if not result:
+            cursor.execute(query, (episode_id, 1))
+            result = cursor.fetchone()
 
         if result:
             return result[0] if isinstance(result, tuple) else result.get("podcastid")
@@ -4349,44 +4359,95 @@ def clear_guest_data(cnx, database_type):
     return "Guest user data cleared successfully"
 
 
-def get_episode_metadata(database_type, cnx, episode_id, user_id):
+def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode=False):
     if database_type == "postgresql":
         from psycopg.rows import dict_row
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-        query = (
-            'SELECT "Podcasts".PodcastID, "Podcasts".PodcastIndexID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
-            '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
-            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
-            'FROM "Episodes" '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "Podcasts".UserID = "UserEpisodeHistory".UserID '
-            'WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s'
-        )
-    else:  # MySQL or MariaDB
-        cursor = cnx.cursor(dictionary=True)
-        query = (
-            "SELECT Podcasts.PodcastID, Podcasts.PodcastIndexID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-            "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
-            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
-            "FROM Episodes "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND Podcasts.UserID = UserEpisodeHistory.UserID "
-            "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s"
-        )
 
-    cursor.execute(query, (episode_id, user_id))
-    row = cursor.fetchone()
+        if person_episode:
+            # First get the episode from PeopleEpisodes and match with Episodes using title and URL
+            query_people = """
+                SELECT pe.*,
+                       p.PodcastID, p.PodcastName, p.ArtworkURL as podcast_artwork,
+                       p.FeedURL, p.WebsiteURL, p.PodcastIndexID,
+                       e.EpisodeID as real_episode_id,
+                       COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as final_artwork
+                FROM "PeopleEpisodes" pe
+                JOIN "Podcasts" p ON pe.PodcastID = p.PodcastID
+                JOIN "Episodes" e ON (
+                    e.EpisodeTitle = pe.EpisodeTitle
+                    AND e.EpisodeURL = pe.EpisodeURL
+                )
+                WHERE pe.EpisodeID = %s
+            """
+            cursor.execute(query_people, (episode_id,))
+            people_episode = cursor.fetchone()
 
-    cursor.close()
+            if not people_episode:
+                raise ValueError(f"No people episode found with ID {episode_id}")
 
-    if not row:
-        raise ValueError(f"No episode found with ID {episode_id} for user {user_id}")
+            # Now get additional data using the real episode ID
+            query_history = """
+                SELECT "UserEpisodeHistory".ListenDuration, "Episodes".Completed
+                FROM "Episodes"
+                LEFT JOIN "UserEpisodeHistory" ON
+                    "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                    AND "UserEpisodeHistory".UserID = %s
+                WHERE "Episodes".EpisodeID = %s
+            """
+            cursor.execute(query_history, (user_id, people_episode['real_episode_id']))
+            history_data = cursor.fetchone() or {}
 
-    lower_row = lowercase_keys(row)
-    bool_fix = convert_bools(lower_row, database_type)
+            # Combine the data
+            result = {
+                'episodetitle': people_episode['episodetitle'],
+                'podcastname': people_episode['podcastname'],
+                'podcastid': people_episode['podcastid'],
+                'podcastindexid': people_episode['podcastindexid'],
+                'feedurl': people_episode['feedurl'],
+                'episodepubdate': people_episode['episodepubdate'].isoformat() if people_episode['episodepubdate'] else None,
+                'episodedescription': people_episode['episodedescription'],
+                'episodeartwork': people_episode['final_artwork'],
+                'episodeurl': people_episode['episodeurl'],
+                'episodeduration': people_episode['episodeduration'],
+                'listenduration': history_data.get('listenduration'),
+                'episodeid': people_episode['real_episode_id'],
+                'completed': history_data.get('completed', False)
+            }
+        else:
+            # Original query for regular episodes
+            query = """
+                SELECT "Podcasts".PodcastID, "Podcasts".PodcastIndexID, "Podcasts".FeedURL,
+                       "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle,
+                       "Episodes".EpisodePubDate, "Episodes".EpisodeDescription,
+                       "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration,
+                       "Episodes".EpisodeID, "Podcasts".WebsiteURL,
+                       "UserEpisodeHistory".ListenDuration, "Episodes".Completed
+                FROM "Episodes"
+                INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "UserEpisodeHistory" ON
+                    "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                    AND "Podcasts".UserID = "UserEpisodeHistory".UserID
+                WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s
+            """
+            cursor.execute(query, (episode_id, user_id))
+            result = cursor.fetchone()
 
-    return bool_fix
+            # If not found, try with system user (1)
+            if not result:
+                cursor.execute(query, (episode_id, 1))
+                result = cursor.fetchone()
+
+        cursor.close()
+
+        if not result:
+            raise ValueError(f"No episode found with ID {episode_id}" +
+                           (" for person episode" if person_episode else f" for user {user_id}"))
+
+        lower_row = lowercase_keys(result)
+        bool_fix = convert_bools(lower_row, database_type)
+        return bool_fix
 
 def get_episode_metadata_id(database_type, cnx, episode_id):
     if database_type == "postgresql":
@@ -5927,10 +5988,11 @@ def queue_bump(database_type, cnx, ep_url, title, user_id):
 
     return {"detail": f"{title} moved to the front of the queue."}
 
-
 def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, person_img: str, podcast_id: int) -> tuple[bool, int]:
     cursor = cnx.cursor()
     try:
+        print(f"Starting subscribe_to_person with: user_id={user_id}, person_id={person_id}, person_name={person_name}, podcast_id={podcast_id}")
+
         if database_type == "postgresql":
             # Check if a person with the same PeopleDBID (if not 0) or Name (if PeopleDBID is 0) exists
             if person_id != 0:
@@ -5938,16 +6000,21 @@ def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person
                     SELECT PersonID, AssociatedPodcasts FROM "People"
                     WHERE UserID = %s AND PeopleDBID = %s
                 """
+                print(f"Executing query for non-zero person_id: {query} with params: ({user_id}, {person_id})")
                 cursor.execute(query, (user_id, person_id))
             else:
                 query = """
                     SELECT PersonID, AssociatedPodcasts FROM "People"
                     WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
                 """
+                print(f"Executing query for zero person_id: {query} with params: ({user_id}, {person_name})")
                 cursor.execute(query, (user_id, person_name))
 
             existing_person = cursor.fetchone()
+            print(f"Query result: {existing_person}")
+
             if existing_person:
+                print("Found existing person, updating...")
                 # Person exists, update AssociatedPodcasts and possibly update image/description
                 person_id, associated_podcasts = existing_person
                 podcast_list = associated_podcasts.split(',') if associated_podcasts else []
@@ -5960,103 +6027,73 @@ def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person
                             PersonImg = COALESCE(%s, PersonImg)
                         WHERE PersonID = %s
                     """
+                    print(f"Executing update query: {update_query} with params: ({new_associated_podcasts}, {person_img}, {person_id})")
                     cursor.execute(update_query, (new_associated_podcasts, person_img, person_id))
                 return True, person_id
             else:
+                print("No existing person found, inserting new record...")
                 # Person doesn't exist, insert new record with image and description
                 insert_query = """
                     INSERT INTO "People"
                     (UserID, PeopleDBID, Name, PersonImg, AssociatedPodcasts)
                     VALUES (%s, %s, %s, %s, %s)
-                    RETURNING PersonID
+                    RETURNING PersonID;
                 """
+                print(f"Executing insert query: {insert_query} with params: ({user_id}, {person_id}, {person_name}, {person_img}, {str(podcast_id)})")
                 cursor.execute(insert_query, (user_id, person_id, person_name, person_img, str(podcast_id)))
-                new_person_id = cursor.fetchone()[0]
-                cnx.commit()
-                return True, new_person_id
+                result = cursor.fetchone()
+                print(f"Insert result: {result}")
+                if result is not None:
+                    # Handle both tuple and dict return types
+                    if isinstance(result, dict):
+                        new_person_id = result['personid']
+                    else:
+                        new_person_id = result[0]
+                    print(f"Insert successful, new PersonID: {new_person_id}")
+                    cnx.commit()
+                    return True, new_person_id
+                else:
+                    print("Insert did not return a PersonID")
+                    cnx.rollback()
+                    return False, 0
 
-        else:  # MySQL or MariaDB
-            # Check if person exists
-            if person_id != 0:
-                query = """
-                    SELECT PersonID, AssociatedPodcasts FROM People
-                    WHERE UserID = %s AND PeopleDBID = %s
-                """
-                cursor.execute(query, (user_id, person_id))
-            else:
-                query = """
-                    SELECT PersonID, AssociatedPodcasts FROM People
-                    WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
-                """
-                cursor.execute(query, (user_id, person_name))
-
-            existing_person = cursor.fetchone()
-            if existing_person:
-                # Person exists, update AssociatedPodcasts and possibly update image/description
-                person_id, associated_podcasts = existing_person
-                podcast_list = associated_podcasts.split(',') if associated_podcasts else []
-                if str(podcast_id) not in podcast_list:
-                    podcast_list.append(str(podcast_id))
-                    new_associated_podcasts = ','.join(podcast_list)
-                    update_query = """
-                        UPDATE People
-                        SET AssociatedPodcasts = %s,
-                            PersonImg = COALESCE(%s, PersonImg)
-                        WHERE PersonID = %s
-                    """
-                    cursor.execute(update_query, (new_associated_podcasts, person_img, person_id))
-                return True, person_id
-            else:
-                # Person doesn't exist, insert new record with image and description
-                insert_query = """
-                    INSERT INTO People
-                    (UserID, PeopleDBID, Name, PersonImg, AssociatedPodcasts)
-                    VALUES (%s, %s, %s, %s, %s)
-                """
-                cursor.execute(insert_query, (user_id, person_id, person_name, person_img, str(podcast_id)))
-                new_person_id = cursor.lastrowid
-                cnx.commit()
-                return True, new_person_id
-
-        cnx.commit()
-        return False, 0  # In case we somehow get here
     except Exception as e:
-        print(f"Error subscribing to person: {e}")
+        print(f"Detailed error in subscribe_to_person: {str(e)}\nType: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         cnx.rollback()
         return False, 0
     finally:
         cursor.close()
 
+    return False, 0  # In case we somehow get here
 
 def unsubscribe_from_person(cnx, database_type, user_id: int, person_id: int, person_name: str) -> bool:
     cursor = cnx.cursor()
     try:
         print(f"Attempting to unsubscribe user {user_id} from person {person_name} (ID: {person_id})")
-
         if database_type == "postgresql":
-            if person_id != 0:
-                person_query = 'SELECT PersonID FROM "People" WHERE UserID = %s AND PeopleDBID = %s'
-                cursor.execute(person_query, (user_id, person_id))
-            else:
-                person_query = 'SELECT PersonID FROM "People" WHERE UserID = %s AND Name = %s AND PeopleDBID = 0'
-                cursor.execute(person_query, (user_id, person_name))
-                print(f"Searching for person with query: {person_query} and params: {user_id}, {person_name}")
+            # Use PersonID instead of PeopleDBID for looking up the record to delete
+            person_query = 'SELECT PersonID FROM "People" WHERE UserID = %s AND PersonID = %s'
+            print(f"Searching for person with query: {person_query} and params: {user_id}, {person_id}")
+            cursor.execute(person_query, (user_id, person_id))
+
         else:
-            if person_id != 0:
-                person_query = "SELECT PersonID FROM People WHERE UserID = %s AND PeopleDBID = %s"
-                cursor.execute(person_query, (user_id, person_id))
-            else:
-                person_query = "SELECT PersonID FROM People WHERE UserID = %s AND Name = %s AND PeopleDBID = 0"
-                cursor.execute(person_query, (user_id, person_name))
+            person_query = "SELECT PersonID FROM People WHERE UserID = %s AND PersonID = %s"
+            cursor.execute(person_query, (user_id, person_id))
 
         result = cursor.fetchone()
         print(f"Query result: {result}")
-
         if not result:
-            print(f"No person found for user {user_id} with name {person_name}")
+            print(f"No person found for user {user_id} with ID {person_id}")
             return False
 
-        person_db_id = result[0]
+        # Handle both tuple and dict return types
+        if isinstance(result, dict):
+            person_db_id = result['personid']
+        else:
+            person_db_id = result[0]
+
         print(f"Found PersonID: {person_db_id}")
 
         if database_type == "postgresql":
@@ -6078,6 +6115,7 @@ def unsubscribe_from_person(cnx, database_type, user_id: int, person_id: int, pe
 
         cnx.commit()
         return True
+
     except Exception as e:
         print(f"Error unsubscribing from person: {str(e)}")
         print(f"Error type: {type(e)}")

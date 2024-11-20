@@ -43,6 +43,13 @@ pub fn epsiode() -> Html {
 
     let session_dispatch = dispatch.clone();
     let session_state = state.clone();
+    web_sys::console::log_1(
+        &format!(
+            "Component mounted with episode_id: {:?}",
+            state.selected_episode_id
+        )
+        .into(),
+    );
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -81,6 +88,7 @@ pub fn epsiode() -> Html {
 
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
+
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -97,6 +105,7 @@ pub fn epsiode() -> Html {
     let ep_in_db = use_state(|| false);
     let loading = use_state(|| true); // Initial loading state set to true
     let ep_2_loading = use_state(|| true);
+    let initial_fetch_complete = use_state(|| false);
 
     {
         let audio_dispatch = audio_dispatch.clone();
@@ -156,6 +165,8 @@ pub fn epsiode() -> Html {
 
     // Fetch episode on component mount
     {
+        let ep_2_loading_clone = ep_2_loading.clone();
+        let initial_fetch_complete = initial_fetch_complete.clone();
         // let episodes = episodes.clone();
         let error = error.clone();
         let api_key = post_state
@@ -168,8 +179,10 @@ pub fn epsiode() -> Html {
             .as_ref()
             .map(|ud| ud.server_name.clone());
         let effect_dispatch = dispatch.clone();
+        let aud_dispatch = audio_dispatch.clone();
         let effect_pod_state = state.clone();
         let loading_clone = loading.clone();
+        let ui_state = state.clone();
 
         let episode_id = state.selected_episode_id.clone();
         // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
@@ -182,6 +195,9 @@ pub fn epsiode() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     web_sys::console::log_1(&"Fetching episode...".into());
+                    web_sys::console::log_1(
+                        &format!("First effect running with episode_id: {:?}", episode_id).into(),
+                    );
                     let dispatch = effect_dispatch.clone();
 
                     // Check if the URL contains the parameters for the episode
@@ -231,7 +247,7 @@ pub fn epsiode() -> Html {
                                             // Fetch the episode ID using the provided API
                                             match call_get_episode_id(
                                                 &server_name,
-                                                &api_key.unwrap(),
+                                                &api_key.clone().unwrap(),
                                                 &user_id,
                                                 &podcast_title,
                                                 &aud_url,
@@ -280,6 +296,51 @@ pub fn epsiode() -> Html {
                                                             Some(aud_url.clone());
                                                         state.selected_podcast_title =
                                                             Some(podcast_title.clone());
+                                                    });
+
+                                                    let user_id_clone = user_id.clone();
+                                                    let api_key_clone = api_key.clone();
+                                                    let server_name_clone = server_name.clone();
+                                                    web_sys::console::log_1(&format!("About to fetch podcasting 2.0 data with ID: {:?}", fetched_episode_id).into());
+
+                                                    // Use fetched_episode_id directly since we already have it
+                                                    let chap_request =
+                                                        FetchPodcasting2DataRequest {
+                                                            episode_id: fetched_episode_id, // Use this instead of checking ui_state
+                                                            user_id: user_id_clone,
+                                                        };
+                                                    web_sys::console::log_1(&"in 2.0...".into());
+
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        match call_fetch_podcasting_2_data(
+                                                            &server_name_clone,
+                                                            &api_key_clone,
+                                                            &chap_request,
+                                                        )
+                                                        .await
+                                                        {
+                                                            Ok(response) => {
+                                                                web_sys::console::log_1(
+                                                                    &"got 2.0...".into(),
+                                                                );
+                                                                aud_dispatch.reduce_mut(|state| {
+                                                                    state.episode_page_transcript =
+                                                                        Some(response.transcripts);
+                                                                    state.episode_page_people =
+                                                                        Some(response.people);
+                                                                });
+                                                                ep_2_loading_clone.set(false);
+                                                            }
+                                                            Err(e) => {
+                                                                web_sys::console::log_1(&format!("Error fetching podcast 2.0 data: {}", e).into());
+                                                                aud_dispatch.reduce_mut(|state| {
+                                                                    state.episode_page_transcript =
+                                                                        None;
+                                                                    state.episode_page_people =
+                                                                        None;
+                                                                });
+                                                            }
+                                                        }
                                                     });
 
                                                     // Update the URL with the parameters if they are not already there
@@ -374,6 +435,50 @@ pub fn epsiode() -> Html {
                                                         state.selected_podcast_title =
                                                             Some(podcast_title.clone());
                                                     });
+
+                                                    let user_id_clone = user_id.clone();
+                                                    let api_key_clone = api_key.clone();
+                                                    let server_name_clone = server_name.clone();
+
+                                                    // After setting fetched_episode and before setting loading_clone.set(false):
+                                                    if let Some(episode_id) =
+                                                        ui_state.selected_episode_id
+                                                    {
+                                                        let chap_request =
+                                                            FetchPodcasting2DataRequest {
+                                                                episode_id,
+                                                                user_id: user_id_clone,
+                                                            };
+
+                                                        wasm_bindgen_futures::spawn_local(
+                                                            async move {
+                                                                match call_fetch_podcasting_2_data(
+                                                                    &server_name_clone,
+                                                                    &api_key_clone,
+                                                                    &chap_request,
+                                                                )
+                                                                .await
+                                                                {
+                                                                    Ok(response) => {
+                                                                        aud_dispatch.reduce_mut(|state| {
+                                                                        state.episode_page_transcript = Some(response.transcripts);
+                                                                        state.episode_page_people = Some(response.people);
+                                                                    });
+                                                                        ep_2_loading_clone
+                                                                            .set(false);
+                                                                    }
+                                                                    Err(e) => {
+                                                                        web_sys::console::log_1(&format!("Error fetching podcast 2.0 data: {}", e).into());
+                                                                        aud_dispatch.reduce_mut(|state| {
+                                                                        state.episode_page_transcript = None;
+                                                                        state.episode_page_people = None;
+                                                                    });
+                                                                    }
+                                                                }
+                                                            },
+                                                        );
+                                                    }
+
                                                     // Update the URL with the parameters if they are not already there
                                                     web_sys::console::log_1(&"preloadfalse".into());
                                                     let mut new_url =
@@ -529,24 +634,66 @@ pub fn epsiode() -> Html {
                             let episode_request = EpisodeRequest {
                                 episode_id: id,
                                 user_id: user_id.clone(),
+                                person_episode: effect_pod_state.person_episode.unwrap_or(false), // Defaults to false if None
                             };
                             effect_ep_in_db.set(true);
                             web_sys::console::log_1(&"preepmetadata".into());
                             wasm_bindgen_futures::spawn_local(async move {
                                 match pod_req::call_get_episode_metadata(
                                     &server_name,
-                                    api_key,
+                                    api_key.clone(),
                                     &episode_request,
                                 )
                                 .await
                                 {
                                     Ok(fetched_episode) => {
+                                        let user_id_clone = user_id.clone();
+                                        let api_key_clone = api_key.clone();
+                                        let server_name_clone = server_name.clone();
+
+                                        // After setting fetched_episode and before setting loading_clone.set(false):
+                                        if let Some(episode_id) = ui_state.selected_episode_id {
+                                            let chap_request = FetchPodcasting2DataRequest {
+                                                episode_id,
+                                                user_id: user_id_clone,
+                                            };
+
+                                            wasm_bindgen_futures::spawn_local(async move {
+                                                match call_fetch_podcasting_2_data(
+                                                    &server_name_clone,
+                                                    &api_key_clone,
+                                                    &chap_request,
+                                                )
+                                                .await
+                                                {
+                                                    Ok(response) => {
+                                                        aud_dispatch.reduce_mut(|state| {
+                                                            state.episode_page_transcript =
+                                                                Some(response.transcripts);
+                                                            state.episode_page_people =
+                                                                Some(response.people);
+                                                        });
+                                                        ep_2_loading_clone.set(false);
+                                                    }
+                                                    Err(e) => {
+                                                        web_sys::console::log_1(&format!("Error fetching podcast 2.0 data: {}", e).into());
+                                                        aud_dispatch.reduce_mut(|state| {
+                                                            state.episode_page_transcript = None;
+                                                            state.episode_page_people = None;
+                                                        });
+                                                    }
+                                                }
+                                            });
+                                        }
+
                                         web_sys::console::log_1(&"preloadfalse4".into());
                                         let episode_url = fetched_episode.feedurl.clone();
                                         let podcast_title = fetched_episode.podcastname.clone();
                                         let audio_url = fetched_episode.episodeurl.clone();
+                                        let real_episode_id = fetched_episode.episodeid.clone();
                                         web_sys::console::log_1(&"Fetched the ep".into());
                                         dispatch.reduce_mut(move |state| {
+                                            state.selected_episode_id = Some(real_episode_id);
                                             state.fetched_episode = Some(EpisodeMetadataResponse {
                                                 episode: fetched_episode,
                                             });
@@ -582,6 +729,7 @@ pub fn epsiode() -> Html {
                             });
                         }
                     }
+                    initial_fetch_complete.set(true);
                 }
                 || ()
             },
@@ -589,98 +737,66 @@ pub fn epsiode() -> Html {
     }
 
     // Get pocasting 2.0 data if available
-    {
-        use_effect_with(
-            (
-                episode_id.clone(),
-                user_id.clone(),
-                api_key.clone(),
-                server_name.clone(),
-            ),
-            {
-                let dispatch = audio_dispatch.clone();
-                let ep_2_loading_clone = ep_2_loading.clone();
-                web_sys::console::log_1(&"Getting 2.0 data".into());
-                move |(episode_id, user_id, api_key, server_name)| {
-                    if let (Some(episode_id), Some(user_id), Some(api_key), Some(server_name)) =
-                        (episode_id, user_id, api_key, server_name)
-                    {
-                        dispatch.reduce_mut(|state| {
-                            state.episode_page_transcript = None; // Clear old data
-                            state.episode_page_people = None; // Clear old data
-                        });
-                        let episode_id = *episode_id; // Dereference the option
-                        let user_id = *user_id; // Dereference the option
-                        let api_key = api_key.clone(); // Clone to make it owned
-                        let server_name = server_name.clone(); // Clone to make it owned
+    // First use_effect remains the same...
 
-                        wasm_bindgen_futures::spawn_local(async move {
-                            let chap_request = FetchPodcasting2DataRequest {
-                                episode_id,
-                                user_id,
-                            };
-                            match call_fetch_podcasting_2_data(
-                                &server_name,
-                                &api_key,
-                                &chap_request,
-                            )
-                            .await
-                            {
-                                Ok(response) => {
-                                    let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
-                                    let people = response.people.clone(); // Clone people to avoid move issue
-                                    web_sys::console::log_1(&"gots some 2.0 data".into());
-                                    dispatch.reduce_mut(|state| {
-                                        state.episode_page_transcript = Some(transcripts);
-                                        state.episode_page_people = Some(people);
-                                    });
-                                    ep_2_loading_clone.set(false);
-                                }
-                                Err(e) => {
-                                    web_sys::console::log_1(
-                                        &format!("Error fetching chapters: {}", e).into(),
-                                    );
-                                }
-                            }
-                        });
-                    }
-                    || ()
-                }
-            },
-        );
-    }
+    // {
+    //     use_effect_with((state.selected_episode_id.clone(),), {
+    //         let dispatch = audio_dispatch.clone();
+    //         let ep_2_loading_clone = ep_2_loading.clone();
+    //         let user_id = user_id.clone();
+    //         let api_key = api_key.clone();
+    //         let server_name = server_name.clone();
+
+    //         move |(episode_id,)| {
+    //             // Note the tuple pattern with one element
+    //             //
+    //             dispatch.reduce_mut(|state| {
+    //                 state.episode_page_transcript = None;
+    //                 state.episode_page_people = None;
+    //             });
+    //             let ep_id = episode_id.clone();
+    //             if let (Some(user_id), Some(api_key), Some(server_name)) =
+    //                 (user_id.as_ref(), api_key.as_ref(), server_name.as_ref())
+    //             {
+    //                 let user_id = *user_id;
+    //                 let api_key = api_key.clone();
+    //                 let server_name = server_name.clone();
+
+    //                 wasm_bindgen_futures::spawn_local(async move {
+    //                     let chap_request = FetchPodcasting2DataRequest {
+    //                         episode_id: ep_id.unwrap(),
+    //                         user_id,
+    //                     };
+
+    //                     match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request)
+    //                         .await
+    //                     {
+    //                         Ok(response) => {
+    //                             dispatch.reduce_mut(|state| {
+    //                                 state.episode_page_transcript = Some(response.transcripts);
+    //                                 state.episode_page_people = Some(response.people);
+    //                             });
+    //                             ep_2_loading_clone.set(false);
+    //                         }
+    //                         Err(e) => {
+    //                             web_sys::console::log_1(
+    //                                 &format!("Error fetching podcast 2.0 data: {}", e).into(),
+    //                             );
+    //                             dispatch.reduce_mut(|state| {
+    //                                 state.episode_page_transcript = None;
+    //                                 state.episode_page_people = None;
+    //                             });
+    //                         }
+    //                     }
+    //                 });
+    //             }
+
+    //             || () // No cleanup needed as we clear data at the start of the next effect run
+    //         }
+    //     });
+    // }
 
     let completion_status = use_state(|| false); // State to track completion status
-
-    // let copy_to_clipboard = Callback::from(move |_| {
-    //     let window = window().expect("global window does not exist");
-    //     let document = window.document().expect("document not available");
-
-    //     if let Some(input_element) = document
-    //         .get_element_by_id("share_link")
-    //         .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
-    //     {
-    //         input_element.select();
-
-    //         // Access the clipboard API directly
-    //         let navigator = window.navigator();
-    //         if let Some(clipboard) = navigator.clipboard() {
-    //             let value_to_copy = input_element.value();
-    //             spawn_local(async move {
-    //                 match wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&value_to_copy)).await {
-    //                     Ok(_) => {
-    //                         web_sys::console::log_1(&"Link copied to clipboard!".into());
-    //                     }
-    //                     Err(err) => {
-    //                         web_sys::console::log_1(&format!("Error copying to clipboard: {:?}", err).into());
-    //                     }
-    //                 }
-    //             });
-    //         } else {
-    //             web_sys::console::log_1(&"Clipboard API not available".into());
-    //         }
-    //     }
-    // });
 
     {
         let state = state.clone();
@@ -1235,13 +1351,14 @@ pub fn epsiode() -> Html {
                                                 }
                                             }
                                             {
-                                                if !*ep_2_loading {  // Only show if not loading
+                                                if !*ep_2_loading {
                                                     if let Some(people) = &audio_state.episode_page_people {
                                                         if !people.is_empty() {
+                                                            // Add key prop that changes with episode
                                                             html! {
-                                                                // Added overflow-x-auto and horizontal scrolling classes
                                                                 <div class="header-info mb-2 overflow-x-auto whitespace-nowrap scroll-container">
                                                                     <HostDropdown
+                                                                        key={format!("host-{}", episode.episode.episodeid)} // Add this key prop
                                                                         title="In This Episode"
                                                                         hosts={people.clone()}
                                                                         podcast_feed_url={episode.episode.episodeurl}
@@ -1257,7 +1374,7 @@ pub fn epsiode() -> Html {
                                                         html! {}
                                                     }
                                                 } else {
-                                                    html! {}  // Show nothing while loading
+                                                    html! {}
                                                 }
                                             }
                                         </div>

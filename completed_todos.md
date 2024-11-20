@@ -72,10 +72,16 @@ People stuff left:
 - [x] Add check for person associated with other added pods after subbing to a person
 - [x] Pre-emtively 'cache' podcasts that a host is a part of
 - [x] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
-- [] Fix issue when subscribing to host not in podpeopledb. - Resolves to 0
-- [] Fix issue unsubscribing from host
-- [] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
-- [] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
+- [x] Fix issue when subscribing to host not in podpeopledb. - Resolves to 0
+- [x] Fix issue unsubscribing from host
+- [x] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
+- [x] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
+- [] Double check the whole workflow
+  - [x] Add host in podpeople
+  - [x] Add host in podndex person tag
+  - [] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
+  - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
+  - [] Check entire workflow and 0.7.0 with mysql/mariadb
 
 Version 0.7.0
 
@@ -85,7 +91,7 @@ Version 0.7.0
 - [x] aur client
 
 - [x] Added Valkey to make many processes faster
-- [] People Table with background jobs to update people found in podcasts
+- [x] People Table with background jobs to update people found in podcasts
 - [x] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
 - [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
