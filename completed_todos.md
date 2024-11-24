@@ -21,6 +21,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
+- [] Make playing episode on every page dynamically update play/pause
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -37,7 +38,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 
 Mobile:
 
-- [] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
+- [x] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
 - [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
 - [] On mobile make the action buttons larger
 - [] On mobile make the volume slider drop below Shownotes
@@ -98,7 +99,7 @@ Version 0.7.0
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
 - [] Finalize virtual lines so it works like home on episode layout
 - [] On very small screens you no longer get the mini version without the context button
-- [] Dynamically adjusting buttons on episode page
+- [x] Dynamically adjusting buttons on episode page
 - [x] PodcastPeople DB up and running and can be contributed to
 - [] Show currently updating podcast in refresh feed button at top of screen
 - [x] Finalize loading states so you don't see login page when you are already authenticated

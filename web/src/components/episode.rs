@@ -15,7 +15,8 @@ use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_create_share_link, call_download_episode, call_fetch_podcasting_2_data,
     call_get_episode_id, call_mark_episode_completed, call_mark_episode_uncompleted,
-    call_queue_episode, call_save_episode, DownloadEpisodeRequest, EpisodeInfo,
+    call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
+    call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest, EpisodeInfo,
     EpisodeMetadataResponse, EpisodeRequest, FetchPodcasting2DataRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest,
 };
@@ -286,6 +287,9 @@ pub fn epsiode() -> Html {
                                                                     ),
                                                                     episodeid: fetched_episode_id, // Set the fetched episode ID here
                                                                     completed: false,
+                                                                    is_downloaded: false,
+                                                                    is_queued: false,
+                                                                    is_saved: false,
                                                                 },
                                                             });
                                                         state.selected_episode_id =
@@ -425,6 +429,9 @@ pub fn epsiode() -> Html {
                                                                     ),
                                                                     episodeid: 0, // Set the episode ID to 0
                                                                     completed: false,
+                                                                    is_downloaded: false,
+                                                                    is_queued: false,
+                                                                    is_saved: false,
                                                                 },
                                                             });
                                                         state.selected_episode_id = Some(0); // Set the episode ID to 0
@@ -613,6 +620,9 @@ pub fn epsiode() -> Html {
                                                                 ),
                                                                 episodeid: 0,
                                                                 completed: false,
+                                                                is_downloaded: false,
+                                                                is_queued: false,
+                                                                is_saved: false,
                                                             },
                                                         });
                                                 });
@@ -736,76 +746,47 @@ pub fn epsiode() -> Html {
         );
     }
 
-    // Get pocasting 2.0 data if available
-    // First use_effect remains the same...
-
-    // {
-    //     use_effect_with((state.selected_episode_id.clone(),), {
-    //         let dispatch = audio_dispatch.clone();
-    //         let ep_2_loading_clone = ep_2_loading.clone();
-    //         let user_id = user_id.clone();
-    //         let api_key = api_key.clone();
-    //         let server_name = server_name.clone();
-
-    //         move |(episode_id,)| {
-    //             // Note the tuple pattern with one element
-    //             //
-    //             dispatch.reduce_mut(|state| {
-    //                 state.episode_page_transcript = None;
-    //                 state.episode_page_people = None;
-    //             });
-    //             let ep_id = episode_id.clone();
-    //             if let (Some(user_id), Some(api_key), Some(server_name)) =
-    //                 (user_id.as_ref(), api_key.as_ref(), server_name.as_ref())
-    //             {
-    //                 let user_id = *user_id;
-    //                 let api_key = api_key.clone();
-    //                 let server_name = server_name.clone();
-
-    //                 wasm_bindgen_futures::spawn_local(async move {
-    //                     let chap_request = FetchPodcasting2DataRequest {
-    //                         episode_id: ep_id.unwrap(),
-    //                         user_id,
-    //                     };
-
-    //                     match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request)
-    //                         .await
-    //                     {
-    //                         Ok(response) => {
-    //                             dispatch.reduce_mut(|state| {
-    //                                 state.episode_page_transcript = Some(response.transcripts);
-    //                                 state.episode_page_people = Some(response.people);
-    //                             });
-    //                             ep_2_loading_clone.set(false);
-    //                         }
-    //                         Err(e) => {
-    //                             web_sys::console::log_1(
-    //                                 &format!("Error fetching podcast 2.0 data: {}", e).into(),
-    //                             );
-    //                             dispatch.reduce_mut(|state| {
-    //                                 state.episode_page_transcript = None;
-    //                                 state.episode_page_people = None;
-    //                             });
-    //                         }
-    //                     }
-    //                 });
-    //             }
-
-    //             || () // No cleanup needed as we clear data at the start of the next effect run
-    //         }
-    //     });
-    // }
-
-    let completion_status = use_state(|| false); // State to track completion status
+    let completion_status = use_state(|| false);
+    let queue_status = use_state(|| false);
+    let save_status = use_state(|| false);
+    let download_status = use_state(|| false);
 
     {
         let state = state.clone();
         let completion_status = completion_status.clone();
+        let queue_status = queue_status.clone();
+        let save_status = save_status.clone();
+        let download_status = download_status.clone();
 
-        // Update the completion status when the fetched episode changes
         use_effect_with(state.fetched_episode.clone(), move |_| {
             if let Some(episode) = &state.fetched_episode {
+                // Add debug logging
+                web_sys::console::log_1(
+                    &format!(
+                        "Episode data received: completed={}, queued={}, saved={}, downloaded={}",
+                        episode.episode.completed,
+                        episode.episode.is_queued,
+                        episode.episode.is_saved,
+                        episode.episode.is_downloaded
+                    )
+                    .into(),
+                );
+
                 completion_status.set(episode.episode.completed);
+                queue_status.set(episode.episode.is_queued);
+                save_status.set(episode.episode.is_saved);
+                download_status.set(episode.episode.is_downloaded);
+
+                // Verify states were set
+                web_sys::console::log_1(
+                    &format!(
+                        "States updated: completion={}, queue={}, save={}, download={}",
+                        *completion_status, *queue_status, *save_status, *download_status
+                    )
+                    .into(),
+                );
+            } else {
+                web_sys::console::log_1(&"No episode data received".into());
             }
             || ()
         });
@@ -966,6 +947,16 @@ pub fn epsiode() -> Html {
                         let api_key_play = api_key.clone();
                         let audio_dispatch = audio_dispatch.clone();
 
+                        let is_playing = {
+                            let audio_state = audio_state.clone();
+                            let episode_id = episode_id_for_closure;
+
+                            audio_state.currently_playing.as_ref().map_or(false, |current| {
+                                current.episode_id == episode_id && audio_state.audio_playing.unwrap_or(false)
+                            })
+                        };
+
+                        // Create the original on_play_click callback
                         let on_play_click = on_play_click(
                             episode_url_for_closure.clone(),
                             episode_title_for_closure.clone(),
@@ -981,107 +972,30 @@ pub fn epsiode() -> Html {
                             None,
                         );
 
-                        let user_id_queue = user_id.clone();
-                        let server_name_queue = server_name.clone();
-                        let api_key_queue = api_key.clone();
-                        let audio_dispatch_queue = audio_dispatch.clone();
+                        // Create the play toggle handler
+                        let handle_play_click = {
+                            let audio_state = audio_state.clone();
+                            let audio_dispatch = audio_dispatch.clone();
+                            let episode_id = episode_id_for_closure;
+                            let on_play = on_play_click.clone();
 
-                        let on_add_to_queue = {
-                            Callback::from(move |_: MouseEvent| {
-                                let server_name_copy = server_name_queue.clone();
-                                let api_key_copy = api_key_queue.clone();
-                                let queue_post = audio_dispatch_queue.clone();
-                                let request = QueuePodcastRequest {
-                                    episode_id: episode_id_for_closure,
-                                    user_id: user_id_queue.unwrap(), // replace with the actual user ID
-                                };
-                                let server_name = server_name_copy; // replace with the actual server name
-                                let api_key = api_key_copy; // replace with the actual API key
-                                let future = async move {
-                                    // let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                                    // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("Episode added to Queue!")));
-                                    match call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
-                                        Ok(success_message) => {
-                                            queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
-                                        },
-                                        Err(e) => {
-                                            queue_post.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
-                                            // Handle error, e.g., display the error message
-                                        }
-                                    }
-                                };
-                                wasm_bindgen_futures::spawn_local(future);
-                                // dropdown_open.set(false);
+                            Callback::from(move |e: MouseEvent| {
+                                let is_this_episode_loaded = audio_state.currently_playing.as_ref()
+                                    .map_or(false, |current| current.episode_id == episode_id);
+
+                                if is_this_episode_loaded {
+                                    // If this episode is loaded, just toggle playback
+                                    audio_dispatch.reduce_mut(|state| {
+                                        state.toggle_playback();
+                                    });
+                                } else {
+                                    // If this episode isn't loaded, use the original on_play_click
+                                    on_play.emit(e);
+                                }
                             })
                         };
 
-                        let saved_server_name = server_name.clone();
-                        let saved_api_key = api_key.clone();
-                        let save_post = audio_dispatch.clone();
-                        let user_id_save = user_id.clone();
 
-                        let on_save_episode = {
-                            Callback::from(move |_: MouseEvent| {
-                                let server_name_copy = saved_server_name.clone();
-                                let api_key_copy = saved_api_key.clone();
-                                let post_state = save_post.clone();
-                                let request = SavePodcastRequest {
-                                    episode_id: episode_id_for_closure, // changed from episode_title
-                                    user_id: user_id_save.unwrap(), // replace with the actual user ID
-                                };
-                                let server_name = server_name_copy; // replace with the actual server name
-                                let api_key = api_key_copy; // replace with the actual API key
-                                let future = async move {
-                                    // let return_mes = call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                                    // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode saved successfully")));
-                                    match call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
-                                        Ok(success_message) => {
-                                            post_state.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
-                                        },
-                                        Err(e) => {
-                                            post_state.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
-                                            // Handle error, e.g., display the error message
-                                        }
-                                    }
-                                };
-                                wasm_bindgen_futures::spawn_local(future);
-                                // dropdown_open.set(false);
-                            })
-                        };
-
-                        let download_server_name = server_name.clone();
-                        let download_api_key = api_key.clone();
-                        let download_post = audio_dispatch.clone();
-                        let user_id_download = user_id.clone();
-
-                        let on_download_episode = {
-                            Callback::from(move |_: MouseEvent| {
-                                let post_state = download_post.clone();
-                                let server_name_copy = download_server_name.clone();
-                                let api_key_copy = download_api_key.clone();
-                                let request = DownloadEpisodeRequest {
-                                    episode_id: episode_id_for_closure,
-                                    user_id: user_id_download.unwrap(), // replace with the actual user ID
-                                };
-                                let server_name = server_name_copy; // replace with the actual server name
-                                let api_key = api_key_copy; // replace with the actual API key
-                                let future = async move {
-                                    // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                                    // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
-                                    match call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
-                                        Ok(success_message) => {
-                                            post_state.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
-                                        },
-                                        Err(e) => {
-                                            post_state.reduce_mut(|state| state.error_message = Option::from(format!("{}", e)));
-                                            // Handle error, e.g., display the error message
-                                        }
-                                    }
-                                };
-                                wasm_bindgen_futures::spawn_local(future);
-                                // dropdown_open.set(false);
-                            })
-                        };
 
                         let complete_server_name = server_name.clone();
                         let complete_api_key = api_key.clone();
@@ -1103,7 +1017,6 @@ pub fn epsiode() -> Html {
                                 let api_key = api_key_copy; // replace with the actual API key
                                 let future = async move {
                                     // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                                    // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
                                     match call_mark_episode_completed(
                                         &server_name.unwrap(),
                                         &api_key.flatten(),
@@ -1111,9 +1024,8 @@ pub fn epsiode() -> Html {
                                     )
                                     .await
                                     {
-                                        Ok(success_message) => {
+                                        Ok(_success_message) => {
                                             completion_status.set(true);
-                                            // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                                             post_dispatch.reduce_mut(|state| {
                                                 if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                                     if let Some(pos) =
@@ -1126,7 +1038,6 @@ pub fn epsiode() -> Html {
                                                 } else {
                                                     state.completed_episodes = Some(vec![episode_id_for_closure]);
                                                 }
-                                                state.info_message = Some(format!("{}", success_message));
                                             });
                                         }
                                         Err(e) => {
@@ -1162,7 +1073,6 @@ pub fn epsiode() -> Html {
                                 let api_key = api_key_copy; // replace with the actual API key
                                 let future = async move {
                                     // let _ = call_download_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                                    // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode now downloading!")));
                                     match call_mark_episode_uncompleted(
                                         &server_name.unwrap(),
                                         &api_key.flatten(),
@@ -1170,9 +1080,8 @@ pub fn epsiode() -> Html {
                                     )
                                     .await
                                     {
-                                        Ok(success_message) => {
+                                        Ok(_message) => {
                                             completion_status.set(false);
-                                            // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                                             post_dispatch.reduce_mut(|state| {
                                                 if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                                     if let Some(pos) =
@@ -1185,7 +1094,6 @@ pub fn epsiode() -> Html {
                                                 } else {
                                                     state.completed_episodes = Some(vec![episode_id_for_closure]);
                                                 }
-                                                state.info_message = Some(format!("{}", success_message));
                                             });
                                         }
                                         Err(e) => {
@@ -1210,6 +1118,128 @@ pub fn epsiode() -> Html {
                                 } else {
                                     on_complete_episode.emit(());
                                 }
+                            })
+                        };
+
+                        // First, create all the toggle functions
+                        let queue_status = queue_status.clone();
+                        let save_status = save_status.clone();
+                        let download_status = download_status.clone();
+
+                        let toggle_queue = {
+                            let queue_status = queue_status.clone();
+                            let server_name_queue = server_name.clone();
+                            let api_key_queue = api_key.clone();
+                            let user_id_queue = user_id.clone();
+                            let audio_dispatch_queue = audio_dispatch.clone();
+                            let episode_id = episode_id_for_closure;
+
+                            Callback::from(move |_: MouseEvent| {
+                                let server_name_copy = server_name_queue.clone();
+                                let api_key_copy = api_key_queue.clone();
+                                let queue_post = audio_dispatch_queue.clone();
+                                let queue_status = queue_status.clone();
+                                let is_queued = *queue_status;
+                                let request = QueuePodcastRequest {
+                                    episode_id,
+                                    user_id: user_id_queue.unwrap(),
+                                };
+
+                                let future = async move {
+                                    let result = if is_queued {
+                                        call_remove_queued_episode(&server_name_copy.unwrap(), &api_key_copy.flatten(), &request).await
+                                    } else {
+                                        call_queue_episode(&server_name_copy.unwrap(), &api_key_copy.flatten(), &request).await
+                                    };
+
+                                    match result {
+                                        Ok(success_message) => {
+                                            queue_status.set(!is_queued); // Toggle the state after successful API call
+                                        },
+                                        Err(e) => {
+                                            queue_post.reduce_mut(|state| state.error_message = Some(format!("{}", e)));
+                                        }
+                                    }
+                                };
+                                wasm_bindgen_futures::spawn_local(future);
+                            })
+                        };
+
+                        let toggle_save = {
+                            let save_status = save_status.clone();
+                            let saved_server_name = server_name.clone();
+                            let saved_api_key = api_key.clone();
+                            let save_post = audio_dispatch.clone();
+                            let user_id_save = user_id.clone();
+                            let episode_id = episode_id_for_closure;
+
+                            Callback::from(move |_: MouseEvent| {
+                                let server_name_copy = saved_server_name.clone();
+                                let api_key_copy = saved_api_key.clone();
+                                let post_state = save_post.clone();
+                                let is_saved = *save_status;
+                                let save_status = save_status.clone();
+                                let request = SavePodcastRequest {
+                                    episode_id,
+                                    user_id: user_id_save.unwrap(),
+                                };
+
+                                let future = async move {
+                                    let result = if is_saved {
+                                        call_remove_saved_episode(&server_name_copy.unwrap(), &api_key_copy.flatten(), &request).await
+                                    } else {
+                                        call_save_episode(&server_name_copy.unwrap(), &api_key_copy.flatten(), &request).await
+                                    };
+
+                                    match result {
+                                        Ok(success_message) => {
+                                            save_status.set(!is_saved); // Toggle the state after successful API call
+                                        },
+                                        Err(e) => {
+                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", e)));
+                                        }
+                                    }
+                                };
+                                wasm_bindgen_futures::spawn_local(future);
+                            })
+                        };
+
+                        let toggle_download = {
+                            let download_status = download_status.clone();
+                            let download_server_name = server_name.clone();
+                            let download_api_key = api_key.clone();
+                            let download_post = audio_dispatch.clone();
+                            let user_id_download = user_id.clone();
+                            let episode_id = episode_id_for_closure;
+
+                            Callback::from(move |_: MouseEvent| {
+                                let server_name_copy = download_server_name.clone();
+                                let api_key_copy = download_api_key.clone();
+                                let post_state = download_post.clone();
+                                let is_downloaded = *download_status;
+                                let download_status = download_status.clone();
+                                let request = DownloadEpisodeRequest {
+                                    episode_id,
+                                    user_id: user_id_download.unwrap(),
+                                };
+
+                                let future = async move {
+                                    let result = if is_downloaded {
+                                        call_remove_downloaded_episode(&server_name_copy.unwrap(), &api_key_copy.flatten(), &request).await
+                                    } else {
+                                        call_download_episode(&server_name_copy.unwrap(), &api_key_copy.flatten(), &request).await
+                                    };
+
+                                    match result {
+                                        Ok(success_message) => {
+                                            download_status.set(!is_downloaded); // Toggle the state after successful API call
+                                        },
+                                        Err(e) => {
+                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", e)));
+                                        }
+                                    }
+                                };
+                                wasm_bindgen_futures::spawn_local(future);
                             })
                         };
 
@@ -1385,23 +1415,23 @@ pub fn epsiode() -> Html {
                                                 html! {
                                                     <>
                                                     <div class="button-row">
-                                                        <button onclick={on_play_click} class="play-button">
-                                                            <i class="material-icons">{ "play_arrow" }</i>
-                                                            {"Play"}
+                                                        <button onclick={handle_play_click} class="play-button">
+                                                            <i class="material-icons">{ if is_playing { "pause" } else { "play_arrow" } }</i>
+                                                            { if is_playing { "Pause" } else { "Play" } }
                                                         </button>
-                                                        <button onclick={on_add_to_queue} class="queue-button">
-                                                            <i class="material-icons">{ "playlist_add" }</i>
-                                                            {"Queue"}
+                                                        <button onclick={toggle_queue} class="queue-button">
+                                                            <i class="material-icons">{ if *queue_status { "playlist_remove" } else { "playlist_add" } }</i>
+                                                            { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
                                                         </button>
-                                                        <button onclick={on_save_episode} class="save-button">
-                                                            <i class="material-icons">{ "favorite" }</i>
-                                                            {"Save"}
+                                                        <button onclick={toggle_save} class="save-button">
+                                                            <i class="material-icons">{ if *save_status { "favorite" } else { "favorite_border" } }</i>
+                                                            { if *save_status { "Unsave" } else { "Save" } }
                                                         </button>
                                                     </div>
                                                     <div class="button-row">
-                                                        <button onclick={on_download_episode} class="download-button-ep">
-                                                            <i class="material-icons">{ "download" }</i>
-                                                            {"Download"}
+                                                        <button onclick={toggle_download} class="download-button-ep">
+                                                            <i class="material-icons">{ if *download_status { "delete" } else { "download" } }</i>
+                                                            { if *download_status { "Remove Download" } else { "Download" } }
                                                         </button>
                                                         <button onclick={toggle_completion} class="download-button-ep">
                                                             <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
@@ -1530,30 +1560,30 @@ pub fn epsiode() -> Html {
                                     {
                                         if should_show_buttons {
                                             if *ep_in_db {
-                                            html! {
-                                                <>
-                                                <button onclick={on_play_click} class="play-button">
-                                                    <i class="material-icons">{ "play_arrow" }</i>
-                                                    {"Play"}
-                                                </button>
-                                                <button onclick={on_add_to_queue} class="queue-button">
-                                                    <i class="material-icons">{ "playlist_add" }</i>
-                                                    {"Queue"}
-                                                </button>
-                                                <button onclick={on_save_episode} class="save-button">
-                                                    <i class="material-icons">{ "favorite" }</i>
-                                                    {"Save"}
-                                                </button>
-                                                <button onclick={on_download_episode} class="download-button-ep">
-                                                    <i class="material-icons">{ "download" }</i>
-                                                    {"Download"}
-                                                </button>
-                                                <button onclick={toggle_completion} class="download-button-ep">
-                                                    <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
-                                                    { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
-                                                </button>
-                                                </>
-                                            }
+                                                html! {
+                                                    <>
+                                                    <button onclick={handle_play_click} class="play-button">
+                                                        <i class="material-icons">{ if is_playing { "pause" } else { "play_arrow" } }</i>
+                                                        { if is_playing { "Pause" } else { "Play" } }
+                                                    </button>
+                                                    <button onclick={toggle_queue} class="queue-button">
+                                                        <i class="material-icons">{ if *queue_status { "playlist_remove" } else { "playlist_add" } }</i>
+                                                        { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
+                                                    </button>
+                                                    <button onclick={toggle_save} class="save-button">
+                                                        <i class="material-icons">{ if *save_status { "favorite" } else { "favorite_border" } }</i>
+                                                        { if *save_status { "Unsave" } else { "Save" } }
+                                                    </button>
+                                                    <button onclick={toggle_download} class="download-button-ep">
+                                                        <i class="material-icons">{ if *download_status { "delete" } else { "download" } }</i>
+                                                        { if *download_status { "Remove Download" } else { "Download" } }
+                                                    </button>
+                                                    <button onclick={toggle_completion} class="download-button-ep">
+                                                        <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                                        { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
+                                                    </button>
+                                                    </>
+                                                }
                                             } else {
                                                 html! {
                                                     <p class="no-media-warning item_container-text play-button">

@@ -4372,16 +4372,22 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
                        p.PodcastID, p.PodcastName, p.ArtworkURL as podcast_artwork,
                        p.FeedURL, p.WebsiteURL, p.PodcastIndexID,
                        e.EpisodeID as real_episode_id,
-                       COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as final_artwork
+                       COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as final_artwork,
+                       CASE WHEN q.EpisodeID IS NOT NULL THEN true ELSE false END as is_queued,
+                       CASE WHEN s.EpisodeID IS NOT NULL THEN true ELSE false END as is_saved,
+                       CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded
                 FROM "PeopleEpisodes" pe
                 JOIN "Podcasts" p ON pe.PodcastID = p.PodcastID
                 JOIN "Episodes" e ON (
                     e.EpisodeTitle = pe.EpisodeTitle
                     AND e.EpisodeURL = pe.EpisodeURL
                 )
+                LEFT JOIN "EpisodeQueue" q ON e.EpisodeID = q.EpisodeID AND q.UserID = %s
+                LEFT JOIN "SavedEpisodes" s ON e.EpisodeID = s.EpisodeID AND s.UserID = %s
+                LEFT JOIN "DownloadedEpisodes" d ON e.EpisodeID = d.EpisodeID AND d.UserID = %s
                 WHERE pe.EpisodeID = %s
             """
-            cursor.execute(query_people, (episode_id,))
+            cursor.execute(query_people, (user_id, user_id, user_id, episode_id))
             people_episode = cursor.fetchone()
 
             if not people_episode:
@@ -4413,7 +4419,10 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
                 'episodeduration': people_episode['episodeduration'],
                 'listenduration': history_data.get('listenduration'),
                 'episodeid': people_episode['real_episode_id'],
-                'completed': history_data.get('completed', False)
+                'completed': history_data.get('completed', False),
+                'is_queued': people_episode['is_queued'],
+                'is_saved': people_episode['is_saved'],
+                'is_downloaded': people_episode['is_downloaded']
             }
         else:
             # Original query for regular episodes
@@ -4423,20 +4432,26 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
                        "Episodes".EpisodePubDate, "Episodes".EpisodeDescription,
                        "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration,
                        "Episodes".EpisodeID, "Podcasts".WebsiteURL,
-                       "UserEpisodeHistory".ListenDuration, "Episodes".Completed
+                       "UserEpisodeHistory".ListenDuration, "Episodes".Completed,
+                       CASE WHEN q.EpisodeID IS NOT NULL THEN true ELSE false END as is_queued,
+                       CASE WHEN s.EpisodeID IS NOT NULL THEN true ELSE false END as is_saved,
+                       CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded
                 FROM "Episodes"
                 INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
                 LEFT JOIN "UserEpisodeHistory" ON
                     "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
                     AND "Podcasts".UserID = "UserEpisodeHistory".UserID
+                LEFT JOIN "EpisodeQueue" q ON "Episodes".EpisodeID = q.EpisodeID AND q.UserID = %s
+                LEFT JOIN "SavedEpisodes" s ON "Episodes".EpisodeID = s.EpisodeID AND s.UserID = %s
+                LEFT JOIN "DownloadedEpisodes" d ON "Episodes".EpisodeID = d.EpisodeID AND d.UserID = %s
                 WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s
             """
-            cursor.execute(query, (episode_id, user_id))
+            cursor.execute(query, (user_id, user_id, user_id, episode_id, user_id))
             result = cursor.fetchone()
 
             # If not found, try with system user (1)
             if not result:
-                cursor.execute(query, (episode_id, 1))
+                cursor.execute(query, (user_id, user_id, user_id, episode_id, 1))
                 result = cursor.fetchone()
 
         cursor.close()
