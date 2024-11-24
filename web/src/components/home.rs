@@ -399,6 +399,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         Some(props.page_type.clone()),
         Some(props.page_type.clone()),
         true,
+        None,
     );
 
     let date_format = match_date_format(state.date_format.as_deref());

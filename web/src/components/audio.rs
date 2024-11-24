@@ -14,6 +14,7 @@ use crate::requests::pod_req::{
     QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
+use gloo_timers::future::TimeoutFuture;
 use js_sys::Array;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
@@ -25,8 +26,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::HtmlElement;
-use web_sys::{window, HtmlAudioElement, HtmlInputElement, Navigator};
+use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, Navigator};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -45,11 +45,234 @@ pub struct AudioPlayerProps {
     pub offline: bool,
 }
 
+#[derive(Clone, Debug)]
+struct BufferState {
+    buffered_ranges: Vec<(f64, f64)>,
+    is_buffering: bool,
+    buffer_ahead_target: f64,
+    buffer_behind_target: f64,
+}
+
 #[function_component(AudioPlayer)]
 pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let is_buffering = use_state(|| false);
+    let last_known_position = use_state(|| 0.0);
+
+    let buffer_state = use_state(|| BufferState {
+        buffered_ranges: Vec::new(),
+        is_buffering: false,
+        buffer_ahead_target: 30.0,  // Buffer 30 seconds ahead
+        buffer_behind_target: 10.0, // Keep 10 seconds behind
+    });
+
+    // Add error handling state
+    let error_state = use_state(|| None::<String>);
+    let retry_count = use_state(|| 0);
+    let last_playback_position = use_state(|| 0.0);
+    // Initialize audio with better error handling
+    let initialize_audio = {
+        let audio_ref = audio_ref.clone();
+        let props = props.clone();
+        let error_state = error_state.clone();
+        let retry_count = retry_count.clone();
+        let is_buffering = is_buffering.clone();
+        let last_known_position = last_known_position.clone();
+
+        Callback::from(move |_: ()| {
+            if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
+                // Set basic properties
+                audio.set_src(&props.src);
+                audio.set_preload("auto");
+
+                // Add error handling
+                let error_state = error_state.clone();
+                let retry_count = retry_count.clone();
+                let audio_for_error = audio.clone();
+
+                let error_handler = Closure::wrap(Box::new(move |_: Event| {
+                    let error_msg = match audio_for_error.get_attribute("error") {
+                        Some(code) => match code.as_str() {
+                            "1" => "Fetching process aborted",
+                            "2" => "Network error",
+                            "3" => "Decoding error",
+                            "4" => "Source not supported",
+                            _ => "Unknown error occurred",
+                        },
+                        None => "Unknown error occurred",
+                    };
+
+                    error_state.set(Some(error_msg.to_string()));
+
+                    if *retry_count < 3 {
+                        let rc = *retry_count + 1;
+                        retry_count.set(rc);
+
+                        let delay = 2u32.pow(rc as u32) * 1000;
+                        let audio_for_retry = audio_for_error.clone();
+
+                        spawn_local(async move {
+                            TimeoutFuture::new(delay).await;
+                            let current_src = audio_for_retry.src();
+                            audio_for_retry.set_src("");
+                            audio_for_retry.set_src(&current_src);
+                            let _ = audio_for_retry.load();
+                        });
+                    }
+                }) as Box<dyn FnMut(_)>);
+
+                audio
+                    .add_event_listener_with_callback(
+                        "error",
+                        error_handler.as_ref().unchecked_ref(),
+                    )
+                    .expect("Failed to add error handler");
+                error_handler.forget();
+
+                // Add stalled/waiting handler
+                let is_buffering_for_stall = is_buffering.clone();
+                let stall_handler = Closure::wrap(Box::new(move |_: Event| {
+                    is_buffering_for_stall.set(true);
+                }) as Box<dyn FnMut(_)>);
+
+                audio
+                    .add_event_listener_with_callback(
+                        "waiting",
+                        stall_handler.as_ref().unchecked_ref(),
+                    )
+                    .expect("Failed to add stall handler");
+                stall_handler.forget();
+
+                // Add playing handler to clear buffering state
+                let is_buffering_for_play = is_buffering.clone();
+                let playing_handler = Closure::wrap(Box::new(move |_: Event| {
+                    is_buffering_for_play.set(false);
+                }) as Box<dyn FnMut(_)>);
+
+                audio
+                    .add_event_listener_with_callback(
+                        "playing",
+                        playing_handler.as_ref().unchecked_ref(),
+                    )
+                    .expect("Failed to add playing handler");
+                playing_handler.forget();
+
+                // Periodically save position
+                let save_position = {
+                    let last_known_position = last_known_position.clone();
+                    let audio_for_save = audio.clone();
+                    let props = props.clone();
+
+                    Closure::wrap(Box::new(move |_: Event| {
+                        last_known_position.set(audio_for_save.current_time());
+                        if let Some(window) = web_sys::window() {
+                            if let Ok(Some(storage)) = window.local_storage() {
+                                let _ = storage.set_item(
+                                    &format!("audio_position_{}", props.episode_id),
+                                    &audio_for_save.current_time().to_string(),
+                                );
+                            }
+                        }
+                    }) as Box<dyn FnMut(_)>)
+                };
+
+                audio
+                    .add_event_listener_with_callback(
+                        "timeupdate",
+                        save_position.as_ref().unchecked_ref(),
+                    )
+                    .expect("Failed to add timeupdate handler");
+                save_position.forget();
+            }
+        })
+    };
+
+    // Add periodic state saving
+    {
+        let props = props.clone();
+        let audio_ref = audio_ref.clone();
+        let last_position = last_playback_position.clone();
+
+        use_effect_with((), move |_| {
+            let props = props.clone();
+            let audio_ref = audio_ref.clone();
+            let last_position = last_position.clone();
+
+            let interval = Interval::new(5000, move || {
+                if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
+                    last_position.set(audio.current_time());
+
+                    if let Some(window) = web_sys::window() {
+                        if let Ok(Some(storage)) = window.local_storage() {
+                            let _ = storage.set_item(
+                                &format!("audio_position_{}", props.episode_id),
+                                &audio.current_time().to_string(),
+                            );
+                        }
+                    }
+                }
+            });
+
+            move || {
+                interval.cancel();
+            }
+        });
+    }
+
+    // Add periodic state saving
+    // use_effect_with(audio_ref.clone(), {
+    //     let last_position = last_playback_position.clone();
+
+    //     move |_| {
+    //         let interval = Interval::new(5000, move || {
+    //             if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
+    //                 last_position.set(audio.current_time());
+
+    //                 // Save state to localStorage
+    //                 if let Some(window) = web_sys::window() {
+    //                     if let Ok(storage) = window.local_storage() {
+    //                         if let Some(storage) = storage {
+    //                             let _ = storage.set_item(
+    //                                 &format!("audio_position_{}", props.episode_id),
+    //                                 &audio.current_time().to_string(),
+    //                             );
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         });
+
+    //         move || {
+    //             interval.cancel();
+    //         }
+    //     }
+    // });
+
+    // Restore previous state on mount
+    use_effect_with((), {
+        let audio_ref = audio_ref.clone();
+        let props = props.clone();
+
+        move |_| {
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(storage)) = window.local_storage() {
+                    if let Ok(Some(position)) =
+                        storage.get_item(&format!("audio_position_{}", props.episode_id))
+                    {
+                        if let Ok(position) = position.parse::<f64>() {
+                            if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
+                                audio.set_current_time(position);
+                            }
+                        }
+                    }
+                }
+            }
+            || ()
+        }
+    });
+
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -570,43 +793,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         }
     });
 
-    // // Try importing each type individually
-    // // #[cfg(feature = "MediaMetadata")]
-    // use web_sys::MediaMetadata;
-
-    // // #[cfg(feature = "MediaSession")]
-    // use web_sys::MediaSession;
-
-    // // #[cfg(feature = "MediaSessionAction")]
-    // use web_sys::MediaSessionAction;
-
-    // #[wasm_bindgen(start)]
-    // pub fn run() {
-    //     // This will help us verify that the unstable APIs flag is recognized
-    //     #[cfg(web_sys_unstable_apis)]
-    //     web_sys::console::log_1(&"Unstable APIs are enabled".into());
-
-    //     #[cfg(not(web_sys_unstable_apis))]
-    //     web_sys::console::log_1(&"Unstable APIs are NOT enabled".into());
-
-    //     // Check which types are available
-    //     #[cfg(feature = "MediaMetadata")]
-    //     web_sys::console::log_1(&"MediaMetadata is available".into());
-
-    //     #[cfg(feature = "MediaSession")]
-    //     web_sys::console::log_1(&"MediaSession is available".into());
-
-    //     #[cfg(feature = "MediaSessionAction")]
-    //     web_sys::console::log_1(&"MediaSessionAction is available".into());
-
-    //     // Try to use Navigator, which should definitely be available
-    //     if let Some(window) = web_sys::window() {
-    //         let navigator: Navigator = window.navigator();
-    //         web_sys::console::log_1(&"Navigator is available".into());
-    //     }
-    // }
-
-    // Add this near the top of the component, after other use_effect calls
     {
         let audio_state = audio_state.clone();
         let audio_dispatch = _audio_dispatch.clone();
@@ -705,13 +891,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             dispatch.reduce_mut(UIState::toggle_playback);
         })
     };
-
-    // Update current time and duration
-    // // Keep the existing use_state for the formatted time
-    //     let current_time_formatted = use_state(|| "00:00:00".to_string());
-    //
-    // // Add a new state for the current time in seconds
-    //     let current_time_seconds = use_state(|| 0.0);
 
     let update_time = {
         let audio_dispatch = _audio_dispatch.clone();
@@ -978,6 +1157,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         dispatch_clone.reduce_mut(move |state| {
                             state.selected_episode_id = Some(episode_id);
+                            state.fetched_episode = None;
                         });
                         history_clone.push("/episode"); // Use the route path
                     });
@@ -995,7 +1175,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             let start: f64 = (progress_percentage - offset_percentage).max(0.0); // Using max on f64
             let end: f64 = (progress_percentage + offset_percentage).min(100.0); // Using min on f64
             format!(
-                "background: linear-gradient(to right, #007BFF {}%, #E9ECEF {}%);",
+                "background: linear-gradient(to right, #1db954 0%, #1db954 {}%, var(--prog-bar-color) {}%, var(--prog-bar-color) 100%);",
                 start, end
             )
         };
@@ -1038,14 +1218,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
                     <div class="scrub-bar">
                         <span>{audio_state.current_time_formatted.clone()}</span>
-                        <input type="range"
-                            class="flex-grow h-1 cursor-pointer"
-                            min="0.0"
-                            max={audio_props.duration_sec.to_string().clone()}
-                            value={audio_state.current_time_seconds.to_string()}
-                            oninput={update_time.clone()}
-                            style={progress_style}
-                        />
+                        <div class="scrub-bar-wrapper">
+                            <input
+                                type="range"
+                                class="progress-bar"
+                                min="0.0"
+                                max={audio_props.duration_sec.to_string()}
+                                value={audio_state.current_time_seconds.to_string()}
+                                oninput={update_time.clone()}
+                                style={progress_style}
+                            />
+                        </div>
                         <span>{formatted_duration.clone()}</span>
                     </div>
 

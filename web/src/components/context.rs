@@ -103,6 +103,7 @@ pub struct AppState {
     pub selected_episode_url: Option<String>,
     pub selected_episode_audio_url: Option<String>,
     pub selected_podcast_title: Option<String>,
+    pub person_episode: Option<bool>,
     pub add_user_request: Option<AddUserRequest>,
     pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,

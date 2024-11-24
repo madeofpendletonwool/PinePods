@@ -532,6 +532,7 @@ pub fn queue() -> Html {
                                 Some(String::from("queue")),
                                 Some(String::from("queue")),
                                 true,
+                                None,
                             );
                             let episode_url_for_ep_item = episode_url_clone.clone();
                             let date_format = match_date_format(state.date_format.as_deref());

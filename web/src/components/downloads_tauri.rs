@@ -141,8 +141,6 @@ pub async fn fetch_local_podcasts() -> Result<Vec<Podcast>, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("Failed to fetch local podcasts: {:?}", e)))
 }
 
-
-
 // Define the arguments for the Tauri command
 #[derive(Serialize, Deserialize)]
 struct ListDirArgs<'a> {
@@ -646,6 +644,7 @@ pub fn render_podcast_with_episodes(
                                 Some(String::from("Not needed")),
                                 Some(String::from("Not needed")),
                                 true,
+                                None,
                             );
 
                             let date_format = match_date_format(state.date_format.as_deref());

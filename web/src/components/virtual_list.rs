@@ -172,7 +172,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                         alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
                         class="episode-image"/>
                     <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                        <p class="item_container-text episode-title font-semibold" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(props.podcast_link.clone()), Some(shownotes_episode_url), Some(props.podcast_title.clone()), db_added)}>{ &episode.title.clone().unwrap_or_default() }</p>
+                        <p class="item_container-text episode-title font-semibold" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(props.podcast_link.clone()), Some(shownotes_episode_url), Some(props.podcast_title.clone()), db_added, None)}>{ &episode.title.clone().unwrap_or_default() }</p>
                         {
                             html! {
                                 <div class="item-description-text hidden md:block">

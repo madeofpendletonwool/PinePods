@@ -69,6 +69,7 @@ RUN mkdir -p /pinepods
 RUN mkdir -p /var/log/supervisor/
 COPY startup/ /pinepods/startup/
 RUN chmod +x /pinepods/startup/call_refresh_endpoint.sh
+RUN chmod +x /pinepods/startup/app_startup.sh
 COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
 RUN chmod +x /pinepods/startup/startup.sh

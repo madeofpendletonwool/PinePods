@@ -2,18 +2,20 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
     security, BackgroundTasks
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import PlainTextResponse, JSONResponse, Response, FileResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, Response, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from threading import Lock
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from functools import lru_cache, wraps
 
 # Needed Modules
 from passlib.context import CryptContext
 import mysql.connector
 from mysql.connector import pooling
+from time import time
 from mysql.connector.pooling import MySQLConnectionPool
 from mysql.connector import Error
 import psycopg
@@ -30,6 +32,10 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Generator
+from typing import Tuple
+from typing import Set
+from typing import TypedDict
+from typing import Callable
 import json
 import logging
 import argparse
@@ -114,8 +120,8 @@ proxy_protocol = os.environ.get("PROXY_PROTOCOL", "http")
 reverse_proxy = os.environ.get("REVERSE_PROXY", "False")
 
 # Podcast Index API url
-api_url = os.environ.get("SEARCH_API_URL", "https://api.pinepods.online/api/search")
-people_url = os.environ.get("PEOPLE_API_URL", "https://people.pinepods.online/api/hosts")
+api_url = os.environ.get("SEARCH_API_URL", "https://search.pinepods.online/api/search")
+people_url = os.environ.get("PEOPLE_API_URL", "https://people.pinepods.online")
 
 # Initial Vars needed to start and used throughout
 if reverse_proxy == "True":
@@ -383,6 +389,7 @@ async def api_config(api_key: str = Depends(get_api_key_from_header), cnx=Depend
             "proxy_port": proxy_port,
             "proxy_protocol": proxy_protocol,
             "reverse_proxy": reverse_proxy,
+            "people_url": people_url,
         }
     else:
         raise HTTPException(status_code=403,
@@ -658,21 +665,24 @@ async def api_podcast_details(podcast_id: str = Query(...), cnx=Depends(get_data
                             detail="You can only return pocast ids of your own podcasts!")
 
 class ClickedFeedURL(BaseModel):
-    podcast_title: str
-    podcast_url: str
-    podcast_description: str
-    podcast_author: str
-    podcast_artwork: str
-    podcast_explicit: bool
-    podcast_episode_count: int
-    podcast_categories: Optional[Dict[str, str]]
-    podcast_link: str
+    podcastid: int
+    podcastname: str
+    feedurl: str
+    description: str
+    author: str
+    artworkurl: str
+    explicit: bool
+    episodecount: int
+    categories: Optional[Dict[str, str]]
+    websiteurl: str
+    podcastindexid: int
 
 @app.get("/api/data/get_podcast_details_dynamic", response_model=ClickedFeedURL)
 async def get_podcast_details(
     user_id: int,
     podcast_title: str,
     podcast_url: str,
+    podcast_index_id: int,
     added: bool,
     display_only: bool = False,
     cnx=Depends(get_database_connection),
@@ -703,15 +713,17 @@ async def get_podcast_details(
 
 
         pod_details = ClickedFeedURL(
-            podcast_title=details["podcastname"],
-            podcast_url=details["feedurl"],
-            podcast_description=details["description"],
-            podcast_author=details["author"],
-            podcast_artwork=details["artworkurl"],
-            podcast_explicit=details["explicit"],
-            podcast_episode_count=details["episodecount"],
-            podcast_categories=categories_dict,
-            podcast_link=details["websiteurl"],
+            podcastid=0,
+            podcastname=details["podcastname"],
+            feedurl=details["feedurl"],
+            description=details["description"],
+            author=details["author"],
+            artworkurl=details["artworkurl"],
+            explicit=details["explicit"],
+            episodecount=details["episodecount"],
+            categories=categories_dict,
+            websiteurl=details["websiteurl"],
+            podcastindexid=details["podcastindexid"]
         )
         return pod_details
     else:
@@ -732,15 +744,17 @@ async def get_podcast_details(
 
 
         return ClickedFeedURL(
-            podcast_title=podcast_values['pod_title'],
-            podcast_url=podcast_values['pod_feed_url'],
-            podcast_description=podcast_values['pod_description'],
-            podcast_author=podcast_values['pod_author'],
-            podcast_artwork=podcast_values['pod_artwork'],
-            podcast_explicit=podcast_values['pod_explicit'],
-            podcast_episode_count=podcast_values['pod_episode_count'],
-            podcast_categories=categories_dict,
-            podcast_link=podcast_values['pod_website'],
+            podcastid=0,
+            podcastname=podcast_values['pod_title'],
+            feedurl=podcast_values['pod_feed_url'],
+            description=podcast_values['pod_description'],
+            author=podcast_values['pod_author'],
+            artworkurl=podcast_values['pod_artwork'],
+            explicit=podcast_values['pod_explicit'],
+            episodecount=podcast_values['pod_episode_count'],
+            categories=categories_dict,
+            websiteurl=podcast_values['pod_website'],
+            podcastindexid=podcast_index_id,
         )
 
 class ImportProgressResponse(BaseModel):
@@ -900,26 +914,87 @@ def parse_transcripts(feed_content: str, audio_url: str) -> List[Dict[str, Optio
         print(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
     return transcripts
 
-def get_podpeople_hosts(podcast_index_id: int) -> List[Dict[str, Optional[str]]]:
-    url = f"{people_url}/{podcast_index_id}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        hosts_data = response.json()
-        if hosts_data:
-            return [{
-                "name": host.get("name"),
-                "role": host.get("role", "Host"),
-                "group": None,
-                "img": host.get("img"),
-                "href": host.get("link")
-            } for host in hosts_data]
-        return []
-    except requests.RequestException as e:
-        logging.error(f"Error fetching data from podpeople_db: {e}")
-        return []
 
-def parse_people(feed_content: str, audio_url: Optional[str] = None, podcast_index_id: Optional[int] = None) -> List[Dict[str, Optional[str]]]:
+class TTLCache:
+    def __init__(self, maxsize: int = 1000, ttl: int = 3600):
+        self.maxsize = maxsize
+        self.ttl = ttl
+        self.cache: Dict[Tuple, Tuple[Any, float]] = {}
+
+    async def get_or_set(self, key: Tuple, callback: Callable):
+        current_time = time.time()
+
+        # Check if key exists and hasn't expired
+        if key in self.cache:
+            result, timestamp = self.cache[key]
+            if current_time - timestamp < self.ttl:
+                return result
+
+        # If we get here, either key doesn't exist or has expired
+        try:
+            # Await the callback here
+            result = await callback()
+
+            # Store new result
+            self.cache[key] = (result, current_time)
+
+            # Enforce maxsize by removing oldest entries
+            if len(self.cache) > self.maxsize:
+                oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k][1])
+                del self.cache[oldest_key]
+
+            return result
+        except Exception as e:
+            logging.error(f"Error in cache callback: {e}")
+            raise
+
+def async_ttl_cache(maxsize: int = 1000, ttl: int = 3600):
+    cache = TTLCache(maxsize=maxsize, ttl=ttl)
+
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Create a cache key from the function arguments
+            key = (func.__name__, args, frozenset(kwargs.items()))
+
+            try:
+                # Create an async callback
+                async def callback():
+                    return await func(*args, **kwargs)
+
+                return await cache.get_or_set(key, callback)
+            except Exception as e:
+                logging.error(f"Error in cached function {func.__name__}: {e}")
+                # Fall back to calling the function directly
+                return await func(*args, **kwargs)
+
+        return wrapper
+    return decorator
+
+@async_ttl_cache(maxsize=1000, ttl=3600)
+async def get_podpeople_hosts(podcast_index_id: int) -> List[Dict[str, Optional[str]]]:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            url = f"{people_url}/api/hosts/{podcast_index_id}"
+            response = await client.get(url)
+            response.raise_for_status()
+            hosts_data = response.json()
+
+            if hosts_data:
+                return [{
+                    "name": host.get("name"),
+                    "role": host.get("role", "Host"),
+                    "group": None,
+                    "img": host.get("img"),
+                    "href": host.get("link"),
+                    "description": host.get("description")
+                } for host in hosts_data]
+    except Exception as e:
+        logging.error(f"Error fetching hosts: {e}")
+
+    return []
+
+async def parse_people(feed_content: str, audio_url: Optional[str] = None, podcast_index_id: Optional[int] = None) -> List[Dict[str, Optional[str]]]:
     people = []
     try:
         root = ET.fromstring(feed_content)
@@ -938,9 +1013,10 @@ def parse_people(feed_content: str, audio_url: Optional[str] = None, podcast_ind
                                 "role": person_element.attrib.get('role'),
                                 "group": person_element.attrib.get('group'),
                                 "img": person_element.attrib.get('img'),
-                                "href": person_element.attrib.get('href')
+                                "href": person_element.attrib.get('href'),
                             })
-                    break  # Exit loop once the matching episode is found
+                    break
+
         if not people:
             # Fall back to channel-wide people
             person_elements = root.findall('.//channel/podcast:person', NAMESPACE)
@@ -950,63 +1026,134 @@ def parse_people(feed_content: str, audio_url: Optional[str] = None, podcast_ind
                     "role": person_element.attrib.get('role'),
                     "group": person_element.attrib.get('group'),
                     "img": person_element.attrib.get('img'),
-                    "href": person_element.attrib.get('href')
+                    "href": person_element.attrib.get('href'),
                 })
     except ET.ParseError as e:
         logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")
 
     # If no people found in the feed, fall back to podpeople_db
     if not people and podcast_index_id:
-        people = get_podpeople_hosts(podcast_index_id)
+        # Use the async version
+        people = await get_podpeople_hosts(podcast_index_id)
 
-    # If still no people found, return an empty list (original behavior)
-    return people  # This will be an empty list if no people were found in either source
+    return people
 
 @app.get("/api/data/fetch_podcasting_2_data")
-async def fetch_podcasting_2_data(episode_id: int, user_id: int, cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
+async def fetch_podcasting_2_data(
+    episode_id: int,
+    user_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
 
-    # Fetch the podcast feed URL and episode URL from the database using the episode_id
-    print(f'types are here db type: {database_type}, ep id: {episode_id}, user: {user_id}')
-    episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
-    print(f'got the ep data {episode_metadata}')
-    podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
-    print(f'Got the id {podcast_id}')
-    podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
-    print(f'Got the feed: {podcast_feed}')
-    episode_url = episode_metadata['episodeurl']
-    podcast_feed_url = podcast_feed['feedurl']
-    podcast_index_id = database_functions.functions.get_podcast_index_id(cnx, database_type, podcast_id)
+    try:
+        # Get all the metadata
+        print('getting meta')
+        episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
+        print('getting id')
+        podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+        print('getting deets')
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(podcast_feed_url)
-        response.raise_for_status()
-        feed_content = response.text  # Decode content to string
+        podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
 
-    logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
-    print(f"Fetched feed content: {feed_content[:200]}")
-    chapters_url = parse_chapters(feed_content, episode_url)
-    transcripts = parse_transcripts(feed_content, episode_url)
-    # people = parse_people(feed_content, episode_url)
-    people = parse_people(feed_content, episode_url, podcast_index_id)
+        episode_url = episode_metadata['episodeurl']
+        podcast_feed_url = podcast_feed['feedurl']
+        podcast_index_id = database_functions.functions.get_podcast_index_id(cnx, database_type, podcast_id)
 
-
-    chapters_data = []
-    if chapters_url:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.get(chapters_url)
+        # Fetch feed content
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(podcast_feed_url)
             response.raise_for_status()
-            chapters_data = response.json().get('chapters', [])
+            feed_content = response.text
 
-    logging.info(f'Chapter data {chapters_data}')
-    print(f'Chapter data {chapters_data}')
-    logging.info(f'Transcripts {transcripts}')
-    logging.info(f'People {people}')
+        # Parse feed content
+        chapters_url = parse_chapters(feed_content, episode_url)
+        transcripts = parse_transcripts(feed_content, episode_url)
+        people = await parse_people(feed_content, episode_url, podcast_index_id)
 
-    return {"chapters": chapters_data, "transcripts": transcripts, "people": people}
+        # Get chapters if available
+        chapters_data = []
+        if chapters_url:
+            try:
+                async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+                    response = await client.get(chapters_url)
+                    response.raise_for_status()
+                    chapters_data = response.json().get('chapters', [])
+            except Exception as e:
+                logging.error(f"Error fetching chapters: {e}")
 
+        return {
+            "chapters": chapters_data,
+            "transcripts": transcripts,
+            "people": people
+        }
+
+    except Exception as e:
+        logging.error(f"Error in fetch_podcasting_2_data: {e}")
+        # Return partial data if we have it, otherwise raise the error
+        if 'chapters_data' in locals() or 'transcripts' in locals() or 'people' in locals():
+            return {
+                "chapters": locals().get('chapters_data', []),
+                "transcripts": locals().get('transcripts', []),
+                "people": locals().get('people', [])
+            }
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+def is_valid_image_url(url: str) -> bool:
+    """Validate image URL for security"""
+    parsed = urlparse(url)
+    # Check if URL is absolute and uses http(s)
+    if not parsed.scheme or parsed.scheme not in ('http', 'https'):
+        return False
+    return True
+
+@app.get("/api/proxy/image")
+async def proxy_image(
+    url: str = Query(..., description="URL of the image to proxy")
+):
+    logging.info(f"Image proxy request received for URL: {url}")
+
+    if not is_valid_image_url(url):
+        logging.error(f"Invalid image URL: {url}")
+        raise HTTPException(status_code=400, detail="Invalid image URL")
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            logging.info(f"Fetching image from: {url}")
+            response = await client.get(url, timeout=10.0)
+            logging.info(f"Image fetch response status: {response.status_code}")
+            logging.info(f"Response headers: {response.headers}")
+
+            response.raise_for_status()
+
+            content_type = response.headers.get("Content-Type", "")
+            logging.info(f"Content type: {content_type}")
+
+            if not content_type.startswith(("image/", "application/octet-stream")):
+                logging.error(f"Invalid content type: {content_type}")
+                raise HTTPException(status_code=400, detail="URL does not point to an image")
+
+            headers = {
+                "Content-Type": content_type,
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*",
+                "X-Content-Type-Options": "nosniff"
+            }
+            logging.info("Returning image response")
+
+            return StreamingResponse(
+                response.aiter_bytes(),
+                headers=headers,
+                media_type=content_type
+            )
+    except Exception as e:
+        logging.error(f"Error in image proxy: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def parse_podroll(feed_content: str) -> List[Dict[str, Optional[str]]]:
@@ -1080,14 +1227,14 @@ def parse_hosts(feed_content: str) -> List[Dict[str, Optional[str]]]:
         logging.error(f"XML parsing error: {e} - Content: {feed_content[:200]}")  # Log the error and first 200 characters of content
     return people
 
-def get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_index_id):
+async def get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_index_id):
     # First, try to parse hosts from the feed content
     hosts = parse_hosts(feed_content)
 
     # If no hosts found, try podpeople_db
     if not hosts:
         if podcast_index_id:
-            hosts = get_podpeople_hosts(podcast_index_id)
+            hosts = await get_podpeople_hosts(podcast_index_id)
 
     # If still no hosts found, return a default host
     if not hosts:
@@ -1119,7 +1266,7 @@ async def fetch_podcasting_2_pod_data(podcast_id: int, user_id: int, cnx=Depends
     logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
 
     # people = parse_hosts(feed_content)
-    people = get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_feed['podcastindexid'])
+    people = await get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_feed['podcastindexid'])
     podroll = parse_podroll(feed_content)
     funding = parse_funding(feed_content)
     value = parse_value(feed_content)
@@ -1131,6 +1278,79 @@ async def fetch_podcasting_2_pod_data(podcast_id: int, user_id: int, cnx=Depends
 
     return {"people": people, "podroll": podroll, "funding": funding, "value": value}
 
+
+
+class PodcastResponse(BaseModel):
+    podcastid: int
+    podcastname: str
+    feedurl: str
+
+class PodPeopleResponse(BaseModel):
+    success: bool
+    podcasts: List[PodcastResponse]
+
+@app.get("/api/data/podpeople/host_podcasts")
+async def get_host_podcasts(
+    hostname: str,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """
+    Get podcasts associated with a host from the podpeople database.
+    """
+    # Verify API key
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
+
+    try:
+        # Make request to podpeople database
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            logging.info(f"Making request to {people_url}/api/hostsearch?name={hostname}")
+            response = await client.get(
+                f"{people_url}/api/hostsearch",  # Changed this line to match working endpoint
+                params={"name": hostname}
+            )
+            response.raise_for_status()
+            podpeople_data = response.json()
+
+            logging.info(f"Received response from podpeople: {podpeople_data}")
+
+            # Transform the podpeople response into our expected format
+            podcasts = []
+            if podpeople_data.get("success") and podpeople_data.get("podcasts"):
+                for podcast in podpeople_data["podcasts"]:
+                    podcasts.append({
+                        'podcastid': podcast['id'],
+                        'podcastname': podcast['title'],
+                        'feedurl': podcast['feed_url']
+                    })
+
+            logging.info(f"Transformed response: {podcasts}")
+
+            return PodPeopleResponse(
+                success=True,
+                podcasts=podcasts
+            )
+
+    except httpx.HTTPStatusError as e:
+        logging.error(f"HTTP error from podpeople: {str(e)}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Error from podpeople service: {str(e)}"
+        )
+    except httpx.RequestError as e:
+        logging.error(f"Error connecting to podpeople: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error connecting to podpeople service: {str(e)}"
+        )
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 @app.post("/api/data/check_episode_playback")
 async def api_check_episode_playback(
@@ -2681,28 +2901,32 @@ async def api_clear_guest_data(cnx=Depends(get_database_connection), api_key: st
 class EpisodeMetadata(BaseModel):
     episode_id: int
     user_id: int
-
+    person_episode: bool = False  # Default to False if not specified
 
 @app.post("/api/data/get_episode_metadata")
 async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
+                                 api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        episode = database_functions.functions.get_episode_metadata(database_type, cnx, data.episode_id, data.user_id)
+        episode = database_functions.functions.get_episode_metadata(
+            database_type,
+            cnx,
+            data.episode_id,
+            data.user_id,
+            data.person_episode
+        )
         return {"episode": episode}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only get metadata for yourself!")
+                          detail="You can only get metadata for yourself!")
+
 
 @app.get("/api/data/generate_mfa_secret/{user_id}")
 async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),
@@ -3330,6 +3554,34 @@ async def share_episode(episode_id: int, cnx=Depends(get_database_connection),
     else:
         raise HTTPException(status_code=500, detail="Failed to share episode")
 
+
+@app.get("/api/data/cleanup_tasks")
+async def api_cleanup_tasks(
+    background_tasks: BackgroundTasks,
+    is_admin: bool = Depends(check_if_admin)
+) -> Dict[str, str]:
+    """
+    Endpoint to trigger cleanup of old PeopleEpisodes and expired SharedEpisodes
+    """
+    background_tasks.add_task(cleanup_tasks)
+    return {"detail": "Cleanup tasks initiated."}
+
+def cleanup_tasks():
+    """
+    Background task to run database cleanup operations
+    """
+    cnx = create_database_connection()
+    try:
+        database_functions.functions.cleanup_old_episodes(cnx, database_type)
+    except Exception as e:
+        print(f"Error during cleanup tasks: {str(e)}")
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
+
+
 @app.get("/api/data/episode_by_url/{url_key}")
 async def get_episode_by_url_key(url_key: str, cnx=Depends(get_database_connection)):
     # Find the episode ID associated with the URL key
@@ -3758,8 +4010,42 @@ async def queue_bump(data: QueueBump, cnx=Depends(get_database_connection),
         raise HTTPException(status_code=403,
                             detail="You can only bump the queue for yourself!")
 
+
+class PersonEpisodesRequest(BaseModel):
+    user_id: int
+    person_id: int
+
+@app.get("/api/data/person/episodes/{user_id}/{person_id}")
+async def api_return_person_episodes(
+    user_id: int,
+    person_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == user_id or is_web_key:
+        episodes = database_functions.functions.return_person_episodes(database_type, cnx, user_id, person_id)
+        if episodes is None:
+            episodes = []
+        return {"episodes": episodes}
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only view episodes for your own subscriptions!"
+        )
+
 class PersonSubscribeRequest(BaseModel):
     person_name: str
+    person_img: str
     podcast_id: int
 
 @app.post("/api/data/person/subscribe/{user_id}/{person_id}")
@@ -3767,22 +4053,214 @@ async def api_subscribe_to_person(
     user_id: int,
     person_id: int,
     request: PersonSubscribeRequest,
+    background_tasks: BackgroundTasks,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid or unauthorized API key")
+
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
     if key_id == user_id or is_web_key:
-        success = database_functions.functions.subscribe_to_person(cnx, database_type, user_id, person_id, request.person_name, request.podcast_id)
+        success, db_person_id = database_functions.functions.subscribe_to_person(
+            cnx,
+            database_type,
+            user_id,
+            person_id,
+            request.person_name,
+            request.person_img,
+            request.podcast_id
+        )
+
         if success:
-            return {"message": "Successfully subscribed to person"}
+            # Add background task to process the subscription using the actual PersonID
+            background_tasks.add_task(
+                process_person_subscription_task,
+                user_id,
+                db_person_id,  # Use the actual PersonID from the database
+                request.person_name
+            )
+            return {
+                "message": "Successfully subscribed to person",
+                "person_id": db_person_id  # Return the actual person ID
+            }
         else:
             raise HTTPException(status_code=400, detail="Failed to subscribe to person")
     else:
         raise HTTPException(status_code=403, detail="You can only subscribe for yourself!")
+
+class UniqueShow(TypedDict):
+    title: str
+    feed_url: str
+    feed_id: int
+
+def process_person_subscription_task(
+    user_id: int,
+    person_id: int,
+    person_name: str
+) -> None:
+    """Regular synchronous task for processing person subscription"""
+    cnx = create_database_connection()
+    try:
+        # Run the async function in a new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            process_person_subscription(user_id, person_id, person_name, cnx)
+        )
+        loop.close()
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
+
+async def process_person_subscription(
+    user_id: int,
+    person_id: int,
+    person_name: str,
+    cnx
+) -> None:
+    """Async function to process person subscription and gather their shows"""
+    try:
+        # Set of unique shows (title, feed_url, feed_id)
+        processed_shows: Set[Tuple[str, str, int]] = set()
+
+        # 1. Get podcasts from podpeople
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                podpeople_response = await client.get(
+                    f"{people_url}/api/hostsearch",
+                    params={"name": person_name}
+                )
+                podpeople_response.raise_for_status()
+                podpeople_data = podpeople_response.json()
+
+                # Check if we got valid data
+                if podpeople_data and podpeople_data.get("success"):
+                    for podcast in podpeople_data.get("podcasts", []):
+                        processed_shows.add((
+                            podcast['title'],
+                            podcast['feed_url'],
+                            podcast['id']
+                        ))
+            except Exception as e:
+                print(f"Error getting data from podpeople: {str(e)}")
+                # Continue execution even if podpeople lookup fails
+                pass
+
+        # 2. Get podcasts from podcast index
+        print(f"API URL configured as: {api_url}")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                index_response = await client.get(
+                    f"{api_url}",
+                    params={
+                        "query": person_name,
+                        "index": "person",
+                        "search_type": "person"
+                    }
+                )
+                index_response.raise_for_status()
+                index_data = index_response.json()
+
+                if index_data and "items" in index_data:
+                    for episode in index_data["items"]:
+                        if all(field is not None for field in [episode.get("feedTitle"), episode.get("feedUrl"), episode.get("feedId")]):
+                            processed_shows.add((
+                                episode["feedTitle"],
+                                episode["feedUrl"],
+                                episode["feedId"]
+                            ))
+            except Exception as e:
+                print(f"Error getting data from podcast index: {str(e)}")
+                # Continue execution even if podcast index lookup fails
+                pass
+
+        # Only continue if we found any shows
+        if not processed_shows:
+            print(f"No shows found for person: {person_name}")
+            return
+
+        # 3. Process each unique show
+        for title, feed_url, feed_id in processed_shows:
+            try:
+                # First check if podcast exists for user
+                user_podcast_id = database_functions.functions.get_podcast_id(
+                    database_type,
+                    cnx,
+                    user_id,
+                    feed_url,
+                    title
+                )
+
+                # Get podcast details and add as system podcast
+                podcast_values = database_functions.app_functions.get_podcast_values(
+                    feed_url,
+                    1,  # System UserID
+                    None,
+                    None,
+                    False
+                )
+
+                if not user_podcast_id:
+                    # Check if system podcast exists (UserID = 0)
+                    system_podcast_id = database_functions.functions.get_podcast_id(
+                        database_type,
+                        cnx,
+                        1,  # System UserID
+                        feed_url,
+                        title
+                    )
+
+                    if system_podcast_id is None:
+                        # If not found for system, add as a new system podcast
+                        podcast_values = database_functions.app_functions.get_podcast_values(
+                            feed_url,
+                            1,  # System UserID
+                            None,
+                            None,
+                            False
+                        )
+                        success = database_functions.functions.add_person_podcast(
+                            cnx,
+                            database_type,
+                            podcast_values,
+                            1  # System UserID
+                        )
+                        if success:
+                            # Get the newly created podcast ID
+                            system_podcast_id = database_functions.functions.get_podcast_id(
+                                database_type,
+                                cnx,
+                                1,  # System UserID
+                                feed_url,
+                                title
+                            )
+                    podcast_id = system_podcast_id
+                else:
+                    podcast_id = user_podcast_id
+
+                print(f"Using podcast: ID={podcast_id}, Title={title}")
+                # 4. Add episodes to PeopleEpisodes
+                database_functions.functions.add_people_episodes(
+                    cnx,
+                    database_type,
+                    person_id=person_id,
+                    podcast_id=podcast_id,
+                    feed_url=feed_url,
+                )
+
+            except Exception as e:
+                logging.error(f"Error processing show {title}: {str(e)}")
+                continue
+
+    except Exception as e:
+        logging.error(f"Error processing person subscription: {str(e)}")
+        raise
 
 class UnsubscribeRequest(BaseModel):
     person_name: str

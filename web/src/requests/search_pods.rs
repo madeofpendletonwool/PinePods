@@ -25,6 +25,7 @@ pub struct PodcastSearchResult {
 #[allow(non_snake_case)]
 pub struct UnifiedPodcast {
     pub(crate) id: i64,
+    pub(crate) index_id: i64,
     pub(crate) title: String,
     pub(crate) url: String,
     #[allow(non_snake_case)]
@@ -49,6 +50,7 @@ impl From<Podcast> for UnifiedPodcast {
     fn from(podcast: Podcast) -> Self {
         UnifiedPodcast {
             id: podcast.id,
+            index_id: podcast.id,
             title: podcast.title,
             url: podcast.url,
             originalUrl: podcast.originalUrl,
@@ -81,6 +83,7 @@ impl From<ITunesPodcast> for UnifiedPodcast {
 
         UnifiedPodcast {
             id: podcast.trackId,
+            index_id: 0,
             title: podcast.trackName,
             url: podcast.feedUrl.clone(),
             originalUrl: podcast.feedUrl,
@@ -255,26 +258,43 @@ pub async fn call_get_podcast_info(
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
     web_sys::console::log_1(&JsValue::from_str(&url));
-
-    let response = Request::get(&url)
-        .send()
-        .await
-        .map_err(|err| anyhow::Error::new(err))?;
-
+    let response = Request::get(&url).send().await.map_err(|err| {
+        web_sys::console::log_1(&JsValue::from_str(&format!("Request error: {:?}", err)));
+        anyhow::Error::new(err)
+    })?;
     if response.ok() {
-        let response_text = response
-            .text()
-            .await
-            .map_err(|err| anyhow::Error::new(err))?;
+        let response_text = response.text().await.map_err(|err| {
+            web_sys::console::log_1(&JsValue::from_str(&format!(
+                "Text parsing error: {:?}",
+                err
+            )));
+            anyhow::Error::new(err)
+        })?;
 
-        let search_results: PodcastSearchResult = serde_json::from_str(&response_text)?;
-        // web_sys::console::log_1(search_results.clone());
-        Ok(search_results)
+        // Log the raw response
+        web_sys::console::log_1(&JsValue::from_str(&format!(
+            "Raw response: {}",
+            response_text
+        )));
+
+        // Try to parse and log any deserialization errors
+        match serde_json::from_str::<PodcastSearchResult>(&response_text) {
+            Ok(search_results) => Ok(search_results),
+            Err(err) => {
+                web_sys::console::log_1(&JsValue::from_str(&format!(
+                    "Deserialization error: {:?}\nResponse text: {}",
+                    err, response_text
+                )));
+                Err(anyhow::Error::msg(format!(
+                    "Failed to parse response: {}",
+                    err
+                )))
+            }
+        }
     } else {
-        Err(anyhow::Error::msg(format!(
-            "Failed to fetch podcast info: {}",
-            response.status_text()
-        )))
+        let error_msg = format!("Failed to fetch podcast info: {}", response.status_text());
+        web_sys::console::log_1(&JsValue::from_str(&error_msg));
+        Err(anyhow::Error::msg(error_msg))
     }
 }
 
@@ -295,6 +315,7 @@ pub struct PeopleEpisode {
     pub duration: Option<i32>,        // Duration in seconds
     pub explicit: Option<i32>,        // Explicit flag, 0 or 1
     pub feedImage: Option<String>,
+    pub feedId: Option<i64>,
     pub feedTitle: Option<String>,
     pub feedUrl: Option<String>,
 }
@@ -353,6 +374,61 @@ pub async fn call_get_person_info(
         web_sys::console::log_1(&JsValue::from_str("inside error"));
         Err(anyhow::Error::msg(format!(
             "Failed to fetch person info: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct PodPeoplePodcast {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub feedurl: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PodPeopleResponse {
+    pub success: bool,
+    pub podcasts: Vec<PodPeoplePodcast>,
+}
+
+// New function to call podpeople API
+pub async fn call_get_podpeople_podcasts(
+    hostname: &String,
+    api_url: &Option<String>,
+    api_key: &str,
+) -> Result<PodPeopleResponse, anyhow::Error> {
+    let url = if let Some(base_url) = api_url {
+        format!(
+            "{}/api/data/podpeople/host_podcasts?hostname={}",
+            base_url, hostname
+        )
+    } else {
+        return Err(anyhow::Error::msg("API URL is not provided"));
+    };
+
+    web_sys::console::log_1(&JsValue::from_str("Calling podpeople API"));
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|err| anyhow::Error::new(err))?;
+
+    if response.ok() {
+        let response_text = response
+            .text()
+            .await
+            .map_err(|err| anyhow::Error::new(err))?;
+
+        web_sys::console::log_1(&JsValue::from_str(&response_text));
+
+        let podpeople_results: PodPeopleResponse = serde_json::from_str(&response_text)?;
+        Ok(podpeople_results)
+    } else {
+        Err(anyhow::Error::msg(format!(
+            "Failed to fetch podpeople podcasts: {}",
             response.status_text()
         )))
     }
@@ -578,13 +654,14 @@ pub async fn call_get_podcast_details_dynamic(
     user_id: i32,
     podcast_title: &str,
     podcast_url: &str,
+    podcast_index_id: i64,
     added: bool,
     display_only: Option<bool>,
-) -> Result<ClickedFeedURL, Error> {
-    let display_only = display_only.unwrap_or(false); // Default to false if not provided
+) -> Result<PodcastDetailsResponse, Error> {
+    let display_only = display_only.unwrap_or(false);
     let url = format!(
-        "{}/api/data/get_podcast_details_dynamic?user_id={}&podcast_title={}&podcast_url={}&added={}&display_only={}",
-        server_name, user_id, podcast_title, podcast_url, added, display_only
+        "{}/api/data/get_podcast_details_dynamic?user_id={}&podcast_title={}&podcast_url={}&podcast_index_id={}&added={}&display_only={}",
+        server_name, user_id, podcast_title, podcast_url, podcast_index_id, added, display_only
     );
 
     let response = Request::get(&url)
@@ -595,18 +672,26 @@ pub async fn call_get_podcast_details_dynamic(
         .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
 
     if response.ok() {
-        let podcast_details: ClickedFeedURL = response
+        let clicked_feed: ClickedFeedURL = response
             .json()
             .await
             .map_err(|e| Error::msg(format!("Failed to parse response: {}", e)))?;
 
-        Ok(podcast_details)
+        // Wrap the response in a "details" structure to match the other endpoint
+        Ok(PodcastDetailsResponse {
+            details: clicked_feed,
+        })
     } else {
         Err(Error::msg(format!(
             "Error retrieving podcast details. Server response: {}",
             response.status_text()
         )))
     }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct PodcastDetailsResponse {
+    pub details: ClickedFeedURL,
 }
 
 // In Databases

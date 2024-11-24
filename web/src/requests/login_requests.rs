@@ -163,6 +163,7 @@ pub struct GetApiDetails {
     pub proxy_port: Option<String>,
     pub proxy_protocol: Option<String>,
     pub reverse_proxy: Option<String>,
+    pub people_url: Option<String>,
 }
 
 pub async fn call_get_api_config(

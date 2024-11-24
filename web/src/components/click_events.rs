@@ -13,6 +13,7 @@ pub fn create_on_title_click(
     server_name: String,
     api_key: Option<Option<String>>,
     history: &BrowserHistory,
+    podcast_index_id: i64,
     podcast_title: String,
     podcast_url: String,
     podcast_description: String,
@@ -46,17 +47,17 @@ pub fn create_on_title_click(
             });
 
         let podcast_values = ClickedFeedURL {
-            podcast_id: 0,
-            podcast_title: podcast_title.clone(),
-            podcast_url: podcast_url.clone(),
-            podcast_description: podcast_description.clone(),
-            podcast_author: podcast_author.clone(),
-            podcast_artwork: podcast_artwork.clone(),
-            podcast_explicit: podcast_explicit.clone(),
-            podcast_episode_count: podcast_episode_count.clone(),
-            podcast_categories: podcast_categories_map.clone(),
-            podcast_link: podcast_link.clone(),
-            podcast_index_id: 0,
+            podcastid: 0,
+            podcastname: podcast_title.clone(),
+            feedurl: podcast_url.clone(),
+            description: podcast_description.clone(),
+            author: podcast_author.clone(),
+            artworkurl: podcast_artwork.clone(),
+            explicit: podcast_explicit.clone(),
+            episodecount: podcast_episode_count.clone(),
+            categories: podcast_categories_map.clone(),
+            websiteurl: podcast_link.clone(),
+            podcastindexid: podcast_index_id.clone(),
         };
 
         let dispatch = dispatch.clone();

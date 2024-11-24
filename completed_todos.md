@@ -21,7 +21,6 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
-- [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -68,11 +67,20 @@ done but needs testing
 
 
 People stuff left:
-- [] Flesh out podpeopledb
-- [] Add check for person associated with other added pods after subbing to a person
-- [] Add call to pod people db to see if a person exists associated with a given podcast - Get pod people id if so
-- [] Pre-emtively 'cache' podcasts that a host is a part of
-- [] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
+- [x] Flesh out podpeopledb
+- [x] Add check for person associated with other added pods after subbing to a person
+- [x] Pre-emtively 'cache' podcasts that a host is a part of
+- [x] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
+- [x] Fix issue when subscribing to host not in podpeopledb. - Resolves to 0
+- [x] Fix issue unsubscribing from host
+- [x] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
+- [x] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
+- [] Double check the whole workflow
+  - [x] Add host in podpeople
+  - [x] Add host in podndex person tag
+  - [] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
+  - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
+  - [] Check entire workflow and 0.7.0 with mysql/mariadb
 
 Version 0.7.0
 
@@ -82,16 +90,17 @@ Version 0.7.0
 - [x] aur client
 
 - [x] Added Valkey to make many processes faster
-- [] People Table with background jobs to update people found in podcasts
-- [] Subscribe to people
+- [x] People Table with background jobs to update people found in podcasts
+- [x] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
-- [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
+- [x] People page dropdowns on podcasts and episodes
 - [] Stop issues with timeouts on occation with mobile apps
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
 - [] Finalize virtual lines so it works like home on episode layout
 - [] On very small screens you no longer get the mini version without the context button
 - [] Dynamically adjusting buttons on episode page
-- [] PodcastPeople DB up and running and can be contributed to
+- [x] PodcastPeople DB up and running and can be contributed to
+- [] Show currently updating podcast in refresh feed button at top of screen
 - [x] Finalize loading states so you don't see login page when you are already authenticated
 - [x] Using valkey to ensure stateless opml imports
 - [x] Android play/pause episode metadata
@@ -99,6 +108,8 @@ Version 0.7.0
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
 - [x] Update queue slider to be centered
+- [x] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
+
 
 Version 0.6.6
 

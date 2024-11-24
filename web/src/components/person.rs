@@ -13,8 +13,12 @@ use crate::components::gen_funcs::{
     truncate_description,
 };
 use crate::requests::login_requests::use_check_authentication;
+use crate::requests::people_req::{
+    call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
+};
 use crate::requests::pod_req::{
-    call_add_podcast, call_remove_podcasts_name, PodcastValues, RemovePodcastValuesName,
+    call_add_podcast, call_remove_podcasts_name, Person as HostPerson, PodcastValues,
+    RemovePodcastValuesName,
 };
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
@@ -22,6 +26,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew_router::history::BrowserHistory;
 use yew_router::prelude::*;
@@ -94,7 +99,7 @@ pub struct PersonProps {
 pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
-
+    let person_ids = use_state(|| HashMap::<String, i32>::new());
     let session_dispatch = dispatch.clone();
     let session_state = state.clone();
     use_effect_with((), move |_| {
@@ -143,7 +148,36 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
+    let is_expanded = use_state(|| true); // Start expanded by default
+    let episodes_expanded = use_state(|| true); // Start expanded by default
+    let subscribed_hosts = use_state(|| HashMap::<String, Vec<i32>>::new());
+    let is_subscribed = use_state(|| false); // Add this state
 
+    // Get the person data from the state
+    let person_data = audio_state
+        .podcast_people
+        .as_ref()
+        .and_then(|people| people.iter().find(|person| person.name == *name))
+        .or_else(|| {
+            audio_state
+                .episode_page_people
+                .as_ref()
+                .and_then(|people| people.iter().find(|person| person.name == *name))
+        });
+
+    // Add debug logging to see which source we're getting the data from
+    if person_data.is_some() {
+        if audio_state
+            .podcast_people
+            .as_ref()
+            .and_then(|people| people.iter().find(|person| person.name == *name))
+            .is_some()
+        {
+            web_sys::console::log_1(&"Found person in podcast_people".into());
+        } else {
+            web_sys::console::log_1(&"Found person in episode_page_people".into());
+        }
+    }
     // Initialize the state for all podcasts
     let added_podcasts_state = use_state(|| {
         state
@@ -158,6 +192,69 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                 })
             })
     });
+
+    {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let subscribed_hosts = subscribed_hosts.clone();
+        let person_ids = person_ids.clone();
+        let is_subscribed = is_subscribed.clone();
+        let current_name = (*name).clone();
+
+        use_effect_with(
+            (api_key.clone(), server_name.clone(), user_id.clone()),
+            move |_| {
+                if let (Some(api_key), Some(server_name), Some(user_id)) =
+                    (api_key, server_name, user_id)
+                {
+                    spawn_local(async move {
+                        match call_get_person_subscriptions(
+                            &server_name,
+                            &api_key.unwrap(),
+                            user_id,
+                        )
+                        .await
+                        {
+                            Ok(subs) => {
+                                let mut sub_map = HashMap::new();
+                                let mut pid_map = HashMap::new();
+                                let mut found_subscription = false;
+
+                                for sub in subs {
+                                    let associated_podcasts = sub
+                                        .associatedpodcasts
+                                        .unwrap_or_default()
+                                        .split(',')
+                                        .filter_map(|s| s.parse::<i32>().ok())
+                                        .collect::<Vec<i32>>();
+
+                                    // Check if this person is subscribed
+                                    if sub.name == current_name && !associated_podcasts.is_empty() {
+                                        found_subscription = true;
+                                    }
+
+                                    sub_map.insert(sub.name.clone(), associated_podcasts);
+                                    pid_map.insert(sub.name, sub.personid);
+                                }
+
+                                subscribed_hosts.set(sub_map);
+                                person_ids.set(pid_map);
+                                is_subscribed.set(found_subscription);
+                            }
+                            Err(e) => {
+                                web_sys::console::log_1(
+                                    &format!("Failed to fetch subscriptions: {:?}", e).into(),
+                                );
+                            }
+                        }
+                    });
+                }
+                || ()
+            },
+        );
+    }
+
     let toggle_podcast = {
         let added_podcasts = added_podcasts_state.clone();
         let api_key = api_key.clone();
@@ -304,17 +401,274 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
             }
         })
     };
+    let on_subscribe_toggle = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let subscribed_hosts = subscribed_hosts.clone();
+        let person_ids = person_ids.clone();
+        let is_subscribed = is_subscribed.clone();
+
+        Callback::from(move |person: HostPerson| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let user_id = user_id.clone();
+            let subscribed_hosts = subscribed_hosts.clone();
+            let host_name = person.name.clone();
+            let host_img = person.img.clone();
+            let host_id = person.id.unwrap_or(0);
+            let person_ids = person_ids.clone();
+            let podcast_id = 0;
+            let is_subscribed = is_subscribed.clone();
+
+            // Store current state before flipping it
+            let current_subscribed = *is_subscribed;
+            is_subscribed.set(!current_subscribed);
+
+            subscribed_hosts.set({
+                let mut hosts = (*subscribed_hosts).clone();
+                hosts
+                    .entry(host_name.clone())
+                    .and_modify(|podcasts| {
+                        if podcasts.contains(&podcast_id) {
+                            podcasts.retain(|&id| id != podcast_id);
+                        } else {
+                            podcasts.push(podcast_id);
+                        }
+                    })
+                    .or_insert_with(|| vec![podcast_id]);
+
+                if let Some(podcasts) = hosts.get(&host_name) {
+                    if podcasts.is_empty() {
+                        hosts.remove(&host_name);
+                    }
+                }
+                hosts
+            });
+
+            spawn_local(async move {
+                let id_to_use = (*person_ids).get(&host_name).copied().unwrap_or(host_id);
+
+                // Use the stored state to determine action
+                if current_subscribed {
+                    if let Err(e) = call_unsubscribe_from_person(
+                        &server_name.unwrap(),
+                        &api_key.unwrap().unwrap(),
+                        user_id.unwrap(),
+                        id_to_use,
+                        host_name.clone(),
+                    )
+                    .await
+                    {
+                        web_sys::console::log_1(&format!("Failed to unsubscribe: {:?}", e).into());
+                        // Revert UI change on error
+                        is_subscribed.set(true);
+                        subscribed_hosts.set({
+                            let mut hosts = (*subscribed_hosts).clone();
+                            hosts
+                                .entry(host_name.clone())
+                                .or_insert_with(Vec::new)
+                                .push(podcast_id);
+                            hosts
+                        });
+                    }
+                } else {
+                    match call_subscribe_to_person(
+                        &server_name.unwrap(),
+                        &api_key.unwrap().unwrap(),
+                        user_id.unwrap(),
+                        host_id,
+                        &host_name,
+                        &host_img,
+                        podcast_id,
+                    )
+                    .await
+                    {
+                        Ok(response) => {
+                            // Update person_ids with the new ID
+                            person_ids.set({
+                                let mut ids = (*person_ids).clone();
+                                ids.insert(host_name.clone(), response.person_id);
+                                ids
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Failed to subscribe: {:?}", e).into(),
+                            );
+                            is_subscribed.set(false);
+                            subscribed_hosts.set({
+                                let mut hosts = (*subscribed_hosts).clone();
+                                if let Some(podcasts) = hosts.get_mut(&host_name) {
+                                    podcasts.retain(|&id| id != podcast_id);
+                                }
+                                if hosts
+                                    .get(&host_name)
+                                    .map_or(false, |podcasts| podcasts.is_empty())
+                                {
+                                    hosts.remove(&host_name);
+                                }
+                                hosts
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    fn get_proxied_image_url(server_name: &str, original_url: &str) -> String {
+        let proxied_url = format!(
+            "{}/api/proxy/image?url={}",
+            server_name,
+            urlencoding::encode(original_url)
+        );
+        web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
+        proxied_url
+    }
 
     html! {
         <>
             <div class="main-container">
                 <Search_nav />
                 <UseScrollToTop />
+                {
+                    if let Some(person) = person_data {
+                        web_sys::console::log_1(&format!("Image URL: {:?}", &person).into());
+                        html! {
+                            <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
+                                <div class="flex items-center gap-6">
+                                    // Image section with fallback
+                                    <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
+                                        {
+                                            if let Some(img_url) = &person.img {
+                                                web_sys::console::log_1(&format!("Image URL: {}", img_url).into());
+                                                let proxied_url = get_proxied_image_url(&server_name.clone().unwrap(), img_url);
+                                                web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
+                                                html! {
+                                                    <img
+                                                        src={proxied_url}
+                                                        alt={format!("{}'s profile", person.name)}
+                                                        class="w-full h-full object-cover"
+                                                    />
+                                                }
+                                            } else {
+                                                html! {
+                                                    <div class="w-full h-full bg-gray-300 flex items-center justify-center">
+                                                        <span class="material-icons text-4xl text-gray-500">
+                                                            {"person"}
+                                                        </span>
+                                                    </div>
+                                                }
+                                            }
+                                        }
+                                    </div>
+
+                                    // Person details
+                                    <div class="flex-grow">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h1 class="text-2xl font-bold item_container-text">
+                                                {&person.name}
+                                            </h1>
+                                            <button
+                                                onclick={let person_clone = person.clone();
+                                                    Callback::from(move |_| on_subscribe_toggle.emit(person_clone.clone()))}
+                                                class={if *is_subscribed {
+                                                    "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                                                } else {
+                                                    "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                                                }}
+                                            >
+                                                { if *is_subscribed { "Unsubscribe" } else { "Subscribe" } }
+                                            </button>
+                                        </div>
+
+                                        <div class="flex flex-wrap gap-2 mb-2">
+                                            {
+                                                if let Some(role) = &person.role {
+                                                    html! {
+                                                        <span class="inline-block bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
+                                                            {role}
+                                                        </span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                            {
+                                                if let Some(group) = &person.group {
+                                                    html! {
+                                                        <span class="inline-block bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                                                            {group}
+                                                        </span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
+
+                                        {
+                                            if let Some(description) = &person.description {
+                                                html! {
+                                                    <p class="text-sm item_container-text">
+                                                        {description}
+                                                    </p>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    } else {
+                        html! {
+                            <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
+                                <div class="flex items-center gap-6">
+                                    <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
+                                        <div class="w-full h-full bg-gray-300 flex items-center justify-center">
+                                            <span class="material-icons text-4xl text-gray-500">
+                                                {"person"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="flex-grow">
+                                        <h1 class="text-2xl font-bold mb-2 item_container-text">
+                                            {name}
+                                        </h1>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                }
                 <div class="p-4">
-                    <h1 class="text-2xl item_container-text font-bold text-center mb-6">{ format!("Podcasts and Episodes featuring {}", name) }</h1>
                     <div class="mb-8">
+                    <div class="flex justify-between items-center mb-4 cursor-pointer"
+                         onclick={let is_expanded = is_expanded.clone();
+                                 Callback::from(move |_| is_expanded.set(!*is_expanded))}>
                         <h2 class="item_container-text text-xl font-semibold">{"Podcasts this person appears in"}</h2>
+                        <span class={classes!(
+                            "material-icons",
+                            "transition-transform",
+                            "duration-300",
+                            if *is_expanded { "rotate-180" } else { "rotate-0" }
+                        )}>
+                            {"expand_more"}
+                        </span>
+                    </div>
+
+                    // Content section with animation classes
+                    <div class={classes!(
+                        "transition-all",
+                        "duration-300",
+                        "overflow-hidden",
+                        if *is_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
+                    )}>
                         {
+
                             if let Some(podcasts) = state.podcast_feed_return.clone() {
                                 let int_podcasts = podcasts.clone();
                                 if let Some(pods) = int_podcasts.pods.clone() {
@@ -324,7 +678,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                     <div class="empty-episodes-container">
                                         <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
                                         <h1>{ "No Podcasts Found" }</h1>
-                                        <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                        <p>{"This person doesn't seem to appear in any podcasts. Are you sure you got the right person?"}</p>
                                     </div>
                                         }
                                     } else {
@@ -357,6 +711,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             server_name_iter,
                                             api_key_iter,
                                             &history,
+                                            podcast.podcastindexid.clone(),
                                             podcast.podcastname.clone(),
                                             podcast.feedurl.clone(),
                                             podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
@@ -467,9 +822,30 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 }
                             }
                         }
+                        </div>
                     </div>
-                    <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
-                    {
+                    <div class="flex justify-between items-center mb-4 cursor-pointer"
+                         onclick={let episodes_expanded = episodes_expanded.clone();
+                                 Callback::from(move |_| episodes_expanded.set(!*episodes_expanded))}>
+                        <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
+                        <span class={classes!(
+                            "material-icons",
+                            "transition-transform",
+                            "duration-300",
+                            if *episodes_expanded { "rotate-180" } else { "rotate-0" }
+                        )}>
+                            {"expand_more"}
+                        </span>
+                    </div>
+
+                    // Episodes Content with animation
+                    <div class={classes!(
+                        "transition-all",
+                        "duration-300",
+                        "overflow-hidden",
+                        if *episodes_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
+                    )}>
+                        {
                         if let Some(results) = &state.people_feed_results {
                             html! {
                                 <div>
@@ -571,7 +947,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                     class="episode-image"/>
                                                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                                     <p class="item_container-text episode-title font-semibold"
-                                                    onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_for_ep_item), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added)}
+                                                    onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_for_ep_item), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added, None)}
                                                     >{ &episode.title.clone().unwrap_or_default() }</p>
                                                     // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                                     {
@@ -644,6 +1020,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                         }
                     }
+                    </div>
                 </div>
 
                 {

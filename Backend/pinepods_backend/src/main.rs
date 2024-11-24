@@ -182,8 +182,15 @@ async fn main() -> std::io::Result<()> {
     println!("Starting the Actix Web server");
 
     HttpServer::new(|| {
+        let cors = Cors::default()
+            .allow_any_origin()  // Allow all origins since this is self-hostable
+            .allow_any_method()  // Allow all HTTP methods
+            .allow_any_header()  // Allow all headers
+            .supports_credentials()
+            .max_age(3600);      // Cache preflight requests for 1 hour
+
         App::new()
-            .wrap(Cors::default().allow_any_origin().allow_any_method().allow_any_header())
+            .wrap(cors)
             .route("/api/search", web::get().to(search_handler))
             .route("/api/podcast", web::get().to(podcast_handler))
     })

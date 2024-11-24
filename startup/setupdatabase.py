@@ -410,6 +410,7 @@ try:
             CREATE TABLE IF NOT EXISTS People (
                 PersonID INT AUTO_INCREMENT PRIMARY KEY,
                 Name TEXT,
+                PeopleImg TEXT,
                 PeopleDBID INT,
                 AssociatedPodcasts TEXT,
                 UserID INT,
@@ -419,6 +420,30 @@ try:
         cnx.commit()
     except Exception as e:
         print(f"Error creating SharedEpisodes table: {e}")
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS PeopleEpisodes (
+                EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                PersonID INT,
+                PodcastID INT,
+                EpisodeTitle TEXT,
+                EpisodeDescription TEXT,
+                EpisodeURL TEXT,
+                EpisodeArtwork TEXT,
+                EpisodePubDate DATETIME,
+                EpisodeDuration INT,
+                AddedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (PersonID) REFERENCES People(PersonID)
+                FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
+            );
+        """)
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating SharedEpisodes table: {e}")
+
+    create_index_if_not_exists(cursor, "idx_people_episodes_person", "PeopleEpisodes", "PersonID")
+    create_index_if_not_exists(cursor, "idx_people_episodes_podcast", "PeopleEpisodes", "PodcastID")
 
 
     try:
