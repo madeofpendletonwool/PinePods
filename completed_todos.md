@@ -61,9 +61,6 @@ done but needs testing
         ```
 - [] Queue adjmustment for mobile devices
     Finally works, but scrolling when holding at bottom of page doesn't work
-- [ ] Seriously dig into podcast 3x layout - Works but couple issues
-      deleting pod doesn't work from page
-      select category no longer pulls in categories
 - [] client local download function broken. Need android compiling alternative to reqwest
 
 
@@ -102,6 +99,8 @@ Version 0.7.0
 - [x] Dynamically adjusting buttons on episode page
 - [x] PodcastPeople DB up and running and can be contributed to
 - [] Show currently updating podcast in refresh feed button at top of screen
+- [] Image caching
+- [x] Podcast 3x layout
 - [x] Finalize loading states so you don't see login page when you are already authenticated
 - [x] Using valkey to ensure stateless opml imports
 - [x] Android play/pause episode metadata
