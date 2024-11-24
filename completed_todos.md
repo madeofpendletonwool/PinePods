@@ -21,7 +21,6 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
-- [] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -94,7 +93,7 @@ Version 0.7.0
 - [x] People Table with background jobs to update people found in podcasts
 - [x] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
-- [] People page dropdowns on podcasts and episodes - alternative 3 per line view on podcasts
+- [x] People page dropdowns on podcasts and episodes
 - [] Stop issues with timeouts on occation with mobile apps
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
 - [] Finalize virtual lines so it works like home on episode layout
@@ -109,6 +108,8 @@ Version 0.7.0
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
 - [x] Update queue slider to be centered
+- [x] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
+
 
 Version 0.6.6
 

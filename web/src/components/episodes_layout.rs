@@ -210,6 +210,20 @@ pub fn episode_layout() -> Html {
         }
     });
 
+    // Add this near the start of the component
+    let audio_dispatch = _dispatch.clone();
+
+    // Clear podcast metadata when component mounts
+    use_effect_with((), move |_| {
+        audio_dispatch.reduce_mut(|state| {
+            state.podcast_value4value = None;
+            state.podcast_funding = None;
+            state.podcast_podroll = None;
+            state.podcast_people = None;
+        });
+        || ()
+    });
+
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
         if session_state.reload_occured.unwrap_or(false) {

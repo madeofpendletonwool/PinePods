@@ -13,6 +13,12 @@ pub struct PersonSubscription {
     pub associatedpodcasts: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct SubscribeResponse {
+    pub message: String,
+    pub person_id: i32,
+}
+
 pub async fn call_subscribe_to_person(
     server_name: &str,
     api_key: &str,
@@ -21,7 +27,7 @@ pub async fn call_subscribe_to_person(
     person_name: &str,
     person_img: &Option<String>,
     podcast_id: i32,
-) -> Result<(), Error> {
+) -> Result<SubscribeResponse, Error> {
     let url = format!(
         "{}/api/data/person/subscribe/{}/{}",
         server_name, user_id, person_id
@@ -39,13 +45,16 @@ pub async fn call_subscribe_to_person(
         )?
         .send()
         .await?;
+
     if !response.ok() {
         return Err(Error::msg(format!(
             "Failed to subscribe to person: {}",
             response.status_text()
         )));
     }
-    Ok(())
+
+    let subscribe_response = response.json::<SubscribeResponse>().await?;
+    Ok(subscribe_response)
 }
 
 pub async fn call_unsubscribe_from_person(

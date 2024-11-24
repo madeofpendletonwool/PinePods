@@ -4083,7 +4083,10 @@ async def api_subscribe_to_person(
                 db_person_id,  # Use the actual PersonID from the database
                 request.person_name
             )
-            return {"message": "Successfully subscribed to person"}
+            return {
+                "message": "Successfully subscribed to person",
+                "person_id": db_person_id  # Return the actual person ID
+            }
         else:
             raise HTTPException(status_code=400, detail="Failed to subscribe to person")
     else:
