@@ -1118,12 +1118,16 @@ pub struct EpisodeInfo {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub is_queued: bool,
+    pub is_saved: bool,
+    pub is_downloaded: bool,
 }
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EpisodeRequest {
     pub episode_id: i32,
     pub user_id: i32,
-    #[serde(default)] // This will default to false if not present
+    #[serde(default)]
     pub person_episode: bool,
 }
 
