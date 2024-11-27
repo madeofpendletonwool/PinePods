@@ -24,7 +24,6 @@ RUN rustup target add wasm32-unknown-unknown && \
 COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
 COPY ./web/src /app/src
 COPY ./web/static /app/static
-COPY ./web/target /app/target
 
 WORKDIR /app
 
