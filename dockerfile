@@ -22,9 +22,9 @@ RUN rustup target add wasm32-unknown-unknown && \
 
 # Add application files to the builder stage
 COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
-COPY ./web/dist /app/dist
 COPY ./web/src /app/src
 COPY ./web/static /app/static
+COPY ./web/target /app/target
 
 WORKDIR /app
 
