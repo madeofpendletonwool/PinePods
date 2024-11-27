@@ -36,6 +36,12 @@ pub fn saved() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let dropdown_open = use_state(|| false);
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     let session_dispatch = _post_dispatch.clone();
     let session_state = post_state.clone();
@@ -309,6 +315,9 @@ pub fn saved() -> Html {
                                     false,
                                     episode_url_for_ep_item,
                                     is_completed,
+                                    *show_modal,
+                                    on_modal_open.clone(),
+                                    on_modal_close.clone(),
                                 );
 
                                 item

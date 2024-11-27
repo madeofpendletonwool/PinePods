@@ -35,6 +35,8 @@ web-sys = { version = "0.3.70", features = [
     "DataTransfer",
     "TouchEvent",
     "TouchList",
+    "CacheStorage",
+    "Cache",
     "Touch",
     "Clipboard",
     "Navigator",

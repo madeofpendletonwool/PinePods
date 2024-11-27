@@ -24,44 +24,12 @@ use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew_router::history::BrowserHistory;
 use yew_router::prelude::*;
 use yewdux::prelude::*;
-
-enum AppStateMsg {
-    // ... other messages ...
-    RemovePodcast(i32), // Add this line
-}
-
-impl Reducer<AppState> for AppStateMsg {
-    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
-        let state_mut = Rc::make_mut(&mut state);
-
-        match self {
-            // ... other cases ...
-            AppStateMsg::RemovePodcast(podcast_id) => {
-                if let Some(podcasts) = &mut state_mut.podcast_feed_return {
-                    podcasts.pods = Some(
-                        podcasts
-                            .pods
-                            .as_ref()
-                            .unwrap_or(&vec![])
-                            .iter()
-                            .filter(|p| p.podcastid != podcast_id)
-                            .cloned()
-                            .collect(),
-                    );
-                }
-            }
-        }
-
-        state
-    }
-}
 
 fn generate_unique_id(podcast_id: Option<i32>, feed_url: &str) -> String {
     println!("Podcast ID: {:?}", podcast_id);

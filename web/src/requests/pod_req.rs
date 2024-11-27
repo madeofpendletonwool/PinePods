@@ -129,7 +129,7 @@ pub struct PodcastStatusResponse {
 pub async fn call_add_podcast(
     server_name: &str,
     api_key: &Option<String>,
-    user_id: i32,
+    _user_id: i32,
     added_podcast: &PodcastValues,
     podcast_index_id: Option<i64>,
 ) -> Result<PodcastStatusResponse, Error> {
@@ -330,6 +330,7 @@ pub async fn call_get_podcasts(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct TimeInfoResponse {
     pub timezone: String,
@@ -1411,6 +1412,7 @@ pub struct RecordListenDurationRequest {
     pub listen_duration: f64, // Assuming float is appropriate here; adjust the type if necessary
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct RecordListenDurationResponse {
     pub detail: String, // Assuming a simple status response; adjust according to actual API response
@@ -1989,12 +1991,6 @@ pub async fn call_get_auto_skip_times(
             error_text
         )))
     }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct PinepodsVersionResponse {
-    pub start_skip: i32,
-    pub end_skip: i32,
 }
 
 #[derive(Deserialize)]

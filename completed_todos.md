@@ -41,7 +41,7 @@ Mobile:
 - [x] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
 - [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
 - [] On mobile make the action buttons larger
-- [] On mobile make the volume slider drop below Shownotes
+- [x] On mobile make the volume slider drop below Shownotes
 - [] When pod is playing play and skip are too far left, also make image raise full screen as well as title. Maybe drag to raise?
 - [] On mobile further squish image to fit more on screen?
 - [] On mobile long press to add to saved etc...?
@@ -59,8 +59,6 @@ done but needs testing
         ```
         Received new episode: EpisodeWebsocketResponse { episode_id: 0, podcast_id: 36, title: "582: On the CUPS of Disaster", description: Some("<p>W Flathub\">Install Frog on Linux | Flathub</a> — Extract text from images, websites, videos, and QR codes by taking a picture of the source.</li><li><a href=\"https://flathub.org/apps/de.leopoldluley.Clapgrep\" title=\"Clapgrep\">Clapgrep</a> — Ever had a folder full of PDF files, where you knew, somewhere in there, is what you're looking for. But you did not know in which file. So you had to search each of them at a time...</li></ul>"), audio_url: "https://aphid.fireside.fm/d/1437767933/f31a453c-fa15-491f-8618-3f71f1d565e5/ffb365c2-37c4-42b6-8b40-95649c0e790e.mp3", artwork_url: Some("https://assets.fireside.fm/file/fireside-images/podcasts/images/f/f31a453c-fa15-491f-8618-3f71f1d565e5/cover.jpg"), release_datetime: "2024-09-29 14:00:00", duration: 4050, completed: false }
         ```
-- [] Queue adjmustment for mobile devices
-    Finally works, but scrolling when holding at bottom of page doesn't work
 - [] client local download function broken. Need android compiling alternative to reqwest
 
 
@@ -104,12 +102,16 @@ Version 0.7.0
 - [x] Finalize loading states so you don't see login page when you are already authenticated
 - [x] Using valkey to ensure stateless opml imports
 - [x] Android play/pause episode metadata
+- [x] Draggable Queues on Mobile Devices
 - [x] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status
 - [x] Update queue slider to be centered
 - [x] People don't clear out of hosts and people dropdowns if a podcast doesn't have people. So it shows the old podcast currently
-
+- [x] div .title on audio player is now a link, not selectable text.
+- [x] Improved the playback and volume dropdowns so they don't interact with the rest of the page now
+- [x] Added some box shadow to the episode image in the full screen player
+- [x] When playing an episode <- and -> arrow keys skips forward and back for the playback now
 
 Version 0.6.6
 

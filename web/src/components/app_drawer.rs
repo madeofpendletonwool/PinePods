@@ -293,16 +293,6 @@ pub fn app_drawer() -> Html {
                 }
             </div>
         </div>
-
-
-
-            // <input
-            //     type="checkbox"
-            //     id="drawer-toggle"
-            //     class="sr-only"
-            //     checked={*is_drawer_open}
-            //     onclick={toggle_drawer.clone()}
-            // />
         </div>
     }
 }

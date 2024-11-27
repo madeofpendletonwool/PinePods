@@ -253,7 +253,6 @@ pub fn podcasts() -> Html {
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let (filter_state, filter_dispatch) = use_store::<FilterState>();
     let history = BrowserHistory::new();
-    let history_clone = history.clone();
     let is_loading = use_state(|| false);
     let feed_url = use_state(|| "".to_string());
     let pod_user = use_state(|| "".to_string());
@@ -781,7 +780,7 @@ pub fn podcasts() -> Html {
             {
                 if let Some(podcasts) = state.podcast_feed_return.clone() {
                     let int_podcasts = podcasts.clone();
-                    if let Some(pods) = int_podcasts.pods.clone() {
+                    if let Some(_pods) = int_podcasts.pods.clone() {
                         if filtered_pods.is_empty() {
                             // Render "No Podcasts Found" message
                             html! {

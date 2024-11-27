@@ -32,6 +32,12 @@ pub fn history() -> Html {
     let session_dispatch = _post_dispatch.clone();
     let session_state = post_state.clone();
     let loading = use_state(|| true);
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -273,6 +279,9 @@ pub fn history() -> Html {
                                             false,
                                             episode_url_for_ep_item,
                                             is_completed,
+                                            *show_modal,
+                                            on_modal_open.clone(),
+                                            on_modal_close.clone(),
                                         );
 
                                         item

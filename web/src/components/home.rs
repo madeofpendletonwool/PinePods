@@ -355,6 +355,12 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let id_string = &props.episode.episodeid.to_string();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     let desc_expanded = desc_state.expanded_descriptions.contains(id_string);
 
@@ -430,6 +436,9 @@ pub fn episode(props: &EpisodeProps) -> Html {
         false,
         props.episode.episodeurl.clone(),
         is_completed,
+        *show_modal,
+        on_modal_open.clone(),
+        on_modal_close.clone(),
     );
 
     item

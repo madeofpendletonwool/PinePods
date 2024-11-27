@@ -35,6 +35,12 @@ pub fn subscribed_people() -> Html {
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -250,6 +256,9 @@ pub fn subscribed_people() -> Html {
                                         desc_state.clone(),
                                         desc_dispatch.clone(),
                                         audio_dispatch.clone(),
+                                        *show_modal,
+                                        on_modal_open.clone(),
+                                        on_modal_close.clone(),
                                     )}
                                 </div>
                             }
@@ -339,6 +348,9 @@ fn render_host_with_episodes(
     desc_rc: Rc<ExpandedDescriptions>,
     desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let episode_count = episodes.len();
     let history_clone = BrowserHistory::new();
@@ -468,6 +480,9 @@ fn render_host_with_episodes(
                                 false,
                                 episode.episodeurl.clone(),
                                 false,
+                                show_modal,
+                                on_modal_open.clone(),
+                                on_modal_close.clone(),
                             )
                         })}
                     </div>

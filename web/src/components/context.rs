@@ -55,9 +55,6 @@ impl Reducer<AppState> for AppStateMsg {
                 state_mut.selected_episodes_for_deletion.insert(episode_id);
             }
             AppStateMsg::DeleteSelectedEpisodes => {
-                // Add this block
-                // Here you can delete the selected episodes from your state
-                // For now, let's just clear the selected episodes
                 state_mut.selected_episodes_for_deletion.clear();
             }
         }
@@ -231,17 +228,6 @@ impl AppState {
             }
         }
     }
-
-    // pub fn load_app_state(key: &str) -> Option<AppState> {
-    //     if let Some(window) = window() {
-    //         if let Some(local_storage) = window.local_storage().unwrap() {
-    //             if let Ok(Some(serialized_state)) = local_storage.get_item(key) {
-    //                 return AppState::deserialize(&serialized_state).ok();
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
 }
 
 #[derive(Default, Clone, PartialEq, Store, Debug)]

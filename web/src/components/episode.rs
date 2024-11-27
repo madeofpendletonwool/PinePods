@@ -1153,7 +1153,7 @@ pub fn epsiode() -> Html {
                                     };
 
                                     match result {
-                                        Ok(success_message) => {
+                                        Ok(_success_message) => {
                                             queue_status.set(!is_queued); // Toggle the state after successful API call
                                         },
                                         Err(e) => {
@@ -1192,7 +1192,7 @@ pub fn epsiode() -> Html {
                                     };
 
                                     match result {
-                                        Ok(success_message) => {
+                                        Ok(_success_message) => {
                                             save_status.set(!is_saved); // Toggle the state after successful API call
                                         },
                                         Err(e) => {
@@ -1231,7 +1231,7 @@ pub fn epsiode() -> Html {
                                     };
 
                                     match result {
-                                        Ok(success_message) => {
+                                        Ok(_success_message) => {
                                             download_status.set(!is_downloaded); // Toggle the state after successful API call
                                         },
                                         Err(e) => {

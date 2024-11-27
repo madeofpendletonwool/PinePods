@@ -47,6 +47,12 @@ pub fn downloads() -> Html {
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
     let expanded_state = use_state(HashMap::new);
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -401,6 +407,9 @@ pub fn downloads() -> Html {
                                                     desc_dispatch.clone(),
                                                     audio_dispatch_cloned,
                                                     on_checkbox_change_cloned,
+                                                    *show_modal,
+                                                    on_modal_open.clone(),
+                                                    on_modal_close.clone(),
                                                 ))
                                             }
                                         }) }
@@ -452,6 +461,9 @@ pub fn render_podcast_with_episodes(
     desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
     on_checkbox_change: Callback<i32>,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let history_clone = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -582,6 +594,9 @@ pub fn render_podcast_with_episodes(
                                 is_delete_mode, // Add this line
                                 episode_url_for_ep_item,
                                 is_completed,
+                                show_modal,
+                                on_modal_open.clone(),
+                                on_modal_close.clone(),
                             )
                         }) }
                     </div>

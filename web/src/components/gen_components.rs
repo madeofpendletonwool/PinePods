@@ -1,5 +1,3 @@
-use super::gen_funcs::{format_datetime, match_date_format, parse_date};
-use crate::components::audio::{on_play_click, AudioPlayer};
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
@@ -7,9 +5,6 @@ use crate::components::downloads_tauri::{
 };
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_time;
-use crate::components::gen_funcs::{
-    convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
-};
 use crate::requests::people_req::PersonEpisode;
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
@@ -27,13 +22,12 @@ use crate::requests::search_pods::SearchEpisode;
 use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
 use gloo_events::EventListener;
 use std::any::Any;
-use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use web_sys::HtmlElement;
-use web_sys::{console, window, HtmlInputElement, MouseEvent};
+use web_sys::{console, window, Element, HtmlInputElement, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
@@ -113,7 +107,7 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
     let history = BrowserHistory::new();
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
     let (_app_state, dispatch) = use_store::<AppState>();
@@ -519,8 +513,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
             let future = async move {
-                // let _ = call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await;
-                // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("Episode added to Queue!")));
                 match call_remove_queued_episode(
                     &server_name.unwrap(),
                     &api_key.flatten(),
@@ -566,11 +558,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let on_toggle_queue = {
         let on_add_to_queue = on_add_to_queue.clone();
         let on_remove_queued_episode = on_remove_queued_episode.clone();
-        // let is_queued = post_state
-        //     .queued_episode_ids
-        //     .as_ref()
-        //     .unwrap_or(&vec![])
-        //     .contains(&props.episode.get_episode_id(Some(0)));
         Callback::from(move |_| {
             if is_queued {
                 on_remove_queued_episode.emit(());
@@ -1472,7 +1459,7 @@ impl EpisodeTrait for PersonEpisode {
         self.episodetitle.clone()
     }
 
-    fn get_episode_id(&self, fallback_id: Option<i32>) -> i32 {
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid // Just return it directly since it's already an i32
     }
 
@@ -1518,6 +1505,84 @@ pub fn on_shownotes_click(
     })
 }
 
+// First the modal component
+#[derive(Properties, PartialEq)]
+pub struct EpisodeModalProps {
+    pub episode_id: i32, // Instead of Box<dyn EpisodeTrait>
+    pub episode_artwork: String,
+    pub episode_title: String,
+    pub description: String,
+    pub format_release: String,
+    pub duration: String,
+    pub on_close: Callback<MouseEvent>,
+    pub on_show_notes: Callback<MouseEvent>,
+    pub listen_duration_percentage: f64,
+}
+
+#[function_component(EpisodeModal)]
+pub fn episode_modal(props: &EpisodeModalProps) -> Html {
+    let onclick_outside = {
+        let on_close = props.on_close.clone();
+        Callback::from(move |e: MouseEvent| {
+            if let Some(target) = e.target_dyn_into::<Element>() {
+                if target.class_list().contains("modal-overlay") {
+                    on_close.emit(e);
+                }
+            }
+        })
+    };
+
+    html! {
+        <div class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+             onclick={onclick_outside}>
+            <div class="bg-custom-light dark:bg-custom-dark w-11/12 max-w-2xl rounded-lg shadow-xl max-h-[90vh] flex flex-col">
+                // Header with artwork and title - fixed at top
+                <div class="flex items-start space-x-4 p-6 border-b border-custom-border">
+                    <img src={props.episode_artwork.clone()}
+                         alt="Episode artwork"
+                         class="w-32 h-32 rounded-lg object-cover flex-shrink-0" />
+                    <div class="flex-1 min-w-0"> // min-w-0 helps with text truncation
+                        <h2 class="text-xl font-bold mb-2 item_container-text truncate">
+                            {props.episode_title.clone()}
+                        </h2>
+                        <p class="item_container-text text-sm">
+                            {props.format_release.clone()}
+                        </p>
+                    </div>
+                    <button onclick={props.on_close.clone()}
+                            class="hover:opacity-75 flex-shrink-0">
+                        <span class="material-icons item_container-text">{"close"}</span>
+                    </button>
+                </div>
+
+                // Description - scrollable section
+                <div class="flex-1 p-6 overflow-y-auto">
+                    <div class="prose dark:prose-invert item_container-text max-w-none">
+                        <div class="links-custom">
+                            <SafeHtml html={props.description.clone()} />
+                        </div>
+                    </div>
+                </div>
+
+                // Footer - fixed at bottom
+                <div class="flex justify-between items-center p-6 border-t border-custom-border mt-auto">
+                    <div class="flex items-center space-x-2">
+                        <span class="item_container-text">{props.duration.clone()}</span>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar"
+                                 style={format!("width: {}%;", props.listen_duration_percentage)} />
+                        </div>
+                    </div>
+                    <button onclick={props.on_show_notes.clone()}
+                            class="bg-custom-primary hover:opacity-75 text-white px-4 py-2 rounded-lg">
+                        {"Go to Episode Page"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
 pub fn episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
@@ -1533,10 +1598,15 @@ pub fn episode_item(
     is_delete_mode: bool, // Add this line
     ep_url: String,
     completed: bool,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
+    let duration_clone = formatted_duration.clone();
+    let duration_again = formatted_duration.clone();
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
@@ -1546,6 +1616,7 @@ pub fn episode_item(
             0.0 // Avoid division by zero
         }
     });
+
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
     let container_height = {
@@ -1570,40 +1641,6 @@ pub fn episode_item(
         }
     };
 
-    // let container_ref = use_node_ref();
-    // let touch_timer: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
-    // let context_button_ref = use_node_ref();
-
-    // let on_touch_start = {
-    //     let touch_timer = touch_timer.clone();
-    //     let context_button_ref = context_button_ref.clone();
-    //     Callback::from(move |e: TouchEvent| {
-    //         e.prevent_default();
-    //         let context_button = context_button_ref.cast::<web_sys::HtmlElement>().unwrap();
-    //         let timer = web_sys::window()
-    //             .unwrap()
-    //             .set_timeout_with_callback_and_timeout_and_arguments_0(
-    //                 &Closure::wrap(Box::new(move || {
-    //                     context_button.click();
-    //                 }) as Box<dyn FnMut>)
-    //                 .into_js_value(),
-    //                 500, // 500ms for long press
-    //             )
-    //             .unwrap();
-    //         *touch_timer.borrow_mut() = Some(timer);
-    //     })
-    // };
-
-    // let on_touch_end = {
-    //     let touch_timer = touch_timer.clone();
-    //     Callback::from(move |_: TouchEvent| {
-    //         if let Some(timer) = *touch_timer.borrow() {
-    //             web_sys::window().unwrap().clear_timeout_with_handle(timer);
-    //             *touch_timer.borrow_mut() = None;
-    //         }
-    //     })
-    // };
-
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -1615,12 +1652,7 @@ pub fn episode_item(
         "desc-collapsed".to_string()
     };
     html! {
-        <div
-            // ref={container_ref}
-            // ontouchstart={on_touch_start}
-            // ontouchend={on_touch_end}
-            // ontouchmove={on_touch_end.clone()} // Cancel on move as well
-        >
+        <div>
             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style={format!("height: {}; overflow: hidden;", container_height)}>
                 {if is_delete_mode {
                     html! {
@@ -1638,7 +1670,7 @@ pub fn episode_item(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
                     <p class="item_container-text episode-title font-semibold line-clamp-2">
                         { episode.get_episode_title() }
                     </p>
@@ -1655,12 +1687,10 @@ pub fn episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text hidden md:block">
-                                <div
-                                    class={format!("item_container-text episode-description-container {}", description_class)}
-                                    onclick={toggle_expanded}  // Make the description container clickable
-                                >
-                                    <SafeHtml html={description} />
+                            <div class="item-description-text cursor-pointer md:block"
+                                 onclick={on_modal_open}>
+                                <div class="item_container-text line-clamp-2">
+                                    <SafeHtml html={description.clone()} />
                                 </div>
                             </div>
                         }
@@ -1676,7 +1706,7 @@ pub fn episode_item(
                         if completed {
                             html! {
                                 <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ duration_clone }</span>
                                     <span class="item_container-text">{ "-  Completed" }</span>
                                 </div>
                             }
@@ -1688,7 +1718,7 @@ pub fn episode_item(
                                         <div class="progress-bar-container">
                                             <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
-                                        <span class="item_container-text">{ formatted_duration }</span>
+                                        <span class="item_container-text">{ duration_again }</span>
                                     </div>
                                 }
                             } else {
@@ -1714,78 +1744,23 @@ pub fn episode_item(
                         </div>
                     }
                 }
-
-
-
-
             </div>
+            if show_modal {
+                <EpisodeModal
+                    episode_id={episode.get_episode_id(None)}
+                    episode_artwork={episode.get_episode_artwork()}
+                    episode_title={episode.get_episode_title()}
+                    description={description.clone()}
+                    format_release={format_release.to_string()}
+                    duration={formatted_duration}
+                    on_close={on_modal_close}
+                    on_show_notes={on_shownotes_click}
+                    listen_duration_percentage={listen_duration_percentage}
+                />
+            }
         </div>
     }
 }
-
-// #[derive(Properties, PartialEq)]
-// pub struct EpisodeTitleProps {
-//     pub title: String,
-//     pub max_lines: usize,
-// }
-
-// #[function_component(EpisodeTitle)]
-// pub fn episode_title(props: &EpisodeTitleProps) -> Html {
-//     let title_ref = use_node_ref();
-//     let font_size = use_state(|| 16.0); // Starting font size
-
-//     {
-//         let title_ref = title_ref.clone();
-//         let font_size = font_size.clone();
-//         let title = props.title.clone();
-//         let max_lines = props.max_lines;
-
-//         use_effect_with(title, move |_| {
-//             if let Some(title_element) = title_ref.cast::<web_sys::HtmlElement>() {
-//                 let mut current_font_size = *font_size;
-//                 title_element
-//                     .style()
-//                     .set_property("font-size", &format!("{}px", current_font_size))
-//                     .unwrap();
-
-//                 while title_element.scroll_height() > title_element.client_height()
-//                     && current_font_size > 10.0
-//                 {
-//                     current_font_size -= 0.5;
-//                     title_element
-//                         .style()
-//                         .set_property("font-size", &format!("{}px", current_font_size))
-//                         .unwrap();
-//                 }
-
-//                 if title_element.scroll_height() > title_element.client_height() {
-//                     let mut truncated_text = title_element.inner_text();
-//                     while title_element.scroll_height() > title_element.client_height()
-//                         && !truncated_text.is_empty()
-//                     {
-//                         truncated_text.pop();
-//                         if truncated_text.ends_with(' ') {
-//                             truncated_text.pop();
-//                         }
-//                         truncated_text.push_str("...");
-//                         title_element.set_inner_text(&truncated_text);
-//                     }
-//                 }
-
-//                 font_size.set(current_font_size);
-//             }
-//         });
-//     }
-
-//     html! {
-//         <div
-//             ref={title_ref}
-//             style={format!("font-size: {}px; line-height: 1.2em; max-height: {}em; overflow: hidden;", *font_size, props.max_lines as f32 * 1.2)}
-//         >
-//             {props.title.clone()}
-//         </div>
-//     }
-// }
 
 pub fn download_episode_item(
     episode: Box<dyn EpisodeTrait>,
@@ -1802,6 +1777,9 @@ pub fn download_episode_item(
     is_delete_mode: bool, // Add this line
     ep_url: String,
     completed: bool,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1847,7 +1825,7 @@ pub fn download_episode_item(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
                         <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
@@ -1864,12 +1842,10 @@ pub fn download_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text hidden md:block">
-                                <div
-                                    class={format!("item_container-text episode-description-container {}", description_class)}
-                                    onclick={toggle_expanded}  // Make the description container clickable
-                                >
-                                    <SafeHtml html={description} />
+                            <div class="item-description-text cursor-pointer md:block"
+                                 onclick={on_modal_open}>
+                                <div class="item_container-text line-clamp-2">
+                                    <SafeHtml html={description.clone()} />
                                 </div>
                             </div>
                         }
@@ -1884,7 +1860,7 @@ pub fn download_episode_item(
                         if completed {
                             html! {
                                 <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ formatted_duration.clone() }</span>
                                     <span class="item_container-text">{ "-  Completed" }</span>
                                 </div>
                             }
@@ -1896,7 +1872,7 @@ pub fn download_episode_item(
                                         <div class="progress-bar-container">
                                             <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
-                                        <span class="item_container-text">{ formatted_duration }</span>
+                                        <span class="item_container-text">{ formatted_duration.clone() }</span>
                                     </div>
                                 }
                             } else {
@@ -1925,6 +1901,19 @@ pub fn download_episode_item(
                     }
                 }
             </div>
+            if show_modal {
+                <EpisodeModal
+                    episode_id={episode.get_episode_id(None)}
+                    episode_artwork={episode.get_episode_artwork()}
+                    episode_title={episode.get_episode_title()}
+                    description={description.clone()}
+                    format_release={format_release.to_string()}
+                    duration={formatted_duration}
+                    on_close={on_modal_close}
+                    on_show_notes={on_shownotes_click}
+                    listen_duration_percentage={listen_duration_percentage}
+                />
+            }
         </div>
     }
 }
@@ -1951,6 +1940,9 @@ pub fn queue_episode_item(
     ontouchstart: Callback<TouchEvent>,
     ontouchmove: Callback<TouchEvent>,
     ontouchend: Callback<TouchEvent>,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1981,7 +1973,7 @@ pub fn queue_episode_item(
     html! {
         <>
             <div
-                class="item-container border-solid border flex mb-4 shadow-md rounded-lg touch-none"
+                class="item-container border-solid border flex mb-4 shadow-md rounded-lg"
                 draggable="true"
                 ondragstart={ondragstart.clone()}
                 ondragenter={ondragenter.clone()}
@@ -1992,7 +1984,7 @@ pub fn queue_episode_item(
                 ontouchend={ontouchend}
                 data-id={episode.get_episode_id(Some(0)).to_string()}
             >
-                <div class="drag-handle-wrapper flex items-center justify-center w-10 h-full">
+                <div class="drag-handle-wrapper flex items-center justify-center w-10 h-full touch-none">
                     <button class="drag-handle cursor-grab">
                         <span class="material-icons">{"drag_indicator"}</span>
                     </button>
@@ -2013,7 +2005,7 @@ pub fn queue_episode_item(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
                         <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
@@ -2030,12 +2022,10 @@ pub fn queue_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text hidden md:block">
-                                <div
-                                    class={format!("item_container-text episode-description-container {}", description_class)}
-                                    onclick={toggle_expanded}  // Make the description container clickable
-                                >
-                                    <SafeHtml html={description} />
+                            <div class="item-description-text cursor-pointer md:block"
+                                    onclick={on_modal_open}>
+                                <div class="item_container-text line-clamp-2">
+                                    <SafeHtml html={description.clone()} />
                                 </div>
                             </div>
                         }
@@ -2050,7 +2040,7 @@ pub fn queue_episode_item(
                         if completed {
                             html! {
                                 <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ formatted_duration.clone() }</span>
                                     <span class="item_container-text">{ "-  Completed" }</span>
                                 </div>
                             }
@@ -2062,7 +2052,7 @@ pub fn queue_episode_item(
                                         <div class="progress-bar-container">
                                             <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
-                                        <span class="item_container-text">{ formatted_duration }</span>
+                                        <span class="item_container-text">{ formatted_duration.clone() }</span>
                                     </div>
                                 }
                             } else {
@@ -2088,10 +2078,19 @@ pub fn queue_episode_item(
                         </div>
                     }
                 }
-
-
-
-
+                if show_modal {
+                    <EpisodeModal
+                        episode_id={episode.get_episode_id(None)}
+                        episode_artwork={episode.get_episode_artwork()}
+                        episode_title={episode.get_episode_title()}
+                        description={description.clone()}
+                        format_release={format_release.to_string()}
+                        duration={formatted_duration}
+                        on_close={on_modal_close}
+                        on_show_notes={on_shownotes_click}
+                        listen_duration_percentage={listen_duration_percentage}
+                    />
+                }
             </div>
             </>
     }
@@ -2112,6 +2111,9 @@ pub fn person_episode_item(
     is_delete_mode: bool, // Add this line
     ep_url: String,
     completed: bool,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2159,7 +2161,7 @@ pub fn person_episode_item(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click}>
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
                         <p class="item_container-text episode-title font-semibold">
                             { episode.get_episode_title() }
                         </p>
@@ -2176,12 +2178,10 @@ pub fn person_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text hidden md:block">
-                                <div
-                                    class={format!("item_container-text episode-description-container {}", description_class)}
-                                    onclick={toggle_expanded}  // Make the description container clickable
-                                >
-                                    <SafeHtml html={description} />
+                            <div class="item-description-text cursor-pointer md:block"
+                                 onclick={on_modal_open}>
+                                <div class="item_container-text line-clamp-2">
+                                    <SafeHtml html={description.clone()} />
                                 </div>
                             </div>
                         }
@@ -2196,7 +2196,7 @@ pub fn person_episode_item(
                         if completed {
                             html! {
                                 <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration }</span>
+                                    <span class="item_container-text">{ formatted_duration.clone() }</span>
                                     <span class="item_container-text">{ "-  Completed" }</span>
                                 </div>
                             }
@@ -2208,7 +2208,7 @@ pub fn person_episode_item(
                                         <div class="progress-bar-container">
                                             <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
-                                        <span class="item_container-text">{ formatted_duration }</span>
+                                        <span class="item_container-text">{ formatted_duration.clone() }</span>
                                     </div>
                                 }
                             } else {
@@ -2237,6 +2237,19 @@ pub fn person_episode_item(
                     }
                 }
             </div>
+            if show_modal {
+                <EpisodeModal
+                    episode_id={episode.get_episode_id(None)}
+                    episode_artwork={episode.get_episode_artwork()}
+                    episode_title={episode.get_episode_title()}
+                    description={description.clone()}
+                    format_release={format_release.to_string()}
+                    duration={formatted_duration}
+                    on_close={on_modal_close}
+                    on_show_notes={on_shownotes_click}
+                    listen_duration_percentage={listen_duration_percentage}
+                />
+            }
         </div>
     }
 }

@@ -14,7 +14,6 @@ use crate::requests::pod_req::{
     QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
-use gloo_timers::future::TimeoutFuture;
 use js_sys::Array;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
@@ -22,7 +21,6 @@ use std::path::Path;
 use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
@@ -45,12 +43,120 @@ pub struct AudioPlayerProps {
     pub offline: bool,
 }
 
-#[derive(Clone, Debug)]
-struct BufferState {
-    buffered_ranges: Vec<(f64, f64)>,
-    is_buffering: bool,
-    buffer_ahead_target: f64,
-    buffer_behind_target: f64,
+#[derive(Properties, PartialEq)]
+pub struct PlaybackControlProps {
+    pub speed: f64,
+    pub on_speed_change: Callback<f64>,
+}
+
+#[function_component(PlaybackControl)]
+pub fn playback_control(props: &PlaybackControlProps) -> Html {
+    let is_open = use_state(|| false);
+
+    let toggle_open = {
+        let is_open = is_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            is_open.set(!*is_open);
+        })
+    };
+
+    let on_speed_change = {
+        let on_speed_change = props.on_speed_change.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            if let Ok(speed) = input.value().parse::<f64>() {
+                on_speed_change.emit(speed);
+            }
+        })
+    };
+
+    html! {
+        <div class="speed-control-container">
+            <button
+                onclick={toggle_open}
+                class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+            >
+                <span class="material-icons">{"speed"}</span>
+            </button>
+            <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
+                <div class="speed-control-content item_container-bg">
+                    <div class="speed-text">
+                        {format!("{}x", props.speed)}
+                    </div>
+                    <input
+                        type="range"
+                        class="speed-slider"
+                        min="0.5"
+                        max="2.0"
+                        step="0.1"
+                        value={props.speed.to_string()}
+                        oninput={on_speed_change}
+                    />
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct VolumeControlProps {
+    pub volume: f64,
+    pub on_volume_change: Callback<f64>,
+}
+
+#[function_component(VolumeControl)]
+pub fn volume_control(props: &VolumeControlProps) -> Html {
+    let is_open = use_state(|| false);
+
+    let toggle_open = {
+        let is_open = is_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            is_open.set(!*is_open);
+        })
+    };
+
+    let on_volume_change = {
+        let on_volume_change = props.on_volume_change.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            if let Ok(volume) = input.value().parse::<f64>() {
+                on_volume_change.emit(volume);
+            }
+        })
+    };
+
+    let volume_icon = match props.volume as i32 {
+        0 => "volume_off",
+        1..=33 => "volume_mute",
+        34..=66 => "volume_down",
+        _ => "volume_up",
+    };
+
+    html! {
+        <div class="volume-control-container">
+            <button
+                onclick={toggle_open}
+                class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+            >
+                <span class="material-icons">{volume_icon}</span>
+            </button>
+
+            <div class={classes!("volume-slider-container", (*is_open).then(|| "visible"))}>
+                <div class="volume-text">
+                    {format!("{}%", (props.volume as i32))}
+                </div>
+                <input
+                    type="range"
+                    class="volume-slider"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={props.volume.to_string()}
+                    oninput={on_volume_change}
+                />
+            </div>
+        </div>
+    }
 }
 
 #[function_component(AudioPlayer)]
@@ -58,136 +164,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let is_buffering = use_state(|| false);
-    let last_known_position = use_state(|| 0.0);
-
-    let buffer_state = use_state(|| BufferState {
-        buffered_ranges: Vec::new(),
-        is_buffering: false,
-        buffer_ahead_target: 30.0,  // Buffer 30 seconds ahead
-        buffer_behind_target: 10.0, // Keep 10 seconds behind
-    });
 
     // Add error handling state
-    let error_state = use_state(|| None::<String>);
-    let retry_count = use_state(|| 0);
     let last_playback_position = use_state(|| 0.0);
-    // Initialize audio with better error handling
-    let initialize_audio = {
-        let audio_ref = audio_ref.clone();
-        let props = props.clone();
-        let error_state = error_state.clone();
-        let retry_count = retry_count.clone();
-        let is_buffering = is_buffering.clone();
-        let last_known_position = last_known_position.clone();
-
-        Callback::from(move |_: ()| {
-            if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
-                // Set basic properties
-                audio.set_src(&props.src);
-                audio.set_preload("auto");
-
-                // Add error handling
-                let error_state = error_state.clone();
-                let retry_count = retry_count.clone();
-                let audio_for_error = audio.clone();
-
-                let error_handler = Closure::wrap(Box::new(move |_: Event| {
-                    let error_msg = match audio_for_error.get_attribute("error") {
-                        Some(code) => match code.as_str() {
-                            "1" => "Fetching process aborted",
-                            "2" => "Network error",
-                            "3" => "Decoding error",
-                            "4" => "Source not supported",
-                            _ => "Unknown error occurred",
-                        },
-                        None => "Unknown error occurred",
-                    };
-
-                    error_state.set(Some(error_msg.to_string()));
-
-                    if *retry_count < 3 {
-                        let rc = *retry_count + 1;
-                        retry_count.set(rc);
-
-                        let delay = 2u32.pow(rc as u32) * 1000;
-                        let audio_for_retry = audio_for_error.clone();
-
-                        spawn_local(async move {
-                            TimeoutFuture::new(delay).await;
-                            let current_src = audio_for_retry.src();
-                            audio_for_retry.set_src("");
-                            audio_for_retry.set_src(&current_src);
-                            let _ = audio_for_retry.load();
-                        });
-                    }
-                }) as Box<dyn FnMut(_)>);
-
-                audio
-                    .add_event_listener_with_callback(
-                        "error",
-                        error_handler.as_ref().unchecked_ref(),
-                    )
-                    .expect("Failed to add error handler");
-                error_handler.forget();
-
-                // Add stalled/waiting handler
-                let is_buffering_for_stall = is_buffering.clone();
-                let stall_handler = Closure::wrap(Box::new(move |_: Event| {
-                    is_buffering_for_stall.set(true);
-                }) as Box<dyn FnMut(_)>);
-
-                audio
-                    .add_event_listener_with_callback(
-                        "waiting",
-                        stall_handler.as_ref().unchecked_ref(),
-                    )
-                    .expect("Failed to add stall handler");
-                stall_handler.forget();
-
-                // Add playing handler to clear buffering state
-                let is_buffering_for_play = is_buffering.clone();
-                let playing_handler = Closure::wrap(Box::new(move |_: Event| {
-                    is_buffering_for_play.set(false);
-                }) as Box<dyn FnMut(_)>);
-
-                audio
-                    .add_event_listener_with_callback(
-                        "playing",
-                        playing_handler.as_ref().unchecked_ref(),
-                    )
-                    .expect("Failed to add playing handler");
-                playing_handler.forget();
-
-                // Periodically save position
-                let save_position = {
-                    let last_known_position = last_known_position.clone();
-                    let audio_for_save = audio.clone();
-                    let props = props.clone();
-
-                    Closure::wrap(Box::new(move |_: Event| {
-                        last_known_position.set(audio_for_save.current_time());
-                        if let Some(window) = web_sys::window() {
-                            if let Ok(Some(storage)) = window.local_storage() {
-                                let _ = storage.set_item(
-                                    &format!("audio_position_{}", props.episode_id),
-                                    &audio_for_save.current_time().to_string(),
-                                );
-                            }
-                        }
-                    }) as Box<dyn FnMut(_)>)
-                };
-
-                audio
-                    .add_event_listener_with_callback(
-                        "timeupdate",
-                        save_position.as_ref().unchecked_ref(),
-                    )
-                    .expect("Failed to add timeupdate handler");
-                save_position.forget();
-            }
-        })
-    };
 
     // Add periodic state saving
     {
@@ -220,35 +199,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         });
     }
-
-    // Add periodic state saving
-    // use_effect_with(audio_ref.clone(), {
-    //     let last_position = last_playback_position.clone();
-
-    //     move |_| {
-    //         let interval = Interval::new(5000, move || {
-    //             if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
-    //                 last_position.set(audio.current_time());
-
-    //                 // Save state to localStorage
-    //                 if let Some(window) = web_sys::window() {
-    //                     if let Ok(storage) = window.local_storage() {
-    //                         if let Some(storage) = storage {
-    //                             let _ = storage.set_item(
-    //                                 &format!("audio_position_{}", props.episode_id),
-    //                                 &audio.current_time().to_string(),
-    //                             );
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         });
-
-    //         move || {
-    //             interval.cancel();
-    //         }
-    //     }
-    // });
 
     // Restore previous state on mount
     use_effect_with((), {
@@ -425,37 +375,69 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         },
     );
 
-    // Update playing state when Spacebar is pressed
-    let audio_dispatch_effect = _audio_dispatch.clone();
-    use_effect_with((), move |_| {
-        let keydown_handler = {
-            let audio_info = audio_dispatch_effect.clone();
-            Closure::wrap(Box::new(move |event: KeyboardEvent| {
-                // Check if the event target is not an input or textarea
-                let target = event
-                    .target()
-                    .unwrap()
-                    .dyn_into::<web_sys::HtmlElement>()
-                    .unwrap();
-                if !(target.tag_name().eq_ignore_ascii_case("input")
-                    || target.tag_name().eq_ignore_ascii_case("textarea"))
-                {
-                    if event.key() == " " {
-                        // Prevent the default behavior of the spacebar key
-                        event.prevent_default();
-                        // Toggle `audio_playing` here
-                        audio_info.reduce_mut(|state| state.toggle_playback());
+    // Add keyboard controls
+    {
+        let audio_dispatch_effect = _audio_dispatch.clone();
+        let audio_state_effect = audio_state.clone();
+
+        use_effect_with((), move |_| {
+            let keydown_handler = {
+                let audio_info = audio_dispatch_effect.clone();
+                let state = audio_state_effect.clone();
+
+                Closure::wrap(Box::new(move |event: KeyboardEvent| {
+                    // Check if the event target is not an input or textarea
+                    let target = event
+                        .target()
+                        .unwrap()
+                        .dyn_into::<web_sys::HtmlElement>()
+                        .unwrap();
+
+                    if !(target.tag_name().eq_ignore_ascii_case("input")
+                        || target.tag_name().eq_ignore_ascii_case("textarea"))
+                    {
+                        match event.key().as_str() {
+                            " " => {
+                                event.prevent_default();
+                                audio_info.reduce_mut(|state| state.toggle_playback());
+                            }
+                            "ArrowRight" => {
+                                event.prevent_default();
+                                if let Some(audio_element) = state.audio_element.as_ref() {
+                                    let new_time = audio_element.current_time() + 15.0;
+                                    audio_element.set_current_time(new_time);
+                                    audio_info
+                                        .reduce_mut(|state| state.update_current_time(new_time));
+                                }
+                            }
+                            "ArrowLeft" => {
+                                event.prevent_default();
+                                if let Some(audio_element) = state.audio_element.as_ref() {
+                                    let new_time = (audio_element.current_time() - 15.0).max(0.0);
+                                    audio_element.set_current_time(new_time);
+                                    audio_info
+                                        .reduce_mut(|state| state.update_current_time(new_time));
+                                }
+                            }
+                            _ => {}
+                        }
                     }
-                }
-            }) as Box<dyn FnMut(_)>)
-        };
-        window()
-            .unwrap()
-            .add_event_listener_with_callback("keydown", keydown_handler.as_ref().unchecked_ref())
-            .unwrap();
-        keydown_handler.forget(); // Note: this will make the listener permanent
-        || ()
-    });
+                }) as Box<dyn FnMut(_)>)
+            };
+
+            window()
+                .unwrap()
+                .add_event_listener_with_callback(
+                    "keydown",
+                    keydown_handler.as_ref().unchecked_ref(),
+                )
+                .unwrap();
+
+            move || {
+                keydown_handler.forget();
+            }
+        });
+    }
 
     // Effect for setting up an interval to update the current playback time
     // Clone `audio_ref` for `use_effect_with`
@@ -945,18 +927,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
-    let slider_visibility: UseStateHandle<bool> = use_state(|| false);
-    let toggle_slider_visibility = {
-        let slider_visibility = slider_visibility.clone();
-        Callback::from(move |_| slider_visibility.set(!*slider_visibility))
-    };
-
-    let volume_slider: UseStateHandle<bool> = use_state(|| false);
-    let on_volume_control_click = {
-        let volume_slider = volume_slider.clone();
-        Callback::from(move |_| volume_slider.set(!*volume_slider))
-    };
-
     // Skip forward
     let skip_state = audio_state.clone();
     let skip_forward = {
@@ -1233,15 +1203,13 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
 
                     <div class="episode-button-container flex items-center justify-center">
-                        // <button onclick={change_speed.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        //     <span class="material-icons">{"speed"}</span>
-                        // </button>
                         {
                             html! {
                                 <>
-                                    <button onclick={toggle_slider_visibility.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                                        <span class="material-icons">{"speed"}</span>
-                                    </button>
+                                    <PlaybackControl
+                                        speed={audio_state.playback_speed}
+                                        on_speed_change={update_playback_closure}
+                                    />
                                 </>
                             }
                         }
@@ -1259,29 +1227,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">{"skip_next"}</span>
                         </button>
-                    </div>
-                    <div class="episode-button-container flex items-center justify-center">
-                    // Other buttons as before
-                        <div class={classes!("playback-speed-display", if *slider_visibility {"visible"} else {"hidden"})}>
-                            <div class="speed-display-container">
-                                <div class="speed-text"> // Use inline styles or a class
-                                    {format!("{}x", audio_state.playback_speed)}
-                                </div>
-                                <input
-                                    type="range"
-                                    class="slider"  // Center this slider independently
-                                    min="0.5"
-                                    max="2.0"
-                                    step="0.1"
-                                    value={audio_state.playback_speed.to_string()}
-                                    oninput={Callback::from(move |event: InputEvent| {
-                                        let input: HtmlInputElement = event.target_unchecked_into();
-                                        let speed = input.value_as_number();
-                                        update_playback_closure.emit(speed);
-                                    })}
-                                />
-                            </div>
-                        </div>
                     </div>
 
                     <div class="episode-button-container flex items-center justify-center">
@@ -1322,29 +1267,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             }
                         }
                     }
-                    <button onclick={on_volume_control_click.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center custom-volume-button">
-                        <span class="material-icons">{"volume_up"}</span>
-                    </button>
-                    <div class={classes!("volume-control-display", if *volume_slider {"visible"} else {"hidden"})}>
-                        <div class="volume-display-container">
-                            <div class="volume-text"> // Use inline styles or a class
-                                {format!("{}", audio_state.audio_volume)}
-                            </div>
-                            <input
-                                type="range"
-                                class="slider"  // Center this slider independently
-                                min="1"
-                                max="100"
-                                step="1"
-                                value={audio_state.audio_volume.to_string()}
-                                oninput={Callback::from(move |event: InputEvent| {
-                                    let input: HtmlInputElement = event.target_unchecked_into();
-                                    let volume = input.value_as_number();
-                                    update_volume_closure.emit(volume);
-                                })}
-                            />
-                        </div>
-                    </div>
+                    <VolumeControl
+                        volume={audio_state.audio_volume}
+                        on_volume_change={update_volume_closure}
+                    />
                     </div>
                     </div>
 
