@@ -67,6 +67,7 @@ pub fn app_drawer() -> Html {
                     &user_id_call.unwrap(),
                     &api_key.unwrap().unwrap(),
                     false,
+                    dispatch.clone(),
                 )
                 .await
                 {
@@ -289,6 +290,21 @@ pub fn app_drawer() -> Html {
                             </div>
                         },
                         _ => html! {}, // Covers both Some(false) and None
+                    }
+                }
+                {
+                    if let Some(progress) = &state.refresh_progress {
+                        if !progress.current_podcast.is_empty() {
+                            html! {
+                                <span class="ml-3 text-sm item_container-text whitespace-nowrap">
+                                    {format!("Refreshing {}", progress.current_podcast)}
+                                </span>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    } else {
+                        html! {}
                     }
                 }
             </div>

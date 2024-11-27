@@ -191,6 +191,7 @@ pub fn nextcloud_options() -> Html {
                                                                 &user_id_call.unwrap(),
                                                                 &api_key_call.unwrap().unwrap(),
                                                                 true,
+                                                                dispatch_clone.clone(),
                                                             )
                                                             .await
                                                         {
@@ -338,6 +339,7 @@ pub fn nextcloud_options() -> Html {
                                                 &user_id_call.unwrap(),
                                                 &api_key_call.unwrap().unwrap(),
                                                 true,
+                                                dispatch_clone.clone(),
                                             )
                                             .await
                                             {

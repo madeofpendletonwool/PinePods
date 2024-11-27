@@ -2050,7 +2050,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
             user_locks[user_id].acquire()
             print(f"Acquired lock for user {user_id}")
             # Run the refresh process asynchronously without blocking the WebSocket
-            task = asyncio.create_task(run_refresh_process(user_id, nextcloud_refresh, websocket))
+            task = asyncio.create_task(run_refresh_process(user_id, nextcloud_refresh, websocket, cnx))
             print(f"Task created for user {user_id}")
             # Keep the WebSocket connection alive while the task is running
             while not task.done():
@@ -2088,51 +2088,120 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
         await websocket.send_json({"detail": f"Unexpected error: {str(e)}"})
         await websocket.close()
 
-async def run_refresh_process(user_id, nextcloud_refresh, websocket):
-    cnx = create_database_connection()
+async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
+    print("Starting refresh process")
+    # cnx = create_database_connection()
     print(f"Running refresh process for user in job {user_id}")
     try:
+        # First get total count of podcasts
+        print("Creating cursor")
+        cursor = cnx.cursor()
+        print("Cursor created")
+        if database_type == "postgresql":
+            print("Executing count query")
+            cursor.execute('''
+                SELECT COUNT(*), array_agg("podcastname")
+                FROM "Podcasts"
+                WHERE "userid" = %s
+            ''', (user_id,))
+            print("Count query executed")
+        else:
+            cursor.execute('''
+                SELECT COUNT(*), GROUP_CONCAT(PodcastName)
+                FROM Podcasts
+                WHERE UserID = %s
+            ''', (user_id,))
+        count_result = cursor.fetchone()
+        print(f"Count result: {count_result}")
+
+        # Handle both dictionary and tuple results
+        if isinstance(count_result, dict):
+            total_podcasts = count_result['count'] if count_result else 0
+        else:
+            total_podcasts = count_result[0] if count_result else 0
+
+        print(f"Total podcasts: {total_podcasts}")
+
+        await websocket.send_json({
+            "progress": {
+                "current": 0,
+                "total": total_podcasts,
+                "current_podcast": ""
+            }
+        })
+
         if nextcloud_refresh:
             await websocket.send_json({"detail": "Refreshing Nextcloud subscriptions..."})
             print(f"Refreshing Nextcloud subscriptions for user {user_id}")
-            # Retrieve necessary details for the user
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, user_id)
-            print(f"Nextcloud details: {gpodder_url}, {gpodder_token}, {gpodder_login}")
             pod_sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
             if pod_sync_type == "nextcloud":
                 await asyncio.to_thread(database_functions.functions.refresh_nextcloud_subscription,
-                                        database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
             else:
                 await asyncio.to_thread(database_functions.functions.refresh_gpodder_subscription,
-                                        database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
-
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
             await websocket.send_json({"detail": "Pod Sync subscription refresh complete."})
 
-        # Collect new episodes in a list to send after refresh
-        new_episodes = await asyncio.to_thread(database_functions.functions.refresh_pods_for_user, cnx, database_type, user_id)
+        # Get list of podcast names for progress updates
+        print('Getting list')
+        if database_type == "postgresql":
+            cursor.execute('''
+                SELECT "podcastid", "podcastname"
+                FROM "Podcasts"
+                WHERE "userid" = %s
+            ''', (user_id,))
+        else:
+            cursor.execute('''
+                SELECT PodcastID, PodcastName
+                FROM Podcasts
+                WHERE UserID = %s
+            ''', (user_id,))
+        podcasts = cursor.fetchall()
+        print('got list')
 
-        # Send new episodes to the WebSocket
-        for episode_data in new_episodes:
-            if user_id in active_websockets:
-                for ws in active_websockets[user_id]:
-                    await ws.send_json({"new_episode": episode_data})
+# Process each podcast
+        current = 0
+        for podcast in podcasts:
+            current += 1
+            if isinstance(podcast, dict):
+                if database_type == "postgresql":
+                    podcast_id = podcast['podcastid']
+                    podcast_name = podcast['podcastname']
+                else:
+                    podcast_id = podcast['PodcastID']
+                    podcast_name = podcast['PodcastName']
+            else:
+                podcast_id, podcast_name = podcast
+
+            await websocket.send_json({
+                "progress": {
+                    "current": current,
+                    "total": total_podcasts,
+                    "current_podcast": podcast_name
+                }
+            })
+
+            # Refresh this podcast
+            new_episodes = await asyncio.to_thread(
+                database_functions.functions.refresh_pods_for_user,
+                cnx,
+                database_type,
+                user_id
+            )
+
+            # Send any new episodes
+            for episode_data in new_episodes:
+                if user_id in active_websockets:
+                    for ws in active_websockets[user_id]:
+                        await ws.send_json({"new_episode": episode_data})
 
     except Exception as e:
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
     finally:
-        if database_type == "postgresql":
-            if cnx.closed == 0:  # Ensure connection is still open before returning
-                try:
-                    connection_pool.putconn(cnx)
-                except ValueError as e:
-                    print(f"Error returning connection to pool: {e}")
-                    cnx.close()
-            else:
+        if cnx:
+            if not cnx.closed:
                 cnx.close()
-        else:
-            cnx.close()
-
-
 
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),

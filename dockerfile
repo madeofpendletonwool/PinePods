@@ -25,7 +25,6 @@ COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/
 COPY ./web/dist /app/dist
 COPY ./web/src /app/src
 COPY ./web/static /app/static
-COPY ./web/target /app/target
 
 WORKDIR /app
 

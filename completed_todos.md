@@ -16,7 +16,6 @@ Next Minor Version:
 - [] Full Show deletion with checkbox on download page
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
 pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
-- [] Add background task to remove shared episode references in db after 60 days
 - [] Allow for episode plays on episode page when podcast not in db
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
@@ -52,13 +51,6 @@ Mobile:
 
 done but needs testing
 
-- [] Fix issues with refreshing
-    Refreshing now works with websocket and it grabs the data, however, there's a problem adding it dynamically to the page. We need to auto stack in the found episodes
-    episode id seems to come through as zero. Rather than the actual id
-        example data:
-        ```
-        Received new episode: EpisodeWebsocketResponse { episode_id: 0, podcast_id: 36, title: "582: On the CUPS of Disaster", description: Some("<p>W Flathub\">Install Frog on Linux | Flathub</a> — Extract text from images, websites, videos, and QR codes by taking a picture of the source.</li><li><a href=\"https://flathub.org/apps/de.leopoldluley.Clapgrep\" title=\"Clapgrep\">Clapgrep</a> — Ever had a folder full of PDF files, where you knew, somewhere in there, is what you're looking for. But you did not know in which file. So you had to search each of them at a time...</li></ul>"), audio_url: "https://aphid.fireside.fm/d/1437767933/f31a453c-fa15-491f-8618-3f71f1d565e5/ffb365c2-37c4-42b6-8b40-95649c0e790e.mp3", artwork_url: Some("https://assets.fireside.fm/file/fireside-images/podcasts/images/f/f31a453c-fa15-491f-8618-3f71f1d565e5/cover.jpg"), release_datetime: "2024-09-29 14:00:00", duration: 4050, completed: false }
-        ```
 - [] client local download function broken. Need android compiling alternative to reqwest
 
 
@@ -90,19 +82,20 @@ Version 0.7.0
 - [x] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
 - [x] People page dropdowns on podcasts and episodes
-- [] Stop issues with timeouts on occation with mobile apps
+- [x] Stop issues with timeouts on occation with mobile apps - Potentially fixed due to audio file caching. Testing needed
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
 - [] Finalize virtual lines so it works like home on episode layout
 - [] On very small screens you no longer get the mini version without the context button
 - [x] Dynamically adjusting buttons on episode page
 - [x] PodcastPeople DB up and running and can be contributed to
-- [] Show currently updating podcast in refresh feed button at top of screen
-- [] Image caching
+- [x] Show currently updating podcast in refresh feed button at top of screen
+- [x] Fixed up remaining issues with user podcast refresh
 - [x] Podcast 3x layout
 - [x] Finalize loading states so you don't see login page when you are already authenticated
 - [x] Using valkey to ensure stateless opml imports
 - [x] Android play/pause episode metadata
 - [x] Draggable Queues on Mobile Devices
+- [x] Add background task to remove shared episode references in db after 60 days
 - [x] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects
 - [x] Some pods not loading in from opml import - better opml validation. Say number importing. - OPML imports moved to backend to get pod values, also reporting function created to update status

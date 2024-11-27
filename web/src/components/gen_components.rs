@@ -2276,3 +2276,48 @@ pub fn loading_modal(props: &LoadingModalProps) -> Html {
         </div>
     }
 }
+
+#[derive(Properties, PartialEq, Clone)]
+pub struct RefreshProgressProps {
+    pub current_podcast: Option<String>,
+    pub progress: i32,
+    pub total: i32,
+}
+
+#[function_component(RefreshProgress)]
+pub fn refresh_progress(props: &RefreshProgressProps) -> Html {
+    if props.current_podcast.is_none() {
+        return html! {};
+    }
+
+    let percentage = if props.total > 0 {
+        (props.progress as f32 / props.total as f32 * 100.0).round() as i32
+    } else {
+        0
+    };
+
+    let percentage_style = format!("width: {}%", percentage);
+
+    html! {
+        <div class="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 w-11/12 max-w-md">
+            <div class="item-container p-4 shadow-lg">
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="item_container-text">
+                            {"Refreshing: "}{props.current_podcast.clone().unwrap_or_default()}
+                        </span>
+                        <span class="item_container-text">
+                            {props.progress}{" / "}{props.total}
+                        </span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div
+                            class="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                            style={percentage_style}
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
