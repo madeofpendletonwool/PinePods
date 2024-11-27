@@ -624,6 +624,21 @@ body {
 .audio-image-container {
     display: flex;
     justify-content: center;
+    margin: 10px 0;
+}
+
+.audio-image-container img {
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+    cursor: pointer;
+}
+
+.audio-image-container img:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
 .audio-player.expanded .line-content,
@@ -648,18 +663,17 @@ body {
 
 .audio-player .line-content .title {
     text-align: left;
-    /* Align text to the left */
     color: var(--text-color);
     display: -webkit-box;
-    /* Necessary for line clamping */
     -webkit-line-clamp: 2;
-    /* Limit to 2 lines */
     -webkit-box-orient: vertical;
-    /* Necessary for line clamping */
     overflow: hidden;
-    /* Hide text exceeding the line limit */
     flex-basis: 90%;
-    /* Adjust as needed */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: pointer;
 }
 
 .audio-player .top-section {
@@ -669,10 +683,13 @@ body {
 
 .audio-player .top-section .title {
     font-size: 2em;
-    /* Make the title larger */
     text-align: center;
     margin: 20px 0;
-    /* Add some vertical space around the title */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: pointer;
 }
 
 .audio-player .top-section .scrub-bar {
@@ -2157,6 +2174,24 @@ button.item-container-action-button.item-container-action-button {
     background-color: var(--hover-color);
 }
 
+.links-custom a {
+    color: #3182ce; /* or your preferred link color */
+    text-decoration: underline;
+    transition: color 0.2s;
+}
+
+.links-custom a:hover {
+    color: #2c5282; /* darker shade for hover */
+}
+
+.dark .links-custom a {
+    color: #63b3ed; /* lighter blue for dark mode */
+}
+
+.dark .links-custom a:hover {
+    color: #90cdf4; /* even lighter for hover in dark mode */
+}
+
 .dropdown-content-class {
     top: 100%;
     /* Position just below the button */
@@ -2328,6 +2363,156 @@ button.item-container-action-button.item-container-action-button {
 .custom-volume-button {
     margin-top: 9px;
     /* Adjust the value as needed */
+}
+
+.volume-control-container {
+    position: relative;
+    display: inline-block;
+}
+
+.volume-slider-container {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    width: 160px;
+    margin-top: 8px;
+    z-index: 100;
+
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px) translateX(-50%);
+    transition:
+        opacity 0.2s ease,
+        transform 0.2s ease,
+        visibility 0.2s;
+}
+
+.volume-slider-container.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) translateX(-50%);
+}
+
+.volume-text {
+    text-align: center;
+    margin-bottom: 4px;
+    font-size: 0.875rem;
+}
+
+.volume-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-color);
+    outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--button-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+    background: var(--hover-color);
+}
+
+.speed-control-container {
+    position: relative;
+    display: inline-block;
+}
+
+.speed-slider-container {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    width: 160px;
+    margin-top: 8px;
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px) translateX(-50%);
+    transition:
+        opacity 0.2s ease,
+        transform 0.2s ease,
+        visibility 0.2s;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Force consistent container behavior regardless of screen size */
+@media (min-width: 768px) {
+    .speed-slider-container {
+        position: absolute !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: 160px !important;
+    }
+
+    .speed-control-content {
+        width: 100% !important;
+        position: relative !important;
+    }
+
+    .speed-text {
+        position: relative !important;
+        left: auto !important;
+        transform: none !important;
+    }
+}
+
+.speed-slider-container.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) translateX(-50%);
+}
+
+.speed-control-content {
+    background: var(--background-color);
+    border-radius: 6px;
+    padding: 8px;
+    width: 100%;
+}
+
+.speed-text {
+    text-align: center;
+    margin-bottom: 4px;
+    font-size: 0.875rem;
+}
+
+.speed-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-color);
+    outline: none;
+}
+
+.speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--button-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.speed-slider::-webkit-slider-thumb:hover {
+    background: var(--hover-color);
 }
 
 .podcast-title {

@@ -1,40 +1,26 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{
-    on_shownotes_click, ContextButton, EpisodeTrait, LoadingModal, Search_nav, UseScrollToTop,
-};
-use super::gen_funcs::{format_datetime, match_date_format, parse_date};
-use crate::components::audio::{on_play_click, AudioPlayer};
+use super::gen_components::{Search_nav, UseScrollToTop};
+use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
-use crate::components::gen_funcs::format_time;
-use crate::components::gen_funcs::{
-    convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
-};
 use crate::components::host_component::HostDropdown;
 use crate::components::podcast_layout::ClickedFeedURL;
-use crate::components::virtual_list::{PodcastEpisodeVirtualList, PodcastEpisodeVirtualListProps};
+use crate::components::virtual_list::PodcastEpisodeVirtualList;
 use crate::requests::login_requests::use_check_authentication;
-use crate::requests::people_req::{
-    call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
-};
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
-    call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_details,
-    call_get_podcast_id, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_remove_category, call_remove_podcasts_name, AddCategoryRequest, AutoDownloadRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, Person, Podcast, PodcastDetails,
-    PodcastResponse, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
+    call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_id_from_ep,
+    call_get_podcast_id_from_ep_name, call_remove_category, call_remove_podcasts_name,
+    AddCategoryRequest, AutoDownloadRequest, DownloadAllPodcastRequest,
+    FetchPodcasting2PodDataRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     SkipTimesRequest,
 };
-use crate::requests::search_pods::call_get_person_info;
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
-use futures::future::join_all;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
@@ -1538,7 +1524,6 @@ pub fn episode_layout() -> Html {
 
     let web_link = open_in_new_tab.clone();
     let pod_layout_data = clicked_podcast_info.clone();
-    let pod_id_drop = *podcast_id.clone();
     html! {
         <div class="main-container">
             <Search_nav />

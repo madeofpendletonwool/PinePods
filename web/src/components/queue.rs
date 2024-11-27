@@ -24,12 +24,46 @@ use wasm_bindgen::JsCast;
 use web_sys::Element;
 use web_sys::{window, DragEvent, HtmlElement};
 
+// Add this at the top of your file
+const SCROLL_THRESHOLD: f64 = 150.0; // Increased threshold for easier activation
+const SCROLL_SPEED: f64 = 15.0; // Increased speed
+const SCROLL_INTERVAL: f64 = 16.0; // Keep at 60fps
+
+#[derive(Clone, Debug)]
+struct ScrollState {
+    interval_id: Option<i32>,
+    scroll_direction: f64,
+}
+
+// Add these new functions at the module level
+fn start_auto_scroll(direction: f64) -> i32 {
+    let window = window().unwrap();
+    let window_clone = window.clone();
+    let closure = Closure::wrap(Box::new(move || {
+        window_clone.scroll_by_with_x_and_y(0.0, direction * SCROLL_SPEED);
+    }) as Box<dyn Fn()>);
+
+    let interval_id = window
+        .set_interval_with_callback_and_timeout_and_arguments_0(
+            closure.as_ref().unchecked_ref(),
+            SCROLL_INTERVAL as i32,
+        )
+        .unwrap();
+
+    closure.forget();
+    interval_id
+}
+
+fn stop_auto_scroll(interval_id: i32) {
+    if let Some(window) = window() {
+        window.clear_interval_with_handle(interval_id);
+    }
+}
+
 #[function_component(Queue)]
 pub fn queue() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
-
-    // check_auth(effect_dispatch);
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -44,7 +78,18 @@ pub fn queue() -> Html {
     let touch_start_y = use_state(|| 0.0);
     let touch_start_x = use_state(|| 0.0);
     let is_dragging = use_state(|| false);
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
+
     let dragged_element = use_state(|| None::<web_sys::Element>);
+    let scroll_state = use_state(|| ScrollState {
+        interval_id: None,
+        scroll_direction: 0.0,
+    });
 
     let api_key = post_state
         .auth_details
@@ -319,16 +364,22 @@ pub fn queue() -> Html {
                                     let touch_start_x = touch_start_x.clone();
                                     let is_dragging = is_dragging.clone();
                                     let dragged_element = dragged_element.clone();
+
                                     Callback::from(move |e: TouchEvent| {
                                         if let Some(touch) = e.touches().get(0) {
                                             if let Some(target) = e.target() {
+                                                // Cast the EventTarget to Element
                                                 if let Some(element) = target.dyn_ref::<Element>() {
-                                                    if element.closest(".item-container").is_ok() {
-                                                        touch_start_y.set(touch.client_y() as f64);
-                                                        touch_start_x.set(touch.client_x() as f64);
-                                                        is_dragging.set(true);
-                                                        dragged_element.set(element.closest(".item-container").ok().flatten());
-                                                        e.prevent_default();
+                                                    // Check if the touch started on or near the drag handle
+                                                    if let Ok(Some(_)) = element.closest(".drag-handle-wrapper") {
+                                                        // Only if we're touching the drag handle
+                                                        if let Ok(Some(container)) = element.closest(".item-container") {
+                                                            touch_start_y.set(touch.client_y() as f64);
+                                                            touch_start_x.set(touch.client_x() as f64);
+                                                            is_dragging.set(true);
+                                                            dragged_element.set(Some(container));
+                                                            e.prevent_default(); // Only prevent default if we're starting a drag
+                                                        }
                                                     }
                                                 }
                                             }
@@ -336,39 +387,89 @@ pub fn queue() -> Html {
                                     })
                                 };
 
+
                                 let ontouchmove = {
                                     let touch_start_y = touch_start_y.clone();
                                     let touch_start_x = touch_start_x.clone();
                                     let is_dragging = is_dragging.clone();
                                     let dragged_element = dragged_element.clone();
+                                    let scroll_state = scroll_state.clone();
+
                                     Callback::from(move |e: TouchEvent| {
-                                        e.stop_propagation();
-                                        e.prevent_default();
                                         if *is_dragging {
                                             if let Some(touch) = e.touches().get(0) {
                                                 let current_y = touch.client_y() as f64;
                                                 let current_x = touch.client_x() as f64;
-                                                let delta_y = current_y - *touch_start_y;
+                                                let window = window().unwrap();
+                                                let viewport_height = window.inner_height().unwrap().as_f64().unwrap();
+                                                let document = window.document().unwrap();
+                                                let document_height = document.document_element().unwrap().scroll_height() as f64;
+                                                let current_scroll = window.scroll_y().unwrap();
+
+                                                // Store initial scroll position if not set
+                                                let initial_scroll = scroll_state.interval_id.unwrap_or_else(|| {
+                                                    let id = current_scroll as i32;
+                                                    scroll_state.set(ScrollState {
+                                                        interval_id: Some(id),
+                                                        scroll_direction: 0.0,
+                                                    });
+                                                    id
+                                                }) as f64;
+
+                                                // Calculate delta with scroll offset compensation
+                                                let scroll_offset = current_scroll - initial_scroll;
+                                                let delta_y = (current_y - *touch_start_y) + scroll_offset;
                                                 let delta_x = current_x - *touch_start_x;
 
-                                                if let Some(element) = (*dragged_element).clone() {
-                                                    let style = element.dyn_ref::<HtmlElement>().unwrap().style();
-                                                    style.set_property("transform", &format!("translate({}px, {}px)", delta_x, delta_y)).unwrap();
-                                                    style.set_property("z-index", "1000").unwrap();
+                                                // Handle scrolling logic
+                                                let new_scroll_direction = if current_y < SCROLL_THRESHOLD && current_scroll > 0.0 {
+                                                    -1.0
+                                                } else if current_y > viewport_height - SCROLL_THRESHOLD
+                                                    && current_scroll < document_height - viewport_height {
+                                                    1.0
+                                                } else {
+                                                    0.0
+                                                };
+
+                                                if new_scroll_direction != 0.0 {
+                                                    window.scroll_by_with_x_and_y(0.0, new_scroll_direction * SCROLL_SPEED);
                                                 }
+
+                                                // Update dragged element position
+                                                if let Some(element) = (*dragged_element).clone() {
+                                                    if let Some(html_element) = element.dyn_ref::<HtmlElement>() {
+                                                        html_element
+                                                            .style()
+                                                            .set_property("transform", &format!("translate({}px, {}px)", delta_x, delta_y))
+                                                            .unwrap();
+                                                        html_element
+                                                            .style()
+                                                            .set_property("z-index", "1000")
+                                                            .unwrap();
+                                                    }
+                                                }
+                                                e.prevent_default();
+                                                e.stop_propagation();
                                             }
-                                            e.prevent_default();
                                         }
                                     })
                                 };
 
-
                                 let ontouchend = {
                                     let dragged_element = dragged_element.clone();
                                     let is_dragging = is_dragging.clone();
+                                    let scroll_state = scroll_state.clone();
                                     let dispatch = dispatch.clone();
                                     let episodes = queued_eps.clone();
                                     Callback::from(move |e: TouchEvent| {
+                                        // Stop any ongoing scrolling
+                                        if let Some(interval_id) = scroll_state.interval_id {
+                                            stop_auto_scroll(interval_id);
+                                            scroll_state.set(ScrollState {
+                                                interval_id: None,
+                                                scroll_direction: 0.0,
+                                            });
+                                        }
                                         if *is_dragging {
                                             if let Some(dragged) = (*dragged_element).clone() {
                                                 let dragged_rect = dragged.get_bounding_client_rect();
@@ -566,6 +667,9 @@ pub fn queue() -> Html {
                                 ontouchstart.clone(),
                                 ontouchmove.clone(),
                                 ontouchend.clone(),
+                                *show_modal,
+                                on_modal_open.clone(),
+                                on_modal_close.clone(),
                             );
 
                             item

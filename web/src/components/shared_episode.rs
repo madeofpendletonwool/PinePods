@@ -30,7 +30,7 @@ pub struct SharedProps {
 }
 
 #[function_component(SharedEpisode)]
-pub fn shared_episode(props: &SharedProps) -> Html {
+pub fn shared_episode(_props: &SharedProps) -> Html {
     web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("shared ep hit"));
     let (state, dispatch) = use_store::<AppState>();
 

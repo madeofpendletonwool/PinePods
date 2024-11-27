@@ -1,9 +1,6 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::parse_opml;
-use crate::requests::pod_req::{call_add_podcast, PodcastValues};
-use crate::requests::search_pods::{call_parse_podcast_channel_info, PodcastInfo};
 use gloo::timers::callback::Interval;
-use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{FileReader, HtmlInputElement};
@@ -15,84 +12,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 
-fn transform_feed_result_to_values(
-    feed_result: PodcastInfo,
-    podcast_to_add: &PodcastToAdd,
-    user_id: i32,
-) -> PodcastValues {
-    let pod_title = podcast_to_add.title.clone();
-    let pod_feed_url = podcast_to_add.xml_url.clone();
-
-    // Simplified: Using first episode details or default values
-    let pod_artwork = feed_result.artwork_url.unwrap_or_default();
-    let pod_author = feed_result.author.clone();
-    let pod_description = feed_result.description.clone();
-    let pod_website = feed_result.website;
-    let pod_explicit = feed_result.explicit;
-    let pod_episode_count = feed_result.episode_count;
-
-    // Placeholder for categories, as an example
-    let categories = HashMap::new();
-
-    PodcastValues {
-        pod_title,
-        pod_artwork,
-        pod_author,
-        categories,
-        pod_description,
-        pod_episode_count,
-        pod_feed_url,
-        pod_website,
-        pod_explicit,
-        user_id,
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PodcastToAdd {
-    title: String,
-    xml_url: String,
-}
-
 #[derive(Clone, Debug)]
 struct PodcastToImport {
     title: String,
     xml_url: String,
     selected: bool,
-}
-
-async fn add_podcasts(
-    server_name: &str,
-    api_key: &Option<String>,
-    user_id: i32,
-    podcasts: Vec<PodcastToAdd>,
-) {
-    for podcast in podcasts.into_iter() {
-        // Parse podcast URL to get feed details
-        match call_parse_podcast_channel_info(&podcast.xml_url).await {
-            Ok(feed_result) => {
-                let add_podcast = PodcastToAdd {
-                    title: podcast.title.clone(),
-                    xml_url: podcast.xml_url.clone(),
-                };
-                // Assuming you transform `feed_result` into `PodcastValues` needed by `call_add_podcast`
-                let podcast_values =
-                    transform_feed_result_to_values(feed_result, &add_podcast, user_id);
-                let podcast_id = Some(0);
-
-                // Add podcast to the server
-                match call_add_podcast(server_name, api_key, user_id, &podcast_values, podcast_id)
-                    .await
-                {
-                    Ok(_) => log::info!("Podcast added successfully: {}", podcast.title.clone()),
-                    Err(e) => {
-                        log::error!("Failed to add podcast {}: {:?}", podcast.title.clone(), e)
-                    }
-                }
-            }
-            Err(e) => log::error!("Failed to parse podcast URL {}: {:?}", podcast.xml_url, e),
-        }
-    }
 }
 
 #[function_component(ImportOptions)]
@@ -143,7 +67,6 @@ pub fn import_options() -> Html {
         })
     };
 
-    let server_name_confirm = server_name.clone();
     let dispatch_wasm = _dispatch.clone();
 
     let on_confirm = {

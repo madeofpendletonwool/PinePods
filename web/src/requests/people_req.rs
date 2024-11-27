@@ -1,7 +1,6 @@
-use crate::requests::pod_req::Episode;
 use anyhow::Error;
 use gloo::net::http::Request;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct PersonSubscription {
@@ -13,6 +12,7 @@ pub struct PersonSubscription {
     pub associatedpodcasts: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct SubscribeResponse {
     pub message: String,

@@ -1,5 +1,6 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
+use crate::components::context::AppState;
 use futures::StreamExt;
 use gloo::net::websocket::WebSocketError;
 use gloo::net::websocket::{futures::WebSocket, Message};
@@ -9,6 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use web_sys::console;
+use yewdux::Dispatch;
 
 fn bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
@@ -129,7 +131,7 @@ pub struct PodcastStatusResponse {
 pub async fn call_add_podcast(
     server_name: &str,
     api_key: &Option<String>,
-    user_id: i32,
+    _user_id: i32,
     added_podcast: &PodcastValues,
     podcast_index_id: Option<i64>,
 ) -> Result<PodcastStatusResponse, Error> {
@@ -330,6 +332,7 @@ pub async fn call_get_podcasts(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct TimeInfoResponse {
     pub timezone: String,
@@ -1411,6 +1414,7 @@ pub struct RecordListenDurationRequest {
     pub listen_duration: f64, // Assuming float is appropriate here; adjust the type if necessary
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct RecordListenDurationResponse {
     pub detail: String, // Assuming a simple status response; adjust according to actual API response
@@ -1991,12 +1995,6 @@ pub async fn call_get_auto_skip_times(
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct PinepodsVersionResponse {
-    pub start_skip: i32,
-    pub end_skip: i32,
-}
-
 #[derive(Deserialize)]
 struct VersionResponse {
     data: String,
@@ -2056,43 +2054,57 @@ pub struct EpisodeResponse {
     pub new_episode: EpisodeWebsocketResponse,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct RefreshProgress {
+    pub current: i32,
+    pub total: i32,
+    pub current_podcast: String,
+}
+
 pub async fn connect_to_episode_websocket(
     server_name: &String,
     user_id: &i32,
     api_key: &str,
     nextcloud_refresh: bool,
+    dispatch: Dispatch<AppState>, // Add dispatch parameter
 ) -> Result<Vec<EpisodeWebsocketResponse>, Error> {
     let clean_server_name = server_name
         .trim_start_matches("http://")
         .trim_start_matches("https://");
-
     let url = format!(
         "ws://{}/ws/api/data/episodes/{}?api_key={}&nextcloud_refresh={}",
         clean_server_name, user_id, api_key, nextcloud_refresh
     );
 
-    // Open WebSocket connection
     let ws_result = WebSocket::open(&url);
-
     if ws_result.is_err() {
         return Err(Error::msg(format!(
             "Failed to open WebSocket: {:?}",
             ws_result.err()
         )));
     }
-
     let websocket = ws_result.unwrap();
     let (_write, mut read) = websocket.split();
-
     let mut episodes = Vec::new();
 
-    // Read messages from the WebSocket
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
                 console::log_1(&format!("Received message: {}", text).into());
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if let Some(new_episode) = json.get("new_episode") {
+                    if let Some(progress) = json.get("progress") {
+                        // Handle progress updates
+                        match serde_json::from_value::<RefreshProgress>(progress.clone()) {
+                            Ok(progress_data) => {
+                                dispatch.reduce_mut(|state| {
+                                    state.refresh_progress = Some(progress_data);
+                                });
+                            }
+                            Err(e) => {
+                                console::log_1(&format!("Failed to parse progress: {}", e).into());
+                            }
+                        }
+                    } else if let Some(new_episode) = json.get("new_episode") {
                         match serde_json::from_value::<EpisodeWebsocketResponse>(
                             new_episode.clone(),
                         ) {
@@ -2114,10 +2126,6 @@ pub async fn connect_to_episode_websocket(
                         }
                     } else if let Some(detail) = json.get("detail") {
                         console::log_1(&format!("Received status message: {}", detail).into());
-                    } else {
-                        console::log_1(
-                            &format!("Received unknown message format: {}", text).into(),
-                        );
                     }
                 } else {
                     console::log_1(&format!("Failed to parse JSON: {}", text).into());
@@ -2128,15 +2136,22 @@ pub async fn connect_to_episode_websocket(
             }
             Err(WebSocketError::ConnectionClose(close_event)) => {
                 console::log_1(&format!("WebSocket closed: {:?}", close_event).into());
+                // Clear progress when websocket closes
+                dispatch.reduce_mut(|state| {
+                    state.refresh_progress = None;
+                });
                 break;
             }
             Err(e) => {
                 console::log_1(&format!("WebSocket error: {:?}", e).into());
+                // Clear progress on error
+                dispatch.reduce_mut(|state| {
+                    state.refresh_progress = None;
+                });
                 break;
             }
         }
     }
-
     Ok(episodes)
 }
 

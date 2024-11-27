@@ -8,7 +8,7 @@ use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::{
     Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
     HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
-    RecentEps, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
+    RecentEps, RefreshProgress, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse,
@@ -55,9 +55,6 @@ impl Reducer<AppState> for AppStateMsg {
                 state_mut.selected_episodes_for_deletion.insert(episode_id);
             }
             AppStateMsg::DeleteSelectedEpisodes => {
-                // Add this block
-                // Here you can delete the selected episodes from your state
-                // For now, let's just clear the selected episodes
                 state_mut.selected_episodes_for_deletion.clear();
             }
         }
@@ -121,6 +118,7 @@ pub struct AppState {
     pub downloaded_episode_ids: Option<Vec<i32>>,
     pub locally_downloaded_episodes: Option<Vec<i32>>,
     pub podcast_layout: Option<PodcastLayout>,
+    pub refresh_progress: Option<RefreshProgress>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
@@ -231,17 +229,6 @@ impl AppState {
             }
         }
     }
-
-    // pub fn load_app_state(key: &str) -> Option<AppState> {
-    //     if let Some(window) = window() {
-    //         if let Some(local_storage) = window.local_storage().unwrap() {
-    //             if let Ok(Some(serialized_state)) = local_storage.get_item(key) {
-    //                 return AppState::deserialize(&serialized_state).ok();
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
 }
 
 #[derive(Default, Clone, PartialEq, Store, Debug)]

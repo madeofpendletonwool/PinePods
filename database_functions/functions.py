@@ -734,7 +734,19 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
             if websocket:
-                episode_id = cursor.lastrowid  # Assuming lastrowid is available for getting the new EpisodeID
+                # Get the episode ID using a SELECT query right after insert
+                if database_type == "postgresql":
+                    cursor.execute("""
+                        SELECT "EpisodeID" FROM "Episodes"
+                        WHERE "PodcastID" = %s AND "EpisodeTitle" = %s AND "EpisodeURL" = %s
+                    """, (podcast_id, parsed_title, parsed_audio_url))
+                else:
+                    cursor.execute("""
+                        SELECT EpisodeID FROM Episodes
+                        WHERE PodcastID = %s AND EpisodeTitle = %s AND EpisodeURL = %s
+                    """, (podcast_id, parsed_title, parsed_audio_url))
+
+                episode_id = cursor.fetchone()[0]  # Assuming lastrowid is available for getting the new EpisodeID
                 episode_data = {
                     "episode_id": episode_id,
                     "podcast_id": podcast_id,
@@ -1512,12 +1524,11 @@ def check_self_service(cnx, database_type):
 def refresh_pods_for_user(cnx, database_type, user_id):
     print(f'Refresh begin for user {user_id}')
     cursor = cnx.cursor()
-
     if database_type == "postgresql":
         select_podcasts = '''
-            SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password
+            SELECT "podcastid", "feedurl", "artworkurl", "autodownload", "username", "password"
             FROM "Podcasts"
-            WHERE UserID = %s
+            WHERE "userid" = %s
         '''
     else:  # MySQL or MariaDB
         select_podcasts = '''
@@ -1525,18 +1536,33 @@ def refresh_pods_for_user(cnx, database_type, user_id):
             FROM Podcasts
             WHERE UserID = %s
         '''
-
     cursor.execute(select_podcasts, (user_id,))
     result_set = cursor.fetchall()
-
     new_episodes = []
 
     for result in result_set:
-        podcast_id, feed_url, artwork_url, auto_download, username, password = result
+        if isinstance(result, dict):
+            if database_type == "postgresql":
+                # PostgreSQL - lowercase keys
+                podcast_id = result['podcastid']
+                feed_url = result['feedurl']
+                artwork_url = result['artworkurl']
+                auto_download = result['autodownload']
+                username = result['username']
+                password = result['password']
+            else:
+                # MariaDB - uppercase keys
+                podcast_id = result['PodcastID']
+                feed_url = result['FeedURL']
+                artwork_url = result['ArtworkURL']
+                auto_download = result['AutoDownload']
+                username = result['Username']
+                password = result['Password']
+        else:
+            podcast_id, feed_url, artwork_url, auto_download, username, password = result
 
-        print(f'Running for :{podcast_id}')
+        print(f'Running for podcast: {podcast_id}')
         episodes = add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username, password, websocket=True)
-
         # Collect new episodes with full details
         new_episodes.extend(episodes)
 

@@ -64,7 +64,7 @@ pub struct HostItemProps {
     pub subscribed_hosts: HashMap<String, Vec<i32>>,
     pub podcast_id: i32,
     pub on_subscribe_toggle: Callback<Person>,
-    pub on_host_click: Callback<(MouseEvent)>,
+    pub on_host_click: Callback<MouseEvent>,
 }
 
 #[function_component(HostItem)]
@@ -176,7 +176,6 @@ pub fn host_dropdown(
         let server_name = server_name.clone();
         let user_id = user_id.clone();
         let subscribed_hosts = subscribed_hosts.clone();
-        let podcast_id = *podcast_id;
         let person_ids = person_ids.clone();
 
         use_effect_with(
@@ -222,15 +221,12 @@ pub fn host_dropdown(
         );
     }
 
-    let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };
-
     let loading_modal_visible = use_state(|| false);
     let loading_name = use_state(|| String::new());
 
     let render_host = {
         let subscribed_hosts = subscribed_hosts.clone();
         let podcast_feed_url = podcast_feed_url.clone();
-        let podcast_index_id = podcast_index_id.clone();
         let _search_dispatch = _search_dispatch.clone();
         let history = history.clone();
         let search_state = search_state.clone();
@@ -242,12 +238,6 @@ pub fn host_dropdown(
         let loading_name = loading_name.clone();
         move |host: &Person| {
             let host_name = host.name.clone();
-            let host_id = host.id.unwrap_or(0);
-            // let is_subscribed = (*subscribed_hosts).contains(&host_name);
-            let composite_key = format!("{}:{}", host_name, podcast_feed_url);
-            let is_subscribed = (*subscribed_hosts)
-                .get(&host_name)
-                .map_or(false, |podcasts| podcasts.contains(podcast_id));
             let history_clone = history.clone();
 
             let on_host_click = {

@@ -75,29 +75,6 @@ pub async fn call_verify_key(
         Err(anyhow::Error::msg("Failed to get user data"))
     }
 }
-#[derive(Deserialize, Debug)]
-pub struct GetUserResponse {
-    // Add fields according to your API's JSON response
-    pub status: String,
-    pub user_id: Option<String>,
-    // ... other fields ...
-}
-
-// pub async fn call_get_user(server_name: &str, api_key: &str) -> Result<GetUserResponse, anyhow::Error> {
-//     let url = format!("{}/api/data/get_user", server_name);
-
-//     let response = Request::get(&url)
-//         .header("Api-Key", api_key)
-//         .send()
-//         .await?;
-
-//     if response.ok() {
-//         let user_data: GetUserResponse = response.json().await?;
-//         Ok(user_data)
-//     } else {
-//         Err(anyhow::Error::msg("Failed to get user data"))
-//     }
-// }
 
 #[derive(Deserialize, Debug)]
 pub struct GetUserIdResponse {

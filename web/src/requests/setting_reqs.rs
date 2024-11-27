@@ -1101,6 +1101,7 @@ pub struct DeleteMFARequest {
     pub user_id: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct DeleteMFAResponse {
     pub deleted: bool,
@@ -1250,6 +1251,7 @@ pub struct GpodderCheckRequest {
     pub gpodder_password: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct GpodderCheckResponse {
     pub status: String,
@@ -1554,12 +1556,14 @@ pub async fn fetch_import_progress(
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
-    web_sys::console::log_1(
-        &format!("import prog: {:?}", &response).into(),
-    );
+    web_sys::console::log_1(&format!("import prog: {:?}", &response).into());
     if response.ok() {
         let progress_response: ImportProgressResponse = response.json().await?;
-        Ok((progress_response.current, progress_response.total, progress_response.current_podcast))
+        Ok((
+            progress_response.current,
+            progress_response.total,
+            progress_response.current_podcast,
+        ))
     } else {
         Err(Error::msg(format!(
             "Error fetching import progress: {}",

@@ -1,4 +1,4 @@
-use super::gen_components::{on_shownotes_click, ContextButton, EpisodeTrait};
+use super::gen_components::{on_shownotes_click, ContextButton, EpisodeModal, EpisodeTrait};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_click;
 use crate::components::context::{AppState, UIState};
@@ -40,6 +40,12 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let scroll_pos = use_state(|| 0.0);
     let container_ref = use_node_ref();
     let container_height = use_state(|| 0.0);
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     // Effect to set initial container height and listen for window resize
     {
@@ -164,6 +170,27 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             let episode_url_for_ep_item = episode_url_clone.clone();
             let shownotes_episode_url = episode_url_clone.clone();
             let should_show_buttons = !episode_url_for_ep_item.is_empty();
+            let make_shownotes_callback = {
+                let history = history_clone.clone();
+                let search_dispatch = search_dispatch.clone();
+                let podcast_link = props.podcast_link.clone();
+                let podcast_title = props.podcast_title.clone();
+                let episode_id = episode_id_clone;
+                let episode_url = episode_url_clone.clone();
+
+                Callback::from(move |_: MouseEvent| {
+                    on_shownotes_click(
+                        history.clone(),
+                        search_dispatch.clone(),
+                        Some(episode_id),
+                        Some(podcast_link.clone()),
+                        Some(episode_url.clone()),
+                        Some(podcast_title.clone()),
+                        true,
+                        None,
+                    ).emit(MouseEvent::new("click").unwrap());
+                })
+            };
 
             html! {
                 <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
@@ -175,12 +202,10 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                         <p class="item_container-text episode-title font-semibold" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(props.podcast_link.clone()), Some(shownotes_episode_url), Some(props.podcast_title.clone()), db_added, None)}>{ &episode.title.clone().unwrap_or_default() }</p>
                         {
                             html! {
-                                <div class="item-description-text hidden md:block">
-                                    <div
-                                        class={format!("item_container-text episode-description-container {}", description_class)}
-                                        onclick={toggle_expanded}
-                                    >
-                                        <SafeHtml html={description} />
+                                <div class="item-description-text cursor-pointer md:block"
+                                        onclick={on_modal_open.clone()}>
+                                    <div class="item_container-text line-clamp-2">
+                                        <SafeHtml html={description.clone()} />
                                     </div>
                                 </div>
                             }
@@ -189,7 +214,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                             <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
                             </svg>
-                            { format_release }
+                            { format_release.clone() }
                         </span>
                         {
                             html! {
@@ -220,6 +245,19 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                 }
                             </div>
                         }
+                    }
+                    if *show_modal {
+                        <EpisodeModal
+                            episode_id={episode.episode_id.unwrap_or(0)}
+                            episode_artwork={episode.artwork.clone().unwrap_or_default()}
+                            episode_title={episode.title.clone().unwrap_or_default()}
+                            description={description.clone()}
+                            format_release={format_release.to_string()}
+                            duration={formatted_duration}
+                            on_close={on_modal_close.clone()}
+                            on_show_notes={make_shownotes_callback}
+                            listen_duration_percentage={0.0}
+                        />
                     }
                 </div>
             }
