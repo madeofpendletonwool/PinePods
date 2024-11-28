@@ -51,7 +51,8 @@ Mobile:
 
 done but needs testing
 
-- [] client local download function broken. Need android compiling alternative to reqwest
+- [x] client local download function fix in v2. Needed to rebuild with js_sys directly.
+- [] Need android compiling alternative to reqwest
 
 
 People stuff left:

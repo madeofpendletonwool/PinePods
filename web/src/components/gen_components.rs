@@ -822,6 +822,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = EpisodeRequest {
                 episode_id,
                 user_id: user_id_copy.unwrap(),
+                person_episode: false,
             };
             let server_name = server_name_copy.clone().unwrap();
             let ep_api_key = api_key_copy.clone().flatten();

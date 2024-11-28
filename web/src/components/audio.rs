@@ -1609,7 +1609,18 @@ pub fn on_play_click_offline(
         let episode_info_for_closure = episode_info.clone();
         let audio_dispatch = audio_dispatch.clone();
 
-        let file_path = episode_info_for_closure.downloadedlocation.clone();
+        // Early return if downloadedlocation is None
+        let file_path = match episode_info_for_closure.downloadedlocation {
+            Some(path) => path,
+            None => {
+                // Maybe dispatch an error message here if needed
+                audio_dispatch.reduce_mut(|state| {
+                    state.error_message = Some("Episode file location not found".to_string());
+                });
+                return;
+            }
+        };
+
         let episode_title_for_wasm = episode_info_for_closure.episodetitle.clone();
         let episode_artwork_for_wasm = episode_info_for_closure.episodeartwork.clone();
         let episode_duration_for_wasm = episode_info_for_closure.episodeduration.clone();
@@ -1622,10 +1633,8 @@ pub fn on_play_click_offline(
                     let file_name = Path::new(&file_path)
                         .file_name()
                         .and_then(|name| name.to_str())
-                        .unwrap_or(""); // Extract the file name from the path
-
+                        .unwrap_or("");
                     let src = format!("{}/{}", server_url, file_name);
-
                     audio_dispatch.reduce_mut(move |audio_state| {
                         audio_state.audio_playing = Some(true);
                         audio_state.playback_speed = 1.0;

@@ -2202,7 +2202,7 @@ dependencies = [
 [[package]]
 name = "tauri-sys"
 version = "0.2.0"
-source = "git+https://github.com/madeofpendletonwool/tauri-sys#d4ae1b00e920b494451778d8191b5910dd08c7d7"
+source = "git+https://github.com/JonasKruckenberg/tauri-sys?branch=v2#6c75037edd06e4c39d972a7897a87fc52500c511"
 dependencies = [
  "derive_more",
  "futures",
