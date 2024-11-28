@@ -216,6 +216,7 @@ fn list_app_files() -> Result<Vec<FileEntry>, String> {
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
     pub podcastid: i32,
+    pub podcastindexid: i64,
     pub artworkurl: String,
     pub author: String,
     pub categories: String,

@@ -916,6 +916,7 @@ pub struct EpisodeDownload {
     pub episodeid: i32,
     pub downloadedlocation: Option<String>,
     pub podcastid: i32,
+    pub podcastindexid: i64,
     pub completed: bool,
 }
 
