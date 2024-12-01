@@ -27,6 +27,15 @@ COPY ./web/static /app/static
 
 WORKDIR /app
 
+# Initialize trunk first
+RUN cd /tmp && \
+    echo "" > dummy.rs && \
+    trunk build dummy.rs || true
+RUN cargo install --locked wasm-bindgen-cli
+
+# After installing wasm-bindgen-cli
+# RUN mkdir -p /root/.cache/trunk/wasm-bindgen-0.2.93/ && \
+#     ln -s $(which wasm-bindgen) /root/.cache/trunk/wasm-bindgen-0.2.93/wasm-bindgen
 
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
@@ -49,15 +58,16 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python packages
-COPY --from=builder /app/requirements.txt /
-RUN pip install --no-cache-dir -r /requirements.txt
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY wait-for-it/wait-for-it.sh /wait-for-it.sh
 
 # Copy wait-for-it script and give execute permission
-COPY --from=builder /app/wait-for-it/wait-for-it.sh /wait-for-it.sh
+# COPY --from=builder /app/wait-for-it/wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
 # Copy built files from the builder stage to the Nginx serving directory
-COPY --from=builder /app/web/dist /var/www/html/
+COPY --from=builder /app/dist /var/www/html/
 
 # Move to the root directory to execute the startup script
 WORKDIR /
