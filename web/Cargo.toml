@@ -86,5 +86,5 @@ htmlentity = "1.3.2"
 default = []
 server_build = []
 
-# [profile.release]
-# lto = true
+[profile.release]
+lto = true
