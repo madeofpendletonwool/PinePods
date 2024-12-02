@@ -1057,42 +1057,48 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
-    // Define the modal components
     let chapter_select_modal = html! {
-        <div id="chapter-select-modal" tabindex="-1" aria-hidden="true" class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+        <div id="chapter-select-modal" tabindex="-1" aria-hidden="true"
+            class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
             <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
                 <div class="modal-container relative rounded-lg shadow">
+                    // Header remains the same
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-                            {"Chapters"}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                        <h3 class="text-xl font-semibold">{"Chapters"}</h3>
+                        <button onclick={on_close_modal.clone()}
+                            class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
                             <span class="sr-only">{"Close modal"}</span>
                         </button>
                     </div>
-                    <div class="p-4 md:p-5">
-                        <ul class="chapters-list">
-                            { if let Some(chapters) = &audio_state.episode_chapters {
-                                chapters.iter().map(|chapter| {
-                                    let start_time_click = chapter.startTime.clone().unwrap_or_default();
-                                    let start_time = format_time_rm_hour(chapter.startTime.clone().unwrap_or_default() as f64);
-                                    let click_start_time = start_time_click.clone();
-                                    let on_chapter_click = on_chapter_click.clone();
-                                    html! {
-                                        <li onclick={Callback::from(move |_| {
-                                            on_chapter_click.emit(click_start_time.clone());
-                                        })}>
-                                            { format!("{} - {}", start_time, chapter.title) }
-                                        </li>
-                                    }
-                                }).collect::<Html>()
-                            } else {
-                                html! {}
-                            }}
-                        </ul>
+
+                    // Updated chapters list
+                    <div class="p-4 md:p-5 max-h-[70vh] overflow-y-auto">
+                        { if let Some(chapters) = &audio_state.episode_chapters {
+                            chapters.iter().map(|chapter| {
+                                let start_time_click = chapter.startTime.clone().unwrap_or_default();
+                                let start_time = format_time_rm_hour(chapter.startTime.clone().unwrap_or_default() as f64);
+                                let click_start_time = start_time_click.clone();
+                                let on_chapter_click = on_chapter_click.clone();
+
+                                html! {
+                                    <div class="chapter-item"
+                                        onclick={Callback::from(move |_| on_chapter_click.emit(click_start_time.clone()))}>
+                                        <button class="chapter-play-button">
+                                            <span class="material-icons text-xl">{"play_arrow"}</span>
+                                        </button>
+                                        <div class="chapter-info">
+                                            <span class="chapter-title">{ &chapter.title }</span>
+                                            <span class="chapter-time">{ start_time }</span>
+                                        </div>
+                                    </div>
+                                }
+                            }).collect::<Html>()
+                        } else {
+                            html! { <div class="text-center p-4">{"No chapters available"}</div> }
+                        }}
                     </div>
                 </div>
             </div>
@@ -1186,20 +1192,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
-                    <div class="scrub-bar">
-                        <span>{audio_state.current_time_formatted.clone()}</span>
-                        <div class="scrub-bar-wrapper">
-                            <input
-                                type="range"
-                                class="progress-bar"
+                    <div class="flex-grow flex items-center sm:block hidden">
+                        <div class="flex items-center flex-nowrap">
+                            <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <input type="range"
+                                class="flex-grow h-1 cursor-pointer"
                                 min="0.0"
-                                max={audio_props.duration_sec.to_string()}
+                                max={audio_props.duration_sec.to_string().clone()}
                                 value={audio_state.current_time_seconds.to_string()}
-                                oninput={update_time.clone()}
-                                style={progress_style}
-                            />
+                                oninput={update_time.clone()} />
+                            <span class="time-display px-2">{formatted_duration.clone()}</span>
                         </div>
-                        <span>{formatted_duration.clone()}</span>
                     </div>
 
                     <div class="episode-button-container flex items-center justify-center">

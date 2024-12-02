@@ -21,6 +21,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 - [] Make playing episode on every page dynamically update play/pause
+- [] Theme updates on change settings page. Auto fills correct theme on dropdown
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -29,6 +30,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on local download page
 - [] Implement episode filtering on queue page
 - [] Implement episode filtering on search page
+- [] Updating which chapter is currently playing to switch to a pause button
 
 - [] Full Screen Episode should have clickable podcast header to open pod page
 
@@ -38,6 +40,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 Mobile:
 
 - [x] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
+- [] Can't seem to log into apps?
 - [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
 - [] On mobile make the action buttons larger
 - [x] On mobile make the volume slider drop below Shownotes
@@ -48,11 +51,7 @@ Mobile:
 - [] Mobile loading screen causes search to jump to right and playing pod to go too low
 - [] On mobile nextcloud doesn't redirect back after adding
 - [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
-
-done but needs testing
-
-- [x] client local download function fix in v2. Needed to rebuild with js_sys directly.
-- [] Need android compiling alternative to reqwest
+- [] Need android compiling alternative to reqwest - Maybe not?
 
 
 People stuff left:
@@ -64,12 +63,26 @@ People stuff left:
 - [x] Fix issue unsubscribing from host
 - [x] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
 - [x] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
+- [] Subbed people feeds remove after a period
 - [] Double check the whole workflow
   - [x] Add host in podpeople
   - [x] Add host in podndex person tag
   - [] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
   - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
   - [] Check entire workflow and 0.7.0 with mysql/mariadb
+
+Virtual list issues:
+- [] Fixed issue with Descriptions displaying on small mode
+- [] Fix virtual lists on episodelayouts
+- [] On very small screens you no longer get the mini version without the context button
+- [] Smoothness of home virt list on episode layout
+- [x] Episode layout page selected description is like 5 episodes too low
+- [x] Episode Layout image is weird rectangle on description modal
+
+Pre-0.7.0:
+
+- [] Write a blog on PodPeopleDB
+
 
 Version 0.7.0
 
@@ -82,11 +95,10 @@ Version 0.7.0
 - [x] People Table with background jobs to update people found in podcasts
 - [x] Subscribe to people
 - [] Add loading spinner when adding podcast via people page
+- [x] Four new themes added
 - [x] People page dropdowns on podcasts and episodes
 - [x] Stop issues with timeouts on occation with mobile apps - Potentially fixed due to audio file caching. Testing needed
 - [] Make virtual lines work for saved queue, downloads, local downloads, and history
-- [] Finalize virtual lines so it works like home on episode layout
-- [] On very small screens you no longer get the mini version without the context button
 - [x] Dynamically adjusting buttons on episode page
 - [x] PodcastPeople DB up and running and can be contributed to
 - [x] Show currently updating podcast in refresh feed button at top of screen
@@ -96,6 +108,7 @@ Version 0.7.0
 - [x] Using valkey to ensure stateless opml imports
 - [x] Android play/pause episode metadata
 - [x] Draggable Queues on Mobile Devices
+- [x] Make Chapters much nicer. Nice modern look to them
 - [x] Add background task to remove shared episode references in db after 60 days
 - [x] Dynamically adjusting Download, Queue, and Saved Episodes so that every page can add or remove from these lists
 - [x] Fixed issue where some episodes weren't adding when refreshing due to redirects

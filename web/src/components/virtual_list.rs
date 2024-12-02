@@ -40,12 +40,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let scroll_pos = use_state(|| 0.0);
     let container_ref = use_node_ref();
     let container_height = use_state(|| 0.0);
-    let show_modal = use_state(|| false);
-    let show_clonedal = show_modal.clone();
-    let show_clonedal2 = show_modal.clone();
-    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
-
-    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
+    // At the top level of the component, replace show_modal with:
+    let selected_episode_index = use_state(|| None::<usize>);
 
     // Effect to set initial container height and listen for window resize
     {
@@ -87,8 +83,20 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let end_index = (((*scroll_pos + *container_height) / props.item_height).ceil() as usize)
         .min(props.episodes.len());
 
+    let on_modal_close = {
+        let selected_episode_index = selected_episode_index.clone();
+        Callback::from(move |_: MouseEvent| selected_episode_index.set(None))
+    };
+
     let visible_episodes = (start_index..end_index)
         .map(|index| {
+            // Replace the modal open/close callbacks with:
+            let on_modal_open = {
+                let selected_episode_index = selected_episode_index.clone();
+                let index = index; // This is your loop index
+                Callback::from(move |_: MouseEvent| selected_episode_index.set(Some(index)))
+            };
+
             let episode = &props.episodes[index];
             let history_clone = props.history.clone();
             let dispatch = props.dispatch.clone();
@@ -193,6 +201,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             };
 
             html! {
+                <>
                 <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
                     <img
                         src={episode.artwork.clone().unwrap_or_default()}
@@ -246,20 +255,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                             </div>
                         }
                     }
-                    if *show_modal {
-                        <EpisodeModal
-                            episode_id={episode.episode_id.unwrap_or(0)}
-                            episode_artwork={episode.artwork.clone().unwrap_or_default()}
-                            episode_title={episode.title.clone().unwrap_or_default()}
-                            description={description.clone()}
-                            format_release={format_release.to_string()}
-                            duration={formatted_duration}
-                            on_close={on_modal_close.clone()}
-                            on_show_notes={make_shownotes_callback}
-                            listen_duration_percentage={0.0}
-                        />
-                    }
                 </div>
+                </>
             }
         })
         .collect::<Html>();
@@ -268,6 +265,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let offset_y = start_index as f64 * props.item_height;
 
     html! {
+        <>
         <div ref={container_ref} style={format!("height: {}px; overflow-y: auto;", *container_height)}>
             <div style={format!("height: {}px; position: relative;", total_height)}>
                 <div style={format!("position: absolute; top: {}px; left: 0; right: 0;", offset_y)}>
@@ -275,5 +273,56 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 </div>
             </div>
         </div>
+        {
+            if let Some(index) = *selected_episode_index {
+                let episode = &props.episodes[index];
+                let sanitized_description = sanitize_html_with_blank_target(&episode.description.clone().unwrap_or_default());
+                let description = sanitized_description;
+                let date_format = match_date_format(props.search_state.date_format.as_deref());
+                let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &props.search_state.user_tz);
+                let format_release = format_datetime(&datetime, &props.search_state.hour_preference, date_format);
+                let formatted_duration = format_time(episode.duration.clone().unwrap_or_default().parse().unwrap_or(0) as f64);
+
+                // Create the callback here where we have access to index
+                let modal_shownotes_callback = {
+                    let history = props.history.clone();
+                    let search_dispatch = props.search_dispatch.clone();
+                    let podcast_link = props.podcast_link.clone();
+                    let podcast_title = props.podcast_title.clone();
+                    let episode_id = episode.episode_id.unwrap_or(0);
+                    let episode_url = episode.enclosure_url.clone().unwrap_or_default();
+
+                    Callback::from(move |_: MouseEvent| {
+                        on_shownotes_click(
+                            history.clone(),
+                            search_dispatch.clone(),
+                            Some(episode_id),
+                            Some(podcast_link.clone()),
+                            Some(episode_url.clone()),
+                            Some(podcast_title.clone()),
+                            true,
+                            None,
+                        ).emit(MouseEvent::new("click").unwrap());
+                    })
+                };
+
+                html! {
+                    <EpisodeModal
+                        episode_id={episode.episode_id.unwrap_or(0)}
+                        episode_artwork={episode.artwork.clone().unwrap_or_default()}
+                        episode_title={episode.title.clone().unwrap_or_default()}
+                        description={description}
+                        format_release={format_release}
+                        duration={formatted_duration}
+                        on_close={on_modal_close.clone()}
+                        on_show_notes={modal_shownotes_callback}
+                        listen_duration_percentage={0.0}
+                    />
+                }
+            } else {
+                html! {}
+            }
+        }
+        </>
     }
 }
