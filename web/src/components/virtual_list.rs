@@ -40,29 +40,45 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let scroll_pos = use_state(|| 0.0);
     let container_ref = use_node_ref();
     let container_height = use_state(|| 0.0);
-    let show_modal = use_state(|| false);
-    let show_clonedal = show_modal.clone();
-    let show_clonedal2 = show_modal.clone();
-    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+    let item_height = use_state(|| 234.0); // Default item height
+    let container_item_height = use_state(|| 221.0); // Actual container height, separate from spacing
+    let force_update = use_state(|| 0);
+    let selected_episode_index = use_state(|| None::<usize>);
 
-    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
-
-    // Effect to set initial container height and listen for window resize
+    // Effect to set initial container height, item height, and listen for window resize
     {
         let container_height = container_height.clone();
+        let item_height = item_height.clone();
+        let container_item_height = container_item_height.clone();
+        let force_update = force_update.clone();
+
         use_effect_with((), move |_| {
             let window = window().expect("no global `window` exists");
             let window_clone = window.clone();
 
-            let update_height = Callback::from(move |_| {
+            let update_sizes = Callback::from(move |_| {
                 let height = window_clone.inner_height().unwrap().as_f64().unwrap();
-                container_height.set(height - 100.0); // Adjust 100 based on your layout
+                container_height.set(height - 100.0);
+
+                let width = window_clone.inner_width().unwrap().as_f64().unwrap();
+                // Set both the total item height (with margin) and container height
+                let (new_item_height, new_container_height) = if width <= 530.0 {
+                    (122.0 + 16.0, 122.0)
+                } else if width <= 768.0 {
+                    (162.0 + 16.0, 162.0)
+                } else {
+                    (221.0 + 16.0, 221.0)
+                };
+
+                item_height.set(new_item_height);
+                container_item_height.set(new_container_height);
+                force_update.set(*force_update + 1);
             });
 
-            update_height.emit(());
+            update_sizes.emit(());
 
             let listener = EventListener::new(&window, "resize", move |_| {
-                update_height.emit(());
+                update_sizes.emit(());
             });
 
             move || drop(listener)
@@ -83,12 +99,24 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
         });
     }
 
-    let start_index = (*scroll_pos / props.item_height).floor() as usize;
-    let end_index = (((*scroll_pos + *container_height) / props.item_height).ceil() as usize)
-        .min(props.episodes.len());
+    let start_index = (*scroll_pos / *item_height).floor() as usize;
+    let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
+    let end_index = (start_index + visible_count).min(props.episodes.len());
+
+    let on_modal_close = {
+        let selected_episode_index = selected_episode_index.clone();
+        Callback::from(move |_: MouseEvent| selected_episode_index.set(None))
+    };
 
     let visible_episodes = (start_index..end_index)
         .map(|index| {
+            // Replace the modal open/close callbacks with:
+            let on_modal_open = {
+                let selected_episode_index = selected_episode_index.clone();
+                let index = index; // This is your loop index
+                Callback::from(move |_: MouseEvent| selected_episode_index.set(Some(index)))
+            };
+
             let episode = &props.episodes[index];
             let history_clone = props.history.clone();
             let dispatch = props.dispatch.clone();
@@ -193,7 +221,12 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             };
 
             html! {
-                <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
+                <>
+                <div
+                    key={format!("{}-{}", episode.episode_id.unwrap_or(0), *force_update)}
+                    class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg"
+                    style={format!("height: {}px; overflow: hidden;", *container_item_height)}
+                >
                     <img
                         src={episode.artwork.clone().unwrap_or_default()}
                         alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
@@ -202,8 +235,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                         <p class="item_container-text episode-title font-semibold" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(props.podcast_link.clone()), Some(shownotes_episode_url), Some(props.podcast_title.clone()), db_added, None)}>{ &episode.title.clone().unwrap_or_default() }</p>
                         {
                             html! {
-                                <div class="item-description-text cursor-pointer md:block"
-                                        onclick={on_modal_open.clone()}>
+                                <div class="item-description-text cursor-pointer hidden md:block"
+                                     onclick={on_modal_open.clone()}>
                                     <div class="item_container-text line-clamp-2">
                                         <SafeHtml html={description.clone()} />
                                     </div>
@@ -230,13 +263,15 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                         class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                         onclick={on_play_click}
                                     >
-                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                        <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                                     </button>
                                     {
                                         if props.podcast_added {
                                             let page_type = "episode_layout".to_string();
                                             html! {
-                                                <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
+                                                <div class="hidden sm:block">
+                                                    <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
+                                                </div>
                                             }
                                         } else {
                                             html! {}
@@ -246,34 +281,78 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                             </div>
                         }
                     }
-                    if *show_modal {
-                        <EpisodeModal
-                            episode_id={episode.episode_id.unwrap_or(0)}
-                            episode_artwork={episode.artwork.clone().unwrap_or_default()}
-                            episode_title={episode.title.clone().unwrap_or_default()}
-                            description={description.clone()}
-                            format_release={format_release.to_string()}
-                            duration={formatted_duration}
-                            on_close={on_modal_close.clone()}
-                            on_show_notes={make_shownotes_callback}
-                            listen_duration_percentage={0.0}
-                        />
-                    }
                 </div>
+                </>
             }
         })
         .collect::<Html>();
 
-    let total_height = props.episodes.len() as f64 * props.item_height;
-    let offset_y = start_index as f64 * props.item_height;
+    let total_height = props.episodes.len() as f64 * *item_height;
+    let offset_y = start_index as f64 * *item_height;
 
     html! {
-        <div ref={container_ref} style={format!("height: {}px; overflow-y: auto;", *container_height)}>
+        <>
+        <div
+            ref={container_ref}
+            class="virtual-list-container flex-grow overflow-y-auto"
+            style="height: calc(100vh - 100px);"
+        >
             <div style={format!("height: {}px; position: relative;", total_height)}>
                 <div style={format!("position: absolute; top: {}px; left: 0; right: 0;", offset_y)}>
                     { visible_episodes }
                 </div>
             </div>
         </div>
+        {
+            if let Some(index) = *selected_episode_index {
+                let episode = &props.episodes[index];
+                let sanitized_description = sanitize_html_with_blank_target(&episode.description.clone().unwrap_or_default());
+                let description = sanitized_description;
+                let date_format = match_date_format(props.search_state.date_format.as_deref());
+                let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &props.search_state.user_tz);
+                let format_release = format_datetime(&datetime, &props.search_state.hour_preference, date_format);
+                let formatted_duration = format_time(episode.duration.clone().unwrap_or_default().parse().unwrap_or(0) as f64);
+
+                // Create the callback here where we have access to index
+                let modal_shownotes_callback = {
+                    let history = props.history.clone();
+                    let search_dispatch = props.search_dispatch.clone();
+                    let podcast_link = props.podcast_link.clone();
+                    let podcast_title = props.podcast_title.clone();
+                    let episode_id = episode.episode_id.unwrap_or(0);
+                    let episode_url = episode.enclosure_url.clone().unwrap_or_default();
+
+                    Callback::from(move |_: MouseEvent| {
+                        on_shownotes_click(
+                            history.clone(),
+                            search_dispatch.clone(),
+                            Some(episode_id),
+                            Some(podcast_link.clone()),
+                            Some(episode_url.clone()),
+                            Some(podcast_title.clone()),
+                            true,
+                            None,
+                        ).emit(MouseEvent::new("click").unwrap());
+                    })
+                };
+
+                html! {
+                    <EpisodeModal
+                        episode_id={episode.episode_id.unwrap_or(0)}
+                        episode_artwork={episode.artwork.clone().unwrap_or_default()}
+                        episode_title={episode.title.clone().unwrap_or_default()}
+                        description={description}
+                        format_release={format_release}
+                        duration={formatted_duration}
+                        on_close={on_modal_close.clone()}
+                        on_show_notes={modal_shownotes_callback}
+                        listen_duration_percentage={0.0}
+                    />
+                }
+            } else {
+                html! {}
+            }
+        }
+        </>
     }
 }

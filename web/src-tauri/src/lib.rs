@@ -4,12 +4,12 @@
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::copy;
 use std::io::Write;
 use std::path::PathBuf;
 use tauri::command;
-use std::io::copy;
-use std::fs::File;
 
 // Define the structure for the file entries
 #[derive(Serialize, Deserialize)]
@@ -55,9 +55,15 @@ fn get_app_dir() -> Result<String, String> {
 
 #[command]
 async fn download_file(url: String, filename: String) -> Result<(), String> {
+    println!(
+        "Starting download_file with url: {}, filename: {}",
+        url, filename
+    );
     let proj_dirs = get_project_dirs()?;
     let app_dir: PathBuf = proj_dirs.data_dir().to_path_buf();
+    println!("App dir path: {:?}", app_dir);
     if !app_dir.exists() {
+        println!("Creating app directory");
         fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
     }
 
@@ -71,7 +77,9 @@ async fn download_file(url: String, filename: String) -> Result<(), String> {
         let mut file = File::create(app_dir.join(&filename)).map_err(|e| e.to_string())?;
         copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
         Ok(())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
@@ -79,6 +87,7 @@ pub struct EpisodeInfo {
     pub episodetitle: String,
     pub podcastname: String,
     pub podcastid: i32,
+    pub podcastindexid: i64,
     pub episodepubdate: String,
     pub episodedescription: String,
     pub episodeartwork: String,
@@ -207,6 +216,7 @@ fn list_app_files() -> Result<Vec<FileEntry>, String> {
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
     pub podcastid: i32,
+    pub podcastindexid: i64,
     pub artworkurl: String,
     pub author: String,
     pub categories: String,
@@ -253,6 +263,7 @@ async fn update_podcast_db(podcast_details: PodcastDetails) -> Result<(), String
 #[allow(non_snake_case)]
 pub struct Podcast {
     pub podcastid: i32,
+    pub podcastindexid: i64,
     pub podcastname: String,
     pub artworkurl: Option<String>,
     pub description: Option<String>,

@@ -27,6 +27,8 @@
 
 body {
     background-color: var(--background-color);
+    min-height: 100vh;
+    margin: 0;
     /* Default background color */
     /* Other global styles */
 }
@@ -400,13 +402,79 @@ body {
 
 .chapter-select-modal {
     z-index: 1000;
-    /* Ensure it's on top */
 }
 
-.chapters-list li {
-    cursor: pointer;
-    color: var(--link-color);
-    text-decoration: underline;
+.modal-container {
+    background-color: var(--secondary-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+.chapter-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-radius: 0.5rem;
+    background-color: var(--container-background);
+    transition: all 0.2s ease;
+}
+
+.chapter-item:hover {
+    background-color: var(--hover-color);
+    transform: translateX(4px);
+}
+
+.chapter-play-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background-color: var(--button-color);
+    margin-right: 1rem;
+    transition: all 0.2s ease;
+}
+
+.chapter-play-button:hover {
+    background-color: var(--accent-color);
+    transform: scale(1.1);
+}
+
+.chapter-info {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.chapter-title {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.chapter-time {
+    font-size: 0.875rem;
+    color: var(--text-secondary-color);
+}
+
+input[type="range"] {
+    accent-color: var(--prog-bar-color); /* Controls the filled part */
+    background: var(--unfilled-color); /* Controls the unfilled part */
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    background-color: var(--thumb-color) !important; /* Controls thumb color */
+    /* rest of your existing thumb styles */
+}
+
+input[type="range"]::-moz-range-thumb {
+    background-color: var(--thumb-color) !important; /* Controls thumb color */
+    /* rest of your existing thumb styles */
+}
+
+.title {
+    color: var(--text-color) !important;
 }
 
 .audio-player {
@@ -417,7 +485,6 @@ body {
     height: 60px;
     /* Initial height */
     background-color: var(--secondary-background);
-    color: white;
     display: flex;
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
     z-index: 500;
@@ -1518,6 +1585,7 @@ body {
 
 .item_container-text.episode-title {
     font-size: 1rem;
+    cursor: pointer;
     /* Base font size for larger screens */
 }
 
@@ -1550,7 +1618,17 @@ body {
 
 .audio-top-button.selector-button:hover {
     background-color: var(--hover-color);
-    /* Replace #your-hover-color with your desired color */
+}
+
+@media (max-width: 768px) {
+    .pronounce-mobile {
+        width: 54px !important;
+        height: 54px !important;
+    }
+
+    .pronounce-mobile .material-icons {
+        font-size: 54px;
+    }
 }
 
 .drag-handle {
@@ -2401,6 +2479,7 @@ button.item-container-action-button.item-container-action-button {
     text-align: center;
     margin-bottom: 4px;
     font-size: 0.875rem;
+    color: var(--text-color);
 }
 
 .volume-slider {
@@ -2470,6 +2549,7 @@ button.item-container-action-button.item-container-action-button {
         position: relative !important;
         left: auto !important;
         transform: none !important;
+        color: var(--text-color);
     }
 }
 
@@ -2685,7 +2765,7 @@ button.item-container-action-button.item-container-action-button {
 .progress-bar-container {
     height: 10px;
     /* Or whatever height you prefer */
-    background-color: var(--prog-bar-color);
+    background-color: var(--unfilled-color);
     /* Background of the unfulfilled part */
     width: 100%;
     /* Or adjust to fit your layout */
@@ -2695,7 +2775,7 @@ button.item-container-action-button.item-container-action-button {
 
 .progress-bar {
     height: 100%;
-    background-color: var(--link-color);
+    background-color: var(--prog-bar-color);
     /* Or any color you prefer */
     border-radius: 5px;
     /* Match container's border-radius */

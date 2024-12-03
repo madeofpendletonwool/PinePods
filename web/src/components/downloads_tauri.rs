@@ -14,7 +14,7 @@ use crate::requests::pod_req::{
 };
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
+use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
@@ -42,103 +42,229 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
 }
 
 pub async fn download_file(url: String, filename: String) -> Result<(), JsValue> {
-    // Create a wrapper struct to explicitly define the argument names
-    #[derive(Serialize)]
-    struct DownloadFileArgs {
-        url: String,
-        filename: String,
-    }
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
 
-    // Wrap the parameters in the struct with the expected argument names
-    let args = DownloadFileArgs { url, filename };
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(()),
+    };
 
-    // Serialize and invoke the Tauri command
-    let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    core::invoke_result::<_, ()>("download_file", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to invoke download: {:?}", e)))
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from_str("url"), &JsValue::from_str(&url))?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("filename"),
+        &JsValue::from_str(&filename),
+    )?;
+
+    let command = JsValue::from_str("download_file");
+    let promise = invoke_fn.call2(&core, &command, &args)?; // Note: changed tauri to core here
+    wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    Ok(())
 }
 
 pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue> {
-    #[derive(Serialize)]
-    struct StartFileServerArgs {
-        filepath: String,
-    }
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
 
-    let args = StartFileServerArgs {
-        filepath: file_path.to_string(),
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(String::new()), // Return empty string if Tauri isn't available
     };
 
-    core::invoke_result::<_, String>("start_file_server", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {}", e)))
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    // Create arguments object
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("filepath"),
+        &JsValue::from_str(file_path),
+    )?;
+
+    // Make the call
+    let command = JsValue::from_str("start_file_server");
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    let result =
+        wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    // Convert result to String
+    match result.as_string() {
+        Some(url) => Ok(url),
+        None => Ok(String::new()),
+    }
 }
 
 pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsValue> {
-    // Create a wrapper struct to explicitly define the argument name
-    #[derive(Serialize)]
-    #[allow(non_snake_case)]
-    struct UpdateLocalDbArgs {
-        episodeInfo: EpisodeInfo,
-    }
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
 
-    // Wrap the episode_info in the struct with the expected argument name
-    let args = UpdateLocalDbArgs {
-        episodeInfo: episode_info,
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(()), // Return early if Tauri isn't available
     };
 
-    // Serialize and invoke the Tauri command
-    let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    core::invoke_result::<_, ()>("update_local_db", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to update local DB: {:?}", e)))
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+    web_sys::console::log_1(&format!("Episode info before update: {:?}", episode_info).into());
+    // Create arguments object with episodeInfo field
+    let args = js_sys::Object::new();
+    let episode_info_value = serde_wasm_bindgen::to_value(&episode_info)?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("episodeInfo"),
+        &episode_info_value,
+    )?;
+
+    // Make the call
+    let command = JsValue::from_str("update_local_db");
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    Ok(())
 }
 
 pub async fn remove_episode_from_local_db(episode_id: i32) -> Result<(), JsValue> {
-    #[derive(Serialize)]
-    struct RemoveEpisodeFromLocalDbArgs {
-        episodeid: i32,
-    }
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
 
-    let args = RemoveEpisodeFromLocalDbArgs {
-        episodeid: episode_id,
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(()), // Return early if Tauri isn't available
     };
 
-    core::invoke_result::<_, ()>("remove_from_local_db", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to start local file server: {:?}", e)))
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    // Create arguments object
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("episodeid"),
+        &JsValue::from_f64(episode_id as f64),
+    )?;
+
+    // Make the call
+    let command = JsValue::from_str("remove_from_local_db");
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    Ok(())
 }
 
 pub async fn fetch_local_episodes() -> Result<Vec<EpisodeDownload>, JsValue> {
-    core::invoke_result::<_, Vec<EpisodeDownload>>("get_local_episodes", &())
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to fetch local episodes: {:?}", e)))
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
+
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(Vec::new()), // Return empty vector if __TAURI__ doesn't exist
+    };
+
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    // Create arguments
+    let command = JsValue::from_str("get_local_episodes");
+    let args = js_sys::Object::new();
+
+    // Make the call
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    let result =
+        wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    match serde_wasm_bindgen::from_value::<Vec<EpisodeDownload>>(result) {
+        Ok(episodes) => Ok(episodes),
+        Err(_) => Ok(Vec::new()),
+    }
 }
 
 pub async fn update_podcast_database(podcast_details: PodcastDetails) -> Result<(), JsValue> {
-    // Create a wrapper struct to explicitly define the argument name
-    #[derive(Serialize)]
-    #[allow(non_snake_case)]
-    struct UpdatePodcastDbArgs {
-        podcastDetails: PodcastDetails,
-    }
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
 
-    // Wrap the podcast_details in the struct with the expected argument name
-    let args = UpdatePodcastDbArgs {
-        podcastDetails: podcast_details,
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(()), // Return early if Tauri isn't available
     };
 
-    // Serialize and invoke the Tauri command
-    let serialized_data = serde_wasm_bindgen::to_value(&args).unwrap();
-    core::invoke_result::<_, ()>("update_podcast_db", &args)
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to update podcast DB: {:?}", e)))
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    // Create arguments object with podcastDetails field
+    let args = js_sys::Object::new();
+    let podcast_details_value = serde_wasm_bindgen::to_value(&podcast_details)?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("podcastDetails"),
+        &podcast_details_value,
+    )?;
+
+    // Make the call
+    let command = JsValue::from_str("update_podcast_db");
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    Ok(())
 }
 
 pub async fn fetch_local_podcasts() -> Result<Vec<Podcast>, JsValue> {
-    core::invoke_result::<_, Vec<Podcast>>("get_local_podcasts", &())
-        .await
-        .map_err(|e| JsValue::from_str(&format!("Failed to fetch local podcasts: {:?}", e)))
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
+
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(Vec::new()), // Return empty vector if __TAURI__ doesn't exist
+    };
+
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    // Create arguments
+    let command = JsValue::from_str("get_local_podcasts");
+    let args = js_sys::Object::new();
+
+    // Make the call
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    let result =
+        wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    match serde_wasm_bindgen::from_value::<Vec<Podcast>>(result) {
+        Ok(podcasts) => Ok(podcasts),
+        Err(_) => Ok(Vec::new()),
+    }
 }
 
 // Define the arguments for the Tauri command
@@ -157,46 +283,55 @@ struct FileEntry {
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
+    let (ui_state, ui_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
-
+    let history = BrowserHistory::new();
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
     let expanded_state = use_state(HashMap::new);
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
-        if session_state.reload_occured.unwrap_or(false) {
-            // Logic for the case where reload has already been processed
-        } else {
-            // Normal effect logic for handling page reload
-            let window = web_sys::window().expect("no global `window` exists");
-            let performance = window.performance().expect("should have performance");
-            let navigation_type = performance.navigation().type_();
+        if !ui_state.app_offline_mode.unwrap_or(false) {
+            if session_state.reload_occured.unwrap_or(false) {
+                // Logic for the case where reload has already been processed
+            } else {
+                // Normal effect logic for handling page reload
+                let window = web_sys::window().expect("no global `window` exists");
+                let performance = window.performance().expect("should have performance");
+                let navigation_type = performance.navigation().type_();
 
-            if navigation_type == 1 {
-                // 1 stands for reload
-                let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage
-                    .set_item("isAuthenticated", "false")
-                    .unwrap();
+                if navigation_type == 1 {
+                    // 1 stands for reload
+                    let session_storage = window.session_storage().unwrap().unwrap();
+                    session_storage
+                        .set_item("isAuthenticated", "false")
+                        .unwrap();
+                }
+
+                // Always check authentication status
+                let current_route = window.location().href().unwrap_or_default();
+                use_check_authentication(session_dispatch.clone(), &current_route);
+
+                // Mark that the page reload handling has occurred
+                session_dispatch.reduce_mut(|state| {
+                    state.reload_occured = Some(true);
+                    state.clone() // Return the modified state
+                });
             }
-
-            // Always check authentication status
-            let current_route = window.location().href().unwrap_or_default();
-            use_check_authentication(session_dispatch.clone(), &current_route);
-
-            // Mark that the page reload handling has occurred
-            session_dispatch.reduce_mut(|state| {
-                state.reload_occured = Some(true);
-                state.clone() // Return the modified state
-            });
         }
 
         || ()
     });
 
-    let error = use_state(|| None);
+    let error = use_state(|| None::<String>);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let error_message = audio_state.error_message.clone();
@@ -251,8 +386,20 @@ pub fn downloads() -> Html {
             let dispatch = effect_dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
+                web_sys::console::log_1(&"Starting podcast fetch".into());
+
+                // First ensure we have a valid podcast feed state, even if empty
+                dispatch.reduce_mut(move |state| {
+                    state.podcast_feed_return = Some(PodcastResponse {
+                        pods: Some(Vec::new()),
+                    });
+                });
+                web_sys::console::log_1(&"Set initial state".into());
+
+                // Then try to fetch and update
                 match fetch_local_podcasts().await {
                     Ok(fetched_podcasts) => {
+                        web_sys::console::log_1(&"Got podcasts".into());
                         dispatch.reduce_mut(move |state| {
                             state.podcast_feed_return = Some(PodcastResponse {
                                 pods: Some(fetched_podcasts),
@@ -261,33 +408,31 @@ pub fn downloads() -> Html {
                     }
                     Err(e) => {
                         web_sys::console::log_1(
-                            &format!("Unable to parse Podcasts: {:?}", e).into(),
+                            &format!("Failed to fetch podcasts: {:?}", e).into(),
                         );
                     }
                 }
-                match fetch_local_episodes().await {
-                    Ok(fetched_episodes) => {
-                        let completed_episode_ids: Vec<i32> = fetched_episodes
-                            .iter()
-                            .filter(|ep| ep.listenduration.is_some())
-                            .map(|ep| ep.episodeid)
-                            .collect();
-                        dispatch.reduce_mut(move |state| {
-                            state.downloaded_episodes = Some(EpisodeDownloadResponse {
-                                episodes: fetched_episodes,
-                            });
-                            state.completed_episodes = Some(completed_episode_ids);
+                web_sys::console::log_1(&"Starting episode part".into());
+                // Similar pattern for episodes
+                if let Ok(fetched_episodes) = fetch_local_episodes().await {
+                    web_sys::console::log_1(&"In episode".into());
+                    let completed_episode_ids: Vec<i32> = fetched_episodes
+                        .iter()
+                        .filter(|ep| ep.listenduration.is_some())
+                        .map(|ep| ep.episodeid)
+                        .collect();
+                    web_sys::console::log_1(&"Got episodes. Setting state".into());
+                    dispatch.reduce_mut(move |state| {
+                        state.downloaded_episodes = Some(EpisodeDownloadResponse {
+                            episodes: fetched_episodes,
                         });
-                        loading_ep.set(false);
-                    }
-                    Err(e) => {
-                        web_sys::console::log_1(
-                            &format!("Unable to parse Episodes: {:?}", e).into(),
-                        );
-                        error_clone.set(Some(format!("{:?}", e)));
-                        loading_ep.set(false);
-                    }
+                        state.completed_episodes = Some(completed_episode_ids);
+                    });
+                } else {
+                    web_sys::console::log_1(&"Critical CATDOG mistake".into());
                 }
+
+                loading_ep.set(false);
             });
 
             || ()
@@ -424,11 +569,36 @@ pub fn downloads() -> Html {
         }
     };
 
+    let online_button = {
+        let dispatch = ui_dispatch.clone();
+
+        Callback::from(move |_| {
+            dispatch.reduce_mut(|state| state.app_offline_mode = Some(false));
+            history.push("/");
+        })
+    };
+    let online_mode_banner = if app_offline_mode.unwrap_or(false) {
+        html! {
+            <div class="w-full p-4 mb-4">
+                <button
+                    onclick={online_button}
+                    class="download-button font-bold py-2 px-4 rounded inline-flex items-center w-full justify-center"
+                >
+                    <span class="material-icons mr-2">{"cloud"}</span>
+                    <span>{"Switch to Online Mode (Sign In Required)"}</span>
+                </button>
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
     html! {
         <>
         <div class="main-container">
             {search_options}
             <UseScrollToTop />
+            {online_mode_banner}
                 if *loading { // If loading is true, display the loading animation
                     {
                         html! {
@@ -496,37 +666,60 @@ pub fn downloads() -> Html {
 
                                 html! {
                                     <>
-                                        { for state.podcast_feed_return.as_ref().unwrap().pods.as_ref().unwrap().iter().filter_map(|podcast| {
-                                            let episodes = grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
-                                            if episodes.is_empty() {
-                                                None
+                                    {
+                                        if let Some(podcast_feed) = state.podcast_feed_return.as_ref() {
+                                            if let Some(pods) = podcast_feed.pods.as_ref() {
+                                                html! {
+                                                    <>
+                                                        { for pods.iter().filter_map(|podcast| {
+                                                            let episodes = grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
+                                                            if episodes.is_empty() {
+                                                                None
+                                                            } else {
+                                                                let is_expanded = *expanded_state.get(&podcast.podcastid).unwrap_or(&false);
+                                                                let toggle_expanded_closure = {
+                                                                    let podcast_id = podcast.podcastid;
+                                                                    toggle_expanded.reform(move |_| podcast_id)
+                                                                };
+
+                                                                let render_state_cloned = render_state.clone();
+                                                                let dispatch_cloned_cloned = dispatch_cloned.clone();
+                                                                let audio_dispatch_cloned = audio_dispatch.clone();
+                                                                let on_checkbox_change_cloned = on_checkbox_change.clone();
+
+                                                                Some(render_podcast_with_episodes(
+                                                                    podcast,
+                                                                    episodes,
+                                                                    is_expanded,
+                                                                    toggle_expanded_closure,
+                                                                    render_state_cloned,
+                                                                    dispatch_cloned_cloned,
+                                                                    is_delete_mode,
+                                                                    desc_state.clone(),
+                                                                    desc_dispatch.clone(),
+                                                                    audio_dispatch_cloned,
+                                                                    on_checkbox_change_cloned,
+                                                                    *show_modal,
+                                                                    on_modal_open.clone(),
+                                                                    on_modal_close.clone(),
+                                                                ))
+                                                            }
+                                                        }) }
+                                                    </>
+                                                }
                                             } else {
-                                                let is_expanded = *expanded_state.get(&podcast.podcastid).unwrap_or(&false);
-                                                let toggle_expanded_closure = {
-                                                    let podcast_id = podcast.podcastid;
-                                                    toggle_expanded.reform(move |_| podcast_id)
-                                                };
-
-                                                let render_state_cloned = render_state.clone();
-                                                let dispatch_cloned_cloned = dispatch_cloned.clone();
-                                                let audio_dispatch_cloned = audio_dispatch.clone();
-                                                let on_checkbox_change_cloned = on_checkbox_change.clone();
-
-                                                Some(render_podcast_with_episodes(
-                                                    podcast,
-                                                    episodes,
-                                                    is_expanded,
-                                                    toggle_expanded_closure,
-                                                    render_state_cloned,
-                                                    dispatch_cloned_cloned,
-                                                    is_delete_mode,
-                                                    desc_state.clone(),
-                                                    desc_dispatch.clone(),
-                                                    audio_dispatch_cloned,
-                                                    on_checkbox_change_cloned,
-                                                ))
+                                                empty_message(
+                                                    "No Downloaded Episodes Found",
+                                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode."
+                                                )
                                             }
-                                        }) }
+                                        } else {
+                                            empty_message(
+                                                "No Downloaded Episodes Found",
+                                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode."
+                                            )
+                                        }
+                                    }
                                     </>
                                 }
 
@@ -573,6 +766,9 @@ pub fn render_podcast_with_episodes(
     desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
     on_checkbox_change: Callback<i32>,
+    show_modal: bool,
+    on_modal_open: Callback<MouseEvent>,
+    on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let history_clone = BrowserHistory::new();
 
@@ -676,6 +872,9 @@ pub fn render_podcast_with_episodes(
                                 is_delete_mode, // Add this line
                                 episode_url_for_ep_item,
                                 is_completed,
+                                show_modal,
+                                on_modal_open.clone(),
+                                on_modal_close.clone(),
                             )
                         }) }
                     </div>

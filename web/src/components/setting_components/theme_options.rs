@@ -1,12 +1,12 @@
+use crate::components::context::{AppState, UIState};
+use crate::requests::setting_reqs::{call_set_theme, SetThemeRequest};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::console;
+use web_sys::window;
 use web_sys::{Element, HtmlSelectElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::{context::{AppState, UIState}};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::window;
-use crate::requests::setting_reqs::{call_set_theme, SetThemeRequest};
-use web_sys::console;
 
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {
@@ -15,7 +15,6 @@ pub fn theme() -> Html {
     // Use state to manage the selected theme
     let selected_theme = use_state(|| "Light".to_string());
     // let selected_theme = state.selected_theme.as_ref();
-
 
     let on_change = {
         let selected_theme = selected_theme.clone();
@@ -38,8 +37,10 @@ pub fn theme() -> Html {
                     match local_storage.set_item("selected_theme", &theme) {
                         Ok(_) => {
                             console::log_1(&format!("Theme updated in local storage").into());
-                        },
-                        Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                        }
+                        Err(e) => console::log_1(
+                            &format!("Error updating theme in local storage: {:?}", e).into(),
+                        ),
                     }
                 }
             }
@@ -47,11 +48,24 @@ pub fn theme() -> Html {
 
             // Optionally, store in local storage
             if let Some(window) = window() {
-                let _ = window.local_storage().unwrap().unwrap().set_item("theme", &theme);
+                let _ = window
+                    .local_storage()
+                    .unwrap()
+                    .unwrap()
+                    .set_item("theme", &theme);
             }
 
-            let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone()).flatten().unwrap();
-            let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone()).unwrap();
+            let api_key = state
+                .auth_details
+                .as_ref()
+                .map(|ud| ud.api_key.clone())
+                .flatten()
+                .unwrap();
+            let user_id = state
+                .user_details
+                .as_ref()
+                .map(|ud| ud.UserID.clone())
+                .unwrap();
             let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
             let request = SetThemeRequest {
@@ -61,11 +75,14 @@ pub fn theme() -> Html {
 
             spawn_local(async move {
                 if let Ok(_) = call_set_theme(&server_name, &Some(api_key), &request).await {
-                    audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Theme Settings Updated!".to_string()));
-
+                    audio_dispatch.reduce_mut(|audio_state| {
+                        audio_state.info_message =
+                            Option::from("Theme Settings Updated!".to_string())
+                    });
                 } else {
-                    audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Error Updating Theme".to_string()));
-
+                    audio_dispatch.reduce_mut(|audio_state| {
+                        audio_state.error_message = Option::from("Error Updating Theme".to_string())
+                    });
                 }
             });
         })
@@ -80,11 +97,16 @@ pub fn theme() -> Html {
                 <select onchange={on_change} class="theme-select-dropdown appearance-none w-full border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
                     <option value="Light" selected={(*selected_theme) == "Light"}>{"Light"}</option>
                     <option value="Dark" selected={(*selected_theme) == "Dark"}>{"Dark"}</option>
-                    <option value="Github Light" selected={(*selected_theme) == "Github Light"}>{"Github Light"}</option>   
-                    <option value="Nordic Light" selected={(*selected_theme) == "Nordic Light"}>{"Nordic Light"}</option>                                     
+                    <option value="Nordic Light" selected={(*selected_theme) == "Nordic Light"}>{"Nordic Light"}</option>
                     <option value="Nordic" selected={(*selected_theme) == "Nordic"}>{"Nordic"}</option>
                     <option value="Abyss" selected={(*selected_theme) == "Abyss"}>{"Abyss"}</option>
                     <option value="Dracula" selected={(*selected_theme) == "Dracula"}>{"Dracula"}</option>
+                    <option value="Midnight Ocean" selected={(*selected_theme) == "Midnight Ocean"}>{"Midnight Ocean"}</option>
+                    <option value="Forest Depths" selected={(*selected_theme) == "Forest Depths"}>{"Forest Depths"}</option>
+                    <option value="Sunset Horizon" selected={(*selected_theme) == "Sunset Horizon"}>{"Sunset Horizon"}</option>
+                    <option value="Arctic Frost" selected={(*selected_theme) == "Arctic Frost"}>{"Arctic Frost"}</option>
+                    <option value="Cyber Synthwave" selected={(*selected_theme) == "Cyber Synthwave"}>{"Cyber Synthwave"}</option>
+                    <option value="Github Light" selected={(*selected_theme) == "Github Light"}>{"Github Light"}</option>
                     <option value="Neon" selected={(*selected_theme) == "Neon"}>{"Neon"}</option>
                     <option value="Kimbie" selected={(*selected_theme) == "Kimbie"}>{"Kimbie"}</option>
                     <option value="Gruvbox Light" selected={(*selected_theme) == "Gruvbox Light"}>{"Gruvbox Light"}</option>
@@ -115,10 +137,10 @@ pub fn theme() -> Html {
                 root.style.setProperty('--container-button-color', 'transparent');
                 root.style.setProperty('--button-text-color', '#24292e');
                 root.style.setProperty('--text-color', '#4a4a4a');
-                root.style.setProperty('--text-secondary-color', '#ababab');
+                root.style.setProperty('--text-secondary-color', '#4a4a4a');
                 root.style.setProperty('--border-color', '#4a4a4a');
                 root.style.setProperty('--accent-color', '#969797');
-                root.style.setProperty('--prog-bar-color', '#d5d7d8');
+                root.style.setProperty('--prog-bar-color', '#0099e1');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#0099e1');
                 root.style.setProperty('--secondary-background', '#f1f1f1');
@@ -126,6 +148,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#705697');
                 root.style.setProperty('--hover-color', '#0099e1');
                 root.style.setProperty('--link-color', '#0099e1');
+                root.style.setProperty('--thumb-color', '#666673');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Github Light':
@@ -145,6 +169,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#705697');
                 root.style.setProperty('--hover-color', '#d5d0e2');
                 root.style.setProperty('--link-color', '#6590fd');
+                root.style.setProperty('--thumb-color', '#666673');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Dark':
@@ -163,6 +189,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#797b85');
                 root.style.setProperty('--hover-color', '#4b5563');
                 root.style.setProperty('--link-color', '#6590fd');
+                root.style.setProperty('--thumb-color', '#1a1c1d');
+                root.style.setProperty('--unfilled-color', '#e5e5e5');
                 break;
 
             case 'Nordic Light':
@@ -173,7 +201,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#9aa2aa');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#878d95');
-                root.style.setProperty('--prog-bar-color', '#cbdbf0');
+                root.style.setProperty('--prog-bar-color', '#2984ce');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#d8dee9'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#e5e9f0');
@@ -181,6 +209,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#2f363d');
                 root.style.setProperty('--hover-color', '#2a85cf');
                 root.style.setProperty('--link-color', '#2a85cf');
+                root.style.setProperty('--thumb-color', '#2984ce');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Nordic':
@@ -191,7 +221,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#f6f5f4');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#6d747f');
-                root.style.setProperty('--prog-bar-color', '#323542');
+                root.style.setProperty('--prog-bar-color', '#3550af');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#2e3440');
@@ -199,6 +229,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#6e8e92');
                 root.style.setProperty('--hover-color', '#5d80aa');
                 root.style.setProperty('--link-color', '#5d80aa');
+                root.style.setProperty('--thumb-color', '#3550af');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Abyss':
@@ -209,7 +241,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#f6f5f4');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#838385');
-                root.style.setProperty('--prog-bar-color', '#051336');
+                root.style.setProperty('--prog-bar-color', '#326fef');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#051336');
@@ -217,6 +249,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#000000');
                 root.style.setProperty('--hover-color', '#152037');
                 root.style.setProperty('--link-color', '#c8aa7d');
+                root.style.setProperty('--thumb-color', '#326fef');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Dracula':
@@ -227,7 +261,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#f6f5f4');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#727580');
-                root.style.setProperty('--prog-bar-color', '#282a36');
+                root.style.setProperty('--prog-bar-color', '#bd93f9');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#000000'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#262626');
@@ -235,6 +269,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#575a68');
                 root.style.setProperty('--hover-color', '#4b5563');
                 root.style.setProperty('--link-color', '#6590fd');
+                root.style.setProperty('--thumb-color', '#bd93f9');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Kimbie':
@@ -245,7 +281,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#B1AD86');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#4a535e');
-                root.style.setProperty('--prog-bar-color', '#453928');
+                root.style.setProperty('--prog-bar-color', '#ca9858');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#221A1F'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#131510');
@@ -253,6 +289,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#B1AD86');
                 root.style.setProperty('--hover-color', '#d3af86');
                 root.style.setProperty('--link-color', '#f6f5f4');
+                root.style.setProperty('--thumb-color', '#ca9858');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Neon':
@@ -263,7 +301,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#92bb75');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#4a535e');
-                root.style.setProperty('--prog-bar-color', '#39363b');
+                root.style.setProperty('--prog-bar-color', '#f75c1d');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#1a171e'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#120e16');
@@ -271,6 +309,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#797b85');
                 root.style.setProperty('--hover-color', '#7000ff');
                 root.style.setProperty('--link-color', '#7000ff');
+                root.style.setProperty('--thumb-color', '#f75c1d');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Greenie Meanie':
@@ -289,6 +329,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#797b85');
                 root.style.setProperty('--hover-color', '#4b5563');
                 root.style.setProperty('--link-color', '#6590fd');
+                root.style.setProperty('--thumb-color', '#666673');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Gruvbox Light':
@@ -299,7 +341,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#aca289');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#e0dbb2');
-                root.style.setProperty('--prog-bar-color', '#f2e5bc');
+                root.style.setProperty('--prog-bar-color', '#d1ac0e');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#f2e5bc'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#fbf1c7');
@@ -307,6 +349,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#797b85');
                 root.style.setProperty('--hover-color', '#cfd2a8');
                 root.style.setProperty('--link-color', '#a68738');
+                root.style.setProperty('--thumb-color', '#d1ac0e');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Gruvbox Dark':
@@ -317,7 +361,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--text-secondary-color', '#868729');
                 root.style.setProperty('--border-color', '#000000');
                 root.style.setProperty('--accent-color', '#ebdbb2');
-                root.style.setProperty('--prog-bar-color', '#1d2021');
+                root.style.setProperty('--prog-bar-color', '#424314');
                 root.style.setProperty('--error-color', 'red');
                 root.style.setProperty('--bonus-color', '#363332'); // Assuming black as bonus color
                 root.style.setProperty('--secondary-background', '#282828');
@@ -325,6 +369,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#ebdbb2');
                 root.style.setProperty('--hover-color', '#59544a');
                 root.style.setProperty('--link-color', '#6f701b');
+                root.style.setProperty('--thumb-color', '#424314');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             case 'Wildberries':
@@ -343,7 +389,110 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#00FFB7');
                 root.style.setProperty('--hover-color', '#44433A');
                 root.style.setProperty('--link-color', '#5196B2');
+                root.style.setProperty('--thumb-color', '#666673');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
+
+            case 'Midnight Ocean':
+                root.style.setProperty('--background-color', '#0f172a');
+                root.style.setProperty('--button-color', '#1e293b');
+                root.style.setProperty('--button-text-color', '#38bdf8');
+                root.style.setProperty('--text-color', '#e2e8f0');
+                root.style.setProperty('--text-secondary-color', '#94a3b8');
+                root.style.setProperty('--border-color', '#1e293b');
+                root.style.setProperty('--accent-color', '#38bdf8');
+                root.style.setProperty('--prog-bar-color', '#0ea5e9');
+                root.style.setProperty('--error-color', '#ef4444');
+                root.style.setProperty('--bonus-color', '#0f172a'); // Assuming black as bonus color
+                root.style.setProperty('--secondary-background', '#1e293b');
+                root.style.setProperty('--container-background', '#1e293b');
+                root.style.setProperty('--standout-color', '#38bdf8');
+                root.style.setProperty('--hover-color', '#0ea5e9');
+                root.style.setProperty('--link-color', '#60a5fa');
+                root.style.setProperty('--thumb-color', '#38bdf8');
+                root.style.setProperty('--unfilled-color', '#334155');
+                break;
+
+            case 'Forest Depths':
+                root.style.setProperty('--background-color', '#1a2f1f');
+                root.style.setProperty('--button-color', '#2d4a33');
+                root.style.setProperty('--button-text-color', '#7fb685');
+                root.style.setProperty('--text-color', '#c9e4ca');
+                root.style.setProperty('--text-secondary-color', '#8fbb91');
+                root.style.setProperty('--border-color', '#2d4a33');
+                root.style.setProperty('--accent-color', '#7fb685');
+                root.style.setProperty('--prog-bar-color', '#5c8b61');
+                root.style.setProperty('--error-color', '#e67c73');
+                root.style.setProperty('--bonus-color', '#1a2f1f');
+                root.style.setProperty('--secondary-background', '#2d4a33');
+                root.style.setProperty('--container-background', '#2d4a33');
+                root.style.setProperty('--standout-color', '#7fb685');
+                root.style.setProperty('--hover-color', '#5c8b61');
+                root.style.setProperty('--link-color', '#a1d0a5');
+                root.style.setProperty('--thumb-color', '#7fb685');
+                root.style.setProperty('--unfilled-color', '#3d5a43');
+                break;
+
+            case 'Sunset Horizon':
+                root.style.setProperty('--background-color', '#2b1c2c');
+                root.style.setProperty('--button-color', '#432e44');
+                root.style.setProperty('--button-text-color', '#ff9e64');
+                root.style.setProperty('--text-color', '#ffd9c0');
+                root.style.setProperty('--text-secondary-color', '#d4a5a5');
+                root.style.setProperty('--border-color', '#432e44');
+                root.style.setProperty('--accent-color', '#ff9e64');
+                root.style.setProperty('--prog-bar-color', '#e8875c');
+                root.style.setProperty('--error-color', '#ff6b6b');
+                root.style.setProperty('--bonus-color', '#2b1c2c');
+                root.style.setProperty('--secondary-background', '#432e44');
+                root.style.setProperty('--container-background', '#432e44');
+                root.style.setProperty('--standout-color', '#ff9e64');
+                root.style.setProperty('--hover-color', '#e8875c');
+                root.style.setProperty('--link-color', '#ffb088');
+                root.style.setProperty('--thumb-color', '#ff9e64');
+                root.style.setProperty('--unfilled-color', '#533a54');
+                break;
+
+            case 'Arctic Frost':
+                root.style.setProperty('--background-color', '#1a1d21');
+                root.style.setProperty('--button-color', '#2a2f36');
+                root.style.setProperty('--button-text-color', '#88c0d0');
+                root.style.setProperty('--text-color', '#eceff4');
+                root.style.setProperty('--text-secondary-color', '#aeb3bb');
+                root.style.setProperty('--border-color', '#2a2f36');
+                root.style.setProperty('--accent-color', '#88c0d0');
+                root.style.setProperty('--prog-bar-color', '#5e81ac');
+                root.style.setProperty('--error-color', '#bf616a');
+                root.style.setProperty('--bonus-color', '#1a1d21');
+                root.style.setProperty('--secondary-background', '#2a2f36');
+                root.style.setProperty('--container-background', '#2a2f36');
+                root.style.setProperty('--standout-color', '#88c0d0');
+                root.style.setProperty('--hover-color', '#5e81ac');
+                root.style.setProperty('--link-color', '#81a1c1');
+                root.style.setProperty('--thumb-color', '#88c0d0');
+                root.style.setProperty('--unfilled-color', '#3b4252');
+                break;
+
+            case 'Cyber Synthwave':
+                root.style.setProperty('--background-color', '#1a1721');
+                root.style.setProperty('--button-color', '#2a1f3a');
+                root.style.setProperty('--button-text-color', '#f92aad');
+                root.style.setProperty('--text-color', '#eee6ff');
+                root.style.setProperty('--text-secondary-color', '#c3b7d9');
+                root.style.setProperty('--border-color', '#2a1f3a');
+                root.style.setProperty('--accent-color', '#f92aad');
+                root.style.setProperty('--prog-bar-color', '#b31777');
+                root.style.setProperty('--error-color', '#ff2e63');
+                root.style.setProperty('--bonus-color', '#1a1721');
+                root.style.setProperty('--secondary-background', '#2a1f3a');
+                root.style.setProperty('--container-background', '#2a1f3a');
+                root.style.setProperty('--standout-color', '#f92aad');
+                root.style.setProperty('--hover-color', '#b31777');
+                root.style.setProperty('--link-color', '#ff71ce');
+                root.style.setProperty('--thumb-color', '#f92aad');
+                root.style.setProperty('--unfilled-color', '#3a2f4a');
+                break;
+
 
             case 'Hot Dog Stand - MY EYES':
                 root.style.setProperty('--background-color', '#670b0a');
@@ -361,6 +510,8 @@ pub fn theme() -> Html {
                 root.style.setProperty('--standout-color', '#797b85');
                 root.style.setProperty('--hover-color', '#4b5563');
                 root.style.setProperty('--link-color', '#6590fd');
+                root.style.setProperty('--thumb-color', '#666673');
+                root.style.setProperty('--unfilled-color', '#d4d6d7');
                 break;
 
             default:

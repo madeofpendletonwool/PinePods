@@ -822,6 +822,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = EpisodeRequest {
                 episode_id,
                 user_id: user_id_copy.unwrap(),
+                person_episode: false,
             };
             let server_name = server_name_copy.clone().unwrap();
             let ep_api_key = api_key_copy.clone().flatten();
@@ -1601,6 +1602,7 @@ pub fn episode_item(
     show_modal: bool,
     on_modal_open: Callback<MouseEvent>,
     on_modal_close: Callback<MouseEvent>,
+    container_height: String,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1619,27 +1621,27 @@ pub fn episode_item(
 
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
-    let container_height = {
-        if let Some(window) = window() {
-            if let Ok(width) = window.inner_width() {
-                if let Some(width) = width.as_f64() {
-                    if width <= 530.0 {
-                        "122px"
-                    } else if width <= 768.0 {
-                        "162px"
-                    } else {
-                        "221px"
-                    }
-                } else {
-                    "221px" // Default if we can't get the width as f64
-                }
-            } else {
-                "221px" // Default if we can't get inner_width
-            }
-        } else {
-            "221px" // Default if we can't get window
-        }
-    };
+    // let container_height = {
+    //     if let Some(window) = window() {
+    //         if let Ok(width) = window.inner_width() {
+    //             if let Some(width) = width.as_f64() {
+    //                 if width <= 530.0 {
+    //                     "122px"
+    //                 } else if width <= 768.0 {
+    //                     "162px"
+    //                 } else {
+    //                     "221px"
+    //                 }
+    //             } else {
+    //                 "221px" // Default if we can't get the width as f64
+    //             }
+    //         } else {
+    //             "221px" // Default if we can't get inner_width
+    //         }
+    //     } else {
+    //         "221px" // Default if we can't get window
+    //     }
+    // };
 
     #[wasm_bindgen]
     extern "C" {
@@ -1687,7 +1689,7 @@ pub fn episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text cursor-pointer md:block"
+                            <div class="item-description-text cursor-pointer hidden md:block"
                                  onclick={on_modal_open}>
                                 <div class="item_container-text line-clamp-2">
                                     <SafeHtml html={description.clone()} />
@@ -1739,7 +1741,9 @@ pub fn episode_item(
                                 >
                                     <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
                                 </button>
-                                <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                <div class="hidden sm:block"> // This will hide the context button below 640px
+                                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                </div>
                             }
                         </div>
                     }

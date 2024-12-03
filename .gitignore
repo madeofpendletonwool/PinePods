@@ -85,7 +85,6 @@ clients/mac-app/pinepods.spec
 # Web Removals
 web/target/*
 web/.idea/*
-web/Cargo.lock
 keystore.properties
 
 

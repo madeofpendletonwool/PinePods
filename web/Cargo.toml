@@ -10,7 +10,7 @@ edition = "2021"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.21.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.70", features = [
+web-sys = { version = "0.3.74", features = [
     "CssStyleDeclaration",
     "DomTokenList",
     "HtmlSelectElement",
@@ -46,49 +46,45 @@ web-sys = { version = "0.3.70", features = [
     "Permissions",
 ] }
 log = "0.4.22"
-wasm-bindgen = "0.2.92"
+wasm-bindgen = "0.2.97"
 yew-router = { version = "0.18.0" }
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { version = "1.0.215", features = ["derive"] }
 gloo-net = { version = "0.6.0", features = ["websocket"] }
 gloo = "0.11.0"
-anyhow = { version = "1.0.86", features = [] }
-wasm-bindgen-futures = "0.4.42"
+anyhow = { version = "1.0.93", features = [] }
+wasm-bindgen-futures = "0.4.47"
 gloo-timers = "0.3.0"
 base64 = "0.22.1"
 yewdux = "0.10.0"
-rss = "2.0.8"
+rss = "2.0.11"
 chrono = "0.4.38"
-serde_json = "1.0.121"
+serde_json = "1.0.133"
 yewtil = "0.4.0"
 gloo-utils = "0.2.0"
 gloo-events = "0.2.0"
 md5 = "0.7.0"
 ammonia = "4.0.0"
-pulldown-cmark = "0.12.1"
-async-std = "1.12.0"
+pulldown-cmark = "0.12.2"
+async-std = "1.13.0"
 argon2 = "0.5.3"
 rand = "0.8.5"
-regex = "1.10.5"
-js-sys = "0.3.69"
+regex = "1.11.1"
+js-sys = "0.3.74"
 percent-encoding = "2.3.1"
 data-encoding = "2.6.0"
-url = "2.5.2"
+url = "2.5.4"
 serde-wasm-bindgen = "0.6.5"
 chrono-tz = "0.10.0"
-futures = "0.3.30"
-futures-util = "0.3.30"
+futures = "0.3.31"
+futures-util = "0.3.31"
 gloo-file = "0.3.0"
 urlencoding = "2.1.3"
-serde_with = "3.8.1"
+serde_with = "3.11.0"
 htmlentity = "1.3.2"
-tauri-sys = { git = "https://github.com/madeofpendletonwool/tauri-sys", version = "0.2.0", features = [
-    "core",
-    "event",
-] }
 
 [features]
 default = []
 server_build = []
 
-# [profile.release]
-# lto = true
+[profile.release]
+lto = true
