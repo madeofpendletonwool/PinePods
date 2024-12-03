@@ -22,6 +22,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 - [] Make playing episode on every page dynamically update play/pause
 - [] Theme updates on change settings page. Auto fills correct theme on dropdown
+- [] Make virtual lines work for saved queue, downloads, local downloads, and history
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -71,14 +72,6 @@ People stuff left:
   - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
   - [] Check entire workflow and 0.7.0 with mysql/mariadb
 
-Virtual list issues:
-- [] Fixed issue with Descriptions displaying on small mode
-- [] Fix virtual lists on episodelayouts
-- [] On very small screens you no longer get the mini version without the context button
-- [] Smoothness of home virt list on episode layout
-- [x] Episode layout page selected description is like 5 episodes too low
-- [x] Episode Layout image is weird rectangle on description modal
-
 Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
@@ -98,7 +91,7 @@ Version 0.7.0
 - [x] Four new themes added
 - [x] People page dropdowns on podcasts and episodes
 - [x] Stop issues with timeouts on occation with mobile apps - Potentially fixed due to audio file caching. Testing needed
-- [] Make virtual lines work for saved queue, downloads, local downloads, and history
+- [x] Virtual Lines implemented for Home and Episode Layout. This will improve performance on those pages greatly
 - [x] Dynamically adjusting buttons on episode page
 - [x] PodcastPeople DB up and running and can be contributed to
 - [x] Show currently updating podcast in refresh feed button at top of screen

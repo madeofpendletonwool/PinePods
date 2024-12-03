@@ -1192,8 +1192,22 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
+                    // Desktop scrubber
                     <div class="flex-grow flex items-center sm:block hidden">
                         <div class="flex items-center flex-nowrap">
+                            <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <input type="range"
+                                class="flex-grow h-1 cursor-pointer"
+                                min="0.0"
+                                max={audio_props.duration_sec.to_string().clone()}
+                                value={audio_state.current_time_seconds.to_string()}
+                                oninput={update_time.clone()} />
+                            <span class="time-display px-2">{formatted_duration.clone()}</span>
+                        </div>
+                    </div>
+                    // Mobile scrubber
+                    <div class="w-full flex items-center justify-center sm:hidden">
+                        <div class="flex items-center flex-nowrap w-full px-4">
                             <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
                             <input type="range"
                                 class="flex-grow h-1 cursor-pointer"
@@ -1216,15 +1230,15 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 </>
                             }
                         }
-                        <button onclick={skip_backward.clone()} class="rewind-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <button onclick={skip_backward.clone()} class="pronounce-mobile rewind-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">{"fast_rewind"}</span>
                         </button>
-                        <button onclick={toggle_playback.clone()} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <button onclick={toggle_playback.clone()} class="pronounce-mobile audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">
                                 { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
                             </span>
                         </button>
-                        <button onclick={skip_forward.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
+                        <button onclick={skip_forward.clone()} class="pronounce-mobile skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <span class="material-icons">{"fast_forward"}</span>
                         </button>
                         <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">

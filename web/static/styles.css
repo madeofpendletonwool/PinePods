@@ -1618,7 +1618,17 @@ input[type="range"]::-moz-range-thumb {
 
 .audio-top-button.selector-button:hover {
     background-color: var(--hover-color);
-    /* Replace #your-hover-color with your desired color */
+}
+
+@media (max-width: 768px) {
+    .pronounce-mobile {
+        width: 54px !important;
+        height: 54px !important;
+    }
+
+    .pronounce-mobile .material-icons {
+        font-size: 54px;
+    }
 }
 
 .drag-handle {

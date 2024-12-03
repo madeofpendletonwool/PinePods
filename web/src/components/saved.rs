@@ -12,6 +12,7 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::SavedEpisodesResponse;
+use gloo_events::EventListener;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -171,6 +172,42 @@ pub fn saved() -> Html {
         );
     }
 
+    let container_height = use_state(|| "221px".to_string()); // Add this state
+    {
+        let container_height = container_height.clone();
+        use_effect_with((), move |_| {
+            let update_height = {
+                let container_height = container_height.clone();
+                Callback::from(move |_| {
+                    if let Some(window) = window() {
+                        if let Ok(width) = window.inner_width() {
+                            if let Some(width) = width.as_f64() {
+                                let new_height = if width <= 530.0 {
+                                    "122px"
+                                } else if width <= 768.0 {
+                                    "162px"
+                                } else {
+                                    "221px"
+                                };
+                                container_height.set(new_height.to_string());
+                            }
+                        }
+                    }
+                })
+            };
+
+            // Set initial height
+            update_height.emit(());
+
+            // Add resize listener
+            let listener = EventListener::new(&window().unwrap(), "resize", move |_| {
+                update_height.emit(());
+            });
+
+            move || drop(listener)
+        });
+    }
+
     html! {
         <>
         <div class="main-container">
@@ -318,6 +355,7 @@ pub fn saved() -> Html {
                                     *show_modal,
                                     on_modal_open.clone(),
                                     on_modal_close.clone(),
+                                    (*container_height).clone(),
                                 );
 
                                 item

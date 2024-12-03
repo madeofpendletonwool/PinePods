@@ -253,33 +253,38 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
     let container_ref = use_node_ref();
     let container_height = use_state(|| 0.0);
     let item_height = use_state(|| 234.0); // Default item height
+    let force_update = use_state(|| 0);
 
     // Effect to set initial container height, item height, and listen for window resize
     {
         let container_height = container_height.clone();
         let item_height = item_height.clone();
+        let force_update = force_update.clone();
+
         use_effect_with((), move |_| {
             let window = window().expect("no global `window` exists");
             let window_clone = window.clone();
+
             let update_sizes = Callback::from(move |_| {
                 let height = window_clone.inner_height().unwrap().as_f64().unwrap();
-                container_height.set(height - 100.0); // Adjust 100 based on your layout
+                container_height.set(height - 100.0);
 
                 let width = window_clone.inner_width().unwrap().as_f64().unwrap();
+                // Add 16px (mb-4) to each height value for the virtual list calculations
                 let new_item_height = if width <= 530.0 {
-                    122.0
+                    122.0 + 16.0 // Base height + margin
                 } else if width <= 768.0 {
-                    162.0
+                    162.0 + 16.0 // Base height + margin
                 } else {
-                    221.0
+                    221.0 + 16.0 // Base height + margin
                 };
+
                 item_height.set(new_item_height);
+                force_update.set(*force_update + 1);
             });
 
-            // Set initial sizes
             update_sizes.emit(());
 
-            // Listen for window resize
             let listener = EventListener::new(&window, "resize", move |_| {
                 update_sizes.emit(());
             });
@@ -288,7 +293,7 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         });
     }
 
-    // Effect for scroll handling
+    // Effect for scroll handling remains the same
     {
         let scroll_pos = scroll_pos.clone();
         let container_ref = container_ref.clone();
@@ -303,15 +308,15 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
     }
 
     let start_index = (*scroll_pos / *item_height).floor() as usize;
-    let end_index = (((*scroll_pos + *container_height) / *item_height).ceil() as usize)
-        .min(props.episodes.len());
+    let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
+    let end_index = (start_index + visible_count).min(props.episodes.len());
 
     let visible_episodes = (start_index..end_index)
         .map(|index| {
             let episode = props.episodes[index].clone();
             html! {
                 <Episode
-                    key={episode.episodeid}
+                    key={format!("{}-{}", episode.episodeid, *force_update)}
                     episode={episode.clone()}
                     page_type={props.page_type.clone()}
                 />
@@ -323,7 +328,11 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
     let offset_y = start_index as f64 * *item_height;
 
     html! {
-        <div ref={container_ref} style={format!("height: {}px; overflow-y: auto;", *container_height)}>
+        <div
+            ref={container_ref}
+            class="virtual-list-container flex-grow overflow-y-auto"
+            style="height: calc(100vh - 100px);" // Subtract height of header/nav
+        >
             <div style={format!("height: {}px; position: relative;", total_height)}>
                 <div style={format!("position: absolute; top: {}px; left: 0; right: 0;", offset_y)}>
                     { visible_episodes }
@@ -359,6 +368,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let show_clonedal = show_modal.clone();
     let show_clonedal2 = show_modal.clone();
     let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+    let container_height = use_state(|| "221px".to_string()); // Add this state
 
     let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
@@ -381,6 +391,41 @@ pub fn episode(props: &EpisodeProps) -> Html {
             });
         })
     };
+
+    {
+        let container_height = container_height.clone();
+        use_effect_with((), move |_| {
+            let update_height = {
+                let container_height = container_height.clone();
+                Callback::from(move |_| {
+                    if let Some(window) = window() {
+                        if let Ok(width) = window.inner_width() {
+                            if let Some(width) = width.as_f64() {
+                                let new_height = if width <= 530.0 {
+                                    "122px"
+                                } else if width <= 768.0 {
+                                    "162px"
+                                } else {
+                                    "221px"
+                                };
+                                container_height.set(new_height.to_string());
+                            }
+                        }
+                    }
+                })
+            };
+
+            // Set initial height
+            update_height.emit(());
+
+            // Add resize listener
+            let listener = EventListener::new(&window().unwrap(), "resize", move |_| {
+                update_height.emit(());
+            });
+
+            move || drop(listener)
+        });
+    }
 
     let on_play_click = on_play_click(
         props.episode.episodeurl.clone(),
@@ -439,6 +484,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         *show_modal,
         on_modal_open.clone(),
         on_modal_close.clone(),
+        (*container_height).clone(),
     );
 
     item
