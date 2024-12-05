@@ -631,7 +631,13 @@ input[type="range"]::-moz-range-thumb {
 
 .audio-player .line-content .right-group {
     justify-content: flex-end;
-    padding-right: 25px;
+    padding-right: 5px;
+}
+
+@media (max-width: 640px) {
+    .audio-player .line-content .right-group {
+        padding-right: 0;
+    }
 }
 
 .audio-player.expanded {
@@ -2809,34 +2815,41 @@ button.item-container-action-button.item-container-action-button {
     display: flex;
     justify-content: center;
     align-items: start;
-    /* Align items to the start of the container */
     width: 100%;
-    /* Full width of the container */
     height: 100vh;
-    /* Full height of the viewport */
     position: relative;
-    /* Necessary for absolute positioning of children */
     padding-top: 6vh;
-    /* Adjust this value as needed to move the animation down from the top */
 }
 
 .loading-animation div {
     position: absolute;
-    /* Align images directly on top of each other */
-    width: 500px;
-    /* Set width */
-    height: 500px;
-    /* Set height */
+    width: min(
+        500px,
+        80vw
+    ); /* Use the smaller of 500px or 80% viewport width */
+    height: min(500px, 80vw); /* Keep it square by using same value */
     background-size: cover;
     animation: frameAnimation 3s infinite;
-    /* Total animation duration adjusted to 3 seconds */
 }
 
-/* Apply negative delays here */
+/* Media query for smaller screens */
+@media (max-width: 640px) {
+    .loading-animation {
+        padding-top: 4vh; /* Reduce top padding on mobile */
+    }
+
+    .loading-animation div {
+        width: 85vw; /* Take up most of the screen width */
+        height: 85vw; /* Keep it square */
+    }
+}
+
+/* Animation frames stay the same */
 .loading-animation .frame1 {
     background-image: url("./assets/images/og-same.png");
     animation-delay: -4.5s;
 }
+/* ... rest of the frames ... */
 
 .loading-animation .frame2 {
     background-image: url("./assets/images/low5.png");

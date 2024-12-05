@@ -1187,8 +1187,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     <button onclick={title_click.clone()} class="retract-button">
                         <span class="material-icons">{"expand_more"}</span>
                     </button>
-                    <div class="audio-image-container">
-                        <img onclick={title_click.clone()} src={(*current_chapter_image).clone()} />
+                    <div onclick={title_click.clone()} class="audio-image-container">
+                        <img src={(*current_chapter_image).clone()} />
                     </div>
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
@@ -1294,7 +1294,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 </div>
                 <div class="line-content">
                 <div class="left-group">
-                    <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                    <div onclick={title_click.clone()} class="artwork-container">
+                        <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                    </div>
                     <div class="title" onclick={title_click.clone()}>
                         <span>{ &audio_props.title }</span>
                     </div>

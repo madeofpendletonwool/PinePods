@@ -33,9 +33,29 @@ use yewdux::prelude::*;
 fn get_current_url() -> String {
     let window = window().expect("no global `window` exists");
     let location = window.location();
-    location
+    let current_url = location
         .href()
-        .unwrap_or_else(|_| "Unable to retrieve URL".to_string())
+        .unwrap_or_else(|_| "Unable to retrieve URL".to_string());
+
+    // Get the server URL from local storage
+    if let Some(storage) = window.local_storage().ok().flatten() {
+        if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
+            // Parse the JSON string
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&auth_state) {
+                if let Some(server_name) = json
+                    .get("auth_details")
+                    .and_then(|auth| auth.get("server_name"))
+                    .and_then(|name| name.as_str())
+                {
+                    // Replace tauri.localhost with the server name
+                    return current_url.replace("http://tauri.localhost", server_name);
+                }
+            }
+        }
+    }
+
+    // Return the original URL if we couldn't get the server name
+    current_url
 }
 
 #[function_component(Episode)]

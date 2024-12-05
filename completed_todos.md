@@ -41,17 +41,17 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 Mobile:
 
 - [x] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
-- [] Can't seem to log into apps?
 - [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
-- [] On mobile make the action buttons larger
+- [x] On mobile make the action buttons larger
 - [x] On mobile make the volume slider drop below Shownotes
-- [] When pod is playing play and skip are too far left, also make image raise full screen as well as title. Maybe drag to raise?
+- [x] When pod is playing play and skip are too far left, also make image raise full screen as well as title. D
+- [] Drag to raise player
 - [] On mobile further squish image to fit more on screen?
 - [] On mobile long press to add to saved etc...?
-- [] On mobile local Downloads page is broken - doesn't open
-- [] Mobile loading screen causes search to jump to right and playing pod to go too low
+- [x] On mobile local Downloads page is broken - doesn't open
+- [x] Mobile loading screen causes search to jump to right and playing pod to go too low
 - [] On mobile nextcloud doesn't redirect back after adding
-- [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
+- [x] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
 - [] Need android compiling alternative to reqwest - Maybe not?
 
 
