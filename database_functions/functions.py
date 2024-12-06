@@ -1919,71 +1919,65 @@ def user_history(cnx, database_type, user_id):
     if not cnx:
         logging.error("Database connection is None.")
         return []
-
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
             query = ('SELECT "Episodes".EpisodeID, "UserEpisodeHistory".ListenDate, "UserEpisodeHistory".ListenDuration, '
-                        '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
-                        '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate, "Episodes".Completed '
-                        'FROM "UserEpisodeHistory" '
-                        'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
-                        'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-                        'WHERE "UserEpisodeHistory".UserID = %s '
-                        'ORDER BY "UserEpisodeHistory".ListenDate DESC')
-        else:  # MySQL or MariaDB
-            cursor = cnx.cursor(dictionary=True)  # Ensure dictionary mode
+                    '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
+                    '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate, "Episodes".Completed '
+                    'FROM "UserEpisodeHistory" '
+                    'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
+                    'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
+                    'WHERE "UserEpisodeHistory".UserID = %s '
+                    'ORDER BY "UserEpisodeHistory".ListenDate DESC')
+        else:
+            cursor = cnx.cursor(dictionary=True)
             query = ("SELECT Episodes.EpisodeID, UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
-                        "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-                        "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate, Episodes.Completed "
-                        "FROM UserEpisodeHistory "
-                        "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
-                        "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-                        "WHERE UserEpisodeHistory.UserID = %s "
-                        "ORDER BY UserEpisodeHistory.ListenDate DESC")
+                    "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
+                    "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate, Episodes.Completed "
+                    "FROM UserEpisodeHistory "
+                    "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
+                    "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
+                    "WHERE UserEpisodeHistory.UserID = %s "
+                    "ORDER BY UserEpisodeHistory.ListenDate DESC")
 
         cursor.execute(query, (user_id,))
         results = cursor.fetchall()
-
         if not results:
             logging.info("No results found for user history.")
             return []
+
+        # Get column descriptions before closing cursor
+        columns = [col[0].lower() for col in cursor.description]
+
+        # Convert results to list of dictionaries
+        history_episodes = []
+        for row in results:
+            episode = {}
+            if isinstance(row, tuple):
+                for idx, column_name in enumerate(columns):
+                    value = row[idx]
+                    if column_name == 'completed':
+                        value = bool(value)
+                    episode[column_name] = value
+            elif isinstance(row, dict):
+                for k, v in row.items():
+                    column_name = k.lower()
+                    value = v
+                    if column_name == 'completed':
+                        value = bool(value)
+                    episode[column_name] = value
+            else:
+                logging.error(f"Unexpected row type: {type(row)}")
+            history_episodes.append(episode)
+
+        return lowercase_keys(history_episodes)
 
     except Exception as e:
         logging.error(f"Error executing user_history query: {e}")
         raise
     finally:
         cursor.close()
-
-    print('histing now')
-
-    # Convert results to a list of dictionaries
-    history_episodes = []
-    for row in results:
-        episode = {}
-        if isinstance(row, tuple):
-            for idx, col in enumerate(cursor.description):
-                column_name = col[0].lower()
-                value = row[idx]
-                if column_name == 'completed':
-                    value = bool(value)
-                episode[column_name] = value
-        elif isinstance(row, dict):
-            for k, v in row.items():
-                column_name = k.lower()
-                value = v
-                if column_name == 'completed':
-                    value = bool(value)
-                episode[column_name] = value
-        else:
-            logging.error(f"Unexpected row type: {type(row)}")
-        history_episodes.append(episode)
-
-    lower_hist = lowercase_keys(history_episodes)
-    print(lower_hist)
-    return lower_hist
-
-
 
 
 
@@ -2373,6 +2367,7 @@ def download_episode_list(database_type, cnx, user_id):
             '"Episodes".EpisodeArtwork, '
             '"Episodes".EpisodeURL, '
             '"Episodes".EpisodeDuration, '
+            '"Podcasts".PodcastIndexID, '
             '"Podcasts".WebsiteURL, '
             '"DownloadedEpisodes".DownloadedLocation, '
             '"UserEpisodeHistory".ListenDuration, '
@@ -2397,6 +2392,7 @@ def download_episode_list(database_type, cnx, user_id):
             "Episodes.EpisodeArtwork, "
             "Episodes.EpisodeURL, "
             "Episodes.EpisodeDuration, "
+            "Podcasts.PodcastIndexID, "
             "Podcasts.WebsiteURL, "
             "DownloadedEpisodes.DownloadedLocation, "
             "UserEpisodeHistory.ListenDuration, "

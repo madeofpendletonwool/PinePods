@@ -1201,9 +1201,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <button
                 ref={button_ref.clone()}
                 onclick={toggle_dropdown.clone()}
-                class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
             >
-                <span class="material-icons large-material-icons md:text-6xl text-4xl">{"more_vert"}</span>
+                <i class="ph ph-dots-three-circle md:text-6xl text-4xl"></i>
             </button>
             if *dropdown_open {
                 <div
@@ -1621,27 +1621,6 @@ pub fn episode_item(
 
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
-    // let container_height = {
-    //     if let Some(window) = window() {
-    //         if let Ok(width) = window.inner_width() {
-    //             if let Some(width) = width.as_f64() {
-    //                 if width <= 530.0 {
-    //                     "122px"
-    //                 } else if width <= 768.0 {
-    //                     "162px"
-    //                 } else {
-    //                     "221px"
-    //                 }
-    //             } else {
-    //                 "221px" // Default if we can't get the width as f64
-    //             }
-    //         } else {
-    //             "221px" // Default if we can't get inner_width
-    //         }
-    //     } else {
-    //         "221px" // Default if we can't get window
-    //     }
-    // };
 
     #[wasm_bindgen]
     extern "C" {
@@ -1679,7 +1658,8 @@ pub fn episode_item(
                     {
                             if completed.clone() {
                                 html! {
-                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                    <i class="ph ph-check-circle text-2xl text-green-500"></i>
+                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -1736,10 +1716,10 @@ pub fn episode_item(
                         <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
                             if should_show_buttons {
                                 <button
-                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                     onclick={on_play_click}
                                 >
-                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
                                 </button>
                                 <div class="hidden sm:block"> // This will hide the context button below 640px
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
@@ -1812,31 +1792,39 @@ pub fn download_episode_item(
 
     html! {
         <div>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+        <div class="item-container border-solid border flex items-center mb-4 shadow-md rounded-lg h-full">
+                // For the checkbox itself
                 {if is_delete_mode {
                     html! {
-                        <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
-                            onchange={on_checkbox_change.reform(move |_| checkbox_ep)} />
+                        <div class="flex items-center pl-4">
+                            <input
+                                type="checkbox"
+                                class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
+                                before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
+                                onchange={on_checkbox_change.reform(move |_| checkbox_ep)}
+                            />
+                        </div>
                     }
                 } else {
                     html! {}
                 }}
-                <div class="flex flex-col w-auto object-cover pl-4">
+                <div class="flex flex-col w-auto object-cover pl-4 self-start">
                     <img
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
                         class="episode-image"
                     />
                 </div>
-                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12 self-start">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
-                        <p class="item_container-text episode-title font-semibold">
+                        <p class="item_container-text episode-title font-semibold line-clamp-2">
                             { episode.get_episode_title() }
                         </p>
                         {
                             if completed.clone() {
                                 html! {
-                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                    <i class="ph ph-check-circle text-2xl text-green-500"></i>
+                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -1846,7 +1834,7 @@ pub fn download_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text cursor-pointer md:block"
+                            <div class="item-description-text cursor-pointer hidden md:block"
                                  onclick={on_modal_open}>
                                 <div class="item_container-text line-clamp-2">
                                     <SafeHtml html={description.clone()} />
@@ -1892,10 +1880,10 @@ pub fn download_episode_item(
                         <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
                             if should_show_buttons {
                                 <button
-                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                     onclick={on_play_click}
                                 >
-                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
                                 </button>
                                 <div class="show-on-large">
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
@@ -1990,7 +1978,7 @@ pub fn queue_episode_item(
             >
                 <div class="drag-handle-wrapper flex items-center justify-center w-10 h-full touch-none">
                     <button class="drag-handle cursor-grab">
-                        <span class="material-icons">{"drag_indicator"}</span>
+                        <i class="ph ph-dots-six-vertical text-2xl"></i>
                     </button>
                 </div>
             {if is_delete_mode {
@@ -2010,13 +1998,14 @@ pub fn queue_episode_item(
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
-                        <p class="item_container-text episode-title font-semibold">
+                        <p class="item_container-text episode-title font-semibold line-clamp-2">
                             { episode.get_episode_title() }
                         </p>
                         {
                             if completed.clone() {
                                 html! {
-                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                    <i class="ph ph-check-circle text-2xl text-green-500"></i>
+                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -2072,10 +2061,10 @@ pub fn queue_episode_item(
                         <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
                             if should_show_buttons {
                                 <button
-                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                     onclick={on_play_click}
                                 >
-                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
                                 </button>
                                 <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
                             }
@@ -2166,13 +2155,13 @@ pub fn person_episode_item(
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                     <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
-                        <p class="item_container-text episode-title font-semibold">
+                    <p class="item_container-text episode-title font-semibold line-clamp-2">
                             { episode.get_episode_title() }
                         </p>
                         {
                             if completed.clone() {
                                 html! {
-                                    <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                    <i class="ph ph-check-circle text-2xl text-green-500"></i>
                                 }
                             } else {
                                 html! {}
@@ -2182,8 +2171,7 @@ pub fn person_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text cursor-pointer md:block"
-                                 onclick={on_modal_open}>
+                            <div class="item-description-text cursor-pointer hidden md:block" onclick={on_modal_open}>
                                 <div class="item_container-text line-clamp-2">
                                     <SafeHtml html={description.clone()} />
                                 </div>
@@ -2228,12 +2216,12 @@ pub fn person_episode_item(
                         <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
                             if should_show_buttons {
                                 <button
-                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                     onclick={on_play_click}
                                 >
-                                    <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
                                 </button>
-                                <div class="show-on-large">
+                                <div class="hidden sm:block">
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
                                 </div>
                             }

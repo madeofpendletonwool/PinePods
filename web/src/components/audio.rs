@@ -76,7 +76,7 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
                 onclick={toggle_open}
                 class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
             >
-                <span class="material-icons">{"speed"}</span>
+                <i class="ph ph-speedometer text-2xl"></i>
             </button>
             <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
                 <div class="speed-control-content item_container-bg">
@@ -136,9 +136,9 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
         <div class="volume-control-container">
             <button
                 onclick={toggle_open}
-                class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+                class="skip-button audio-top-button selector-button font-bold py-2 px-4 mt-3 rounded-full w-10 h-10 flex items-center justify-center"
             >
-                <span class="material-icons">{volume_icon}</span>
+                <i class="ph ph-speaker-high text-2xl"></i>
             </button>
 
             <div class={classes!("volume-slider-container", (*is_open).then(|| "visible"))}>
@@ -1087,7 +1087,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     <div class="chapter-item"
                                         onclick={Callback::from(move |_| on_chapter_click.emit(click_start_time.clone()))}>
                                         <button class="chapter-play-button">
-                                            <span class="material-icons text-xl">{"play_arrow"}</span>
+                                            <i class="ph ph-play text-xl"></i>
                                         </button>
                                         <div class="chapter-info">
                                             <span class="chapter-title">{ &chapter.title }</span>
@@ -1185,10 +1185,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 <div class="top-section">
                     <div>
                     <button onclick={title_click.clone()} class="retract-button">
-                        <span class="material-icons">{"expand_more"}</span>
+                        <div class="drawer-text flex items-center justify-center">
+                            <i class="ph ph-caret-circle-down text-4xl"></i>
+                        </div>
                     </button>
-                    <div class="audio-image-container">
-                        <img onclick={title_click.clone()} src={(*current_chapter_image).clone()} />
+                    <div onclick={title_click.clone()} class="audio-image-container">
+                        <img src={(*current_chapter_image).clone()} />
                     </div>
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
@@ -1231,18 +1233,20 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             }
                         }
                         <button onclick={skip_backward.clone()} class="pronounce-mobile rewind-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <span class="material-icons">{"fast_rewind"}</span>
+                            <i class="ph ph-rewind md:text-2xl text-4xl"></i>
                         </button>
                         <button onclick={toggle_playback.clone()} class="pronounce-mobile audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <span class="material-icons">
-                                { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
-                            </span>
+                                { if audio_state.audio_playing.unwrap_or(false) {
+                                    html! { <i class="ph ph-pause md:text-2xl text-4xl"></i> }
+                                } else {
+                                    html! { <i class="ph ph-play md:text-2xl text-4xl"></i> }
+                                }}
                         </button>
                         <button onclick={skip_forward.clone()} class="pronounce-mobile skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <span class="material-icons">{"fast_forward"}</span>
+                            <i class="ph ph-fast-forward md:text-2xl text-4xl"></i>
                         </button>
                         <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <span class="material-icons">{"skip_next"}</span>
+                            <i class="ph ph-skip-forward text-2xl"></i>
                         </button>
                     </div>
 
@@ -1294,19 +1298,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 </div>
                 <div class="line-content">
                 <div class="left-group">
-                    <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                    <div onclick={title_click.clone()} class="artwork-container">
+                        <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                    </div>
                     <div class="title" onclick={title_click.clone()}>
                         <span>{ &audio_props.title }</span>
                     </div>
                 </div>
                 <div class="right-group">
                     <button onclick={toggle_playback} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        <span class="material-icons">
-                            { if audio_state.audio_playing.unwrap_or(false) { "pause" } else { "play_arrow" } }
-                        </span>
+                        { if audio_state.audio_playing.unwrap_or(false) {
+                            html! { <i class="ph ph-pause text-2xl"></i> }
+                        } else {
+                            html! { <i class="ph ph-play text-2xl"></i> }
+                        }}
                     </button>
                     <button onclick={skip_forward} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        <span class="material-icons">{"fast_forward"}</span>
+                        <i class="ph ph-fast-forward text-2xl"></i>
                     </button>
                     <div class="flex-grow flex items-center sm:block hidden">
                         <div class="flex items-center flex-nowrap">

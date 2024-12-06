@@ -22,7 +22,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 - [] Make playing episode on every page dynamically update play/pause
 - [] Theme updates on change settings page. Auto fills correct theme on dropdown
-- [] Make virtual lines work for saved queue, downloads, local downloads, and history
+- [] Make virtual lines work for saved, queue, downloads, local downloads, and history
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -32,6 +32,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on queue page
 - [] Implement episode filtering on search page
 - [] Updating which chapter is currently playing to switch to a pause button
+- [] Functional back button - Along with ensuring browser backs, and phone backs react correctly
 
 - [] Full Screen Episode should have clickable podcast header to open pod page
 
@@ -41,18 +42,19 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 Mobile:
 
 - [x] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
-- [] Can't seem to log into apps?
-- [] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
-- [] On mobile make the action buttons larger
+- [x] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
+- [x] On mobile make the action buttons larger
 - [x] On mobile make the volume slider drop below Shownotes
-- [] When pod is playing play and skip are too far left, also make image raise full screen as well as title. Maybe drag to raise?
+- [x] When pod is playing play and skip are too far left, also make image raise full screen as well as title. D
+- [] Drag to raise player
 - [] On mobile further squish image to fit more on screen?
 - [] On mobile long press to add to saved etc...?
-- [] On mobile local Downloads page is broken - doesn't open
-- [] Mobile loading screen causes search to jump to right and playing pod to go too low
+- [x] On mobile local Downloads page is broken - doesn't open
+- [x] Mobile loading screen causes search to jump to right and playing pod to go too low
 - [] On mobile nextcloud doesn't redirect back after adding
-- [] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
+- [x] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
 - [] Need android compiling alternative to reqwest - Maybe not?
+- [] Issues with clicking buttons on android app after episode starts playing. Kinda freezes the whole app. Buttons no longer interactive
 
 
 People stuff left:
@@ -64,18 +66,20 @@ People stuff left:
 - [x] Fix issue unsubscribing from host
 - [x] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
 - [x] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
-- [] Subbed people feeds remove after a period
+- [x] Subbed people feeds remove after a period (Seems like this might be a non-issue)
+- [] Get a nightly person refresh task going
 - [] Double check the whole workflow
   - [x] Add host in podpeople
   - [x] Add host in podndex person tag
   - [] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
   - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
+  - [] Fix description modals on sub people episodes
   - [] Check entire workflow and 0.7.0 with mysql/mariadb
 
 Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
-
+- [] A podcast that doesn't open: tested
 
 Version 0.7.0
 

@@ -14,6 +14,11 @@ pub fn app_drawer() -> Html {
     // let (state, _dispatch) = use_store::<AppState>();
 
     let is_drawer_open = use_state(|| false);
+    let drawer_rotation = if *is_drawer_open {
+        "rotate-90 transform"
+    } else {
+        ""
+    };
     let (state, _dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let api_key = post_state
@@ -44,7 +49,6 @@ pub fn app_drawer() -> Html {
             }
         }
     };
-
     let on_refresh_click = {
         let server_name = server_name.clone();
         let user_id = user_id.clone();
@@ -104,8 +108,10 @@ pub fn app_drawer() -> Html {
         <div class="flex items-center space-x-3">
             <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                 <Link<Route> to={Route::LocalDownloads}>
-                    <span class="material-icons icon-space">{"folder_open"}</span>
-                    <span class="text-lg">{"Local Downloads"}</span>
+                    <div class="flex items-center">
+                        <i class="ph ph-folder-open text-2xl mr-3"></i>
+                        <span class="text-lg">{"Local Downloads"}</span>
+                    </div>
                 </Link<Route>>
             </div>
         </div>
@@ -143,48 +149,60 @@ pub fn app_drawer() -> Html {
                             <div class="m-0 p-0 flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Home}>
-                                        <span class="material-standard-color material-icons icon-space">{"home"}</span>
-                                        <span class="text-lg">{"Home"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-house text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Home"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Search}>
-                                        <span class="material-icons icon-space">{"search"}</span>
-                                        <span class="text-lg">{"Search Podcasts"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-magnifying-glass text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Search Podcasts"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Queue}>
-                                    <span class="material-icons icon-space">{"queue"}</span>
-                                    <span class="text-lg">{"Queue"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-queue icon-space text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Queue"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Saved}>
-                                        <span class="material-icons icon-space">{"star"}</span>
-                                        <span class="text-lg">{"Saved"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-star text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Saved"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::PodHistory}>
-                                        <span class="material-icons icon-space">{"history"}</span>
-                                        <span class="text-lg">{"History"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-clock-counter-clockwise text-2xl mr-3"></i>
+                                            <span class="text-lg">{"History"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                             <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                 <Link<Route> to={Route::Downloads}>
-                                    <span class="material-icons icon-space">{"download"}</span>
-                                    <span class="text-lg">{"Server Downloads"}</span>
+                                    <div class="flex items-center">
+                                        <i class="ph ph-download-simple text-2xl mr-3"></i>
+                                        <span class="text-lg">{"Server Downloads"}</span>
+                                    </div>
                                 </Link<Route>>
                             </div>
                         </div>
@@ -196,24 +214,30 @@ pub fn app_drawer() -> Html {
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::SubscribedPeople}>
-                                        <span class="material-icons icon-space">{"person"}</span>
-                                        <span class="text-lg">{"Subscribed People"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-user text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Subscribed People"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Podcasts}>
-                                        <span class="material-icons icon-space">{"podcasts"}</span>
-                                        <span class="text-lg">{"Podcasts"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-microphone-stage text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Podcasts"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Settings}>
-                                        <span class="material-icons icon-space">{"settings"}</span>
-                                        <span class="text-lg">{"Settings"}</span>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-gear text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Settings"}</span>
+                                        </div>
                                     </Link<Route>>
                                 </div>
                             </div>
@@ -223,8 +247,10 @@ pub fn app_drawer() -> Html {
                 <div class="flex items-center space-x-3">
                     <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                         <Link<Route> to={Route::LogOut}>
-                            <span class="material-icons icon-space">{"logout"}</span>
-                            <span class="text-lg">{"Sign Out"}</span>
+                            <div class="flex items-center">
+                                <i class="ph ph-sign-out text-2xl mr-3"></i>
+                                <span class="text-lg">{"Sign Out"}</span>
+                            </div>
                         </Link<Route>>
                     </div>
                 </div>
@@ -235,21 +261,16 @@ pub fn app_drawer() -> Html {
             </div>
 
         <div class="drawer-icon flex items-center" onclick={toggle_drawer.clone()}>
-            <label for="drawer-toggle" class="rounded-lg cursor-pointer">
-                <div class="flex flex-col items-center">
-                    <div class="w-6 h-1 mb-1 drawer-burger rounded-lg"></div>
-                    <div class="w-6 h-1 mb-1 drawer-burger rounded-lg"></div>
-                    <div class="w-6 h-1 drawer-burger rounded-lg"></div>
-                </div>
-            </label>
-
+            <button class="cursor-pointer flex items-center justify-center">
+                <i class={classes!("ph", "ph-list", "text-4xl", "transition-transform", "duration-300", drawer_rotation)}></i>
+            </button>
             <div class="w-8 h-8 ml-3 flex items-center">
 
                 { if show_home_button {
                     html! {
                         <Link<Route> to={Route::Home} classes="rounded-lg cursor-pointer">
                             <div class="flex flex-col items-center">
-                                <span class="home-material-icons material-icons">{ "home" }</span>
+                                <i class="ph ph-house md:text-4xl text-4xl"></i>
                             </div>
                         </Link<Route>>
                     }
@@ -263,11 +284,13 @@ pub fn app_drawer() -> Html {
                                     {
                                         if state.is_refreshing.unwrap_or(false) {
                                             html! {
-                                                <span class="loading-icon">{ "⏳" }</span>
+                                                <div class="flex flex-col items-center">
+                                                    <i class="ph ph-hourglass-medium md:text-4xl text-4xl"></i>
+                                                </div>
                                             }
                                         } else {
                                             html! {
-                                                <span class="home-material-icons material-icons">{ "refresh" }</span>
+                                                <i class="ph ph-arrows-clockwise md:text-4xl text-4xl"></i>
                                             }
                                         }
                                     }

@@ -63,10 +63,63 @@ You can also choose to use MySQL/MariaDB or Postgres as your database. Examples 
 
 ### Docker Compose
 
-#### Compose File - MariaDB
+#### Compose File - PostgreSQL (Recommended)
+```yaml
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: pinepods_database
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: myS3curepass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
 
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+      - "8040:8040"
+    environment:
+      # Basic Server Info
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+      PEOPLE_API_URL: 'https://people.pinepods.online/api/hosts'
+      # Default Admin User Information
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
+      # Database Vars
+      DB_TYPE: postgresql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: myS3curepass
+      DB_NAME: pinepods_database
+      # Valkey Settings
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      # Enable or Disable Debug Mode for additional Printing
+      DEBUG_MODE: false
+    volumes:
+      # Mount the download and backup locations on the server
+      - /home/user/pinepods/downloads:/opt/pinepods/downloads
+      - /home/user/pinepods/backups:/opt/pinepods/backups
+    depends_on:
+      - db
+      - valkey
 ```
-version: '3'
+
+#### Compose File - MariaDB (Alternative)
+```yaml
 services:
   db:
     image: mariadb:latest
@@ -83,14 +136,20 @@ services:
     ports:
       - "3306:3306"
     restart: always
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
-    # Pinepods Main Port
       - "8040:8040"
     environment:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+      PEOPLE_API_URL: 'https://people.pinepods.online/api/hosts'
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
@@ -103,63 +162,18 @@ services:
       DB_USER: root
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
+      # Valkey Settings
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
-      DEBUG_MODE: False
+      DEBUG_MODE: false
     volumes:
-    # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
-    # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
+      # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
       - db
-```
-
-#### Compose File - postgres
-
-```
-
-services:
-  db:
-    image: postgres:latest
-    environment:
-      POSTGRES_DB: pinepods_database
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: myS3curepass
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    restart: always
-  pinepods:
-    image: madeofpendletonwool/pinepods:latest
-    ports:
-    # Pinepods Main Port
-      - "8040:8040"
-    environment:
-      # Basic Server Info
-      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
-      # Default Admin User Information
-      USERNAME: myadminuser01
-      PASSWORD: myS3curepass
-      FULLNAME: Pinepods Admin
-      EMAIL: user@pinepods.online
-      # Database Vars
-      DB_TYPE: postgresql
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: myS3curepass
-      DB_NAME: pinepods_database
-      # Enable or Disable Debug Mode for additional Printing
-      DEBUG_MODE: False
-    volumes:
-      # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
-      - /home/user/pinepods/downloads:/opt/pinepods/downloads
-      - /home/user/pinepods/backups:/opt/pinepods/backups
-    depends_on:
-      - db
-
+      - valkey
 ```
 
 Make sure you change these variables to variables specific to yourself.

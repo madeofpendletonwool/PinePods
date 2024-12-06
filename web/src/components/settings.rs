@@ -10,7 +10,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use yew::prelude::*;
-use yewdux::{prelude::*};
+use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 
 #[derive(Properties, PartialEq, Clone)]
@@ -28,20 +28,18 @@ fn tab(props: &TabProps) -> Html {
         label,
         onclick,
         class,
-        // href, // Add this if you're using href
     } = props.clone();
 
     let tab_class = if is_active {
         format!(
-            "{} inline-block p-4 border-b-2 border-blue-600 rounded-t-lg active text-blue-600",
+            "{} tab-hightlight-colors px-6 py-2 rounded-md transition-all duration-200",
             class
         )
     } else {
-        format!("{} inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300", class)
+        format!("{} tab-unselect-colors px-6 py-2 rounded-md hover:bg-opacity-10 hover:bg-white transition-all duration-200", class)
     };
 
     html! {
-        // If using href, replace button with <a href={href} class={tab_class} onclick={onclick}>{ label }</a>
         <button class={tab_class} onclick={onclick}>{ label }</button>
     }
 }
@@ -82,7 +80,7 @@ pub fn accordion_item(
     let arrow_rotation_class = if *is_open { "rotate-180" } else { "rotate-0" };
 
     html! {
-        <div class={format!("border border-gray-200 dark:border-gray-700 accordion-container {}", border_class)}>
+        <div class={format!("accordion-container {}", border_class)}>
             <h2>
                 <button
                     class={format!("accordion-button flex items-center justify-between w-full p-5 font-medium {} focus:ring-4 gap-3 relative", button_class)}
@@ -146,7 +144,6 @@ pub fn settings() -> Html {
         || ()
     });
 
-
     let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
 
@@ -177,31 +174,27 @@ pub fn settings() -> Html {
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
-                (api_key.clone(), user_id.clone(), server_name.clone())
-            {
-                wasm_bindgen_futures::spawn_local(async move {
-                    match call_user_admin_check(
-                        &server_name,
-                        &api_key.unwrap(),
-                        user_id,
-                    )
-                    .await
-                    {
-                        Ok(response) => {
-                            is_admin.set(response.is_admin);
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_user_admin_check(&server_name, &api_key.unwrap(), user_id).await
+                        {
+                            Ok(response) => {
+                                is_admin.set(response.is_admin);
+                            }
+                            Err(e) => {
+                                audio_admin.reduce_mut(|state| {
+                                    state.error_message =
+                                        Some(format!("Failed to check admin status: {:?}", e))
+                                });
+                                // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
+                            }
                         }
-                        Err(e) => {
-                            audio_admin.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to check admin status: {:?}", e))
-                            });
-                            // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
-                        }
-                    }
-                });
-            }
-            || ()
-        });
+                    });
+                }
+                || ()
+            },
+        );
     }
 
     {
@@ -246,20 +239,29 @@ pub fn settings() -> Html {
             <UseScrollToTop />
             <div class="my-4">
                 <h1 class="item_container-text text-2xl font-bold mb-3">{ "Settings" }</h1>
-                <div class="item_container-text tabs flex flex-wrap text-sm font-medium text-center border-b border-gray-200">
-                    <Tab is_active={*active_tab == "user"} class="me-2" label={"User Settings".to_string()} onclick={on_user_tab_click.clone()} />
-                    // <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
+                <div class="inline-flex tab-background p-1 rounded-lg bg-opacity-10 mb-6">
+                    <Tab
+                        is_active={*active_tab == "user"}
+                        class="text-base"
+                        label={"User Settings".to_string()}
+                        onclick={on_user_tab_click.clone()}
+                    />
                     {
                         if *is_admin {
                             html! {
-                                <Tab is_active={*active_tab == "admin"} class="me-2" label={"Admin Settings".to_string()} onclick={on_admin_tab_click.clone()} />
+                                <Tab
+                                    is_active={*active_tab == "admin"}
+                                    class="text-base"
+                                    label={"Admin Settings".to_string()}
+                                    onclick={on_admin_tab_click.clone()}
+                                />
                             }
                         } else {
                             html! {}
                         }
                     }
                 </div>
-                <div class="tab-content setting-box p-1 shadow rounded-lg">
+                <div class="rounded-xl theme-dropdown-arrow overflow-hidden">
                 {
                     if *active_tab == "user" {
                         html! {
