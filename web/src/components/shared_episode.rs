@@ -6,7 +6,6 @@ use crate::components::episodes_layout::{SafeHtml, UIStateMsg};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
-use crate::components::host_component::HostDropdown;
 use crate::requests::pod_req::call_get_episode_by_url_key;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -249,7 +248,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                         <div class="button-row">
                                             <button onclick={on_play_click} class="play-button">
                                             // <button class="play-button">
-                                                <i class="material-icons">{ "play_arrow" }</i>
+                                                <i class="ph ph-play"></i>
                                                 {"Play"}
                                             </button>
                                         </div>
@@ -326,7 +325,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                     <div class="episode-action-buttons">
                                     <button onclick={on_play_click} class="play-button">
                                     // <button class="play-button">
-                                        <i class="material-icons">{ "play_arrow" }</i>
+                                        <i class="ph ph-play"></i>
                                         {"Play"}
                                     </button>
 

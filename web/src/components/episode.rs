@@ -1338,14 +1338,14 @@ pub fn epsiode() -> Html {
                                         <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
                                         </div>
                                             <div class="episode-details">
-                                            <p class="item-header-pod justify-center items-center" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</p>
+                                            <p class="item-header-pod mt-2 justify-center items-center" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</p>
                                             <div class="items-center space-x-2 cursor-pointer">
                                                 <h2 class="episode-title item-header-title">
                                                     { &episode.episode.episodetitle }
                                                     {
                                                         if *completion_status.clone() {
                                                             html! {
-                                                                <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                                                <i class="ph ph-check-circle text-2xl text-green-500 ml-2"></i>
                                                             }
                                                         } else {
                                                             html! {}
@@ -1353,8 +1353,8 @@ pub fn epsiode() -> Html {
                                                     }
                                                     {
                                                         html! {
-                                                            <button onclick={create_share_link.clone()} class="play-button">
-                                                                <i class="material-icons">{ "share" }</i>
+                                                            <button onclick={create_share_link.clone()} class="ml-2">
+                                                                <i class="ph ph-share-network text-2xl"></i>
                                                             </button>
                                                         }
                                                     }
@@ -1366,8 +1366,6 @@ pub fn epsiode() -> Html {
                                                 <span class="episode-duration">{"\u{00a0}-\u{00a0}"}</span>
                                                 <p class="episode-release-date">{ format_release }</p>
                                             </div>
-
-
 
 
                                             {
@@ -1435,26 +1433,46 @@ pub fn epsiode() -> Html {
                                                 html! {
                                                     <>
                                                     <div class="button-row">
-                                                        <button onclick={handle_play_click} class="play-button">
-                                                            <i class="material-icons">{ if is_playing { "pause" } else { "play_arrow" } }</i>
+                                                        <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2 mt-2">
+                                                            { if is_playing {
+                                                                html! { <i class="ph ph-pause text-2xl"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-play text-2xl"></i> }
+                                                            }}
                                                             { if is_playing { "Pause" } else { "Play" } }
                                                         </button>
-                                                        <button onclick={toggle_queue} class="queue-button">
-                                                            <i class="material-icons">{ if *queue_status { "playlist_remove" } else { "playlist_add" } }</i>
+                                                        <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2 mt-2">
+                                                            { if *queue_status {
+                                                                html! { <i class="ph ph-queue text-2xl"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-queue text-2xl"></i> }
+                                                            }}
                                                             { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
                                                         </button>
-                                                        <button onclick={toggle_save} class="save-button">
-                                                            <i class="material-icons">{ if *save_status { "favorite" } else { "favorite_border" } }</i>
+                                                        <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2 mt-2">
+                                                            { if *save_status {
+                                                                html! { <i class="ph ph-heart-break text-2xl"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-heart text-2xl"></i> }
+                                                            }}
                                                             { if *save_status { "Unsave" } else { "Save" } }
                                                         </button>
                                                     </div>
                                                     <div class="button-row">
-                                                        <button onclick={toggle_download} class="download-button-ep">
-                                                            <i class="material-icons">{ if *download_status { "delete" } else { "download" } }</i>
+                                                        <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2 mt-2">
+                                                            { if *download_status {
+                                                                html! { <i class="ph ph-trash text-2xl"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-download text-2xl"></i> }
+                                                            }}
                                                             { if *download_status { "Remove Download" } else { "Download" } }
                                                         </button>
-                                                        <button onclick={toggle_completion} class="download-button-ep">
-                                                            <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                                        <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2 mt-2">
+                                                            { if *completion_status {
+                                                                html! { <i class="ph ph-x-circle text-2xl"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-check-fat text-2xl"></i> }
+                                                            }}
                                                             { if *completion_status { "Mark Incomplete" } else { "Mark Complete" } }
                                                         </button>
                                                     </div>
@@ -1500,7 +1518,7 @@ pub fn epsiode() -> Html {
                                                 {
                                                     if *completion_status.clone() {
                                                         html! {
-                                                            <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
+                                                            <i class="ph ph-check-circle text-2xl text-green-500 ml-2"></i>
                                                         }
                                                     } else {
                                                         html! {}
@@ -1582,24 +1600,49 @@ pub fn epsiode() -> Html {
                                             if *ep_in_db {
                                                 html! {
                                                     <>
-                                                    <button onclick={handle_play_click} class="play-button">
-                                                        <i class="material-icons">{ if is_playing { "pause" } else { "play_arrow" } }</i>
+                                                    <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2">
+                                                        // <i class="material-icons">{ if is_playing { "pause" } else { "play_arrow" } }</i>
+                                                        { if is_playing {
+                                                            html! { <i class="ph ph-pause text-2xl"></i> }
+                                                        } else {
+                                                            html! { <i class="ph ph-play text-2xl"></i> }
+                                                        }}
                                                         { if is_playing { "Pause" } else { "Play" } }
                                                     </button>
-                                                    <button onclick={toggle_queue} class="queue-button">
-                                                        <i class="material-icons">{ if *queue_status { "playlist_remove" } else { "playlist_add" } }</i>
+                                                    <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2">
+                                                        // <i class="material-icons">{ if *queue_status { "playlist_remove" } else { "playlist_add" } }</i>
+                                                        { if *queue_status {
+                                                            html! { <i class="ph ph-queue text-2xl"></i> }
+                                                        } else {
+                                                            html! { <i class="ph ph-queue text-2xl"></i> }
+                                                        }}
                                                         { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
                                                     </button>
-                                                    <button onclick={toggle_save} class="save-button">
-                                                        <i class="material-icons">{ if *save_status { "favorite" } else { "favorite_border" } }</i>
+                                                    <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2">
+                                                        // <i class="material-icons">{ if *save_status { "favorite" } else { "favorite_border" } }</i>
+                                                        { if *save_status {
+                                                            html! { <i class="ph ph-heart-break text-2xl"></i> }
+                                                        } else {
+                                                            html! { <i class="ph ph-heart text-2xl"></i> }
+                                                        }}
                                                         { if *save_status { "Unsave" } else { "Save" } }
                                                     </button>
-                                                    <button onclick={toggle_download} class="download-button-ep">
-                                                        <i class="material-icons">{ if *download_status { "delete" } else { "download" } }</i>
+                                                    <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2">
+                                                        // <i class="material-icons">{ if *download_status { "delete" } else { "download" } }</i>
+                                                        { if *download_status {
+                                                            html! { <i class="ph ph-trash text-2xl"></i> }
+                                                        } else {
+                                                            html! { <i class="ph ph-download text-2xl"></i> }
+                                                        }}
                                                         { if *download_status { "Remove Download" } else { "Download" } }
                                                     </button>
-                                                    <button onclick={toggle_completion} class="download-button-ep">
-                                                        <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                                    <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2">
+                                                        // <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
+                                                        { if *completion_status {
+                                                            html! { <i class="ph ph-x-circle text-2xl"></i> }
+                                                        } else {
+                                                            html! { <i class="ph ph-check-fat text-2xl"></i> }
+                                                        }}
                                                         { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
                                                     </button>
                                                     </>

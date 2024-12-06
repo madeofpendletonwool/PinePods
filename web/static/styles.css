@@ -128,7 +128,7 @@ body {
 }
 
 .drawer-icon {
-    z-index: 1100;
+    z-index: 49;
     /* Higher than the search bar's z-index */
     position: fixed;
     top: 13px;
@@ -241,8 +241,32 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100vh;
+    margin-top: 4rem; /* Adds spacing from the top */
+    padding: 2rem; /* Adds some padding around the content */
     text-align: center;
+}
+
+.empty-episodes-container .logo {
+    width: 96px; /* Fixed size for the logo */
+    height: 96px;
+    margin-bottom: 1.5rem; /* Spacing between logo and text */
+}
+
+.empty-episodes-container .page-paragraphs {
+    max-width: 600px; /* Constrains text width for better readability */
+    margin: 0.75rem 0; /* Vertical spacing between text elements */
+}
+
+.empty-episodes-container h1.page-paragraphs {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.empty-episodes-container p.page-paragraphs {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text-color-secondary, #666);
 }
 
 .episodes-container {
@@ -665,9 +689,9 @@ input[type="range"]::-moz-range-thumb {
 
 .audio-player .top-section .retract-button {
     position: absolute;
-    top: 70px;
+    top: 25px;
     /* Adjust as needed */
-    left: 25px;
+    left: 45px;
     /* Adjust as needed */
     border: none;
     /* Remove the border */
@@ -993,6 +1017,17 @@ input[type="range"]::-moz-range-thumb {
     }
 }
 
+.top-section {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    height: 100vh;
+    background: var(--background-color);
+}
+
 .audio-player .artwork {
     width: 40px;
     /* Adjust as needed */
@@ -1238,6 +1273,24 @@ input[type="range"]::-moz-range-thumb {
     display: block; /* Makes the button block-level to use margin auto */
     margin-left: auto; /* Centers the button horizontally */
     margin-right: auto; /* Centers the button horizontally */
+}
+
+.text-primary {
+    color: var(--accent-color);
+}
+
+.checked\:bg-primary:checked {
+    background-color: var(--accent-color);
+}
+
+.checked\:border-primary:checked {
+    border-color: var(--accent-color);
+}
+
+/* Customize the focus ring */
+.focus\:ring-primary:focus {
+    --tw-ring-color: var(--accent-color);
+    --tw-ring-opacity: 0.2;
 }
 
 .download-button:hover {
@@ -1655,11 +1708,6 @@ input[type="range"]::-moz-range-thumb {
     border-color: var(--text-secondary-color);
 }
 
-.item-container-button.selector-button:hover {
-    background-color: var(--hover-color);
-    /* Replace #your-hover-color with your desired color */
-}
-
 .item-header-details {
     text-align: center;
     display: flex;
@@ -1668,6 +1716,14 @@ input[type="range"]::-moz-range-thumb {
 .item-header-pod {
     text-align: center;
     color: var(--text-color);
+}
+
+.episode-single-desc {
+    overflow-y: auto;
+    padding-bottom: calc(
+        80px + 1rem
+    ); /* Audio player height (typically around 80px) plus some padding */
+    margin-bottom: 18px; /* Match the audio player height */
 }
 
 /* Media query for smaller screens */
@@ -1679,6 +1735,69 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @media (max-width: 768px) {
+    .header-info {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 20px; /* Space between the elements */
+        margin: 8px auto;
+        padding: 12px;
+        max-width: 90%;
+        flex-wrap: wrap; /* Allow wrapping on very small screens */
+        text-align: center;
+    }
+
+    /* Remove the individual padding/margin from these elements since they're now handled by the container */
+    .header-info .item-container-button,
+    .header-info .scroll-container {
+        padding: 0;
+        margin: 0;
+    }
+
+    /* Make sure the dropdown content still works as expected */
+    .scroll-container {
+        position: relative; /* Ensure dropdown positioning works */
+        white-space: nowrap;
+        overflow: visible; /* Allow dropdown to overflow */
+    }
+
+    .item-header-pod {
+        margin: 8px auto; /* Center the header */
+        max-width: 90%; /* Don't stretch full width */
+        border-radius: 12px;
+        background: var(--button-background, rgba(0, 0, 0, 0.05));
+        transition: all 0.2s ease;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        background: var(--button-background, rgba(0, 0, 0, 0.05));
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        font-size: 1.2rem; /* Larger text */
+        font-weight: 600;
+    }
+
+    .item-header-pod:active {
+        transform: translateY(1px);
+        background: var(--button-hover-background, rgba(0, 0, 0, 0.08));
+    }
+
+    /* Add subtle hover effect */
+    .item-header-pod:hover {
+        background: var(--button-hover-background, rgba(0, 0, 0, 0.08));
+    }
+
+    /* Add a subtle indicator that it's clickable */
+    .item-header-pod::after {
+        content: "›";
+        font-size: 24px;
+        opacity: 0.5;
+        margin-left: 8px;
+    }
+
     .mobile-layout .button-container {
         display: flex;
         flex-direction: row;
@@ -1755,61 +1874,78 @@ input[type="range"]::-moz-range-thumb {
     .mobile-layout .button-row {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 10px;
-        /* Adjust spacing as needed */
+        gap: 8px;
+        background: var(--background-color);
+        border-radius: 8px;
+        padding: 4px;
+    }
+
+    .mobile-layout .button-row button {
+        flex: 1;
+        padding: 12px 8px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        background: var(--button-background, rgba(0, 0, 0, 0.05));
+        border: none !important; /* Force remove any borders */
+        outline: none !important; /* Remove outline as well */
     }
 
     .mobile-layout .episode-action-buttons {
         display: flex;
         flex-direction: column;
-        /* Stack button rows vertically */
-        gap: 10px;
-        /* Adjust gap as needed */
+        gap: 8px;
+        padding: 8px;
+        background: transparent; /* Make container background transparent */
+        border-radius: 12px;
+        margin-top: 8px;
     }
 
-    .button-row button {
-        flex: 1;
-        /* Ensure buttons take equal space */
-        position: relative;
-        border: none;
-        /* Remove default button border */
-    }
-
+    /* Remove the vertical lines between buttons */
     .button-row button:not(:last-child)::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: 1px;
-        background-color: var(--text-color);
-        /* Adjust color and transparency as needed */
+        display: none;
     }
 
-    .button-row {
-        position: relative;
-    }
-
-    .button-row::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 1px;
-        background-color: var(--text-color);
-        /* Adjust color and transparency as needed */
-    }
-
+    /* Remove horizontal lines */
+    .button-row::before,
     .button-row::after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 1px;
-        background-color: var(--text-color);
-        /* Adjust color and transparency as needed */
+        display: none;
+    }
+
+    /* Add hover effects */
+    .button-row button:hover {
+        background: var(--button-hover-background, rgba(0, 0, 0, 0.1));
+        transform: translateY(-1px);
+    }
+
+    .button-row button:active {
+        transform: translateY(0px);
+    }
+
+    /* Specific button styles */
+    .play-button {
+        background: var(--primary-color, #3b82f6) !important;
+        color: white !important;
+    }
+
+    .queue-button {
+        background: var(--secondary-color, #8b5cf6) !important;
+        color: white !important;
+    }
+
+    .save-button {
+        background: var(--accent-color, #ef4444) !important;
+        color: white !important;
+    }
+
+    .download-button-ep {
+        background: var(--success-color, #10b981) !important;
+        color: white !important;
+    }
+
+    /* Icon adjustments */
+    .button-row button i {
+        margin-right: 4px;
+        vertical-align: middle;
     }
 
     .mobile-layout .item-header-description {
@@ -1901,7 +2037,6 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .icon-space {
-    transform: translateY(4px);
     margin-right: 10px;
 }
 
@@ -2075,6 +2210,29 @@ button.item-container-action-button.item-container-action-button {
     border-width: 1px;
 }
 
+.tab-base {
+    @apply px-6 py-3 font-medium transition-all relative;
+}
+
+.tab-hightlight-colors {
+    color: var(--text-color);
+    background-color: var(--accent-color);
+}
+
+.tab-unselect-colors {
+    color: var(--text-color);
+    background-color: var(--secondary-background);
+}
+
+.tab-active {
+    @apply text-accent-color;
+}
+
+.tab-active::after {
+    content: "";
+    @apply absolute bottom-0 left-0 w-full h-0.5 bg-accent-color;
+}
+
 /* Specific targeting for first and last accordion item */
 #accordion-collapse > :first-child > button {
     border-top-left-radius: 0.75rem;
@@ -2109,6 +2267,42 @@ button.item-container-action-button.item-container-action-button {
     /* Define height */
 }
 
+/* Accordion styling */
+.accordion-container {
+    @apply border-0; /* Remove default borders */
+}
+
+.accordion-button {
+    @apply w-full px-6 py-4 flex items-center justify-between transition-colors hover:bg-opacity-5 hover:bg-white;
+}
+
+.accordion-content {
+    @apply px-6 py-4 bg-opacity-5 bg-black;
+}
+
+.accordion-arrow {
+    @apply w-5 h-5 transition-transform duration-200 text-accent-color;
+}
+
+/* Remove the hover circle and replace with subtle background */
+.accordion-button:hover::before {
+    display: none;
+}
+
+/* Setting box container */
+.setting-box {
+    @apply bg-transparent border-0 shadow-none;
+}
+
+/* First and last items */
+.accordion-container:first-child .accordion-button {
+    @apply rounded-t-xl;
+}
+
+.accordion-container:last-child .accordion-button {
+    @apply rounded-b-xl;
+}
+
 .hosts-arrow {
     margin-bottom: 0.2rem;
     margin-left: 0.5rem;
@@ -2138,6 +2332,10 @@ button.item-container-action-button.item-container-action-button {
     /* Ensure it's visible above the button background but below text/icons */
 }
 
+.accordion-button {
+    @apply w-full px-6 py-4 flex items-center justify-between transition-colors hover:bg-opacity-5 hover:bg-white;
+}
+
 /* Styles for the select dropdown */
 .theme-select-dropdown {
     background-color: var(--background-color);
@@ -2152,6 +2350,10 @@ button.item-container-action-button.item-container-action-button {
 .theme-select-dropdown:focus {
     outline-color: var(--dropdown-focus-outline-color);
     box-shadow: 0 0 0 3px var(--dropdown-focus-shadow-color);
+}
+
+.tab-background {
+    background-color: var(--secondary-background);
 }
 
 /* Styles for the dropdown arrow */
@@ -2698,12 +2900,6 @@ button.item-container-action-button.item-container-action-button {
     align-items: center;
     text-align: center;
     width: 100%;
-}
-
-.episode-action-buttons .play-button {
-    position: relative;
-    top: -2px;
-    /* Adjust this value as needed */
 }
 
 .episode-action-buttons i.material-icons {

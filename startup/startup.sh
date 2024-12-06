@@ -78,6 +78,7 @@ fi
 echo "Database Validation complete"
 # Periodic refresh
 echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1" | crontab -
+echo "0 0 * * * /pinepods/startup/call_nightly_tasks.sh >/dev/null 2>&1" | crontab -
 # Fix permissions on exim email server folders
 mkdir -p /var/log/exim4
 mkdir -p /var/spool/exim4

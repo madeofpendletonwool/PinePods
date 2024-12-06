@@ -583,7 +583,7 @@ pub fn downloads() -> Html {
                     onclick={online_button}
                     class="download-button font-bold py-2 px-4 rounded inline-flex items-center w-full justify-center"
                 >
-                    <span class="material-icons mr-2">{"cloud"}</span>
+                    <i class="ph ph-cloud text-2xl"></i>
                     <span>{"Switch to Online Mode (Sign In Required)"}</span>
                 </button>
             </div>
@@ -622,8 +622,8 @@ pub fn downloads() -> Html {
                                             html! {
                                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                                                     onclick={delete_mode_enable.clone()}>
-                                                    <span class="material-icons icon-space">{"check_box"}</span>
-                                                    <span class="text-lg">{"Select Multiple"}</span>
+                                                    <i class="ph ph-lasso text-2xl"></i>
+                                                    <span class="text-lg ml-2">{"Select Multiple"}</span>
                                                 </button>
                                             }
                                         } else {
@@ -631,13 +631,13 @@ pub fn downloads() -> Html {
                                                 <>
                                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                                                     onclick={delete_mode_disable.clone()}>
-                                                    <span class="material-icons icon-space">{"cancel"}</span>
-                                                    <span class="text-lg">{"Cancel"}</span>
+                                                    <i class="ph ph-prohibit text-2xl"></i>
+                                                    <span class="text-lg ml-2">{"Cancel"}</span>
                                                 </button>
                                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                                                     onclick={delete_selected_episodes.clone()}>
-                                                    <span class="material-icons icon-space">{"delete"}</span>
-                                                    <span class="text-lg">{"Delete"}</span>
+                                                    <i class="ph ph-trash text-2xl"></i>
+                                                    <span class="text-lg ml-2">{"Delete"}</span>
                                                 </button>
                                                 </>
                                             }

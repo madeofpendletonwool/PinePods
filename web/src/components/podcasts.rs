@@ -71,19 +71,16 @@ fn render_layout_toggle(
         };
     });
 
+    let (icon, text) = match current_layout {
+        Some(PodcastLayout::List) => ("ph ph-squares-four", "Grid"),
+        Some(PodcastLayout::Grid) => ("ph ph-list-dashes", "List"),
+        None => ("ph ph-list-dashes", "List"),
+    };
+
     html! {
-        <button
-            class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-            onclick={onclick}
-        >
-            <span class="material-icons icon-space">
-                {match current_layout {
-                    Some(PodcastLayout::List) => "grid_view",
-                    Some(PodcastLayout::Grid) => "view_list",
-                    None => "view_list",
-                }}
-            </span>
-            <span class="text-lg">{"Layout"}</span>
+        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" {onclick}>
+            <i class={classes!(icon, "text-2xl")}></i>
+            <span class="text-lg ml-2">{text}</span>
         </button>
     }
 }
@@ -193,7 +190,7 @@ fn render_podcasts(
                                     style="width: 60px; height: 60px;"
                                     onclick={toggle_delete.reform(move |_| podcast_id_loop)}  // Use toggle_delete instead of direct state mutation
                                 >
-                                    <span class="material-icons">{"delete"}</span>
+                                    <i class="ph ph-trash text-3xl"></i>
                                 </button>
                             </div>
                         }
@@ -721,16 +718,16 @@ pub fn podcasts() -> Html {
                 html! {
                     <div>
                         <div class="flex justify-between">
-                            <div>
+                            <div class="flex gap-4">
                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_filter_dropdown}>
-                                    <span class="material-icons icon-space">{"filter_alt"}</span>
-                                    <span class="text-lg">{"Filter"}</span>
+                                    <i class="ph ph-funnel text-2xl"></i>
+                                    <span class="text-lg ml-2">{"Filter"}</span>
                                 </button>
                                 {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
                             </div>
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_custom_modal}>
-                                <span class="material-icons icon-space">{"add_box"}</span>
-                                <span class="text-lg">{"Add Custom Feed"}</span>
+                                <i class="ph ph-plus-circle text-2xl"></i>
+                                <span class="text-lg ml-2">{"Custom Feed"}</span>
                             </button>
                         </div>
                     </div>
@@ -742,8 +739,8 @@ pub fn podcasts() -> Html {
                         <div class="filter-container flex items-center space-x-4">
                             // Clear Filter button
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={clear_filter}>
-                                <span class="material-icons icon-space">{"clear"}</span>
-                                <span class="text-lg">{"Clear Filter"}</span>
+                                <i class="ph ph-broom text-2xl"></i>
+                                <span class="text-lg ml-2">{"Clear Filter"}</span>
                             </button>
                             // Category dropdown
                             <div class="filter-dropdown font-bold rounded">

@@ -4112,6 +4112,47 @@ async def api_return_person_episodes(
             detail="You can only view episodes for your own subscriptions!"
         )
 
+@app.get("/api/data/refresh_hosts")
+async def refresh_all_hosts(
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection), is_admin: bool = Depends(check_if_admin),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Refresh episodes for all subscribed hosts"""
+    # Verify it's the system/web API key
+    if api_key != base_webkey.web_key:
+        raise HTTPException(status_code=403, detail="This endpoint requires system API key")
+
+    try:
+        cursor = cnx.cursor()
+        # Get all unique people that users are subscribed to
+        cursor.execute("""
+            SELECT DISTINCT p.PersonID, p.Name, p.UserID
+            FROM "People" p
+        """)
+        subscribed_hosts = cursor.fetchall()
+
+        if not subscribed_hosts:
+            return {"message": "No subscribed hosts found"}
+
+        # Process each host in the background
+        for person_id, person_name, user_id in subscribed_hosts:
+            background_tasks.add_task(
+                process_person_subscription_task,
+                user_id,
+                person_id,
+                person_name
+            )
+
+        return {
+            "message": f"Refresh initiated for {len(subscribed_hosts)} hosts",
+            "hosts": [name for _, name, _ in subscribed_hosts]
+        }
+
+    except Exception as e:
+        logging.error(f"Error refreshing hosts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 class PersonSubscribeRequest(BaseModel):
     person_name: str
     person_img: str
@@ -4194,6 +4235,7 @@ async def process_person_subscription(
     cnx
 ) -> None:
     """Async function to process person subscription and gather their shows"""
+    print(f"Starting refresh for host: {person_name} (ID: {person_id})")
     try:
         # Set of unique shows (title, feed_url, feed_id)
         processed_shows: Set[Tuple[str, str, int]] = set()

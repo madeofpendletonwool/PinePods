@@ -208,43 +208,73 @@ pub fn import_options() -> Html {
             {
                 if *show_verification {
                     html! {
-                        <div class="import-box">
-                            <div>
+                        <div class="import-box space-y-6">
+                            <div class="space-y-4">
                                 <p class="item_container-text">
                                     {"The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. The loading animation will disappear once all complete. Be patient!"}
                                 </p>
-                                <button class="settings-button" onclick={on_confirm}>{"Add them!"}</button>
+                                <button class="settings-button flex items-center gap-2" onclick={on_confirm}>
+                                    <i class="ph ph-download-simple text-xl"></i>
+                                    {"Add them!"}
+                                </button>
                             </div>
-                            <div class="mt-4">
-                                <p class="item_container-text">
-                                    {format!("Progress: {}/{}", *import_progress, *total_podcasts)}
-                                </p>
-                                <p class="item_container-text">
-                                    {format!("Currently importing: {}", *current_podcast)}
-                                </p>
+
+                            // Progress section with improved styling
+                            <div class="bg-opacity-10 bg-white p-4 rounded-lg border border-opacity-20 space-y-3">
+                                <div class="flex justify-between items-center">
+                                    <span class="item_container-text text-sm">{"Import Progress"}</span>
+                                    <span class="item_container-text text-lg font-semibold">
+                                        {format!("{}/{}", *import_progress, *total_podcasts)}
+                                    </span>
+                                </div>
+
+                                // Progress bar
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div class="bg-pink-500 h-2.5 rounded-full transition-all duration-300"
+                                         style={format!("width: {}%", (*import_progress as f32 / *total_podcasts as f32 * 100.0))}>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <i class="ph ph-sync text-lg animate-spin"></i>
+                                    <span class="item_container-text text-sm opacity-80">
+                                        {format!("Currently importing: {}", *current_podcast)}
+                                    </span>
+                                </div>
                             </div>
-                            {
-                                for (*import_pods).iter().enumerate().map(|(index, podcast)| {
-                                    let toggle_selection = {
-                                        let import_pods = import_pods.clone();
-                                        Callback::from(move |_| {
-                                            let mut new_import_pods = (*import_pods).clone();
-                                            new_import_pods[index].selected = !new_import_pods[index].selected;
-                                            import_pods.set(new_import_pods);
-                                        })
-                                    };
 
-                                    html! {
-                                        <div class="podcast import-list">
-                                            <label onclick={toggle_selection}>
-                                                <input type="checkbox" checked={podcast.selected} />
-                                                <span class="item_container-text">{format!("{} - {}", podcast.title, podcast.xml_url)}</span>
-                                            </label>
-                                        </div>
-                                    }
-                                })
+                            // Podcast list
+                            <div class="space-y-2">
+                                {
+                                    for (*import_pods).iter().enumerate().map(|(index, podcast)| {
+                                        let toggle_selection = {
+                                            let import_pods = import_pods.clone();
+                                            Callback::from(move |_| {
+                                                let mut new_import_pods = (*import_pods).clone();
+                                                new_import_pods[index].selected = !new_import_pods[index].selected;
+                                                import_pods.set(new_import_pods);
+                                            })
+                                        };
 
-                            }
+                                        html! {
+                                            <div class="podcast import-list p-3 hover:bg-opacity-10 hover:bg-white rounded-lg transition-all">
+                                                <label class="flex items-center gap-3 cursor-pointer w-full" onclick={toggle_selection}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={podcast.selected}
+                                                        class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
+                                                        before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
+                                                    />
+                                                    <div class="space-y-1 flex-1">
+                                                        <span class="item_container-text font-medium block">{&podcast.title}</span>
+                                                        <span class="item_container-text text-sm opacity-60 block">{&podcast.xml_url}</span>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        }
+                                    })
+                                }
+                            </div>
                         </div>
                     }
                 } else {

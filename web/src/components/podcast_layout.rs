@@ -360,7 +360,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // let button_text = if is_added { "Remove" } else { "Add" };
     // let button_class = if is_added { "bg-red-500" } else { "bg-blue-500" };
     let is_added = added_podcasts.contains(&podcast.url);
-    let button_text = if is_added { "delete" } else { "add" };
+    let button_text = if is_added { "trash" } else { "plus-circle" };
 
     let on_title_click = {
         let dispatch = dispatch.clone();
@@ -489,11 +489,11 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
                         <button
-                            class={format!("item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8")}
-                            style="width: 60px; height: 60px;"
+                            class={format!("item-container-button selector-button font-bold rounded-full self-center mr-8 flex items-center justify-center")}
+                            style="width: 180px; height: 180px;"
                             onclick={toggle_podcast}
                         >
-                            <span class="material-icons">{ button_text }</span>
+                            <i class={format!("ph ph-{} text-4xl", button_text)}></i>
                         </button>
                     </div>
                 }
