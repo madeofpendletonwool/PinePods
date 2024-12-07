@@ -1550,9 +1550,8 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                             {props.format_release.clone()}
                         </p>
                     </div>
-                    <button onclick={props.on_close.clone()}
-                            class="hover:opacity-75 flex-shrink-0">
-                        <span class="material-icons item_container-text">{"close"}</span>
+                    <button onclick={props.on_close.clone()} class="hover:opacity-75 flex-shrink-0 item_container-text">
+                        <i class="ph ph-arrow-u-left-down text-2xl"></i>
                     </button>
                 </div>
 

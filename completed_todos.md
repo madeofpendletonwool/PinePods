@@ -23,6 +23,7 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Make playing episode on every page dynamically update play/pause
 - [] Theme updates on change settings page. Auto fills correct theme on dropdown
 - [] Make virtual lines work for saved, queue, downloads, local downloads, and history
+- [] Display Listen time on the episodes layout page
 - [] Implement additional filtering in podcasts
 - [] Implement episode filtering on episode layout page
 - [] Implement episode filtering on history page
@@ -84,8 +85,6 @@ Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
 - [] A podcast that doesn't open: tested
-- [] Replace material icons on episode layout page
-- [] Podcasts page layout defaults to list but the icon also starts as list, it should start as grid
 
 Version 0.7.0
 

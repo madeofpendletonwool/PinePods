@@ -24,8 +24,8 @@ use yewdux::prelude::*;
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
 pub enum PodcastLayout {
     #[default]
-    List,
     Grid,
+    List,
 }
 
 enum AppStateMsg {
@@ -186,7 +186,7 @@ fn render_podcasts(
                                     <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
                                 </div>
                                 <button
-                                    class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
+                                    class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
                                     style="width: 60px; height: 60px;"
                                     onclick={toggle_delete.reform(move |_| podcast_id_loop)}  // Use toggle_delete instead of direct state mutation
                                 >
@@ -292,6 +292,16 @@ pub fn podcasts() -> Html {
             });
         }
 
+        || ()
+    });
+
+    let dispatch_layout = dispatch.clone();
+    use_effect_with((), move |_| {
+        dispatch_layout.reduce_mut(|state| {
+            if state.podcast_layout.is_none() {
+                state.podcast_layout = Some(PodcastLayout::Grid);
+            }
+        });
         || ()
     });
 
