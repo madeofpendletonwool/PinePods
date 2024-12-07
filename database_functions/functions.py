@@ -1071,7 +1071,7 @@ def return_person_episodes(database_type, cnx, user_id: int, person_id: int):
         if database_type == "postgresql":
             query = """
             SELECT
-                pe.EpisodeID,
+                e.EpisodeID,  -- Will be NULL if no match in Episodes table
                 pe.EpisodeTitle,
                 pe.EpisodeDescription,
                 pe.EpisodeURL,
@@ -1119,71 +1119,73 @@ def return_person_episodes(database_type, cnx, user_id: int, person_id: int):
             FROM "PeopleEpisodes" pe
             INNER JOIN "People" pp ON pe.PersonID = pp.PersonID
             INNER JOIN "Podcasts" p ON pe.PodcastID = p.PodcastID
+            LEFT JOIN "Episodes" e ON e.EpisodeURL = pe.EpisodeURL AND e.PodcastID = pe.PodcastID
             LEFT JOIN (
                 SELECT * FROM "SavedEpisodes" WHERE UserID = %s
-            ) s ON s.EpisodeID = pe.EpisodeID
+            ) s ON s.EpisodeID = e.EpisodeID
             LEFT JOIN (
                 SELECT * FROM "DownloadedEpisodes" WHERE UserID = %s
-            ) d ON d.EpisodeID = pe.EpisodeID
+            ) d ON d.EpisodeID = e.EpisodeID
             LEFT JOIN (
                 SELECT * FROM "UserEpisodeHistory" WHERE UserID = %s
-            ) h ON h.EpisodeID = pe.EpisodeID
+            ) h ON h.EpisodeID = e.EpisodeID
             WHERE pe.PersonID = %s
             AND pe.EpisodePubDate >= NOW() - INTERVAL '30 days'
-            ORDER BY pe.EpisodePubDate DESC
+            ORDER BY pe.EpisodePubDate DESC;
             """
         else:
             query = """
-                SELECT
-                    pe.EpisodeID,
-                    pe.EpisodeTitle,
-                    pe.EpisodeDescription,
-                    pe.EpisodeURL,
-                    COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as EpisodeArtwork,
-                    pe.EpisodePubDate,
-                    pe.EpisodeDuration,
-                    p.PodcastName,
-                    IF(
-                        EXISTS(
-                            SELECT 1 FROM Podcasts
-                            WHERE PodcastID = pe.PodcastID
-                            AND UserID = %s
-                        ),
-                        IF(s.EpisodeID IS NOT NULL, TRUE, FALSE),
-                        FALSE
-                    ) AS Saved,
-                    IF(
-                        EXISTS(
-                            SELECT 1 FROM Podcasts
-                            WHERE PodcastID = pe.PodcastID
-                            AND UserID = %s
-                        ),
-                        IF(d.EpisodeID IS NOT NULL, TRUE, FALSE),
-                        FALSE
-                    ) AS Downloaded,
-                    IF(
-                        EXISTS(
-                            SELECT 1 FROM Podcasts
-                            WHERE PodcastID = pe.PodcastID
-                            AND UserID = %s
-                        ),
-                        COALESCE(h.ListenDuration, 0),
-                        0
-                    ) AS ListenDuration
-                FROM PeopleEpisodes pe
-                INNER JOIN People pp ON pe.PersonID = pp.PersonID
-                INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
-                LEFT JOIN (
-                    SELECT * FROM SavedEpisodes WHERE UserID = %s
-                ) s ON s.EpisodeID = pe.EpisodeID
-                LEFT JOIN (
-                    SELECT * FROM DownloadedEpisodes WHERE UserID = %s
-                ) d ON d.EpisodeID = pe.EpisodeID
-                LEFT JOIN (
-                    SELECT * FROM UserEpisodeHistory WHERE UserID = %s
-                ) h ON h.EpisodeID = pe.EpisodeID
-                WHERE pe.PersonID = %s
-                ORDER BY pe.EpisodePubDate DESC
+            SELECT
+                e.EpisodeID,  -- Will be NULL if no match in Episodes table
+                pe.EpisodeTitle,
+                pe.EpisodeDescription,
+                pe.EpisodeURL,
+                COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as EpisodeArtwork,
+                pe.EpisodePubDate,
+                pe.EpisodeDuration,
+                p.PodcastName,
+                IF(
+                    EXISTS(
+                        SELECT 1 FROM Podcasts
+                        WHERE PodcastID = pe.PodcastID
+                        AND UserID = %s
+                    ),
+                    IF(s.EpisodeID IS NOT NULL, TRUE, FALSE),
+                    FALSE
+                ) AS Saved,
+                IF(
+                    EXISTS(
+                        SELECT 1 FROM Podcasts
+                        WHERE PodcastID = pe.PodcastID
+                        AND UserID = %s
+                    ),
+                    IF(d.EpisodeID IS NOT NULL, TRUE, FALSE),
+                    FALSE
+                ) AS Downloaded,
+                IF(
+                    EXISTS(
+                        SELECT 1 FROM Podcasts
+                        WHERE PodcastID = pe.PodcastID
+                        AND UserID = %s
+                    ),
+                    COALESCE(h.ListenDuration, 0),
+                    0
+                ) AS ListenDuration
+            FROM PeopleEpisodes pe
+            INNER JOIN People pp ON pe.PersonID = pp.PersonID
+            INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+            LEFT JOIN Episodes e ON e.EpisodeURL = pe.EpisodeURL AND e.PodcastID = pe.PodcastID
+            LEFT JOIN (
+                SELECT * FROM SavedEpisodes WHERE UserID = %s
+            ) s ON s.EpisodeID = e.EpisodeID
+            LEFT JOIN (
+                SELECT * FROM DownloadedEpisodes WHERE UserID = %s
+            ) d ON d.EpisodeID = e.EpisodeID
+            LEFT JOIN (
+                SELECT * FROM UserEpisodeHistory WHERE UserID = %s
+            ) h ON h.EpisodeID = e.EpisodeID
+            WHERE pe.PersonID = %s
+            ORDER BY pe.EpisodePubDate DESC;
             """
 
         cursor.execute(query, (user_id,) * 6 + (person_id,))
@@ -2248,7 +2250,6 @@ def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
 
 def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
     cursor = cnx.cursor()
-    logging.error(f"Error retrieving DownloadedLocation: {podcast_id}, {user_id}")
     try:
         if database_type == "postgresql":
             query = """
@@ -2256,12 +2257,13 @@ def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
                 FROM "Podcasts"
                 WHERE PodcastID = %s AND UserID = %s
             """
-        else:  # MySQL or MariaDB
+        else:
             query = """
                 SELECT StartSkip, EndSkip
                 FROM Podcasts
                 WHERE PodcastID = %s AND UserID = %s
             """
+
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
 
@@ -2270,7 +2272,9 @@ def get_auto_skip_times(cnx, database_type, podcast_id, user_id):
                 return result.get("startskip"), result.get("endskip")
             elif isinstance(result, tuple):
                 return result[0], result[1]
-        return None, None
+
+        # If no result found (user isn't subscribed), return default values
+        return 0, 0
     finally:
         cursor.close()
 

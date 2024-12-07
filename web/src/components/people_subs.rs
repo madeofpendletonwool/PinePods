@@ -417,7 +417,6 @@ fn render_host_with_episodes(
                             let server_name_play = server_name.clone();
                             let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
-                            let is_local = Option::from(true);
 
                             let date_format = match_date_format(state.date_format.as_deref());
                             let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
@@ -438,7 +437,7 @@ fn render_host_with_episodes(
                                 server_name_play.unwrap(),
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
-                                is_local,
+                                None,
                             );
 
                             let on_shownotes_click = on_shownotes_click(

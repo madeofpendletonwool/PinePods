@@ -1659,7 +1659,6 @@ pub fn episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -1825,7 +1824,6 @@ pub fn virtual_episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -1990,7 +1988,6 @@ pub fn download_episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -2171,7 +2168,6 @@ pub fn queue_episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}

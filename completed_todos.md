@@ -34,6 +34,8 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Updating which chapter is currently playing to switch to a pause button
 - [] Functional back button - Along with ensuring browser backs, and phone backs react correctly
 - [] While host search occurs the server is unresponsive
+- [] On Episode page reload or navigate direct with link it starts with a cutoff non-html description
+
 
 
 - [] Full Screen Episode should have clickable podcast header to open pod page
@@ -73,16 +75,17 @@ People stuff left:
 - [] Double check the whole workflow
   - [x] Add host in podpeople
   - [x] Add host in podndex person tag
-  - [] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
-  - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
-  - [] Fix description modals on sub people episodes
+  - [x] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
+  - [x] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
+  - [] Handle situation on people subs page when playing episode from podcast not in Episodes table
   - [] Check entire workflow and 0.7.0 with mysql/mariadb
 
 Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
 - [] A podcast that doesn't open: tested
-- [] People page replace material
+- [] Replace material icons on episode layout page
+- [] Podcasts page layout defaults to list but the icon also starts as list, it should start as grid
 
 Version 0.7.0
 
@@ -94,7 +97,7 @@ Version 0.7.0
 - [x] Added Valkey to make many processes faster
 - [x] People Table with background jobs to update people found in podcasts
 - [x] Subscribe to people
-- [] Add loading spinner when adding podcast via people page
+- [x] Add loading spinner when adding podcast via people page
 - [x] Four new themes added
 - [x] People page dropdowns on podcasts and episodes
 - [x] Stop issues with timeouts on occation with mobile apps - Potentially fixed due to audio file caching. Testing needed
