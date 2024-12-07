@@ -1,6 +1,6 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    empty_message, episode_item, on_shownotes_click, Search_nav, UseScrollToTop,
+    empty_message, on_shownotes_click, virtual_episode_item, Search_nav, UseScrollToTop,
 };
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
@@ -466,7 +466,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         .unwrap_or(&vec![])
         .contains(&props.episode.episodeid);
 
-    let item = episode_item(
+    let item = virtual_episode_item(
         Box::new(props.episode.clone()),
         sanitize_html_with_blank_target(&props.episode.episodedescription),
         desc_expanded,

@@ -33,6 +33,8 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Implement episode filtering on search page
 - [] Updating which chapter is currently playing to switch to a pause button
 - [] Functional back button - Along with ensuring browser backs, and phone backs react correctly
+- [] While host search occurs the server is unresponsive
+
 
 - [] Full Screen Episode should have clickable podcast header to open pod page
 
@@ -80,11 +82,12 @@ Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
 - [] A podcast that doesn't open: tested
+- [] People page replace material
 
 Version 0.7.0
 
 - [x] Android App
-- [x] Flatpak Clien
+- [x] Flatpak Client
 - [x] Snap Client
 - [x] aur client
 
@@ -116,6 +119,9 @@ Version 0.7.0
 - [x] Improved the playback and volume dropdowns so they don't interact with the rest of the page now
 - [x] Added some box shadow to the episode image in the full screen player
 - [x] When playing an episode <- and -> arrow keys skips forward and back for the playback now
+- [x] Layout improved all over the place
+- [x] Phosphor icons implemented as opposed to material
+- [x] Settings page layout rebuilt
 
 Version 0.6.6
 

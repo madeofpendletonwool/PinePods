@@ -35,12 +35,17 @@ pub fn subscribed_people() -> Html {
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
+    let active_modal = use_state(|| None::<i32>);
     let show_modal = use_state(|| false);
-    let show_clonedal = show_modal.clone();
-    let show_clonedal2 = show_modal.clone();
-    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
-
-    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
+    let active_clonedal = active_modal.clone();
+    let active_modal_clone = active_modal.clone();
+    let on_modal_open = Callback::from(move |episode_id: i32| {
+        active_modal_clone.set(Some(episode_id));
+    });
+    let active_modal_clone = active_modal.clone();
+    let on_modal_close = Callback::from(move |_| {
+        active_modal_clone.set(None);
+    });
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -229,6 +234,7 @@ pub fn subscribed_people() -> Html {
     let render_audio = audio_state.clone();
     let render_people = {
         let people = people.clone();
+        let active_clonedal = active_clonedal.clone();
         move || {
             if people.is_empty() {
                 html! {
@@ -242,6 +248,7 @@ pub fn subscribed_people() -> Html {
                     <div>
                     {
                         people.into_iter().map(|person| {
+                            let active_modal = active_clonedal.clone();
                             let is_expanded = *expanded_state.get(&person.person.personid).unwrap_or(&false);
                             html! {
                                 <div key={person.person.personid}>
@@ -259,6 +266,7 @@ pub fn subscribed_people() -> Html {
                                         *show_modal,
                                         on_modal_open.clone(),
                                         on_modal_close.clone(),
+                                        active_modal,
                                     )}
                                 </div>
                             }
@@ -349,8 +357,9 @@ fn render_host_with_episodes(
     desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
     show_modal: bool,
-    on_modal_open: Callback<MouseEvent>,
+    on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
+    active_modal: UseStateHandle<Option<i32>>,
 ) -> Html {
     let episode_count = episodes.len();
     let history_clone = BrowserHistory::new();
@@ -465,6 +474,7 @@ fn render_host_with_episodes(
                                     });
                                 })
                             };
+                            let show_modal = *active_modal == Some(episode.episodeid);
                             person_episode_item(
                                 Box::new(episode.clone()),
                                 sanitize_html_with_blank_target(&episode.episodedescription),

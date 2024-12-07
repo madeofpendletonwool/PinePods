@@ -789,35 +789,31 @@ def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, fee
         if database_type == "postgresql":
             cursor.execute("BEGIN")
 
+        # Get existing episode IDs before processing
+        if database_type == "postgresql":
+            existing_query = """
+                SELECT EpisodeID FROM "PeopleEpisodes"
+                WHERE PersonID = %s::integer
+                AND PodcastID = %s::integer
+            """
+        else:
+            existing_query = """
+                SELECT EpisodeID FROM PeopleEpisodes
+                WHERE PersonID = %s
+                AND PodcastID = %s
+            """
+
+        cursor.execute(existing_query, (person_id, podcast_id))
+        existing_episodes = {row[0] for row in cursor.fetchall()}
+
+        # Track which episodes we process
+        processed_episodes = set()
+
         for entry in content.entries:
             if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]):
                 continue
 
-            # Extract episode information
-            parsed_title = entry.title
-            parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
-            parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
-            parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
-            parsed_artwork_url = (entry.get('itunes_image', {}).get('href') or
-                                getattr(entry, 'image', {}).get('href'))
-
-            # Duration parsing
-            parsed_duration = 0
-            duration_str = getattr(entry, 'itunes_duration', '')
-            if ':' in duration_str:
-                time_parts = list(map(int, duration_str.split(':')))
-                while len(time_parts) < 3:
-                    time_parts.insert(0, 0)
-                h, m, s = time_parts
-                parsed_duration = h * 3600 + m * 60 + s
-            elif duration_str.isdigit():
-                parsed_duration = int(duration_str)
-            elif hasattr(entry, 'itunes_duration_seconds'):
-                parsed_duration = int(entry.itunes_duration_seconds)
-            elif hasattr(entry, 'duration'):
-                parsed_duration = parse_duration(entry.duration)
-            elif hasattr(entry, 'length'):
-                parsed_duration = int(entry.length)
+            # [... existing episode parsing code ...]
 
             try:
                 # Check for existing episode with explicit type casting for IDs
@@ -837,41 +833,48 @@ def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, fee
                     """
 
                 cursor.execute(episode_check_query, (person_id, podcast_id, parsed_audio_url))
-                if cursor.fetchone():
+                episode_result = cursor.fetchone()
+
+                if episode_result:
+                    episode_id = episode_result[0]
+                    processed_episodes.add(episode_id)
                     continue
 
-                # Insert the new episode
-                if database_type == "postgresql":
-                    episode_insert_query = """
-                        INSERT INTO "PeopleEpisodes"
-                        (PersonID, PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL,
-                        EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                        VALUES (%s::integer, %s::integer, %s, %s, %s, %s, %s, %s)
-                    """
-                else:
-                    episode_insert_query = """
-                        INSERT INTO PeopleEpisodes
-                        (PersonID, PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL,
-                        EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """
+                # [... existing episode insert code ...]
 
-                cursor.execute(episode_insert_query, (
-                    person_id,
-                    podcast_id,
-                    parsed_title,
-                    parsed_description,
-                    parsed_audio_url,
-                    parsed_artwork_url,
-                    parsed_release_datetime,
-                    parsed_duration
-                ))
+                # Get the ID of the newly inserted episode
+                if database_type == "postgresql":
+                    cursor.execute('SELECT lastval()')
+                else:
+                    cursor.execute('SELECT LAST_INSERT_ID()')
+                new_episode_id = cursor.fetchone()[0]
+                processed_episodes.add(new_episode_id)
 
             except Exception as e:
                 logging.error(f"Error processing episode {parsed_title}: {str(e)}")
-                if database_type == "postgresql":
-                    cursor.execute("ROLLBACK")
                 continue
+
+        # Only delete old episodes that weren't found in the feed
+        episodes_to_delete = existing_episodes - processed_episodes
+        if episodes_to_delete:
+            if database_type == "postgresql":
+                delete_query = """
+                    DELETE FROM "PeopleEpisodes"
+                    WHERE PersonID = %s::integer
+                    AND PodcastID = %s::integer
+                    AND EpisodeID = ANY(%s)
+                    AND EpisodePubDate < NOW() - INTERVAL '30 days'
+                """
+                cursor.execute(delete_query, (person_id, podcast_id, list(episodes_to_delete)))
+            else:
+                delete_query = """
+                    DELETE FROM PeopleEpisodes
+                    WHERE PersonID = %s
+                    AND PodcastID = %s
+                    AND EpisodeID IN %s
+                    AND EpisodePubDate < DATE_SUB(NOW(), INTERVAL 30 DAY)
+                """
+                cursor.execute(delete_query, (person_id, podcast_id, tuple(episodes_to_delete)))
 
         # Commit the transaction
         cnx.commit()
@@ -6126,25 +6129,37 @@ def unsubscribe_from_person(cnx, database_type, user_id: int, person_id: int, pe
             return False
 
         # Handle both tuple and dict return types
+        # Handle both tuple and dict return types
         if isinstance(result, dict):
             person_db_id = result['personid']
         else:
             person_db_id = result[0]
-
         print(f"Found PersonID: {person_db_id}")
 
         if database_type == "postgresql":
-            episodes_query = 'DELETE FROM "PeopleEpisodes" WHERE PersonID = %s'
+            check_query = 'SELECT COUNT(*) FROM "People" WHERE PersonID = %s'
             delete_query = 'DELETE FROM "People" WHERE PersonID = %s'
         else:
-            episodes_query = "DELETE FROM PeopleEpisodes WHERE PersonID = %s"
+            check_query = "SELECT COUNT(*) FROM People WHERE PersonID = %s"
             delete_query = "DELETE FROM People WHERE PersonID = %s"
 
-        print(f"Deleting episodes for PersonID {person_db_id}")
-        cursor.execute(episodes_query, (person_db_id,))
-        episode_count = cursor.rowcount
-        print(f"Deleted {episode_count} episodes")
+        # Check subscriber count for both database types
+        cursor.execute(check_query, (person_id,))
+        subscriber_count = cursor.fetchone()[0]
 
+        # Only delete episodes if this is the last subscriber
+        if subscriber_count <= 1:
+            if database_type == "postgresql":
+                episodes_query = 'DELETE FROM "PeopleEpisodes" WHERE PersonID = %s'
+            else:
+                episodes_query = "DELETE FROM PeopleEpisodes WHERE PersonID = %s"
+
+            print(f"Deleting episodes for PersonID {person_db_id}")
+            cursor.execute(episodes_query, (person_db_id,))
+            episode_count = cursor.rowcount
+            print(f"Deleted {episode_count} episodes")
+
+        # Always delete the person record for this user
         print(f"Deleting person record for PersonID {person_db_id}")
         cursor.execute(delete_query, (person_db_id,))
         person_count = cursor.rowcount

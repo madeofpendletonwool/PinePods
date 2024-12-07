@@ -78,13 +78,17 @@ pub fn queue() -> Html {
     let touch_start_y = use_state(|| 0.0);
     let touch_start_x = use_state(|| 0.0);
     let is_dragging = use_state(|| false);
+    let active_modal = use_state(|| None::<i32>);
     let show_modal = use_state(|| false);
-    let show_clonedal = show_modal.clone();
-    let show_clonedal2 = show_modal.clone();
-    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
-
-    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
-
+    let active_clonedal = active_modal.clone();
+    let active_modal_clone = active_modal.clone();
+    let on_modal_open = Callback::from(move |episode_id: i32| {
+        active_modal_clone.set(Some(episode_id));
+    });
+    let active_modal_clone = active_modal.clone();
+    let on_modal_close = Callback::from(move |_| {
+        active_modal_clone.set(None);
+    });
     let dragged_element = use_state(|| None::<web_sys::Element>);
     let scroll_state = use_state(|| ScrollState {
         interval_id: None,
@@ -575,12 +579,6 @@ pub fn queue() -> Html {
 
                             let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
 
-                            let (description, _is_truncated) = if is_expanded {
-                                (sanitized_description, false)
-                            } else {
-                                truncate_description(sanitized_description, 300)
-                            };
-
                             let toggle_expanded = {
                                 let search_dispatch_clone = dispatch.clone();
                                 let state_clone = state.clone();
@@ -645,9 +643,10 @@ pub fn queue() -> Html {
                                 .as_ref()
                                 .unwrap_or(&vec![])
                                 .contains(&check_episode_id);
+                            let episode_id_clone = Some(episode.episodeid).clone();
                             let item = queue_episode_item(
                                 Box::new(episode),
-                                description.clone(),
+                                sanitized_description,
                                 is_expanded,
                                 &format_release,
                                 on_play_click,
@@ -667,7 +666,7 @@ pub fn queue() -> Html {
                                 ontouchstart.clone(),
                                 ontouchmove.clone(),
                                 ontouchend.clone(),
-                                *show_modal,
+                                *active_modal == episode_id_clone,
                                 on_modal_open.clone(),
                                 on_modal_close.clone(),
                             );

@@ -190,14 +190,27 @@ body {
 
 .modal-overlay {
     position: fixed;
-    inset: 0;
-    background-color: rgba(
-        0,
-        0,
-        0,
-        0.5
-    ); /* Equivalent to bg-black bg-opacity-50 */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
     z-index: 50;
+    margin: 0 !important; /* Override any margins */
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Remove the space utilities that are causing the gap */
+.modal-overlay {
+    --tw-space-x-reverse: 0;
+    margin-right: 0; /* Override the calc margin */
+    margin-left: 0; /* Override the calc margin */
 }
 
 .modal-content {
