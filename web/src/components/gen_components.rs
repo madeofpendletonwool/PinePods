@@ -1558,7 +1558,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 // Description - scrollable section
                 <div class="flex-1 p-6 overflow-y-auto">
                     <div class="prose dark:prose-invert item_container-text max-w-none">
-                        <div class="links-custom">
+                        <div class="links-custom episode-description-container">
                             <SafeHtml html={props.description.clone()} />
                         </div>
                     </div>

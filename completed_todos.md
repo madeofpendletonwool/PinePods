@@ -37,12 +37,11 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] While host search occurs the server is unresponsive
 - [] On Episode page reload or navigate direct with link it starts with a cutoff non-html description
 
-
-
 - [] Full Screen Episode should have clickable podcast header to open pod page
 
 - [] Make new category button more obvious.
 - [] Make category delete button bigger
+
 
 Mobile:
 
@@ -124,6 +123,7 @@ Version 0.7.0
 - [x] Layout improved all over the place
 - [x] Phosphor icons implemented as opposed to material
 - [x] Settings page layout rebuilt
+- [x] Better handle description html formatting
 
 Version 0.6.6
 
