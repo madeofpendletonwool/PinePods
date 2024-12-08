@@ -22,7 +22,7 @@ services:
     environment:
       # Basic Server Info
       SEARCH_API_URL: "https://search.pinepods.online/api/search"
-      PEOPLE_API_URL: "https://people.pinepods.online/api/hosts"
+      PEOPLE_API_URL: "https://people.pinepods.online"
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
@@ -46,3 +46,4 @@ services:
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
       - db
+      - valkey

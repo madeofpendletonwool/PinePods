@@ -25,6 +25,7 @@
     - [Mac Client Install :computer:](#mac-client-install-computer)
     - [Android Install :iphone:](#android-install-iphone)
     - [ios Install :iphone:](#ios-install-iphone)
+  - [PodPeople DB](#podpeople-db)
   - [Pinepods Firewood](#pinepods-firewood)
   - [Platform Availability](#platform-availability)
   - [ToDo](#todo)
@@ -91,7 +92,7 @@ services:
     environment:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
-      PEOPLE_API_URL: 'https://people.pinepods.online/api/hosts'
+      PEOPLE_API_URL: 'https://people.pinepods.online'
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
@@ -149,7 +150,7 @@ services:
     environment:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
-      PEOPLE_API_URL: 'https://people.pinepods.online/api/hosts'
+      PEOPLE_API_URL: 'https://people.pinepods.online'
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
@@ -239,49 +240,140 @@ helm install pinepods pinepods/pinepods -f my-values.yaml --namespace pinepods-n
 ```
 #### Customizing Values
 
-Create a my-values.yaml file to override default values - Leave DB_HOST as it is unless you package your own helm chart:
+Create a my-values.yaml file to override default values - Any value with {{  }} are things you need to set yourself.:
 
 ```
-replicaCount: 2
-
+## Container image configuration
 image:
-  repository: pinepods
+  repository: madeofpendletonwool/pinepods
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 service:
-  type: NodePort
+  type: ClusterIP
   port: 8040
-  nodePort: 30007
+
+
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    annotations:
+      # Whatever you need to set here
+  hosts:
+    - host: {{ pinepods_domain }}
+      paths:
+        - path: /
+          pathType: Prefix
+
 
 persistence:
   enabled: true
-  accessMode: ReadWriteOnce
-  size: 10Gi
+  downloads:
+    storageClass: {{ storage_class }}
+    accessMode: ReadWriteOnce
+    size: {{ downloads_size }}
+  backups:
+    storageClass: {{ storage_class }}
+    accessMode: ReadWriteOnce
+    size: {{ backups_size }}
 
 postgresql:
   enabled: true
   auth:
     username: postgres
-    password: "supersecretpassword"
+    password: {{ postgres_password }}
     database: pinepods_database
+  persistence:
+    enabled: true
+    storageClass: {{ storage_class }}
+    size: {{ postgres_size }}
+
+valkey:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  replica:
+    replicaCount: 0
   primary:
     persistence:
-      enabled: true
-      existingClaim: postgres-pvc
+      enabled: false
+  service:
+    port: 6379
 
 env:
   SEARCH_API_URL: "https://search.pinepods.online/api/search"
-  USERNAME: "admin"
-  PASSWORD: "password"
-  FULLNAME: "Admin User"
-  EMAIL: "admin@example.com"
+  PEOPLE_API_URL: "https://people.pinepods.online"
+  USERNAME: {{ admin_username }}
+  PASSWORD: {{ admin_password }}
+  FULLNAME: {{ admin_fullname }}
+  EMAIL: {{ admin_email }}
   DB_TYPE: "postgresql"
-  DB_HOST: "pinepods-postgresql.pinepods-namespace.svc.cluster.local"
-  DB_PORT: "5432"
   DB_USER: "postgres"
   DB_NAME: "pinepods_database"
+  DB_PORT: "5432"
   DEBUG_MODE: "false"
+
+# Backend and Podpeople can be disabled (set to false) if you plan to use the ones I maintain.
+# To do that set to false and simply keep the SEARCH_API_URL and PEOPLE_API_URL above as their defaults
+backend:
+  enabled: true
+  image:
+    repository: madeofpendletonwool/pinepods_backend
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 5000
+  secrets:
+    apiKey: {{ backend_api_key }}
+    apiSecret: {{ backend_api_secret }}
+# This ingress is specific to pinepods backend. If you don't use that change to disabled.
+  ingress:
+    enabled: true
+    className: ""
+    annotations:
+      # Whatever you need to set here
+    hosts:
+      - host: {{ backend_domain }}
+        paths:
+          - path: /
+            pathType: Prefix
+
+podpeople:
+  enabled: true
+  image:
+    repository: madeofpendletonwool/podpeople_db
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 8085
+  persistence:
+    enabled: true
+    storageClass: {{ storage_class }}
+    size: {{ podpeople_size }}
+    accessMode: ReadWriteOnce
+  auth:
+    adminUsername: {{ admin_username }}
+    adminPassword: {{ admin_password }}
+  environment:
+    ntfyUrl: {{ ntfy_url }}
+    ntfyTopic: {{ ntfy_topic }}
+    searchApiUrl: {{ search_api_url }}
+    baseurl: {{ pod_people_base_url }}
+# This ingress is specific to podpeople db. If you don't use that change to disabled.
+  ingress:
+    enabled: true
+    className: ""
+    annotations:
+      # Whatever you need to set here
+    hosts:
+      - host: {{ podpeople_domain }}
+        paths:
+          - path: /
+            pathType: Prefix
 ```
 
 #### Create a namespace for Pinepods:
@@ -303,23 +395,55 @@ Check out the Tutorials on the documentation site for more information on how to
 
 https://pinepods.online/tutorial-basic/sign-in-homescreen.md
 
-### Linux Client Install :computer:
+## Client Installs
 
-Any of the client additions are super easy to get going. First head over to the releases page on Github
+Any of the client additions are super easy to get going.
+
+### Linux Client Installs :computer:
+
+#### AppImage, Fedora/Red Hat Derivative/Debian based (Ubuntu)
+
+First head over to the releases page on Github
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
-Grab the latest linux release. There's both an app image and a deb. Use the appimage of course if you aren't using a debian based distro. Change the permissions if using the appimage version to allow it to run.
+Grab the latest linux release. There's both an appimage a deb, and an rpm. Use the appimage of course if you aren't using a debian or red hat based distro. Change the permissions if using the appimage version to allow it to run.
 
 ```
 sudo chmod +x pinepods.appimage
 ```
 
-^ The name will vary slightly based on the name so be sure you change it or it won't work.
+^ The name of the app file will vary slightly based on the version so be sure you change it or it won't work.
+
+For the rpm or deb version just run and install
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
-### Windows Client Install :computer:
+#### Arch Linux (AUR)
+
+Install the Pinepods Client right from the AUR! Replace the command below with your favorite aur helper
+
+```
+paru -S pinepods
+```
+
+#### Flatpak
+
+You can search for Pinepods in your favorite flatpak installer gui app such as Gnome Software.
+
+```
+Flathub link and install command will be here soon (post 0.7.0 launch and compile)
+```
+
+#### Snap
+
+Quick snap install away!
+
+```
+snap install pinepods
+```
+
+#### Windows Client Install :computer:
 
 Any of the client additions are super easy to get going. First head over to the releases page on Github
 
@@ -335,7 +459,7 @@ Either one does the same thing ultimately and will work just fine.
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
-### Mac Client Install :computer:
+#### Mac Client Install :computer:
 
 Any of the client additions are super easy to get going. First head over to the releases page on Github
 
@@ -349,13 +473,23 @@ The dmg file will prompt you to install the Pinepods client into your applicatio
 
 Once started you'll be able to sign in with your username and password. The server name is simply the url you browse to to access the server.
 
-### Android Install :iphone:
+#### Android Install :iphone:
 
-Coming Soon - The web app works great for phones. Otherwise, if you sync using Nextcloud you can use the AntennaPods app and your podcasts will sync between Antennapod and Pinepods.
+For now, it's a manual install and there are some issues with the app. Check the releases page for the latest apk.
 
-### ios Install :iphone:
+#### ios Install :iphone:
 
 Coming Soon - The web app works great for phones.
+
+## PodPeople DB
+
+Podpeople DB is a project that I maintain and also develop. Podpeople DB is a way to suppliment Person tags for podcasts that don't support them by default. This allows the community to maintain hosts and follow them to all podcasts! I maintain an instance of Podpeople DB at podpeopledb.com. Otherwise, it's an open source project and you can maintain and instance of your own if you prefer. For information on that go [here](https://podpeopledb.com/docs/self-host). You can download the database yourself and maintain your own instance. If you do decide to go this route please still add any hosts for your favorite podcasts at the instance hosted at podpeopledb.com. The community will thank you!
+
+For additional info on Podpeople DB check out [the docs](https://podpeopledb.com/docs/what-is-this-for).
+
+Additionally, I've written [a blog](https://www.pinepods.online/blog) post discussing the rational around it's creation.
+
+Finally, you can check out the Repo for it [here!](https://github.com/madeofpendletonwool/podpeople-db)
 
 ## Pinepods Firewood
 
@@ -363,11 +497,13 @@ A CLI only client that can be used to remotely share your podcasts to is in the 
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, and web are all currently available and working. For Android you can use AntennaPod and sync podcasts between AntennaPod and Pinepods using the Nextcloud sync App.
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and IOS. Windows, Linux, Mac, web, and android are all currently available and working. The android app is in a sort of beta currently as I finalize any remaining issues with it. Track those [here](https://github.com/madeofpendletonwool/PinePods/issues/320). This app is built with Tauri, therefore once the Android version is in a final state there's no reason I can't just compile it to ios as well.
+
+For a podcast sync app I recommend Opodsync, but nextcloud sync works great too! This is only required if you use an app like AntennaPods. So then your Pinepods and Antennapods sync up podcasts.
+
+[OpodSync](https://github.com/kd2org/opodsync)
 
 [Nextcloud Podcast Sync App](https://apps.nextcloud.com/apps/gpoddersync)
-
-[AntennaPod F-Droid AppListing](https://f-droid.org/en/packages/de.danoeh.antennapod/)
 
 ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version.
 
@@ -408,7 +544,7 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 
 ### Clients to support
 
-- [x] Flatpak Client
+- [x] Flatpak Package
 - [ ] Nix Package
 - [x] Aur Package
 - [x] Snap package
@@ -438,6 +574,9 @@ Loads of themes!
 <p align="center">
   <img src="./images/screenshots/homelight.png">
 </p>
+<p align="center">
+  <img src="./images/screenshots/homegreen.png">
+</p>
 
 Full Podcast Management
 <p align="center">
@@ -457,6 +596,9 @@ Markdown and HTML display compatible
 Mobile support baked right in!
 <p align="center">
   <img src="./images/screenshots/mobile.png">
+</p>
+<p align="center">
+  <img src="./images/screenshots/mobileepisode.png">
 </p>
 
 

@@ -82,6 +82,12 @@ Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
 - [] Update Readme
+- [] Update Docs
+- [x] Update Deployment files (compose)
+- [] Fix up any security issues
+- [] Finish up rss release notes
+- [] Blog post ios version
+- [] PodPeopleDB instructions on pinepods.online
 
 Version 0.7.0
 
