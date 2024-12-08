@@ -1601,7 +1601,6 @@ pub fn epsiode() -> Html {
                                                 html! {
                                                     <>
                                                     <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2">
-                                                        // <i class="material-icons">{ if is_playing { "pause" } else { "play_arrow" } }</i>
                                                         { if is_playing {
                                                             html! { <i class="ph ph-pause text-2xl"></i> }
                                                         } else {
@@ -1610,7 +1609,6 @@ pub fn epsiode() -> Html {
                                                         { if is_playing { "Pause" } else { "Play" } }
                                                     </button>
                                                     <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2">
-                                                        // <i class="material-icons">{ if *queue_status { "playlist_remove" } else { "playlist_add" } }</i>
                                                         { if *queue_status {
                                                             html! { <i class="ph ph-queue text-2xl"></i> }
                                                         } else {
@@ -1619,7 +1617,6 @@ pub fn epsiode() -> Html {
                                                         { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
                                                     </button>
                                                     <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2">
-                                                        // <i class="material-icons">{ if *save_status { "favorite" } else { "favorite_border" } }</i>
                                                         { if *save_status {
                                                             html! { <i class="ph ph-heart-break text-2xl"></i> }
                                                         } else {
@@ -1628,7 +1625,6 @@ pub fn epsiode() -> Html {
                                                         { if *save_status { "Unsave" } else { "Save" } }
                                                     </button>
                                                     <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2">
-                                                        // <i class="material-icons">{ if *download_status { "delete" } else { "download" } }</i>
                                                         { if *download_status {
                                                             html! { <i class="ph ph-trash text-2xl"></i> }
                                                         } else {
@@ -1637,7 +1633,6 @@ pub fn epsiode() -> Html {
                                                         { if *download_status { "Remove Download" } else { "Download" } }
                                                     </button>
                                                     <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2">
-                                                        // <i class="material-icons">{ if *completion_status { "check_circle_outline" } else { "check_circle" } }</i>
                                                         { if *completion_status {
                                                             html! { <i class="ph ph-x-circle text-2xl"></i> }
                                                         } else {

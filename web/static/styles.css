@@ -46,6 +46,211 @@ body {
     /* Default link color */
 }
 
+/* Base container styling */
+.episode-description-container {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-color);
+    padding: 1rem;
+}
+
+/* Headers */
+.episode-description-container h1,
+.episode-description-container h2,
+.episode-description-container h3,
+.episode-description-container h4,
+.episode-description-container h5,
+.episode-description-container h6 {
+    margin: 1.5em 0 0.75em;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.episode-description-container h1 {
+    font-size: 1.75em;
+}
+.episode-description-container h2 {
+    font-size: 1.5em;
+}
+.episode-description-container h3 {
+    font-size: 1.25em;
+}
+.episode-description-container h4 {
+    font-size: 1.1em;
+}
+.episode-description-container h5,
+.episode-description-container h6 {
+    font-size: 1em;
+}
+
+/* Paragraphs and spacing */
+.episode-description-container p {
+    margin: 1em 0;
+}
+
+.episode-description-container p + p {
+    margin-top: 1.5em;
+}
+
+/* Lists */
+.episode-description-container ul,
+.episode-description-container ol {
+    margin: 1em 0;
+    padding-left: 2em;
+}
+
+.episode-description-container li {
+    margin: 0.5em 0;
+    line-height: 1.6;
+}
+
+.episode-description-container ul {
+    list-style-type: disc;
+}
+
+.episode-description-container ul ul {
+    list-style-type: circle;
+}
+
+.episode-description-container ol {
+    list-style-type: decimal;
+}
+
+/* Links */
+.episode-description-container a {
+    color: var(--link-color);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.episode-description-container a:hover {
+    border-bottom-color: currentColor;
+}
+
+/* Blockquotes */
+.episode-description-container blockquote {
+    margin: 1.5em 0;
+    padding: 0.5em 1em;
+    border-left: 4px solid var(--border-color);
+    background: var(--blockquote-bg);
+    font-style: italic;
+}
+
+/* Code blocks */
+.episode-description-container code {
+    background: var(--code-bg);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.episode-description-container pre {
+    background: var(--code-bg);
+    padding: 1em;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 1.5em 0;
+}
+
+.episode-description-container pre code {
+    background: none;
+    padding: 0;
+}
+
+/* Images */
+.episode-description-container img {
+    max-width: 100%;
+    height: auto;
+    margin: 1.5em 0;
+    border-radius: 4px;
+}
+
+/* Tables */
+.episode-description-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5em 0;
+}
+
+.episode-description-container th,
+.episode-description-container td {
+    padding: 0.75em;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.episode-description-container th {
+    background: var(--table-header-bg);
+    font-weight: 600;
+}
+
+/* Definition lists */
+.episode-description-container dl {
+    margin: 1.5em 0;
+}
+
+.episode-description-container dt {
+    font-weight: 600;
+    margin-top: 1em;
+}
+
+.episode-description-container dd {
+    margin-left: 2em;
+    margin-top: 0.5em;
+}
+
+/* Horizontal rules */
+.episode-description-container hr {
+    margin: 2em 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Bold and italic */
+.episode-description-container strong {
+    font-weight: 600;
+}
+
+.episode-description-container em {
+    font-style: italic;
+}
+
+/* Special spacing for specific element combinations */
+.episode-description-container h2 + p,
+.episode-description-container h3 + p,
+.episode-description-container h4 + p {
+    margin-top: 0.75em;
+}
+
+.episode-description-container ul + p,
+.episode-description-container ol + p {
+    margin-top: 1.5em;
+}
+
+/* CSS Variables for theming */
+:root {
+    --text-color: #333;
+    --link-color: #0066cc;
+    --border-color: #ddd;
+    --blockquote-bg: #f8f8f8;
+    --code-bg: #f5f5f5;
+    --table-header-bg: #f5f5f5;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --text-color: #e0e0e0;
+        --link-color: #66b3ff;
+        --border-color: #444;
+        --blockquote-bg: #2a2a2a;
+        --code-bg: #2a2a2a;
+        --table-header-bg: #2a2a2a;
+    }
+}
+
 .item_container-text.episode-description-container a {
     color: var(--link-color);
     /* Replace #yourColorCode with the color you want */
@@ -190,14 +395,27 @@ body {
 
 .modal-overlay {
     position: fixed;
-    inset: 0;
-    background-color: rgba(
-        0,
-        0,
-        0,
-        0.5
-    ); /* Equivalent to bg-black bg-opacity-50 */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
     z-index: 50;
+    margin: 0 !important; /* Override any margins */
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Remove the space utilities that are causing the gap */
+.modal-overlay {
+    --tw-space-x-reverse: 0;
+    margin-right: 0; /* Override the calc margin */
+    margin-left: 0; /* Override the calc margin */
 }
 
 .modal-content {

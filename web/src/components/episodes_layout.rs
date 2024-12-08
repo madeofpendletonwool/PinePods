@@ -38,37 +38,37 @@ use yewdux::prelude::*;
 
 fn add_icon() -> Html {
     html! {
-        <span class="material-icons">{ "add_box" }</span>
+        <i class="ph ph-plus-circle text-2xl"></i>
     }
 }
 
 fn payments_icon() -> Html {
     html! {
-        <span class="material-icons">{ "payments" }</span>
+        <i class="ph ph-money-wavy text-2xl"></i>
     }
 }
 
 fn website_icon() -> Html {
     html! {
-        <span class="material-icons">{ "language" }</span>
+        <i class="ph ph-globe text-2xl"></i>
     }
 }
 
 fn trash_icon() -> Html {
     html! {
-        <span class="material-icons">{ "delete" }</span>
+        <i class="ph ph-trash text-2xl"></i>
 
     }
 }
 fn settings_icon() -> Html {
     html! {
-        <span class="material-icons">{ "more_vert" }</span>
+        <i class="ph ph-gear text-2xl"></i>
 
     }
 }
 fn download_icon() -> Html {
     html! {
-        <span class="material-icons">{ "download_for_offline" }</span>
+        <i class="ph ph-download text-2xl"></i>
 
     }
 }

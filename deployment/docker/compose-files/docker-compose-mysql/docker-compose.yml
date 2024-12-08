@@ -1,4 +1,3 @@
-version: "3"
 services:
   db:
     image: mariadb:latest
@@ -27,7 +26,7 @@ services:
     environment:
       # Basic Server Info
       SEARCH_API_URL: "https://search.pinepods.online/api/search"
-      PEOPLE_API_URL: "https://people.pinepods.online/api/hosts"
+      PEOPLE_API_URL: "https://people.pinepods.online"
       # Default Admin User Information
       USERNAME: myadminuser01
       PASSWORD: myS3curepass
@@ -41,7 +40,7 @@ services:
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
       # Valkey Settings
-      VALKEY_HOST: post-valkey
+      VALKEY_HOST: valkey
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
@@ -53,3 +52,4 @@ services:
       - /home/user/pinepods/backups:/opt/pinepods/backups
     depends_on:
       - db
+      - valkey

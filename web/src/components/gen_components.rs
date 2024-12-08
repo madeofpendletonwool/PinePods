@@ -1550,16 +1550,15 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                             {props.format_release.clone()}
                         </p>
                     </div>
-                    <button onclick={props.on_close.clone()}
-                            class="hover:opacity-75 flex-shrink-0">
-                        <span class="material-icons item_container-text">{"close"}</span>
+                    <button onclick={props.on_close.clone()} class="hover:opacity-75 flex-shrink-0 item_container-text">
+                        <i class="ph ph-arrow-u-left-down text-2xl"></i>
                     </button>
                 </div>
 
                 // Description - scrollable section
                 <div class="flex-1 p-6 overflow-y-auto">
                     <div class="prose dark:prose-invert item_container-text max-w-none">
-                        <div class="links-custom">
+                        <div class="links-custom episode-description-container">
                             <SafeHtml html={props.description.clone()} />
                         </div>
                     </div>
@@ -1585,6 +1584,171 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
 }
 
 pub fn episode_item(
+    episode: Box<dyn EpisodeTrait>,
+    description: String,
+    is_expanded: bool,
+    format_release: &str,
+    on_play_click: Callback<MouseEvent>,
+    on_shownotes_click: Callback<MouseEvent>,
+    toggle_expanded: Callback<MouseEvent>,
+    episode_duration: i32,
+    listen_duration: Option<i32>,
+    page_type: &str,
+    on_checkbox_change: Callback<i32>,
+    is_delete_mode: bool, // Add this line
+    ep_url: String,
+    completed: bool,
+    show_modal: bool,
+    on_modal_open: Callback<i32>,
+    on_modal_close: Callback<MouseEvent>,
+    container_height: String,
+) -> Html {
+    let span_duration = listen_duration.clone();
+    let span_episode = episode_duration.clone();
+    let formatted_duration = format_time(span_episode as f64);
+    let duration_clone = formatted_duration.clone();
+    let duration_again = formatted_duration.clone();
+    let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+    // Calculate the percentage of the episode that has been listened to
+    let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
+        if episode_duration > 0 {
+            (ld as f64 / episode_duration as f64) * 100.0
+        } else {
+            0.0 // Avoid division by zero
+        }
+    });
+
+    let checkbox_ep = episode.get_episode_id(Some(0));
+    let should_show_buttons = !ep_url.is_empty();
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = window)]
+        fn toggleDescription(guid: &str, expanded: bool);
+    }
+    let description_class = if is_expanded {
+        "desc-expanded".to_string()
+    } else {
+        "desc-collapsed".to_string()
+    };
+    html! {
+        <div>
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style={format!("height: {}; overflow: hidden;", container_height)}>
+                {if is_delete_mode {
+                    html! {
+                        <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
+                            onchange={on_checkbox_change.reform(move |_| checkbox_ep)} /> // Modify this line
+                    }
+                } else {
+                    html! {}
+                }}
+                <div class="flex flex-col w-auto object-cover pl-4">
+                    <img
+                        src={episode.get_episode_artwork()}
+                        alt={format!("Cover for {}", episode.get_episode_title())}
+                        class="episode-image"
+                    />
+                </div>
+                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
+                    <p class="item_container-text episode-title font-semibold line-clamp-2">
+                        { episode.get_episode_title() }
+                    </p>
+                    {
+                            if completed.clone() {
+                                html! {
+                                    <i class="ph ph-check-circle text-2xl text-green-500"></i>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
+                    </div>
+                    <hr class="my-2 border-t hidden md:block"/>
+                    {
+                        html! {
+                            <div class="item-description-text cursor-pointer hidden md:block"
+                                onclick={let episode_id = episode.get_episode_id(None);
+                                        Callback::from(move |e: MouseEvent| {
+                                            e.prevent_default();
+                                            on_modal_open.emit(episode_id);
+                                        })}>
+                                <div class="item_container-text line-clamp-2">
+                                    <SafeHtml html={description.clone()} />
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2" style="flex-grow: 0; flex-shrink: 0; width: auto;">
+                        <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                        </svg>
+                        { format_release }
+                    </span>
+                    {
+                        if completed {
+                            html! {
+                                <div class="flex items-center space-x-2">
+                                    <span class="item_container-text">{ duration_clone }</span>
+                                    <span class="item_container-text">{ "-  Completed" }</span>
+                                </div>
+                            }
+                        } else {
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ duration_again }</span>
+                                    </div>
+                                }
+                            } else {
+                                html! {
+                                    <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                                }
+                            }
+                        }
+                    }
+                </div>
+                {
+                    html! {
+                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
+                            if should_show_buttons {
+                                <button
+                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                    onclick={on_play_click}
+                                >
+                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                </button>
+                                <div class="hidden sm:block"> // This will hide the context button below 640px
+                                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            if show_modal {
+                <EpisodeModal
+                    episode_id={episode.get_episode_id(None)}
+                    episode_artwork={episode.get_episode_artwork()}
+                    episode_title={episode.get_episode_title()}
+                    description={description.clone()}
+                    format_release={format_release.to_string()}
+                    duration={formatted_duration}
+                    on_close={on_modal_close}
+                    on_show_notes={on_shownotes_click}
+                    listen_duration_percentage={listen_duration_percentage}
+                />
+            }
+        </div>
+    }
+}
+
+pub fn virtual_episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
     is_expanded: bool,
@@ -1659,7 +1823,6 @@ pub fn episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -1824,7 +1987,6 @@ pub fn download_episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -1933,7 +2095,7 @@ pub fn queue_episode_item(
     ontouchmove: Callback<TouchEvent>,
     ontouchend: Callback<TouchEvent>,
     show_modal: bool,
-    on_modal_open: Callback<MouseEvent>,
+    on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
@@ -1963,7 +2125,7 @@ pub fn queue_episode_item(
     };
 
     html! {
-        <>
+        <div>
             <div
                 class="item-container border-solid border flex mb-4 shadow-md rounded-lg"
                 draggable="true"
@@ -2005,7 +2167,6 @@ pub fn queue_episode_item(
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                                    // <span class="material-bonus-color item_container-text material-icons text-md text-green-500">{"check_circle"}</span>
                                 }
                             } else {
                                 html! {}
@@ -2015,8 +2176,12 @@ pub fn queue_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text cursor-pointer md:block"
-                                    onclick={on_modal_open}>
+                            <div class="item-description-text cursor-pointer hidden md:block"
+                                onclick={let episode_id = episode.get_episode_id(None);
+                                        Callback::from(move |e: MouseEvent| {
+                                            e.prevent_default();
+                                            on_modal_open.emit(episode_id);
+                                        })}>
                                 <div class="item_container-text line-clamp-2">
                                     <SafeHtml html={description.clone()} />
                                 </div>
@@ -2071,21 +2236,23 @@ pub fn queue_episode_item(
                         </div>
                     }
                 }
-                if show_modal {
-                    <EpisodeModal
-                        episode_id={episode.get_episode_id(None)}
-                        episode_artwork={episode.get_episode_artwork()}
-                        episode_title={episode.get_episode_title()}
-                        description={description.clone()}
-                        format_release={format_release.to_string()}
-                        duration={formatted_duration}
-                        on_close={on_modal_close}
-                        on_show_notes={on_shownotes_click}
-                        listen_duration_percentage={listen_duration_percentage}
-                    />
-                }
+
             </div>
-            </>
+
+            if show_modal {
+                <EpisodeModal
+                    episode_id={episode.get_episode_id(None)}
+                    episode_artwork={episode.get_episode_artwork()}
+                    episode_title={episode.get_episode_title()}
+                    description={description.clone()}
+                    format_release={format_release.to_string()}
+                    duration={formatted_duration}
+                    on_close={on_modal_close}
+                    on_show_notes={on_shownotes_click}
+                    listen_duration_percentage={listen_duration_percentage}
+                />
+            }
+        </div>
     }
 }
 
@@ -2105,7 +2272,7 @@ pub fn person_episode_item(
     ep_url: String,
     completed: bool,
     show_modal: bool,
-    on_modal_open: Callback<MouseEvent>,
+    on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
 ) -> Html {
     let span_duration = listen_duration.clone();
@@ -2171,7 +2338,12 @@ pub fn person_episode_item(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         html! {
-                            <div class="item-description-text cursor-pointer hidden md:block" onclick={on_modal_open}>
+                            <div class="item-description-text cursor-pointer hidden md:block"
+                                onclick={let episode_id = episode.get_episode_id(None);
+                                        Callback::from(move |e: MouseEvent| {
+                                            e.prevent_default();
+                                            on_modal_open.emit(episode_id);
+                                        })}>
                                 <div class="item_container-text line-clamp-2">
                                     <SafeHtml html={description.clone()} />
                                 </div>

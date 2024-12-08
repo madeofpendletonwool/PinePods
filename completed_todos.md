@@ -11,7 +11,6 @@ Next Minor Version:
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
 - [] Dynamically adjusting local download buttons
-- [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
@@ -23,75 +22,36 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Make playing episode on every page dynamically update play/pause
 - [] Theme updates on change settings page. Auto fills correct theme on dropdown
 - [] Make virtual lines work for saved, queue, downloads, local downloads, and history
-- [] Implement additional filtering in podcasts
-- [] Implement episode filtering on episode layout page
-- [] Implement episode filtering on history page
-- [] Implement episode filtering on saved page
-- [] Implement episode filtering on server download page
-- [] Implement episode filtering on local download page
-- [] Implement episode filtering on queue page
-- [] Implement episode filtering on search page
+- [] Display Listen time on the episodes layout page
+- [] Implement additional filtering in podcasts/quick search keyword
+- [] Implement episode filtering on episode layout page/quick search keyword
+- [] Implement episode filtering on history page/quick search keyword
+- [] Implement episode filtering on saved page/quick search keyword
+- [] Implement episode filtering on server download page/quick search keyword
+- [] Implement episode filtering on local download page/quick search keyword
+- [] Implement episode filtering on queue page/quick search keyword
+- [] Implement episode filtering on search page/quick search keyword
 - [] Updating which chapter is currently playing to switch to a pause button
 - [] Functional back button - Along with ensuring browser backs, and phone backs react correctly
+- [] While host search occurs the server is unresponsive
+- [] On Episode page reload or navigate direct with link it starts with a cutoff non-html description
 
 - [] Full Screen Episode should have clickable podcast header to open pod page
 
 - [] Make new category button more obvious.
 - [] Make category delete button bigger
 
-Mobile:
-
-- [x] Fix chrome full episode screen time slider, color wrong and on chrome the tab doesn't line up
-- [x] On mobile remove refresh and hamburger menu when full screen. Just send the drop to the top
-- [x] On mobile make the action buttons larger
-- [x] On mobile make the volume slider drop below Shownotes
-- [x] When pod is playing play and skip are too far left, also make image raise full screen as well as title. D
-- [] Drag to raise player
-- [] On mobile further squish image to fit more on screen?
-- [] On mobile long press to add to saved etc...?
-- [x] On mobile local Downloads page is broken - doesn't open
-- [x] Mobile loading screen causes search to jump to right and playing pod to go too low
-- [] On mobile nextcloud doesn't redirect back after adding
-- [x] mobile version giving one of two share links wrong. Provides the current server - which on mobile is wrong
-- [] Need android compiling alternative to reqwest - Maybe not?
-- [] Issues with clicking buttons on android app after episode starts playing. Kinda freezes the whole app. Buttons no longer interactive
-
-
-People stuff left:
-- [x] Flesh out podpeopledb
-- [x] Add check for person associated with other added pods after subbing to a person
-- [x] Pre-emtively 'cache' podcasts that a host is a part of
-- [x] Call for hosts for any podcasts, even ones without pod 2.0 data from the pod people db
-- [x] Fix issue when subscribing to host not in podpeopledb. - Resolves to 0
-- [x] Fix issue unsubscribing from host
-- [x] Adjust episode page so that it can accept episodes clicked from subbed host page. It'll pass a PeopleEpisodes id.
-- [x] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
-- [x] Subbed people feeds remove after a period (Seems like this might be a non-issue)
-- [] Get a nightly person refresh task going
-- [] Double check the whole workflow
-  - [x] Add host in podpeople
-  - [x] Add host in podndex person tag
-  - [] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
-  - [] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
-  - [] Fix description modals on sub people episodes
-  - [] Check entire workflow and 0.7.0 with mysql/mariadb
-
-Pre-0.7.0:
-
-- [] Write a blog on PodPeopleDB
-- [] A podcast that doesn't open: tested
-
 Version 0.7.0
 
 - [x] Android App
-- [x] Flatpak Clien
+- [x] Flatpak Client
 - [x] Snap Client
 - [x] aur client
 
 - [x] Added Valkey to make many processes faster
 - [x] People Table with background jobs to update people found in podcasts
 - [x] Subscribe to people
-- [] Add loading spinner when adding podcast via people page
+- [x] Add loading spinner when adding podcast via people page
 - [x] Four new themes added
 - [x] People page dropdowns on podcasts and episodes
 - [x] Stop issues with timeouts on occation with mobile apps - Potentially fixed due to audio file caching. Testing needed
@@ -116,6 +76,10 @@ Version 0.7.0
 - [x] Improved the playback and volume dropdowns so they don't interact with the rest of the page now
 - [x] Added some box shadow to the episode image in the full screen player
 - [x] When playing an episode <- and -> arrow keys skips forward and back for the playback now
+- [x] Layout improved all over the place
+- [x] Phosphor icons implemented as opposed to material
+- [x] Settings page layout rebuilt
+- [x] Better handle description html formatting
 
 Version 0.6.6
 

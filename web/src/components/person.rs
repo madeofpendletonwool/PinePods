@@ -232,6 +232,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let state_callback = state.clone();
 
         Callback::from(move |podcast_id: i32| {
+            dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let added_pod_state = added_podcasts.clone();
             let server_name_callback = server_name.clone();
             let api_key_callback = api_key.clone();
@@ -523,9 +524,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             } else {
                                                 html! {
                                                     <div class="w-full h-full bg-gray-300 flex items-center justify-center">
-                                                        <span class="material-icons text-4xl text-gray-500">
-                                                            {"person"}
-                                                        </span>
+                                                        <i class="ph ph-user text-4xl text-gray-500"></i>
                                                     </div>
                                                 }
                                             }
@@ -597,9 +596,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 <div class="flex items-center gap-6">
                                     <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
                                         <div class="w-full h-full bg-gray-300 flex items-center justify-center">
-                                            <span class="material-icons text-4xl text-gray-500">
-                                                {"person"}
-                                            </span>
+                                            <i class="ph ph-user text-4xl text-gray-500"></i>
                                         </div>
                                     </div>
                                     <div class="flex-grow">
@@ -618,14 +615,15 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                          onclick={let is_expanded = is_expanded.clone();
                                  Callback::from(move |_| is_expanded.set(!*is_expanded))}>
                         <h2 class="item_container-text text-xl font-semibold">{"Podcasts this person appears in"}</h2>
-                        <span class={classes!(
-                            "material-icons",
+                        <i class={classes!(
+                            "ph",
+                            "ph-caret-up",
                             "transition-transform",
                             "duration-300",
+                            "item_container-text",
+                            "text-2xl",
                             if *is_expanded { "rotate-180" } else { "rotate-0" }
-                        )}>
-                            {"expand_more"}
-                        </span>
+                        )}></i>
                     </div>
 
                     // Content section with animation classes
@@ -645,8 +643,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         html! {
                                     <div class="empty-episodes-container">
                                         <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1>{ "No Podcasts Found" }</h1>
-                                        <p>{"This person doesn't seem to appear in any podcasts. Are you sure you got the right person?"}</p>
+                                        <h1 class="page-subtitles">{ "No Podcasts Found" }</h1>
+                                        <p class="page-paragraphs">{"This person doesn't seem to appear in any podcasts. Are you sure you got the right person?"}</p>
                                     </div>
                                         }
                                     } else {
@@ -657,7 +655,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             added_podcasts_state.contains(&podcast.podcastid)
                                         };
 
-                                        let button_text = if is_added { "delete" } else { "add" };
+                                        let button_text = if is_added { "ph ph-trash" } else { "ph ph-plus-circle" };
 
                                         let onclick = {
                                             let podcast_id = podcast.podcastid;
@@ -758,11 +756,12 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
 
                                                         <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
                                                     </div>
-                                                    // <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                    //     <span class="material-icons" onclick={toggle_delete.reform(move |_| podcast_id_loop)}>{"delete"}</span>
-                                                    // </button>
-                                                    <button class={"item-container-button border selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                        <span class="material-icons" onclick={onclick}>{ button_text }</span>
+                                                    <button class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
+                                                        <i class={classes!(
+                                                            "ph",
+                                                            button_text,
+                                                            "text-4xl"
+                                                        )} onclick={onclick}></i>
                                                     </button>
 
                                                 </div>
@@ -775,8 +774,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                     html! {
                                         <div class="empty-episodes-container">
                                             <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                            <h1>{ "No Podcasts Found" }</h1>
-                                            <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                            <h1 class="page-subtitles">{ "No Podcasts Found" }</h1>
+                                            <p class="page-paragraphs">{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
                                         </div>
                                     }
                                 }
@@ -784,8 +783,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 html! {
                                     <div class="empty-episodes-container">
                                         <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1>{ "No Podcasts Found" }</h1>
-                                        <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                        <h1 class="page-subtitles">{ "No Podcasts Found" }</h1>
+                                        <p class="page-paragraphs">{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
                                     </div>
                                 }
                             }
@@ -796,14 +795,15 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                          onclick={let episodes_expanded = episodes_expanded.clone();
                                  Callback::from(move |_| episodes_expanded.set(!*episodes_expanded))}>
                         <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
-                        <span class={classes!(
-                            "material-icons",
+                        <i class={classes!(
+                            "ph",
+                            "ph-caret-up",
                             "transition-transform",
                             "duration-300",
+                            "item_container-text",
+                            "text-2xl",
                             if *episodes_expanded { "rotate-180" } else { "rotate-0" }
-                        )}>
-                            {"expand_more"}
-                        </span>
+                        )}></i>
                     </div>
 
                     // Episodes Content with animation
@@ -947,26 +947,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                         <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;"> // Add align-self: center; heren medium and larger screens
                                                             if should_show_buttons {
                                                                 <button
-                                                                    class="item-container-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
                                                                     onclick={on_play_click}
                                                                 >
-                                                                <span class="material-bonus-color material-icons large-material-icons md:text-6xl text-4xl">{"play_arrow"}</span>
+                                                                <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
                                                                 </button>
-                                                                // {
-                                                                //     if podcast_added {
-                                                                //         let page_type = "episode_layout".to_string();
-
-                                                                //         let context_button = html! {
-                                                                //             <ContextButton episode={boxed_episode} page_type={page_type.clone()} />
-                                                                //         };
-
-
-                                                                //         context_button
-
-                                                                //     } else {
-                                                                //         html! {}
-                                                                //     }
-                                                                // }
                                                             }
                                                         </div>
                                                     }

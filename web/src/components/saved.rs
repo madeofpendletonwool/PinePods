@@ -8,7 +8,6 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-    truncate_description,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::SavedEpisodesResponse;
@@ -37,12 +36,17 @@ pub fn saved() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let dropdown_open = use_state(|| false);
+    let active_modal = use_state(|| None::<i32>);
     let show_modal = use_state(|| false);
-    let show_clonedal = show_modal.clone();
-    let show_clonedal2 = show_modal.clone();
-    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
-
-    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
+    let active_clonedal = active_modal.clone();
+    let active_modal_clone = active_modal.clone();
+    let on_modal_open = Callback::from(move |episode_id: i32| {
+        active_modal_clone.set(Some(episode_id));
+    });
+    let active_modal_clone = active_modal.clone();
+    let on_modal_close = Callback::from(move |_| {
+        active_modal_clone.set(None);
+    });
 
     let session_dispatch = _post_dispatch.clone();
     let session_state = post_state.clone();
@@ -263,14 +267,7 @@ pub fn saved() -> Html {
                                 let episode_duration_clone = episode.episodeduration.clone();
                                 let episode_id_clone = episode.episodeid.clone();
                                 let episode_listened_clone = episode.listenduration.clone();
-
                                 let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
-
-                                let (description, _is_truncated) = if is_expanded {
-                                    (sanitized_description, false)
-                                } else {
-                                    truncate_description(sanitized_description, 300)
-                                };
 
                                 let toggle_expanded = {
                                     let search_dispatch_clone = dispatch.clone();
@@ -337,9 +334,10 @@ pub fn saved() -> Html {
                                     .as_ref()
                                     .unwrap_or(&vec![])
                                     .contains(&check_episode_id);
+                                let episode_id_clone = Some(episode.episodeid).clone();
                                 let item = episode_item(
                                     Box::new(episode),
-                                    description.clone(),
+                                    sanitized_description,
                                     is_expanded,
                                     &format_release,
                                     on_play_click,
@@ -352,7 +350,7 @@ pub fn saved() -> Html {
                                     false,
                                     episode_url_for_ep_item,
                                     is_completed,
-                                    *show_modal,
+                                    *active_modal == episode_id_clone,
                                     on_modal_open.clone(),
                                     on_modal_close.clone(),
                                     (*container_height).clone(),

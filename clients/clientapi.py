@@ -1056,18 +1056,44 @@ async def fetch_podcasting_2_data(
         print('getting id')
         podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
         print('getting deets')
-
         podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
 
         episode_url = episode_metadata['episodeurl']
         podcast_feed_url = podcast_feed['feedurl']
         podcast_index_id = database_functions.functions.get_podcast_index_id(cnx, database_type, podcast_id)
 
-        # Fetch feed content
+        # Set up common request parameters
+        headers = {
+            'User-Agent': 'PinePods/1.0',
+            'Accept': 'application/xml, application/rss+xml, text/xml, application/json'
+        }
+
+        # Check if podcast requires authentication
+        auth = None
+        if podcast_feed.get('username') and podcast_feed.get('password'):
+            auth = httpx.BasicAuth(
+                username=podcast_feed['username'],
+                password=podcast_feed['password']
+            )
+
+        # Fetch feed content with authentication if needed
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            response = await client.get(podcast_feed_url)
-            response.raise_for_status()
-            feed_content = response.text
+            try:
+                response = await client.get(
+                    podcast_feed_url,
+                    headers=headers,
+                    auth=auth
+                )
+                response.raise_for_status()
+                feed_content = response.text
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    logging.error(f"Authentication failed for podcast feed: {podcast_feed_url}")
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Authentication required or invalid credentials for podcast feed"
+                    )
+                raise
 
         # Parse feed content
         chapters_url = parse_chapters(feed_content, episode_url)
@@ -1079,11 +1105,18 @@ async def fetch_podcasting_2_data(
         if chapters_url:
             try:
                 async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-                    response = await client.get(chapters_url)
+                    # Use same auth for chapters if it's from the same domain
+                    chapters_auth = auth if chapters_url.startswith(podcast_feed_url) else None
+                    response = await client.get(
+                        chapters_url,
+                        headers=headers,
+                        auth=chapters_auth
+                    )
                     response.raise_for_status()
                     chapters_data = response.json().get('chapters', [])
             except Exception as e:
                 logging.error(f"Error fetching chapters: {e}")
+                # Continue with empty chapters rather than failing completely
 
         return {
             "chapters": chapters_data,
@@ -1091,18 +1124,28 @@ async def fetch_podcasting_2_data(
             "people": people
         }
 
+    except httpx.HTTPStatusError as e:
+        logging.error(f"HTTP error in fetch_podcasting_2_data: {e}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Error fetching podcast data: {str(e)}"
+        )
+    except httpx.RequestError as e:
+        logging.error(f"Request error in fetch_podcasting_2_data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch podcast data: {str(e)}"
+        )
     except Exception as e:
         logging.error(f"Error in fetch_podcasting_2_data: {e}")
-        # Return partial data if we have it, otherwise raise the error
-        if 'chapters_data' in locals() or 'transcripts' in locals() or 'people' in locals():
+        # Return partial data if we have it
+        if any(var in locals() for var in ['chapters_data', 'transcripts', 'people']):
             return {
                 "chapters": locals().get('chapters_data', []),
                 "transcripts": locals().get('transcripts', []),
                 "people": locals().get('people', [])
             }
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 def is_valid_image_url(url: str) -> bool:
     """Validate image URL for security"""
@@ -1254,30 +1297,75 @@ async def fetch_podcasting_2_pod_data(podcast_id: int, user_id: int, cnx=Depends
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
 
-    # Fetch the podcast feed URL from the database using the podcast_id
+    # Fetch the podcast details including auth credentials
     podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
     podcast_feed_url = podcast_feed['feedurl']
 
+    # Set up HTTP client with authentication if credentials exist
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(podcast_feed_url)
-        response.raise_for_status()
-        feed_content = response.text  # Decode content to string
+        headers = {
+            'User-Agent': 'PinePods/1.0',
+            'Accept': 'application/xml, application/rss+xml, text/xml'
+        }
 
-    logging.info(f"Fetched feed content: {feed_content[:200]}")  # Log the first 200 characters of the feed content
+        # Check if podcast requires authentication
+        auth = None
+        if podcast_feed.get('username') and podcast_feed.get('password'):
+            auth = httpx.BasicAuth(
+                username=podcast_feed['username'],
+                password=podcast_feed['password']
+            )
 
-    # people = parse_hosts(feed_content)
-    people = await get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_feed['podcastindexid'])
-    podroll = parse_podroll(feed_content)
-    funding = parse_funding(feed_content)
-    value = parse_value(feed_content)
+        try:
+            response = await client.get(
+                podcast_feed_url,
+                headers=headers,
+                auth=auth,
+                timeout=30.0  # Add reasonable timeout
+            )
+            response.raise_for_status()
+            feed_content = response.text
 
-    logging.info(f'People {people}')
-    logging.info(f'Podroll {podroll}')
-    logging.info(f'Funding {funding}')
-    logging.info(f'Value {value}')
+            logging.info(f"Successfully fetched feed content from {podcast_feed_url}")
 
-    return {"people": people, "podroll": podroll, "funding": funding, "value": value}
+            # Parse the feed content for various metadata
+            people = await get_podcast_hosts(cnx, database_type, podcast_id, feed_content, podcast_feed['podcastindexid'])
+            podroll = parse_podroll(feed_content)
+            funding = parse_funding(feed_content)
+            value = parse_value(feed_content)
 
+            logging.debug(f"Parsed metadata - People: {len(people) if people else 0} entries")
+
+            return {
+                "people": people,
+                "podroll": podroll,
+                "funding": funding,
+                "value": value
+            }
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                logging.error(f"Authentication failed for podcast feed: {podcast_feed_url}")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Authentication required or invalid credentials for podcast feed"
+                )
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"Error fetching podcast feed: {str(e)}"
+            )
+        except httpx.RequestError as e:
+            logging.error(f"Request error fetching podcast feed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch podcast feed: {str(e)}"
+            )
+        except Exception as e:
+            logging.error(f"Unexpected error processing podcast feed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing podcast feed: {str(e)}"
+            )
 
 
 class PodcastResponse(BaseModel):
@@ -3971,26 +4059,79 @@ def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_tok
 def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Optional[str] = None):
     """
     Check if the provided URL points to a valid podcast feed.
-    Raises ValueError if the feed is invalid.
+    Uses both direct content-type checking and feedparser validation.
+
+    Args:
+        feed_url: URL of the podcast feed
+        username: Optional username for authenticated feeds
+        password: Optional password for authenticated feeds
+
+    Returns:
+        feedparser.FeedParserDict: The parsed feed if valid
+
+    Raises:
+        ValueError: If the feed is invalid or inaccessible
     """
     import feedparser
     import requests
     from requests.auth import HTTPBasicAuth
+    from typing import Optional
+
+    # Common podcast feed content types
+    VALID_CONTENT_TYPES = [
+        'application/xml',
+        'text/xml',
+        'application/rss+xml',
+        'application/atom+xml',
+        'application/rdf+xml',
+    ]
+
+    def is_valid_content_type(content_type: str) -> bool:
+        """Check if the content type indicates XML content."""
+        content_type = content_type.lower().split(';')[0].strip()
+        return any(valid_type in content_type for valid_type in VALID_CONTENT_TYPES) or 'xml' in content_type
 
     # Use requests to fetch the feed content
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        if username and password:
-            response = requests.get(feed_url, headers=headers, auth=HTTPBasicAuth(username, password))
-        else:
-            response = requests.get(feed_url, headers=headers)
+        # Set multiple user agents and accept headers to improve compatibility
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (compatible; PodcastApp/1.0; +https://example.com)',
+            'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*'
+        }
 
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        # Handle authentication if provided
+        auth = HTTPBasicAuth(username, password) if username and password else None
 
-        # Check Content-Type
-        content_type = response.headers.get('Content-Type', '')
-        if 'xml' not in content_type:
-            raise ValueError(f"Unexpected Content-Type: {content_type}")
+        # Make the request with a timeout
+        response = requests.get(
+            feed_url,
+            headers=headers,
+            auth=auth,
+            timeout=10,
+            allow_redirects=True
+        )
+        response.raise_for_status()
+
+        # Get content type, handling cases where it might not be present
+        content_type = response.headers.get('Content-Type', '').lower()
+
+        # Special handling for feeds that don't properly set content type
+        if not is_valid_content_type(content_type):
+            # Try to parse it anyway - some feeds might be valid despite wrong content type
+            feed_content = response.content
+            parsed_feed = feedparser.parse(feed_content)
+
+            # If we can parse it and it has required elements, accept it despite content type
+            if (parsed_feed.get('version') and
+                'title' in parsed_feed.feed and
+                'link' in parsed_feed.feed):
+                return parsed_feed
+
+            # If we can't parse it, then it's probably actually invalid
+            raise ValueError(
+                f"Unexpected Content-Type: {content_type}. "
+                "The feed URL must point to an XML feed file."
+            )
 
         feed_content = response.content
 
@@ -4000,12 +4141,29 @@ def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Op
     # Parse the feed content using feedparser
     parsed_feed = feedparser.parse(feed_content)
 
-    # Validate the parsed feed
-    if not parsed_feed.get('version'):
-        raise ValueError("Invalid podcast feed URL or content.")
+    # Check for feedparser errors
+    if parsed_feed.get('bozo') == 1:
+        exception = parsed_feed.get('bozo_exception')
+        if exception:
+            raise ValueError(f"Feed parsing error: {str(exception)}")
 
-    if not ('title' in parsed_feed.feed and 'link' in parsed_feed.feed and 'description' in parsed_feed.feed):
-        raise ValueError("Feed missing required attributes: title, link, or description.")
+    # Validate the parsed feed has required elements
+    if not parsed_feed.get('version'):
+        raise ValueError("Invalid podcast feed URL or content: Could not determine feed version.")
+
+    required_attributes = ['title', 'link']
+    missing_attributes = [attr for attr in required_attributes if attr not in parsed_feed.feed]
+
+    if missing_attributes:
+        raise ValueError(
+            f"Feed missing required attributes: {', '.join(missing_attributes)}. "
+            "The URL must point to a valid podcast feed."
+        )
+
+    # Check for podcast-specific elements
+    has_items = len(parsed_feed.entries) > 0
+    if not has_items:
+        raise ValueError("Feed contains no episodes.")
 
     return parsed_feed
 
@@ -4222,6 +4380,21 @@ def process_person_subscription_task(
             process_person_subscription(user_id, person_id, person_name, cnx)
         )
         loop.close()
+
+        # After successful person subscription processing, trigger a server refresh
+        print("Person subscription processed, initiating server refresh...")
+        try:
+            refresh_pods_task()
+            print("Server refresh completed successfully")
+        except Exception as refresh_error:
+            print(f"Error during server refresh: {refresh_error}")
+            # Don't raise the error here - we don't want to fail the whole operation
+            # if just the refresh fails
+            pass
+
+    except Exception as e:
+        print(f"Error in process_person_subscription_task: {e}")
+        raise
     finally:
         if database_type == "postgresql":
             connection_pool.putconn(cnx)
