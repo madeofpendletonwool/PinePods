@@ -8,7 +8,6 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-    truncate_description,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::QueuedEpisodesResponse;
@@ -27,31 +26,11 @@ use web_sys::{window, DragEvent, HtmlElement};
 // Add this at the top of your file
 const SCROLL_THRESHOLD: f64 = 150.0; // Increased threshold for easier activation
 const SCROLL_SPEED: f64 = 15.0; // Increased speed
-const SCROLL_INTERVAL: f64 = 16.0; // Keep at 60fps
 
 #[derive(Clone, Debug)]
 struct ScrollState {
     interval_id: Option<i32>,
     scroll_direction: f64,
-}
-
-// Add these new functions at the module level
-fn start_auto_scroll(direction: f64) -> i32 {
-    let window = window().unwrap();
-    let window_clone = window.clone();
-    let closure = Closure::wrap(Box::new(move || {
-        window_clone.scroll_by_with_x_and_y(0.0, direction * SCROLL_SPEED);
-    }) as Box<dyn Fn()>);
-
-    let interval_id = window
-        .set_interval_with_callback_and_timeout_and_arguments_0(
-            closure.as_ref().unchecked_ref(),
-            SCROLL_INTERVAL as i32,
-        )
-        .unwrap();
-
-    closure.forget();
-    interval_id
 }
 
 fn stop_auto_scroll(interval_id: i32) {

@@ -8,7 +8,6 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-    truncate_description,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::SavedEpisodesResponse;
