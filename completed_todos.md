@@ -11,7 +11,6 @@ Next Minor Version:
 - [] Push completion status to Nextcloud/gpodder
 - [] Test with LXC containers
 - [] Dynamically adjusting local download buttons
-- [] Adjust download checkboxes to look nicer
 - [] Change download multiple buttons to be on same line as header
 - [] Full Show deletion with checkbox on download page
 - [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
@@ -24,14 +23,14 @@ pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
 - [] Theme updates on change settings page. Auto fills correct theme on dropdown
 - [] Make virtual lines work for saved, queue, downloads, local downloads, and history
 - [] Display Listen time on the episodes layout page
-- [] Implement additional filtering in podcasts
-- [] Implement episode filtering on episode layout page
-- [] Implement episode filtering on history page
-- [] Implement episode filtering on saved page
-- [] Implement episode filtering on server download page
-- [] Implement episode filtering on local download page
-- [] Implement episode filtering on queue page
-- [] Implement episode filtering on search page
+- [] Implement additional filtering in podcasts/quick search keyword
+- [] Implement episode filtering on episode layout page/quick search keyword
+- [] Implement episode filtering on history page/quick search keyword
+- [] Implement episode filtering on saved page/quick search keyword
+- [] Implement episode filtering on server download page/quick search keyword
+- [] Implement episode filtering on local download page/quick search keyword
+- [] Implement episode filtering on queue page/quick search keyword
+- [] Implement episode filtering on search page/quick search keyword
 - [] Updating which chapter is currently playing to switch to a pause button
 - [] Functional back button - Along with ensuring browser backs, and phone backs react correctly
 - [] While host search occurs the server is unresponsive
@@ -72,18 +71,17 @@ People stuff left:
 - [x] Validate adding and removing podcasts that after a host is subscribed to that they are part of works okay.
 - [x] Subbed people feeds remove after a period (Seems like this might be a non-issue)
 - [] Get a nightly person refresh task going
-- [] Double check the whole workflow
+- [x] Double check the whole workflow
   - [x] Add host in podpeople
   - [x] Add host in podndex person tag
   - [x] Issue when playing episodes from subscribed people tab. Ones not added error when not finding autoskip times
   - [x] Issue when playing episodes from subscribed people tab. stream fails when playing episodes subbed to: 	http://localhost:8041/api/data/stream/2487?api_key=ZDvknSFLZ7UGrE28hupzUBOVmPq5XPTA79MWjEJ80LJyhFFIbqGxLitrNKXFzoqz&user_id=2 - Episode not found or not downloaded
-  - [] Handle situation on people subs page when playing episode from podcast not in Episodes table
-  - [] Check entire workflow and 0.7.0 with mysql/mariadb
+  - [x] Check entire workflow and 0.7.0 with mysql/mariadb
 
 Pre-0.7.0:
 
 - [] Write a blog on PodPeopleDB
-- [] A podcast that doesn't open: tested
+- [] Update Readme
 
 Version 0.7.0
 

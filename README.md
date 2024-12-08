@@ -408,11 +408,13 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 
 ### Clients to support
 
-- [ ] Flatpak Client - https://www.reddit.com/r/flatpak/comments/xznfbu/how_to_build_the_tauri_app_into_flatpak/
+- [x] Flatpak Client
 - [ ] Nix Package
+- [x] Aur Package
+- [x] Snap package
 - [x] Helm Chart and repo for kubernetes deployment
 - [ ] Mobile Apps
-  - [ ] Android App
+  - [x] Android App - Beta
     - [ ] Android Auto support
   - [ ] IOS App
   - [ ] Packaging and automation
