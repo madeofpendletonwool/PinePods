@@ -6253,8 +6253,69 @@ def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person
         print(f"Starting subscribe_to_person with: user_id={user_id}, person_id={person_id}, person_name={person_name}, podcast_id={podcast_id}")
 
         if database_type == "postgresql":
-            # PostgreSQL version [keep your existing PostgreSQL code]
-            [...]
+            # Check if a person with the same PeopleDBID (if not 0) or Name (if PeopleDBID is 0) exists
+            if person_id != 0:
+                query = """
+                    SELECT PersonID, AssociatedPodcasts FROM "People"
+                    WHERE UserID = %s AND PeopleDBID = %s
+                """
+                print(f"Executing query for non-zero person_id: {query} with params: ({user_id}, {person_id})")
+                cursor.execute(query, (user_id, person_id))
+            else:
+                query = """
+                    SELECT PersonID, AssociatedPodcasts FROM "People"
+                    WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
+                """
+                print(f"Executing query for zero person_id: {query} with params: ({user_id}, {person_name})")
+                cursor.execute(query, (user_id, person_name))
+
+            existing_person = cursor.fetchone()
+            print(f"Query result: {existing_person}")
+
+            if existing_person:
+                print("Found existing person, updating...")
+                # Person exists, update AssociatedPodcasts and possibly update image/description
+                person_id, associated_podcasts = existing_person
+                podcast_list = associated_podcasts.split(',') if associated_podcasts else []
+                if str(podcast_id) not in podcast_list:
+                    podcast_list.append(str(podcast_id))
+                    new_associated_podcasts = ','.join(podcast_list)
+                    update_query = """
+                        UPDATE "People"
+                        SET AssociatedPodcasts = %s,
+                            PersonImg = COALESCE(%s, PersonImg)
+                        WHERE PersonID = %s
+                    """
+                    print(f"Executing update query: {update_query} with params: ({new_associated_podcasts}, {person_img}, {person_id})")
+                    cursor.execute(update_query, (new_associated_podcasts, person_img, person_id))
+                return True, person_id
+            else:
+                print("No existing person found, inserting new record...")
+                # Person doesn't exist, insert new record with image and description
+                insert_query = """
+                    INSERT INTO "People"
+                    (UserID, PeopleDBID, Name, PersonImg, AssociatedPodcasts)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING PersonID;
+                """
+                print(f"Executing insert query: {insert_query} with params: ({user_id}, {person_id}, {person_name}, {person_img}, {str(podcast_id)})")
+                cursor.execute(insert_query, (user_id, person_id, person_name, person_img, str(podcast_id)))
+                result = cursor.fetchone()
+                print(f"Insert result: {result}")
+                if result is not None:
+                    # Handle both tuple and dict return types
+                    if isinstance(result, dict):
+                        new_person_id = result['personid']
+                    else:
+                        new_person_id = result[0]
+                    print(f"Insert successful, new PersonID: {new_person_id}")
+                    cnx.commit()
+                    return True, new_person_id
+                else:
+                    print("Insert did not return a PersonID")
+                    cnx.rollback()
+                    return False, 0
+
         else:  # MariaDB
             # Check if person exists
             if person_id != 0:
@@ -6421,7 +6482,7 @@ def get_person_subscriptions(cnx, database_type, user_id: int) -> List[dict]:
                     'personid': int(row['personid']),
                     'userid': int(row['userid']),
                     'name': row['name'],
-                    'image': row['peopleimg'],
+                    'image': row['personimg'],
                     'peopledbid': int(row['peopledbid']) if row['peopledbid'] is not None else None,
                     'associatedpodcasts': row['associatedpodcasts'],
                 }
