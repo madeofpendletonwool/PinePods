@@ -77,8 +77,8 @@ echo "Using mysql/mariadb"
 fi
 echo "Database Validation complete"
 # Periodic refresh
-echo "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1" | crontab -
-echo "0 0 * * * /pinepods/startup/call_nightly_tasks.sh >/dev/null 2>&1" | crontab -
+echo -e "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1\n0 0 * * * /pinepods/startup/call_nightly_tasks.sh >/dev/null 2>&1" > /etc/crontabs/root
+# Fix permissions on exim email server folders
 # Fix permissions on exim email server folders
 mkdir -p /var/log/exim4
 mkdir -p /var/spool/exim4
