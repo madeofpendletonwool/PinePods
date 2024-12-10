@@ -12,16 +12,18 @@ finish-args:
   - --share=ipc
   - --socket=pulseaudio # For audio support
   - --share=network # For network access
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: "22.08"
 
 modules:
   - name: libayatana-appindicator
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-    sources:
-      - type: git
-        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
-        tag: 0.5.93
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 /usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so.1 /app/lib/libayatana-appindicator3.so.1
+      - install -Dm755 /usr/lib/x86_64-linux-gnu/libayatana-indicator3.so.7 /app/lib/libayatana-indicator3.so.7
+
   - name: binary
     buildsystem: simple
     sources:
