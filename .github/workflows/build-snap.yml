@@ -39,6 +39,8 @@ jobs:
         run: |
           sudo snap install core22
           sudo snap install snapcraft --classic
+          sudo snap install lxd
+          sudo lxd init --auto
 
       - name: Prepare Snap configuration
         run: |
