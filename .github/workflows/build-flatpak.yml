@@ -50,6 +50,10 @@ jobs:
           SHA256=$(curl -sL $DEB_URL | sha256sum | cut -d' ' -f1)
           sed -i "s|sha256: .*|sha256: $SHA256|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
 
+      - name: Get shared Modules
+        run: |
+          git clone https://github.com/flathub/shared-modules
+
       - name: Build Flatpak
         run: |
           flatpak-builder --repo=repo --force-clean build-dir clients/flatpak/com.gooseberrydevelopment.pinepods.yml
