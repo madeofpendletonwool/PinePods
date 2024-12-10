@@ -12,18 +12,19 @@ finish-args:
   - --share=ipc
   - --socket=pulseaudio # For audio support
   - --share=network # For network access
-add-extensions:
-  org.freedesktop.Platform.Compat.i386:
-    directory: lib/i386-linux-gnu
-    version: "22.08"
 
 modules:
-  - name: libayatana-appindicator
+  - name: ubuntu-libs
     buildsystem: simple
     build-commands:
-      - install -Dm755 /usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so.1 /app/lib/libayatana-appindicator3.so.1
-      - install -Dm755 /usr/lib/x86_64-linux-gnu/libayatana-indicator3.so.7 /app/lib/libayatana-indicator3.so.7
-
+      # First install the Ubuntu packages
+      - apt-get update -y
+      - apt-get install -y libayatana-appindicator3-1
+      # Then copy them to the Flatpak environment
+      - cp -a /usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so* /app/lib/
+      - cp -a /usr/lib/x86_64-linux-gnu/libayatana-indicator3.so* /app/lib/
+      - cp -a /usr/lib/x86_64-linux-gnu/libdbusmenu-glib.so* /app/lib/
+      - cp -a /usr/lib/x86_64-linux-gnu/libdbusmenu-gtk3.so* /app/lib/
   - name: binary
     buildsystem: simple
     sources:
