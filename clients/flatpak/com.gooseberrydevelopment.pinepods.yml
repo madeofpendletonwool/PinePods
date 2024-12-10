@@ -25,6 +25,8 @@ modules:
         path: ../../web/src-tauri/icons/128x128.png
       - type: file
         path: ../../web/src-tauri/icons/256x256.png
+      - type: file
+        path: ./com.gooseberrydevelopment.pinepods.metainfo.xml
         # This path points to the binary file which was created in the .deb bundle.
         # Tauri also creates a folder which corresponds to the content of the unpacked .deb.
     build-commands:
