@@ -37,10 +37,14 @@ jobs:
 
       - name: Install Snapcraft
         run: |
+          sudo apt-get install -y snapd
           sudo snap install core22
           sudo snap install snapcraft --classic
-          sudo snap install lxd
-          sudo lxd init --auto
+
+      - name: Setup LXD
+        uses: canonical/setup-lxd@[version]
+        with:
+          channel: latest/edge
 
       - name: Prepare Snap configuration
         run: |
