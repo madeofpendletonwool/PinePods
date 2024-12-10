@@ -927,7 +927,7 @@ def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, fee
                 processed_episodes.add(new_episode_id)
 
             except Exception as e:
-                logging.error(f"Error processing episode {parsed_title}: {str(e)}")
+                logging.debug(f"Skipping episode '{parsed_title}' during person podcast import - {str(e)}")
                 continue
 
         # Clean up old episodes

@@ -922,7 +922,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                         html! {
                                                             <div class="item-description-text hidden md:block">
                                                                 <div
-                                                                    class={format!("item_container-text episode-description-container {}", description_class)}
+                                                                    class={format!("item_container-text episode-description-container line-clamp-2 {}", description_class)}
                                                                     onclick={toggle_expanded}  // Make the description container clickable
                                                                 >
                                                                     <SafeHtml html={description} />

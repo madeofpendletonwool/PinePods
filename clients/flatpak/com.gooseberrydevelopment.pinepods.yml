@@ -1,6 +1,6 @@
 id: com.gooseberrydevelopment.pinepods
 runtime: org.gnome.Platform
-runtime-version: "46"
+runtime-version: "47"
 sdk: org.gnome.Sdk
 command: app
 finish-args:
@@ -17,7 +17,7 @@ modules:
     sources:
       - type: file
         url: https://github.com/madeofpendletonwool/PinePods/releases/download/0.7.0/pinepods_0.7.0_amd64.deb
-        sha256: 08305b5521e2cf0622e084f2b8f7f31f8a989fc7f407a7050fa3649facd61469
+        sha256: 1b3a1c7555a87358632711179778aa572a89cf51a9e5a53c107eaa1ef2332fc3
         only-arches: [x86_64]
         dest-filename: pinepods.deb
       - type: file
