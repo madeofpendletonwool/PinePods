@@ -56,7 +56,7 @@ jobs:
 
       - name: Create Flatpak bundle
         run: |
-          flatpak build-bundle --user repo ${{ env.FLATPAK_ID }}.flatpak ${{ env.FLATPAK_ID }}
+          flatpak build-bundle repo ${{ env.FLATPAK_ID }}.flatpak ${{ env.FLATPAK_ID }}
 
       - name: Archive Flatpak files
         run: |
