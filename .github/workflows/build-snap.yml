@@ -42,7 +42,7 @@ jobs:
           sudo snap install snapcraft --classic
 
       - name: Setup LXD
-        uses: canonical/setup-lxd@[version]
+        uses: canonical/setup-lxd@main
         with:
           channel: latest/edge
 
