@@ -34,7 +34,7 @@ modules:
       - ar -x pinepods.deb
       - tar -xf data.tar.gz
       - sed -i 's/Icon=app/Icon=com.gooseberrydevelopment.pinepods/' usr/share/applications/Pinepods.desktop
-      - sed -i 's/Exec=app/Exec=tauri-app/' usr/share/applications/Pinepods.desktop
+      - sed -i 's/Exec=app/Exec=app/' usr/share/applications/Pinepods.desktop
       - mkdir -p /app/bin
       - cp -r usr/bin/* /app/bin
       - install -Dm644 32x32.png /app/share/icons/hicolor/32x32/apps/com.gooseberrydevelopment.pinepods.png
