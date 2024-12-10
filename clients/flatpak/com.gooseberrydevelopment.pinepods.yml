@@ -31,7 +31,7 @@ modules:
       - ar -x *.deb
       - tar -xf data.tar.gz
       - "install -Dm755 usr/bin/app /app/bin/tauri-app"
-      - install -Dm644 usr/share/applications/pinepods.desktop /app/share/applications/com.gooseberrydevelopment.pinepods.desktop
+      - install -Dm644 usr/share/applications/Pinepods.desktop /app/share/applications/com.gooseberrydevelopment.pinepods.desktop
       - install -Dm644 32x32.png /app/share/icons/hicolor/32x32/apps/com.gooseberrydevelopment.pinepods.png
       - install -Dm644 128x128.png /app/share/icons/hicolor/128x128/apps/com.gooseberrydevelopment.pinepods.png
       - install -Dm644 256x256.png /app/share/icons/hicolor/256x256@2/apps/com.gooseberrydevelopment.pinepods.png
