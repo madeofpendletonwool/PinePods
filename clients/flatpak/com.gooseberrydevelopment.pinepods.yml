@@ -2,7 +2,7 @@ id: com.gooseberrydevelopment.pinepods
 runtime: org.gnome.Platform
 runtime-version: "46"
 sdk: org.gnome.Sdk
-command: tauri-app
+command: app
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
