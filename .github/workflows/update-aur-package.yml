@@ -34,7 +34,7 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.AUR_GPG_PRIVATE_KEY }}
         run: |
-          echo "$GPG_PRIVATE_KEY" | gpg --import
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import --pinentry-mode loopback
 
       - name: Clone AUR package
         run: |
@@ -63,16 +63,34 @@ jobs:
           declare -A sums
           for arch in x86_64 aarch64; do
             url="${source_${arch}[0]}"
-            sum=$(curl -sL "$url" | sha256sum | cut -d' ' -f1)
+            if ! sum=$(curl -sL "$url" | sha256sum | cut -d' ' -f1); then
+              echo "Failed to download or calculate checksum for $arch"
+              exit 1
+            fi
+            if [[ ! $sum =~ ^[a-f0-9]{64}$ ]]; then
+              echo "Invalid checksum format for $arch"
+              exit 1
+            fi
             sums[$arch]=$sum
           done
+
+          # Create backup of files
+          cp PKGBUILD PKGBUILD.bak
+          cp .SRCINFO .SRCINFO.bak
+
+          # Update files
           sed -i "s/sha256sums_x86_64=.*/sha256sums_x86_64=('${sums[x86_64]}')/" PKGBUILD
           sed -i "s/sha256sums_aarch64=.*/sha256sums_aarch64=('${sums[aarch64]}')/" PKGBUILD
-
-          # Update .SRCINFO with new checksums
           sed -i "s/^\tsha256sums_x86_64 = .*/\tsha256sums_x86_64 = ${sums[x86_64]}/" .SRCINFO
           sed -i "s/^\tsha256sums_aarch64 = .*/\tsha256sums_aarch64 = ${sums[aarch64]}/" .SRCINFO
 
+          # Verify PKGBUILD
+          if ! makepkg --printsrcinfo > .SRCINFO.new; then
+            echo "Failed to verify PKGBUILD"
+            mv PKGBUILD.bak PKGBUILD
+            mv .SRCINFO.bak .SRCINFO
+            exit 1
+          fi
       - name: Commit and push changes
         run: |
           cd aur-package
@@ -83,6 +101,10 @@ jobs:
       - name: Sign the commit
         run: |
           cd aur-package
-          git config user.signingkey ${{ secrets.GPG_KEY_ID }}
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          gpg-connect-agent reloadagent /bye
+          git config --global commit.gpgsign true
+          git config --global user.signingkey ${{ secrets.GPG_KEY_ID }}
           git commit --amend --no-edit -S
           git push --force
