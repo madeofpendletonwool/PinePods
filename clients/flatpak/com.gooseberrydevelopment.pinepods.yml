@@ -32,6 +32,8 @@ modules:
     build-commands:
       - ar -x *.deb
       - tar -xf data.tar.gz
+      - sed -i 's/Icon=app/Icon=com.gooseberrydevelopment.pinepods/' usr/share/applications/Pinepods.desktop
+      - sed -i 's/Exec=app/Exec=tauri-app/' usr/share/applications/Pinepods.desktop
       - "install -Dm755 usr/bin/app /app/bin/tauri-app"
       - install -Dm644 usr/share/applications/Pinepods.desktop /app/share/applications/com.gooseberrydevelopment.pinepods.desktop
       - install -Dm644 32x32.png /app/share/icons/hicolor/32x32/apps/com.gooseberrydevelopment.pinepods.png
