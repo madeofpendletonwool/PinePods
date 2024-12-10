@@ -12,7 +12,7 @@ finish-args:
   - --share=network
 
 modules:
-  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - ../../shared-modules/libappindicator/libappindicator-gtk3-12.10.json
   - name: binary
     buildsystem: simple
     sources:
