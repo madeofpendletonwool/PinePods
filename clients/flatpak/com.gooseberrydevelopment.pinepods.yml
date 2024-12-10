@@ -10,8 +10,18 @@ finish-args:
   - --socket=fallback-x11 # Permission needed to show the window
   - --device=dri # OpenGL, not necessary for all projects
   - --share=ipc
+  - --socket=pulseaudio # For audio support
+  - --share=network # For network access
 
 modules:
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.93
   - name: binary
     buildsystem: simple
     sources:
