@@ -98,6 +98,7 @@ jobs:
         run: |
           export ANDROID_HOME=$HOME/.android/sdk
           export NDK_HOME=$NDK_JOB_HOME
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis"  # Add this line
           cd web/src-tauri
           cargo tauri icon icons/Square512x512.png
           cat tauri.conf.json
