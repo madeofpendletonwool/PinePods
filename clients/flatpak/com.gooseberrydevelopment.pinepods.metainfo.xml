@@ -13,7 +13,7 @@
 
   <description>
     <p>
-      PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. You can subscribe to podcasts and even hosts for podcasts with the help of the PodPeopleDB. It works on mobile devices and can also sync with a Nextcloud server or gpodder compatible sync server so you can use external apps like Antennapod as well!
+      PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. You can subscribe to podcasts and even hosts for podcasts with the help of the PodPeopleDB. It works on mobile devices and can also sync with a Nextcloud server or gpodder compatible sync server so you can use external apps like Antennapod as well! NOTE: This is the client edition of Pinepods. You must have a server to connect to in order to use this app. Instuctions for setting up your own self-hosted server can be found [here!](https://github.com/madeofpendletonwool/PinePods)
     </p>
   </description>
 
@@ -25,20 +25,27 @@
       <caption>Main interface of Pinepods</caption>
     </screenshot>
   </screenshots>
-
   <url type="homepage">https://github.com/madeofpendletonwool/PinePods</url>
-
+  <url type="bugtracker">https://github.com/madeofpendletonwool/PinePods/issues</url>
+  <url type="donation">https://github.com/sponsors/madeofpendletonwool</url>
+  <url type="translate">https://github.com/madeofpendletonwool/PinePods/tree/main/translations</url>
   <provides>
     <binary>tauri-app</binary>
   </provides>
 
   <releases>
-    <release version="0.7.0" date="2024-12-09">
+    <release version="0.7.1" date="2024-12-09">
       <description>
-        <p>Latest release of Pinepods</p>
+        <p>Initial Flatpak Release!</p>
       </description>
     </release>
   </releases>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <recommends>
+    <display_length compare="ge">548</display_length>
+  </recommends>
 
   <content_rating type="oars-1.1" />
 </component>
