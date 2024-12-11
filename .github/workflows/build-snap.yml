@@ -54,10 +54,8 @@ jobs:
           sed -i "s|Icon=appname|Icon=/usr/share/icons/hicolor/128x128/apps/com.gooseberrydevelopment.pinepods.png|" snapcraft.yaml
 
       - name: Build Snap package
-        env:
-          SNAPCRAFT_BUILD_ENVIRONMENT: host
         run: |
-          sudo SNAPCRAFT_BUILD_ENVIRONMENT=host snapcraft --verbose
+          sudo snapcraft --verbose
 
       - name: Archive Snap files
         run: |
