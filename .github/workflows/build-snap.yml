@@ -55,7 +55,7 @@ jobs:
 
       - name: Build Snap package
         run: |
-          sudo snapcraft --verbose
+          sudo snapcraft --debug
 
       - name: Archive Snap files
         run: |
