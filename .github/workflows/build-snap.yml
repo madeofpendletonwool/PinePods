@@ -41,10 +41,14 @@ jobs:
           sudo snap install core22
           sudo snap install snapcraft --classic
 
-      - name: Setup LXD
-        uses: canonical/setup-lxd@main
-        with:
-          channel: latest/edge
+      - name: Install Multipass
+        run: |
+          sudo snap install multipass --classic
+
+      # - name: Setup LXD
+      #   uses: canonical/setup-lxd@main
+      #   with:
+      #     channel: latest/edge
 
       - name: Prepare Snap configuration
         run: |
@@ -53,9 +57,13 @@ jobs:
           sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" snapcraft.yaml
           sed -i "s|Icon=appname|Icon=/usr/share/icons/hicolor/128x128/apps/com.gooseberrydevelopment.pinepods.png|" snapcraft.yaml
 
+      - name: Configure snapcraft to use Multipass
+        run: |
+          sudo snap set snapcraft provider=multipass
+
       - name: Build Snap package
         run: |
-          sudo snapcraft --debug
+          sudo snapcraft --verbose
 
       - name: Archive Snap files
         run: |
