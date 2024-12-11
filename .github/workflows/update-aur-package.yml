@@ -1,20 +1,39 @@
 name: Update AUR Package
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Build Tauri Clients"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. 0.6.6)"
+        required: true
 
 jobs:
   update-aur-package:
+    # Only run if the triggering workflow succeeded or this is a manual trigger
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            # Extract version from the triggering release
+            RELEASE_TAG=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r .tag_name)
+            echo "VERSION=$RELEASE_TAG" >> $GITHUB_ENV
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git
+          sudo apt-get install -y git jq
 
       - name: Set up Git
         run: |
@@ -42,69 +61,37 @@ jobs:
           cd aur-package
 
       - name: Update PKGBUILD and .SRCINFO
-        env:
-          NEW_VERSION: ${{ github.event.release.tag_name }}
-        run: |
-          # Update PKGBUILD
-          sed -i "s/^pkgver=.*/pkgver=$NEW_VERSION/" clients/aur/PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" clients/aur/PKGBUILD
-
-          # Update .SRCINFO
-          sed -i "s/^\tpkgver = .*/\tpkgver = $NEW_VERSION/" clients/aur/.SRCINFO
-          sed -i "s/^\tpkgrel = .*/\tpkgrel = 1/" clients/aur/.SRCINFO
-
-          # Copy updated files to AUR package directory
-          cp clients/aur/PKGBUILD clients/aur/.SRCINFO aur-package/
-
-      - name: Update checksums
         run: |
           cd aur-package
-          source PKGBUILD
-          declare -A sums
-          for arch in x86_64 aarch64; do
-            url="${source_${arch}[0]}"
-            if ! sum=$(curl -sL "$url" | sha256sum | cut -d' ' -f1); then
-              echo "Failed to download or calculate checksum for $arch"
-              exit 1
-            fi
-            if [[ ! $sum =~ ^[a-f0-9]{64}$ ]]; then
-              echo "Invalid checksum format for $arch"
-              exit 1
-            fi
-            sums[$arch]=$sum
-          done
+          # Update PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-          # Create backup of files
-          cp PKGBUILD PKGBUILD.bak
-          cp .SRCINFO .SRCINFO.bak
+          # Calculate checksums for both architectures
+          x86_64_url="https://github.com/madeofpendletonwool/PinePods/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb"
+          aarch64_url="https://github.com/madeofpendletonwool/PinePods/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb"
 
-          # Update files
-          sed -i "s/sha256sums_x86_64=.*/sha256sums_x86_64=('${sums[x86_64]}')/" PKGBUILD
-          sed -i "s/sha256sums_aarch64=.*/sha256sums_aarch64=('${sums[aarch64]}')/" PKGBUILD
-          sed -i "s/^\tsha256sums_x86_64 = .*/\tsha256sums_x86_64 = ${sums[x86_64]}/" .SRCINFO
-          sed -i "s/^\tsha256sums_aarch64 = .*/\tsha256sums_aarch64 = ${sums[aarch64]}/" .SRCINFO
+          x86_64_sum=$(curl -sL "$x86_64_url" | sha256sum | cut -d' ' -f1)
+          aarch64_sum=$(curl -sL "$aarch64_url" | sha256sum | cut -d' ' -f1)
 
-          # Verify PKGBUILD
-          if ! makepkg --printsrcinfo > .SRCINFO.new; then
-            echo "Failed to verify PKGBUILD"
-            mv PKGBUILD.bak PKGBUILD
-            mv .SRCINFO.bak .SRCINFO
-            exit 1
-          fi
+          # Update checksums in PKGBUILD
+          sed -i "s/sha256sums_x86_64=('.*')/sha256sums_x86_64=('$x86_64_sum')/" PKGBUILD
+          sed -i "s/sha256sums_aarch64=('.*')/sha256sums_aarch64=('$aarch64_sum')/" PKGBUILD
+
+          # Generate new .SRCINFO
+          makepkg --printsrcinfo > .SRCINFO
+
       - name: Commit and push changes
         run: |
           cd aur-package
           git add PKGBUILD .SRCINFO
-          git commit -m "Update to version ${{ github.event.release.tag_name }}"
-          git push
-
-      - name: Sign the commit
-        run: |
-          cd aur-package
+          git commit -m "Update to version $VERSION"
+          # Configure GPG signing
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           gpg-connect-agent reloadagent /bye
           git config --global commit.gpgsign true
           git config --global user.signingkey ${{ secrets.GPG_KEY_ID }}
+          # Amend the commit with GPG signature
           git commit --amend --no-edit -S
-          git push --force
+          git push -f
