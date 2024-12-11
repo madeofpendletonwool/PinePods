@@ -64,23 +64,9 @@ jobs:
           sudo snap set snapcraft provider=multipass
 
       - name: Build Snap package
-        run: |
-          # Create and setup build directory
-          sudo mkdir -p /root/project
-          sudo cp snapcraft.yaml /root/project/
-          sudo cp -r * /root/project/ || true
-          cd /root/project
-
-          # Ensure permissions
-          sudo chown -R root:root /root/project
-          sudo chmod -R 755 /root/project
-          sudo chmod 644 /root/project/snapcraft.yaml
-
-          # Build
-          sudo -E snapcraft --verbose
-
-          # Copy results back
-          sudo cp *.snap $GITHUB_WORKSPACE/ || true
+        env:
+          SNAPCRAFT_PROJECT_DIR: ${{ github.workspace }}
+        run: sudo -E snapcraft --verbose
 
       - name: Archive Snap files
         run: |
