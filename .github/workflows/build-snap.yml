@@ -63,6 +63,16 @@ jobs:
         run: |
           sudo snap set snapcraft provider=multipass
 
+      - name: Nuclear permissions reset
+        run: |
+          sudo rm -rf /root/project || true
+          sudo mkdir -p /root/project
+          sudo cp -r . /root/project/
+          sudo chown -R root:root /root/project
+          sudo chmod -R 777 /root/project
+          sudo chmod -R a+rwx /root/project
+          sudo ls -la /root/project
+
       - name: Build Snap package
         env:
           SNAPCRAFT_PROJECT_DIR: ${{ github.workspace }}
