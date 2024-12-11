@@ -53,6 +53,8 @@ jobs:
       - name: Prepare Snap configuration
         run: |
           cp clients/snap/snapcraft.yaml ./snapcraft.yaml
+          sudo chown root:root snapcraft.yaml
+          sudo chmod 644 snapcraft.yaml
           sed -i "s|version: '.*'|version: '$VERSION'|" snapcraft.yaml
           sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" snapcraft.yaml
           sed -i "s|Icon=appname|Icon=/usr/share/icons/hicolor/128x128/apps/com.gooseberrydevelopment.pinepods.png|" snapcraft.yaml
@@ -63,7 +65,8 @@ jobs:
 
       - name: Build Snap package
         run: |
-          sudo snapcraft --verbose
+          cd $GITHUB_WORKSPACE
+          sudo -E snapcraft --verbose
 
       - name: Archive Snap files
         run: |
