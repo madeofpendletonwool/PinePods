@@ -133,6 +133,7 @@ jobs:
         run: |
           cd web/src-tauri
           cat tauri.conf.json
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis"
           cargo tauri build
           pwd
           ls
@@ -144,6 +145,7 @@ jobs:
         run: |
           cd web/src-tauri
           Get-Content tauri.conf.json
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis"
           cargo tauri build
           ls target/release/bundle
         shell: pwsh
