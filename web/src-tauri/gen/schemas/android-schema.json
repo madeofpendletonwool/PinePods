@@ -37,7 +37,7 @@
   ],
   "definitions": {
     "Capability": {
-      "description": "A grouping and boundary mechanism developers can use to isolate access to the IPC layer.\n\nIt controls application windows fine grained access to the Tauri core, application, or plugin commands. If a window is not matching any capability then it has no access to the IPC layer at all.\n\nThis can be done to create groups of windows, based on their required system access, which can reduce impact of frontend vulnerabilities in less privileged windows. Windows can be added to a capability by exact name (e.g. `main-window`) or glob patterns like `*` or `admin-*`. A Window can have none, one, or multiple associated capabilities.\n\n## Example\n\n```json { \"identifier\": \"main-user-files-write\", \"description\": \"This capability allows the `main` window on macOS and Windows access to `filesystem` write related commands and `dialog` commands to enable programatic access to files selected by the user.\", \"windows\": [ \"main\" ], \"permissions\": [ \"core:default\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] }, \"platforms\": [\"macOS\",\"windows\"] } ```",
+      "description": "A grouping and boundary mechanism developers can use to isolate access to the IPC layer.\n\nIt controls application windows fine grained access to the Tauri core, application, or plugin commands. If a window is not matching any capability then it has no access to the IPC layer at all.\n\nThis can be done to create groups of windows, based on their required system access, which can reduce impact of frontend vulnerabilities in less privileged windows. Windows can be added to a capability by exact name (e.g. `main-window`) or glob patterns like `*` or `admin-*`. A Window can have none, one, or multiple associated capabilities.\n\n## Example\n\n```json { \"identifier\": \"main-user-files-write\", \"description\": \"This capability allows the `main` window on macOS and Windows access to `filesystem` write related commands and `dialog` commands to enable programatic access to files selected by the user.\", \"windows\": [ \"main\" ], \"permissions\": [ \"core:default\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] }, ], \"platforms\": [\"macOS\",\"windows\"] } ```",
       "type": "object",
       "required": [
         "identifier",
@@ -84,7 +84,7 @@
           }
         },
         "permissions": {
-          "description": "List of permissions attached to this capability.\n\nMust include the plugin name as prefix in the form of `${plugin-name}:${permission-name}`. For commands directly implemented in the application itself only `${permission-name}` is required.\n\n## Example\n\n```json [ \"core:default\", \"shell:allow-open\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] } ```",
+          "description": "List of permissions attached to this capability.\n\nMust include the plugin name as prefix in the form of `${plugin-name}:${permission-name}`. For commands directly implemented in the application itself only `${permission-name}` is required.\n\n## Example\n\n```json [ \"core:default\", \"shell:allow-open\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] } ] ```",
           "type": "array",
           "items": {
             "$ref": "#/definitions/PermissionEntry"
@@ -207,6 +207,11 @@
           "const": "core:app:allow-name"
         },
         {
+          "description": "Enables the set_app_theme command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:app:allow-set-app-theme"
+        },
+        {
           "description": "Enables the tauri_version command without any pre-configured scope.",
           "type": "string",
           "const": "core:app:allow-tauri-version"
@@ -235,6 +240,11 @@
           "description": "Denies the name command without any pre-configured scope.",
           "type": "string",
           "const": "core:app:deny-name"
+        },
+        {
+          "description": "Denies the set_app_theme command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:app:deny-set-app-theme"
         },
         {
           "description": "Denies the tauri_version command without any pre-configured scope.",
@@ -792,6 +802,11 @@
           "const": "core:webview:default"
         },
         {
+          "description": "Enables the clear_all_browsing_data command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:allow-clear-all-browsing-data"
+        },
+        {
           "description": "Enables the create_webview command without any pre-configured scope.",
           "type": "string",
           "const": "core:webview:allow-create-webview"
@@ -847,14 +862,29 @@
           "const": "core:webview:allow-webview-close"
         },
         {
+          "description": "Enables the webview_hide command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:allow-webview-hide"
+        },
+        {
           "description": "Enables the webview_position command without any pre-configured scope.",
           "type": "string",
           "const": "core:webview:allow-webview-position"
         },
         {
+          "description": "Enables the webview_show command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:allow-webview-show"
+        },
+        {
           "description": "Enables the webview_size command without any pre-configured scope.",
           "type": "string",
           "const": "core:webview:allow-webview-size"
+        },
+        {
+          "description": "Denies the clear_all_browsing_data command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:deny-clear-all-browsing-data"
         },
         {
           "description": "Denies the create_webview command without any pre-configured scope.",
@@ -912,9 +942,19 @@
           "const": "core:webview:deny-webview-close"
         },
         {
+          "description": "Denies the webview_hide command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:deny-webview-hide"
+        },
+        {
           "description": "Denies the webview_position command without any pre-configured scope.",
           "type": "string",
           "const": "core:webview:deny-webview-position"
+        },
+        {
+          "description": "Denies the webview_show command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:deny-webview-show"
         },
         {
           "description": "Denies the webview_size command without any pre-configured scope.",
@@ -995,6 +1035,11 @@
           "description": "Enables the is_decorated command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:allow-is-decorated"
+        },
+        {
+          "description": "Enables the is_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-is-enabled"
         },
         {
           "description": "Enables the is_focused command without any pre-configured scope.",
@@ -1127,6 +1172,11 @@
           "const": "core:window:allow-set-effects"
         },
         {
+          "description": "Enables the set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-enabled"
+        },
+        {
           "description": "Enables the set_focus command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:allow-set-focus"
@@ -1200,6 +1250,11 @@
           "description": "Enables the set_skip_taskbar command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:allow-set-skip-taskbar"
+        },
+        {
+          "description": "Enables the set_theme command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-theme"
         },
         {
           "description": "Enables the set_title command without any pre-configured scope.",
@@ -1325,6 +1380,11 @@
           "description": "Denies the is_decorated command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:deny-is-decorated"
+        },
+        {
+          "description": "Denies the is_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-is-enabled"
         },
         {
           "description": "Denies the is_focused command without any pre-configured scope.",
@@ -1457,6 +1517,11 @@
           "const": "core:window:deny-set-effects"
         },
         {
+          "description": "Denies the set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-enabled"
+        },
+        {
           "description": "Denies the set_focus command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:deny-set-focus"
@@ -1530,6 +1595,11 @@
           "description": "Denies the set_skip_taskbar command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:deny-set-skip-taskbar"
+        },
+        {
+          "description": "Denies the set_theme command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-theme"
         },
         {
           "description": "Denies the set_title command without any pre-configured scope.",

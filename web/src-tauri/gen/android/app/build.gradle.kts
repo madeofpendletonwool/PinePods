@@ -26,17 +26,21 @@ android {
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
     signingConfigs {
-        create("release") {
-            val keystorePropertiesFile = rootProject.file("keystore.properties")
-            val keystoreProperties = Properties()
-            if (keystorePropertiesFile.exists()) {
+        if (rootProject.file("keystore.properties").exists()) {
+            create("release") {
+                val keystorePropertiesFile = rootProject.file("keystore.properties")
+                val keystoreProperties = Properties()
                 keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+                
+                keyAlias = keystoreProperties["keyAlias"]?.toString()
+                    ?: throw GradleException("keyAlias not found in keystore.properties")
+                keyPassword = keystoreProperties["password"]?.toString()
+                    ?: throw GradleException("password not found in keystore.properties")
+                storeFile = keystoreProperties["storeFile"]?.toString()?.let { file(it) }
+                    ?: throw GradleException("storeFile not found in keystore.properties")
+                storePassword = keystoreProperties["password"]?.toString()
+                    ?: throw GradleException("password not found in keystore.properties")
             }
-
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["password"] as String
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["password"] as String
         }
     }
     buildTypes {
@@ -52,7 +56,9 @@ android {
             }
         }
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            if (signingConfigs.names.contains("release")) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

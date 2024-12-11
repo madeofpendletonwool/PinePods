@@ -783,82 +783,106 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             if let Some(window) = web_sys::window() {
                 let navigator: Navigator = window.navigator();
 
-                // Set up media session
+                // Try to get media session
                 if let Ok(media_session) =
                     js_sys::Reflect::get(&navigator, &JsValue::from_str("mediaSession"))
                 {
-                    let media_session: web_sys::MediaSession = media_session.dyn_into().unwrap();
+                    // Safely attempt to convert to MediaSession
+                    if let Ok(media_session) = media_session.dyn_into::<web_sys::MediaSession>() {
+                        // Update metadata if we have something playing
+                        if let Some(audio_props) = &audio_state.currently_playing {
+                            // Try to create new metadata
+                            if let Ok(metadata) = web_sys::MediaMetadata::new() {
+                                metadata.set_title(&audio_props.title);
 
-                    // Update metadata
-                    if let Some(audio_props) = &audio_state.currently_playing {
-                        let metadata = web_sys::MediaMetadata::new().unwrap();
-                        metadata.set_title(&audio_props.title);
+                                // Create artwork array
+                                let artwork_array = Array::new();
+                                let artwork_object = js_sys::Object::new();
 
-                        // Create a JavaScript array for the artwork
-                        let artwork_array = Array::new();
-                        let artwork_object = js_sys::Object::new();
-                        js_sys::Reflect::set(
-                            &artwork_object,
-                            &"src".into(),
-                            &audio_props.artwork_url.clone().into(),
-                        )
-                        .unwrap();
-                        js_sys::Reflect::set(&artwork_object, &"sizes".into(), &"512x512".into())
-                            .unwrap();
-                        js_sys::Reflect::set(&artwork_object, &"type".into(), &"image/jpeg".into())
-                            .unwrap();
-                        artwork_array.push(&artwork_object);
+                                // Set up artwork properties safely
+                                let setup_successful = js_sys::Reflect::set(
+                                    &artwork_object,
+                                    &"src".into(),
+                                    &audio_props.artwork_url.clone().into(),
+                                )
+                                .is_ok()
+                                    && js_sys::Reflect::set(
+                                        &artwork_object,
+                                        &"sizes".into(),
+                                        &"512x512".into(),
+                                    )
+                                    .is_ok()
+                                    && js_sys::Reflect::set(
+                                        &artwork_object,
+                                        &"type".into(),
+                                        &"image/jpeg".into(),
+                                    )
+                                    .is_ok();
 
-                        // Set the artwork using the JavaScript array
-                        metadata.set_artwork(&artwork_array.into());
+                                if setup_successful {
+                                    artwork_array.push(&artwork_object);
+                                    metadata.set_artwork(&artwork_array.into());
+                                    media_session.set_metadata(Some(&metadata));
+                                }
+                            }
+                        }
 
-                        media_session.set_metadata(Some(&metadata));
+                        // Set up action handlers
+                        let audio_dispatch_play = audio_dispatch.clone();
+                        let play_pause_callback = Closure::wrap(Box::new(move || {
+                            audio_dispatch_play.reduce_mut(UIState::toggle_playback);
+                        })
+                            as Box<dyn FnMut()>);
+
+                        // Set play/pause handlers
+                        let _ = media_session.set_action_handler(
+                            web_sys::MediaSessionAction::Play,
+                            Some(play_pause_callback.as_ref().unchecked_ref()),
+                        );
+                        let _ = media_session.set_action_handler(
+                            web_sys::MediaSessionAction::Pause,
+                            Some(play_pause_callback.as_ref().unchecked_ref()),
+                        );
+                        play_pause_callback.forget();
+
+                        // Set up seek backward handler
+                        let audio_state_back = audio_state.clone();
+                        let audio_dispatch_back = audio_dispatch.clone();
+                        let seek_backward_callback = Closure::wrap(Box::new(move || {
+                            if let Some(audio_element) = audio_state_back.audio_element.as_ref() {
+                                let new_time = audio_element.current_time() - 15.0;
+                                let _ = audio_element.set_current_time(new_time);
+                                audio_dispatch_back
+                                    .reduce_mut(|state| state.update_current_time(new_time));
+                            }
+                        })
+                            as Box<dyn FnMut()>);
+
+                        let _ = media_session.set_action_handler(
+                            web_sys::MediaSessionAction::Seekbackward,
+                            Some(seek_backward_callback.as_ref().unchecked_ref()),
+                        );
+                        seek_backward_callback.forget();
+
+                        // Set up seek forward handler
+                        let audio_state_fwd = audio_state.clone();
+                        let audio_dispatch_fwd = audio_dispatch.clone();
+                        let seek_forward_callback = Closure::wrap(Box::new(move || {
+                            if let Some(audio_element) = audio_state_fwd.audio_element.as_ref() {
+                                let new_time = audio_element.current_time() + 15.0;
+                                let _ = audio_element.set_current_time(new_time);
+                                audio_dispatch_fwd
+                                    .reduce_mut(|state| state.update_current_time(new_time));
+                            }
+                        })
+                            as Box<dyn FnMut()>);
+
+                        let _ = media_session.set_action_handler(
+                            web_sys::MediaSessionAction::Seekforward,
+                            Some(seek_forward_callback.as_ref().unchecked_ref()),
+                        );
+                        seek_forward_callback.forget();
                     }
-                    let audio_dispatch_play = audio_dispatch.clone();
-                    // Set up action handlers
-                    let play_pause_callback = Closure::wrap(Box::new(move || {
-                        audio_dispatch_play.reduce_mut(UIState::toggle_playback);
-                    })
-                        as Box<dyn FnMut()>);
-                    media_session.set_action_handler(
-                        web_sys::MediaSessionAction::Play,
-                        Some(play_pause_callback.as_ref().unchecked_ref()),
-                    );
-                    media_session.set_action_handler(
-                        web_sys::MediaSessionAction::Pause,
-                        Some(play_pause_callback.as_ref().unchecked_ref()),
-                    );
-                    play_pause_callback.forget();
-                    let audio_state_back = audio_state.clone();
-                    let audio_dispatch_back = audio_dispatch.clone();
-                    let seek_backward_callback = Closure::wrap(Box::new(move || {
-                        if let Some(audio_element) = audio_state_back.audio_element.as_ref() {
-                            let new_time = audio_element.current_time() - 15.0;
-                            audio_element.set_current_time(new_time);
-                            audio_dispatch_back
-                                .reduce_mut(|state| state.update_current_time(new_time));
-                        }
-                    })
-                        as Box<dyn FnMut()>);
-                    media_session.set_action_handler(
-                        web_sys::MediaSessionAction::Seekbackward,
-                        Some(seek_backward_callback.as_ref().unchecked_ref()),
-                    );
-                    seek_backward_callback.forget();
-
-                    let seek_forward_callback = Closure::wrap(Box::new(move || {
-                        if let Some(audio_element) = audio_state.audio_element.as_ref() {
-                            let new_time = audio_element.current_time() + 15.0;
-                            audio_element.set_current_time(new_time);
-                            audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
-                        }
-                    })
-                        as Box<dyn FnMut()>);
-                    media_session.set_action_handler(
-                        web_sys::MediaSessionAction::Seekforward,
-                        Some(seek_forward_callback.as_ref().unchecked_ref()),
-                    );
-                    seek_forward_callback.forget();
                 }
             }
 

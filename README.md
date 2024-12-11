@@ -441,11 +441,7 @@ Flathub link and install command will be here soon (post 0.7.0 launch and compil
 
 #### Snap
 
-Quick snap install away!
-
-```
-snap install pinepods
-```
+I have had such a nightmare trying to make the snap client work. Pass, use the flatpak. They're better anyway. I'll test it again in the future and see if Cannonical has gotten it together. If you really want a snap version of the client please reach out and tell me you're interested in the first place
 
 #### Windows Client Install :computer:
 
