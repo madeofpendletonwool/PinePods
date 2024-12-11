@@ -57,7 +57,7 @@ jobs:
         env:
           SNAPCRAFT_BUILD_ENVIRONMENT: host
         run: |
-          sudo snapcraft --verbose
+          sudo SNAPCRAFT_BUILD_ENVIRONMENT=host snapcraft --verbose
 
       - name: Archive Snap files
         run: |
