@@ -36,18 +36,11 @@ jobs:
           aarch64_url="https://github.com/madeofpendletonwool/PinePods/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb"
 
           echo "Downloading and calculating checksums..."
-          echo "x86_64 URL: $x86_64_url"
-          echo "aarch64 URL: $aarch64_url"
-
-          # Download files to verify them
           curl -L "$x86_64_url" -o x86_64.deb
           curl -L "$aarch64_url" -o aarch64.deb
 
           x86_64_sum=$(sha256sum x86_64.deb | cut -d' ' -f1)
           aarch64_sum=$(sha256sum aarch64.deb | cut -d' ' -f1)
-
-          echo "x86_64 checksum: $x86_64_sum"
-          echo "aarch64 checksum: $aarch64_sum"
 
           cat > PKGBUILD << EOF
           pkgname=pinepods
@@ -63,10 +56,22 @@ jobs:
           source_aarch64=("https://github.com/madeofpendletonwool/PinePods/releases/download/\${pkgver}/Pinepods_\${pkgver}_arm64.deb")
           sha256sums_x86_64=('$x86_64_sum')
           sha256sums_aarch64=('$aarch64_sum')
-          EOF
 
-          echo "Generated PKGBUILD:"
-          cat PKGBUILD
+          package() {
+            # Extract the .deb package
+            cd "\$srcdir"
+            tar xf data.tar.gz -C "\$pkgdir/"
+
+            # Create symlink from /usr/bin/app to /usr/bin/pinepods
+            ln -s /usr/bin/app "\$pkgdir/usr/bin/pinepods"
+
+            # Ensure correct permissions
+            chmod 755 "\$pkgdir/usr/bin/app"
+            chmod 644 "\$pkgdir/usr/share/applications/Pinepods.desktop"
+            find "\$pkgdir/usr/share/icons" -type f -exec chmod 644 {} +
+            find "\$pkgdir" -type d -exec chmod 755 {} +
+          }
+          EOF
 
       - name: Test PKGBUILD
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
