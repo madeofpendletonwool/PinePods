@@ -8,38 +8,10 @@ Major Version:
 
 Next Minor Version:
 
-- [] Push completion status to Nextcloud/gpodder
-- [] Test with LXC containers
-- [] Dynamically adjusting local download buttons
-- [] Change download multiple buttons to be on same line as header
-- [] Full Show deletion with checkbox on download page
-- [] Known timezone issue in add_episode - pinepods-1  | /opt/venv/lib/python3.11/site-packages/dateutil/parser/_parser.py:1207: UnknownTimezoneWarning: tzname EDT identified but not understood.  Pass `tzinfos` argument in order to correctly return a timezone-aware datetime.  In a future version, this will raise an exception.
-pinepods-1  |   warnings.warn("tzname {tzname} identified but not understood.  "
-- [] Allow for episode plays on episode page when podcast not in db
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
-- [] Make playing episode on every page dynamically update play/pause
-- [] Theme updates on change settings page. Auto fills correct theme on dropdown
-- [] Make virtual lines work for saved, queue, downloads, local downloads, and history
-- [] Display Listen time on the episodes layout page
-- [] Implement additional filtering in podcasts/quick search keyword
-- [] Implement episode filtering on episode layout page/quick search keyword
-- [] Implement episode filtering on history page/quick search keyword
-- [] Implement episode filtering on saved page/quick search keyword
-- [] Implement episode filtering on server download page/quick search keyword
-- [] Implement episode filtering on local download page/quick search keyword
-- [] Implement episode filtering on queue page/quick search keyword
-- [] Implement episode filtering on search page/quick search keyword
-- [] Updating which chapter is currently playing to switch to a pause button
-- [] Functional back button - Along with ensuring browser backs, and phone backs react correctly
-- [] While host search occurs the server is unresponsive
-- [] On Episode page reload or navigate direct with link it starts with a cutoff non-html description
 
-- [] Full Screen Episode should have clickable podcast header to open pod page
-
-- [] Make new category button more obvious.
-- [] Make category delete button bigger
 
 Version 0.7.0
 
