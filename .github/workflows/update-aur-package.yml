@@ -55,15 +55,11 @@ jobs:
           sha256sums_aarch64=('$aarch64_sum')
           EOF
 
-      - name: Copy install file
-        run: cp clients/aur/pinepods.install ./
-
       - name: Publish AUR package
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
         with:
           pkgname: pinepods
           pkgbuild: ./PKGBUILD
-          assets: pinepods.install
           commit_username: ${{ secrets.GIT_USER }}
           commit_email: ${{ secrets.GIT_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
