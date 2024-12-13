@@ -24,7 +24,7 @@ jobs:
           - os: ubuntu-arm64
             runs-on:
               - runs-on=${{ github.run_id }}
-              - runner=2cpu-linux-arm64
+              - runner=4cpu-linux-arm64
 
     runs-on: ${{ matrix.runs-on || matrix.os }}
 
