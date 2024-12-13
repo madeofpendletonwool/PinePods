@@ -16,13 +16,20 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
+          - ubuntu-arm64
           - macOS-latest
           - macOS-13
           - windows-latest
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: ubuntu-arm64
+            runs-on:
+              - runs-on=${{ github.run_id }}
+              - runner=2cpu-linux-arm64
+
+    runs-on: ${{ matrix.runs-on || matrix.os }}
 
     env:
-      DEPENDS_SETUP: ${{ matrix.os == 'ubuntu-latest' && 'true' || 'false' }}
+      DEPENDS_SETUP: ${{ startsWith(matrix.os, 'ubuntu-') && 'true' || 'false' }}
 
     steps:
       - name: Set Image Tag (Unix)
@@ -40,6 +47,11 @@ jobs:
             echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_amd64.deb" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_amd64.AppImage" >> $GITHUB_ENV
             echo "ARTIFACT_NAME3=Pinepods-${{ env.IMAGE_TAG }}-1.x86_64.rpm" >> $GITHUB_ENV
+          elif [ "${{ matrix.os }}" = "ubuntu-arm64" ]; then
+            echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_arm64.deb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_arm64.AppImage" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME3=Pinepods-${{ env.IMAGE_TAG }}-1.aarch64.rpm" >> $GITHUB_ENV
+          # ... rest of conditions ...
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_x64-setup.exe" >> $Env:GITHUB_ENV
             echo "ARTIFACT_NAME2=Pinepods_${{ env.IMAGE_TAG }}_x64_en-US.msi" >> $Env:GITHUB_ENV
@@ -172,6 +184,27 @@ jobs:
           path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
         if: ${{ matrix.os == 'ubuntu-latest' }}
 
+      - name: Archive build 1 (Ubuntu ARM)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build
+          path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
+        if: ${{ matrix.os == 'ubuntu-arm64' }}
+
+      - name: Archive build 2 (Ubuntu ARM)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build
+          path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+        if: ${{ matrix.os == 'ubuntu-arm64' }}
+
+      - name: Archive build 3 (Ubuntu ARM)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build
+          path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
+        if: ${{ matrix.os == 'ubuntu-arm64' }}
+
       - name: Archive build (macOS)
         uses: actions/upload-artifact@v3
         with:
@@ -201,6 +234,17 @@ jobs:
           asset_name: ${{ env.ARTIFACT_NAME1 }}
           asset_content_type: application/vnd.debian.binary-package
 
+      - name: Upload release asset (Ubuntu ARM - DEB)
+        if: github.event_name == 'release' && matrix.os == 'ubuntu-arm64'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
+          asset_name: ${{ env.ARTIFACT_NAME1 }}
+          asset_content_type: application/vnd.debian.binary-package
+
       - name: Upload release asset (Ubuntu - AppImage)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
         uses: actions/upload-release-asset@v1
@@ -212,8 +256,30 @@ jobs:
           asset_name: ${{ env.ARTIFACT_NAME2 }}
           asset_content_type: application/x-executable
 
+      - name: Upload release asset (Ubuntu ARM - AppImage)
+        if: github.event_name == 'release' && matrix.os == 'ubuntu-arm64'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+          asset_name: ${{ env.ARTIFACT_NAME2 }}
+          asset_content_type: application/x-executable
+
       - name: Upload release asset (Ubuntu - RPM)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
+          asset_name: ${{ env.ARTIFACT_NAME3 }}
+          asset_content_type: application/x-rpm
+
+      - name: Upload release asset (Ubuntu ARM - RPM)
+        if: github.event_name == 'release' && matrix.os == 'ubuntu-arm64'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
