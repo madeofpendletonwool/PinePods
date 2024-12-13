@@ -1,10 +1,10 @@
 name: Build Pinepods Snap
 
 on:
-  workflow_run:
-    workflows: ["Build Tauri Clients"]
-    types:
-      - completed
+  # workflow_run:
+  #   workflows: ["Build Tauri Clients"]
+  #   types:
+  #     - completed
   workflow_dispatch:
     inputs:
       version:

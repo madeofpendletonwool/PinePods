@@ -33,7 +33,10 @@
     "copyright": "",
     "linux": {
       "deb": {
-        "depends": []
+        "depends": [],
+        "files": {
+          "/usr/share/metainfo/com.gooseberrydevelopment.pinepods.metainfo.xml": "./com.gooseberrydevelopment.pinepods.metainfo.xml"
+        }
       }
     },
     "android": {
