@@ -524,6 +524,25 @@ extern "C" {
     pub fn changeTheme(theme: &str);
 }
 
+pub fn initialize_default_theme() {
+    if let Some(window) = window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            // Check if a theme is already set
+            match storage.get_item("selected_theme") {
+                Ok(Some(theme)) => {
+                    // Use existing theme
+                    changeTheme(&theme);
+                }
+                _ => {
+                    // No theme found, set Nordic as default
+                    storage.set_item("selected_theme", "Nordic").unwrap_or_default();
+                    changeTheme("Nordic");
+                }
+            }
+        }
+    }
+}
+
 pub fn log_css_variables() {
     let window = window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");

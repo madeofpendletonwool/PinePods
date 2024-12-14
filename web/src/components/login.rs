@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::UIStateMsg;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
+use crate::components::setting_components::theme_options::initialize_default_theme;
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
 use crate::requests::login_requests::{call_add_login_user, AddUserRequest};
 use crate::requests::login_requests::{
@@ -59,6 +60,12 @@ pub fn login() -> Html {
     let page_state = use_state(|| PageState::Default);
     let self_service_enabled = use_state(|| false); // State to store self-service status
     let effect_self_service = self_service_enabled.clone();
+
+    use_effect_with((), move |_| {
+        initialize_default_theme();
+        || ()
+    });
+
     use_effect_with(
         // No dependencies, so we pass an empty tuple to run this effect once on component mount
         (),
