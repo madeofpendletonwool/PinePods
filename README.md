@@ -68,6 +68,7 @@ You can also choose to use MySQL/MariaDB or Postgres as your database. Examples 
 ```yaml
 services:
   db:
+    container_name: db
     image: postgres:latest
     environment:
       POSTGRES_DB: pinepods_database
@@ -123,6 +124,7 @@ services:
 ```yaml
 services:
   db:
+    container_name: db
     image: mariadb:latest
     command: --wait_timeout=1800
     environment:
