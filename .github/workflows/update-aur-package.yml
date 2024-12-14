@@ -13,7 +13,6 @@ on:
 
 jobs:
   update-aur-package:
-    # Only run if the triggering workflow succeeded or this is a manual trigger
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
@@ -30,68 +29,70 @@ jobs:
             echo "VERSION=$RELEASE_TAG" >> $GITHUB_ENV
           fi
 
-      - name: Install dependencies
+      - name: Generate PKGBUILD
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git jq
-
-      - name: Set up Git
-        run: |
-          git config --global user.name "${{ secrets.GIT_USER }}"
-          git config --global user.email "${{ secrets.GIT_EMAIL }}"
-
-      - name: Set up SSH key
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-
-      - name: Set up GPG key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.AUR_GPG_PRIVATE_KEY }}
-        run: |
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import --pinentry-mode loopback
-
-      - name: Clone AUR package
-        run: |
-          git clone ssh://aur@aur.archlinux.org/pinepods.git aur-package
-          cd aur-package
-
-      - name: Update PKGBUILD and .SRCINFO
-        run: |
-          cd aur-package
-          # Update PKGBUILD
-          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-
           # Calculate checksums for both architectures
           x86_64_url="https://github.com/madeofpendletonwool/PinePods/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb"
           aarch64_url="https://github.com/madeofpendletonwool/PinePods/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb"
 
-          x86_64_sum=$(curl -sL "$x86_64_url" | sha256sum | cut -d' ' -f1)
-          aarch64_sum=$(curl -sL "$aarch64_url" | sha256sum | cut -d' ' -f1)
+          echo "Downloading and calculating checksums..."
+          curl -L "$x86_64_url" -o x86_64.deb
+          curl -L "$aarch64_url" -o aarch64.deb
 
-          # Update checksums in PKGBUILD
-          sed -i "s/sha256sums_x86_64=('.*')/sha256sums_x86_64=('$x86_64_sum')/" PKGBUILD
-          sed -i "s/sha256sums_aarch64=('.*')/sha256sums_aarch64=('$aarch64_sum')/" PKGBUILD
+          x86_64_sum=$(sha256sum x86_64.deb | cut -d' ' -f1)
+          aarch64_sum=$(sha256sum aarch64.deb | cut -d' ' -f1)
 
-          # Generate new .SRCINFO
-          makepkg --printsrcinfo > .SRCINFO
+          cat > PKGBUILD << EOF
+          pkgname=pinepods
+          pkgver=$VERSION
+          pkgrel=1
+          pkgdesc="Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you enjoy. All self hosted and enjoyed on your own server!"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/madeofpendletonwool/PinePods"
+          license=('gpl3')
+          depends=('cairo' 'desktop-file-utils' 'gdk-pixbuf2' 'glib2' 'gtk3' 'hicolor-icon-theme' 'libsoup' 'pango' 'webkit2gtk')
+          options=('!strip' '!emptydirs')
+          source_x86_64=("https://github.com/madeofpendletonwool/PinePods/releases/download/\${pkgver}/Pinepods_\${pkgver}_amd64.deb")
+          source_aarch64=("https://github.com/madeofpendletonwool/PinePods/releases/download/\${pkgver}/Pinepods_\${pkgver}_arm64.deb")
+          sha256sums_x86_64=('$x86_64_sum')
+          sha256sums_aarch64=('$aarch64_sum')
 
-      - name: Commit and push changes
-        run: |
-          cd aur-package
-          git add PKGBUILD .SRCINFO
-          git commit -m "Update to version $VERSION"
-          # Configure GPG signing
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          gpg-connect-agent reloadagent /bye
-          git config --global commit.gpgsign true
-          git config --global user.signingkey ${{ secrets.GPG_KEY_ID }}
-          # Amend the commit with GPG signature
-          git commit --amend --no-edit -S
-          git push -f
+          package() {
+            # Extract the .deb package
+            cd "\$srcdir"
+            tar xf data.tar.gz -C "\$pkgdir/"
+
+            # Create symlink from /usr/bin/app to /usr/bin/pinepods
+            ln -s /usr/bin/app "\$pkgdir/usr/bin/pinepods"
+
+            # Ensure correct permissions
+            chmod 755 "\$pkgdir/usr/bin/app"
+            chmod 644 "\$pkgdir/usr/share/applications/Pinepods.desktop"
+            find "\$pkgdir/usr/share/icons" -type f -exec chmod 644 {} +
+            find "\$pkgdir" -type d -exec chmod 755 {} +
+          }
+          EOF
+
+      - name: Test PKGBUILD
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: pinepods
+          pkgbuild: ./PKGBUILD
+          test: true
+          commit_username: ${{ secrets.GIT_USER }}
+          commit_email: ${{ secrets.GIT_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version ${{ env.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+
+      - name: Publish AUR package
+        if: success()
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: pinepods
+          pkgbuild: ./PKGBUILD
+          commit_username: ${{ secrets.GIT_USER }}
+          commit_email: ${{ secrets.GIT_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version ${{ env.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
