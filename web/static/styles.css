@@ -2,23 +2,23 @@
 :root {
     --button-color: #8b949e;
     /* Default button color */
-    --background-color: #242424;
+    --background-color: #3c4252;
     /* Default background color */
-    --text-color: #f5f5f5;
-    --button-color: #8b949e;
+    --text-color: #f6f5f4;
+    --button-color: #3e4555;
     --container-button-color: transparent;
-    --button-text-color: #f5f5f5;
-    --text-secondary-color: #f5f5f5;
-    --accent-color: #4a535e;
-    --prog-bar-color: #4a535e;
+    --button-text-color: #f6f5f4;
+    --text-secondary-color: #f6f5f4;
+    --accent-color: #6d747f;
+    --prog-bar-color: #3550af;
     --error-color: red;
     --bonus-color: black;
-    --border-color: black;
-    --secondary-background: #2c3032;
-    --standout-color: #304bff;
-    --hover-color: #304bff;
-    --link-color: #6590fd;
-    --container-background: #2c3032;
+    --border-color: 000000;
+    --secondary-background: #2e3440;
+    --standout-color: #6e8e92;
+    --hover-color: #5d80aa;
+    --link-color: #5d80aa;
+    --container-background: #2b2f3a;
     --transparent-background: rgba(63, 57, 90, 0.089);
     --alert-color: #880101;
     --warning-color: #ffcc00;
@@ -1517,6 +1517,12 @@ input[type="range"]::-moz-range-thumb {
 
 .share:hover {
     background-color: var(--hover-color);
+}
+
+.bg-container-background {
+    background-color: var(--secondary-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
 }
 
 .podcast-grid {

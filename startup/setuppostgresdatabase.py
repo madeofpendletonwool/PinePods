@@ -278,43 +278,61 @@ try:
         print(f"Error creating web key: {e}")
 
     try:
-        # Your admin user variables
-        admin_fullname = os.environ.get("FULLNAME", "Admin User")
-        admin_username = os.environ.get("USERNAME", "admin")
-        admin_email = os.environ.get("EMAIL", "admin@pinepods.online")
-
-        alphabet = string.ascii_letters + string.digits + string.punctuation
-        fallback_password = ''.join(secrets.choice(alphabet) for _ in range(15))
-
-        admin_pw = os.environ.get("PASSWORD", fallback_password)
-
-        # Hash the admin password
-        hashed_pw = hash_password(admin_pw).strip()
-
-        admin_insert_query = """
-            INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
-            VALUES (%s, %s, %s, %s, %s::boolean)
-            ON CONFLICT (Username) DO NOTHING
-        """
+        cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
+                            UserSettingID SERIAL PRIMARY KEY,
+                            UserID INT UNIQUE,
+                            Theme VARCHAR(255) DEFAULT 'nordic',
+                            FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+                        )""")
+    except Exception as e:
+        print(f"Error adding UserSettings table: {e}")
 
 
-        # Execute the INSERT statement without a separate salt
-        cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hashed_pw, True))
+    admin_created = False
+    try:
+        admin_fullname = os.environ.get("FULLNAME")
+        admin_username = os.environ.get("USERNAME")
+        admin_email = os.environ.get("EMAIL")
+        admin_pw = os.environ.get("PASSWORD")
+
+        if all([admin_fullname, admin_username, admin_email, admin_pw]):
+            hashed_pw = hash_password(admin_pw).strip()
+            admin_insert_query = """
+                INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                VALUES (%s, %s, %s, %s, %s::boolean)
+                ON CONFLICT (Username) DO NOTHING
+                RETURNING UserID
+            """
+            cursor.execute(admin_insert_query, (admin_fullname, admin_username, admin_email, hashed_pw, True))
+            admin_created = cursor.fetchone() is not None
+            cnx.commit()
     except Exception as e:
         print(f"Error creating default admin: {e}")
 
+    # Now handle UserStats and UserSettings
     try:
+        # Background tasks user stats
         cursor.execute("""
             INSERT INTO "UserStats" (UserID) VALUES (1)
             ON CONFLICT (UserID) DO NOTHING
         """)
-
-        cursor.execute("""
-            INSERT INTO "UserStats" (UserID) VALUES (2)
-            ON CONFLICT (UserID) DO NOTHING
-        """)
+        if admin_created:
+            cursor.execute("""
+                INSERT INTO "UserStats" (UserID) VALUES (2)
+                ON CONFLICT (UserID) DO NOTHING
+            """)
+            cursor.execute("""
+                INSERT INTO "UserSettings" (UserID, Theme) VALUES (2, 'nordic')
+                ON CONFLICT (UserID) DO NOTHING
+            """)
+        cnx.commit()
     except Exception as e:
-        print(f"Error creating intial users in UserStats: {e}")
+        print(f"Error creating user stats/settings: {e}")
+
+    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('1', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
+    if admin_created:
+        cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('2', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
+
 
     try:
         cursor.execute("""
@@ -472,20 +490,6 @@ try:
     except Exception as e:
         print(f"Error creating SharedEpisodes table: {e}")
 
-
-
-    try:
-        cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
-                            UserSettingID SERIAL PRIMARY KEY,
-                            UserID INT UNIQUE,
-                            Theme VARCHAR(255) DEFAULT 'nordic',
-                            FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
-                        )""")
-    except Exception as e:
-        print(f"Error adding UserSettings table: {e}")
-
-    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('1', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
-    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('2', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS "UserEpisodeHistory" (
                         UserEpisodeHistoryID SERIAL PRIMARY KEY,

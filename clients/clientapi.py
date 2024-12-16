@@ -1599,7 +1599,62 @@ async def api_enable_disable_self_service(is_admin: bool = Depends(check_if_admi
 @app.get("/api/data/self_service_status")
 async def api_self_service_status(cnx=Depends(get_database_connection)):
     status = database_functions.functions.self_service_status(cnx, database_type)
-    return {"status": status}
+    # Return status directly without wrapping it in another dict
+    return status  # Instead of {"status": status}
+
+class FirstAdminRequest(BaseModel):
+    username: str
+    password: str
+    email: str
+    fullname: str
+
+
+
+@app.post("/api/data/create_first")
+async def create_first_admin(
+    request: FirstAdminRequest,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection)
+):
+    if database_functions.functions.check_admin_exists(cnx, database_type):
+        raise HTTPException(
+            status_code=403,
+            detail="An admin user already exists"
+        )
+    try:
+        user_id = database_functions.functions.add_admin_user(
+            cnx,
+            database_type,
+            (request.fullname, request.username.lower(), request.email, request.password)
+        )
+
+        background_tasks.add_task(run_startup_tasks_background)
+        return {"message": "Admin user created successfully", "user_id": user_id}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+def run_startup_tasks_background():
+    cnx = create_database_connection()
+    try:
+        with open("/tmp/web_api_key.txt", "r") as f:
+            web_key = f.read().strip()
+        init_request = InitRequest(api_key=web_key)
+        # Execute startup tasks directly instead of calling the endpoint
+        is_valid = database_functions.functions.verify_api_key(cnx, database_type, web_key)
+        is_web_key = web_key == base_webkey.web_key
+        if not is_valid or not is_web_key:
+            raise Exception("Invalid web key")
+        database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
+    except Exception as e:
+        logger.error(f"Background startup tasks failed: {e}")
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
 
 @app.put("/api/data/increment_listen_time/{user_id}")
 async def api_increment_listen_time(user_id: int, cnx=Depends(get_database_connection),

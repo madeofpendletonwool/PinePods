@@ -507,56 +507,67 @@ def add_user(cnx, database_type, user_values):
     cnx.commit()
     cursor.close()
 
-
 def add_admin_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            add_user_query = """
+                WITH inserted_user AS (
+                    INSERT INTO "Users"
+                    (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES (%s, %s, %s, %s, TRUE)
+                    ON CONFLICT (Username) DO NOTHING
+                    RETURNING UserID
+                )
+                SELECT UserID FROM inserted_user
+                UNION ALL
+                SELECT UserID FROM "Users" WHERE Username = %s
+                LIMIT 1
+            """
+            # Note: we add the username as an extra parameter here
+            cursor.execute(add_user_query, user_values + (user_values[1],))
+            user_id = cursor.fetchone()[0]
+        else:  # MySQL or MariaDB
+            add_user_query = """
+                INSERT INTO Users
+                (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                VALUES (%s, %s, %s, %s, 1)
+            """
+            cursor.execute(add_user_query, user_values)
+            user_id = cursor.lastrowid
 
-    if database_type == "postgresql":
-        add_user_query = """
-            INSERT INTO "Users"
-            (Fullname, Username, Email, Hashed_PW, IsAdmin)
-            VALUES (%s, %s, %s, %s, 1)
-        """
-    else:  # MySQL or MariaDB
-        add_user_query = """
-            INSERT INTO Users
-            (Fullname, Username, Email, Hashed_PW, IsAdmin)
-            VALUES (%s, %s, %s, %s, 1)
-        """
+        # Now add settings and stats
+        if database_type == "postgresql":
+            add_user_settings_query = """
+                INSERT INTO "UserSettings"
+                (UserID, Theme)
+                VALUES (%s, %s)
+            """
+        else:
+            add_user_settings_query = """
+                INSERT INTO UserSettings
+                (UserID, Theme)
+                VALUES (%s, %s)
+            """
+        cursor.execute(add_user_settings_query, (user_id, 'nordic'))
 
-    cursor.execute(add_user_query, user_values)
-    user_id = cursor.lastrowid if database_type != "postgresql" else cursor.fetchone()[0]
-
-    if database_type == "postgresql":
-        add_user_settings_query = """
-            INSERT INTO "UserSettings"
-            (UserID, Theme)
-            VALUES (%s, %s)
-        """
-    else:  # MySQL or MariaDB
-        add_user_settings_query = """
-            INSERT INTO UserSettings
-            (UserID, Theme)
-            VALUES (%s, %s)
-        """
-    cursor.execute(add_user_settings_query, (user_id, 'nordic'))
-
-    if database_type == "postgresql":
-        add_user_stats_query = """
-            INSERT INTO "UserStats"
-            (UserID)
-            VALUES (%s)
-        """
-    else:  # MySQL or MariaDB
-        add_user_stats_query = """
-            INSERT INTO UserStats
-            (UserID)
-            VALUES (%s)
-        """
-    cursor.execute(add_user_stats_query, (user_id,))
-
-    cnx.commit()
-    cursor.close()
+        if database_type == "postgresql":
+            add_user_stats_query = """
+                INSERT INTO "UserStats"
+                (UserID)
+                VALUES (%s)
+            """
+        else:
+            add_user_stats_query = """
+                INSERT INTO UserStats
+                (UserID)
+                VALUES (%s)
+            """
+        cursor.execute(add_user_stats_query, (user_id,))
+        cnx.commit()
+        return user_id
+    finally:
+        cursor.close()
 
 def get_pinepods_version():
     try:
@@ -3468,19 +3479,53 @@ def enable_disable_downloads(cnx, database_type):
 
 
 
+def check_admin_exists(cnx, database_type):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT COUNT(*) as count FROM "Users"
+                WHERE IsAdmin = TRUE
+                AND Username != 'background_tasks'
+            """
+        else:  # MySQL or MariaDB
+            query = """
+                SELECT COUNT(*) FROM Users
+                WHERE IsAdmin = 1
+                AND Username != 'background_tasks'
+            """
+        cursor.execute(query)
+        result = cursor.fetchone()
+
+        if result:
+            if isinstance(result, dict):
+                return result['count']
+            else:
+                return result[0]
+        return 0
+    finally:
+        cursor.close()
+
 def self_service_status(cnx, database_type):
     cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'SELECT SelfServiceUser FROM "AppSettings" WHERE SelfServiceUser = TRUE'
-    else:  # MySQL or MariaDB
-        query = "SELECT SelfServiceUser FROM AppSettings WHERE SelfServiceUser = 1"
+    try:
+        # Get self-service status
+        if database_type == "postgresql":
+            query = 'SELECT SelfServiceUser FROM "AppSettings" WHERE SelfServiceUser = TRUE'
+        else:  # MySQL or MariaDB
+            query = "SELECT SelfServiceUser FROM AppSettings WHERE SelfServiceUser = 1"
+        cursor.execute(query)
+        self_service_result = cursor.fetchone()
 
-    cursor.execute(query)
-    result = cursor.fetchone()
-    cursor.close()
+        # Get admin status
+        admin_exists = check_admin_exists(cnx, database_type)
 
-    return bool(result)
-
+        return {
+            "status": bool(self_service_result),
+            "first_admin_created": bool(admin_exists > 0)  # Convert to boolean
+        }
+    finally:
+        cursor.close()
 
 def enable_disable_self_service(cnx, database_type):
     cursor = cnx.cursor()

@@ -1,3 +1,5 @@
+use crate::components::gen_funcs::encode_password;
+use crate::components::login::AdminSetupData;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use gloo_net::http::Request;
@@ -484,12 +486,12 @@ pub async fn call_verify_mfa(
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct SelfServiceStatusResponse {
-    status: bool,
+    pub status: bool,
+    pub first_admin_created: bool,
 }
 
-pub async fn call_self_service_login_status(server_name: String) -> Result<bool, Error> {
+pub async fn call_self_service_login_status(server_name: String) -> Result<(bool, bool), Error> {
     let url = format!("{}/api/data/self_service_status", server_name);
-
     let response = Request::get(&url)
         .send()
         .await
@@ -500,12 +502,62 @@ pub async fn call_self_service_login_status(server_name: String) -> Result<bool,
             .json()
             .await
             .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))?;
-        Ok(status_response.status)
+
+        Ok((status_response.status, status_response.first_admin_created))
     } else {
         Err(Error::msg(format!(
             "Error fetching self service status: {}",
             response.status_text()
         )))
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct CreateFirstAdminRequest {
+    pub username: String,
+    pub password: String,
+    pub email: String,
+    pub fullname: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CreateFirstAdminResponse {
+    pub message: String,
+    pub user_id: i32,
+}
+
+pub async fn call_create_first_admin(
+    server_name: &str,
+    request: AdminSetupData,
+) -> Result<(), Error> {
+    // Hash the password first
+    let hashed_password = encode_password(&request.password)
+        .map_err(|e| Error::msg(format!("Failed to hash password: {}", e)))?;
+
+    // Create the request body with hashed password
+    let api_request = CreateFirstAdminRequest {
+        username: request.username,
+        password: hashed_password, // Send the hashed password
+        email: request.email,
+        fullname: request.fullname,
+    };
+
+    let url = format!("{}/api/data/create_first", server_name);
+
+    let response = Request::post(&url)
+        .json(&api_request)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error creating admin: {}", error_text)))
     }
 }
 
