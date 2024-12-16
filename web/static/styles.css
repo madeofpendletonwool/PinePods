@@ -646,6 +646,32 @@ body {
     z-index: 1000;
 }
 
+.chapter-progress-container {
+    width: 100%;
+    height: 2px;
+    background-color: rgba(128, 128, 128, 0.2);
+    margin-top: 8px;
+    border-radius: 1px;
+    overflow: hidden;
+}
+
+.chapter-progress-bar {
+    height: 100%;
+    background: var(--prog-bar-color);
+    transition: width 0.1s linear;
+}
+
+.current-chapter {
+    background-color: var(--hover-color);
+}
+
+.chapter-info {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    position: relative;
+}
+
 .modal-container {
     background-color: var(--secondary-background);
     border-color: var(--border-color);
@@ -654,12 +680,13 @@ body {
 
 .chapter-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* Change from center to flex-start to prevent squishing */
     padding: 0.75rem;
     margin: 0.5rem 0;
     border-radius: 0.5rem;
     background-color: var(--container-background);
     transition: all 0.2s ease;
+    cursor: pointer; /* Add cursor pointer since whole item is clickable */
 }
 
 .chapter-item:hover {
@@ -668,11 +695,14 @@ body {
 }
 
 .chapter-play-button {
+    flex-shrink: 0; /* Prevent button from shrinking */
     display: flex;
     align-items: center;
     justify-content: center;
     width: 2.5rem;
+    min-width: 2.5rem; /* Add min-width to prevent shrinking */
     height: 2.5rem;
+    min-height: 2.5rem; /* Add min-height to prevent shrinking */
     border-radius: 50%;
     background-color: var(--button-color);
     margin-right: 1rem;
@@ -693,6 +723,13 @@ body {
 .chapter-title {
     font-weight: 500;
     color: var(--text-color);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2em; /* Add line height for better spacing */
+    max-height: 2.4em; /* 2 lines × 1.2em line height */
 }
 
 .chapter-time {
@@ -991,13 +1028,43 @@ input[type="range"]::-moz-range-thumb {
     cursor: pointer;
 }
 
+/* Mobile/tablet progress bar container */
+.audio-player .mobile-progress-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: rgba(128, 128, 128, 0.2);
+    overflow: hidden;
+}
+
+.audio-player .mobile-progress-bar {
+    height: 100%;
+    background: var(--prog-bar-color);
+    transition: width 0.1s linear;
+}
+
+/* Hide on desktop */
+@media (min-width: 769px) {
+    .audio-player .mobile-progress-container {
+        display: none;
+    }
+}
+
+/* Adjust padding for mobile/tablet */
+@media (max-width: 768px) {
+    .audio-player .line-content {
+        padding-top: 12px;
+    }
+}
+
 .audio-player .top-section {
     display: flex;
     justify-content: center;
 }
 
 .audio-player .top-section .title {
-    font-size: 2em;
     text-align: center;
     margin: 20px 0;
     user-select: none;
@@ -1005,6 +1072,19 @@ input[type="range"]::-moz-range-thumb {
     -moz-user-select: none;
     -ms-user-select: none;
     cursor: pointer;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 40px);
+    font-size: 1em; /* Default for mobile */
+}
+
+@media (min-width: 768px) {
+    .audio-player .top-section .title {
+        font-size: 1.5em;
+    }
 }
 
 .audio-player .top-section .scrub-bar {

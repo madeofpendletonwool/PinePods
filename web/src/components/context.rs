@@ -153,6 +153,7 @@ pub struct UIState {
     pub app_offline_mode: Option<bool>,
     pub local_download_increment: Option<i32>,
     pub episode_chapters: Option<Vec<Chapter>>,
+    pub current_chapter_index: Option<usize>,
     pub podcast_people: Option<Vec<Person>>,
     pub episode_people: Option<Vec<Person>>,
     pub episode_transcript: Option<Vec<Transcript>>,
