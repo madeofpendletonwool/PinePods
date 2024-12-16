@@ -1080,7 +1080,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             page_state.set(PageState::Shown);
         })
     };
-
+    let audio_dispatch = _audio_dispatch.clone();
     let chapter_select_modal = html! {
         <div id="chapter-select-modal" tabindex="-1" aria-hidden="true"
             class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
@@ -1101,25 +1101,93 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // Updated chapters list
                     <div class="p-4 md:p-5 max-h-[70vh] overflow-y-auto">
                         { if let Some(chapters) = &audio_state.episode_chapters {
-                            chapters.iter().map(|chapter| {
-                                let start_time_click = chapter.startTime.clone().unwrap_or_default();
-                                let start_time = format_time_rm_hour(chapter.startTime.clone().unwrap_or_default() as f64);
-                                let click_start_time = start_time_click.clone();
-                                let on_chapter_click = on_chapter_click.clone();
+                            if let Some(audio_props) = &audio_state.currently_playing {
+                                chapters.iter().enumerate().map(|(index, chapter)| {
+                                    let start_time = chapter.startTime.unwrap_or_default() as f64;
+                                    let end_time = if index < chapters.len() - 1 {
+                                        chapters[index + 1].startTime.unwrap_or_default() as f64
+                                    } else {
+                                        audio_props.duration_sec
+                                    };
+                                    let chapter_duration = end_time - start_time;
 
-                                html! {
-                                    <div class="chapter-item"
-                                        onclick={Callback::from(move |_| on_chapter_click.emit(click_start_time.clone()))}>
-                                        <button class="chapter-play-button">
-                                            <i class="ph ph-play text-xl"></i>
-                                        </button>
-                                        <div class="chapter-info">
-                                            <span class="chapter-title">{ &chapter.title }</span>
-                                            <span class="chapter-time">{ start_time }</span>
+                                    // Calculate if this is the current chapter
+                                    let is_current_chapter = audio_state.current_time_seconds >= start_time
+                                        && audio_state.current_time_seconds < end_time;
+
+                                    // Calculate progress for this chapter
+                                    let chapter_progress = if is_current_chapter {
+                                        ((audio_state.current_time_seconds - start_time) / chapter_duration * 100.0)
+                                            .clamp(0.0, 100.0)
+                                    } else if audio_state.current_time_seconds >= end_time {
+                                        100.0
+                                    } else {
+                                        0.0
+                                    };
+
+                                    let formatted_start = format_time_rm_hour(start_time);
+                                    let click_start_time = start_time;
+                                    let on_chapter_click = on_chapter_click.clone();
+                                    let on_chapter_click_button = on_chapter_click.clone();
+                                    let toggle_playback = toggle_playback.clone();
+
+                                    let click_handler = {
+                                        let dispatch = audio_dispatch.clone();
+                                        Callback::from(move |_| {
+                                            if is_current_chapter {
+                                                dispatch.reduce_mut(UIState::toggle_playback);
+                                            } else {
+                                                on_chapter_click.emit(click_start_time as i32);
+                                            }
+                                        })
+                                    };
+                                    let button_click_handler = {
+                                        let dispatch = audio_dispatch.clone();
+                                        Callback::from(move |e: MouseEvent| {
+                                            e.stop_propagation();
+                                            if is_current_chapter {
+                                                dispatch.reduce_mut(UIState::toggle_playback);
+                                            } else {
+                                                on_chapter_click_button.emit(click_start_time as i32);
+                                            }
+                                        })
+                                    };
+
+                                    html! {
+                                        <div
+                                            class={classes!(
+                                                "chapter-item",
+                                                is_current_chapter.then(|| "current-chapter")
+                                            )}
+                                            onclick={click_handler}
+                                        >
+                                            <button
+                                                class="chapter-play-button"
+                                                onclick={button_click_handler}
+                                            >
+                                                if is_current_chapter && audio_state.audio_playing.unwrap_or(false) {
+                                                    <i class="ph ph-pause text-xl"></i>
+                                                } else {
+                                                    <i class="ph ph-play text-xl"></i>
+                                                }
+                                            </button>
+                                            <div class="chapter-info">
+                                                <span class="chapter-title">{ &chapter.title }</span>
+                                                <span class="chapter-time">{ formatted_start }</span>
+                                                // Progress bar
+                                                <div class="chapter-progress-container">
+                                                    <div
+                                                        class="chapter-progress-bar"
+                                                        style={format!("width: {}%", chapter_progress)}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                }
-                            }).collect::<Html>()
+                                    }
+                                }).collect::<Html>()
+                            } else {
+                                html! { <div class="text-center p-4">{"No audio playing"}</div> }
+                            }
                         } else {
                             html! { <div class="text-center p-4">{"No chapters available"}</div> }
                         }}
