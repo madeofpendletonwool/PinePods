@@ -1519,6 +1519,12 @@ input[type="range"]::-moz-range-thumb {
     background-color: var(--hover-color);
 }
 
+.bg-container-background {
+    background-color: var(--secondary-background);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
 .podcast-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

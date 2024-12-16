@@ -2,7 +2,9 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::UIStateMsg;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
 use crate::components::setting_components::theme_options::initialize_default_theme;
-use crate::requests::login_requests::{self, call_check_mfa_enabled};
+use crate::requests::login_requests::{
+    self, call_check_mfa_enabled, call_create_first_admin, CreateFirstAdminRequest,
+};
 use crate::requests::login_requests::{call_add_login_user, AddUserRequest};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_time_info, call_reset_password_create_code,
@@ -15,10 +17,171 @@ use md5;
 use rand::Rng;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use web_sys::HtmlInputElement;
 use web_sys::{console, window};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+
+#[derive(Properties, PartialEq)]
+pub struct FirstAdminModalProps {
+    pub on_submit: Callback<AdminSetupData>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AdminSetupData {
+    pub username: String,
+    pub password: String,
+    pub email: String,
+    pub fullname: String,
+}
+
+#[function_component(FirstAdminModal)]
+pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
+    let username = use_state(|| String::new());
+    let password = use_state(|| String::new());
+    let email = use_state(|| String::new());
+    let fullname = use_state(|| String::new());
+    let validation_message = use_state(|| None::<String>);
+
+    let onsubmit = {
+        let username = username.clone();
+        let password = password.clone();
+        let email = email.clone();
+        let fullname = fullname.clone();
+        let validation_message = validation_message.clone();
+        let on_submit = props.on_submit.clone();
+
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default();
+
+            // Basic validation
+            if username.is_empty() || password.is_empty() || email.is_empty() || fullname.is_empty()
+            {
+                validation_message.set(Some("All fields are required".to_string()));
+                return;
+            }
+
+            if password.len() < 8 {
+                validation_message.set(Some("Password must be at least 8 characters".to_string()));
+                return;
+            }
+
+            // Email validation
+            if !email.contains('@') {
+                validation_message.set(Some("Please enter a valid email address".to_string()));
+                return;
+            }
+
+            let data = AdminSetupData {
+                username: (*username).clone(),
+                password: (*password).clone(),
+                email: (*email).clone(),
+                fullname: (*fullname).clone(),
+            };
+
+            on_submit.emit(data);
+        })
+    };
+
+    html! {
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-container-background rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
+                <h2 class="text-2xl font-bold mb-6 text-text-color">{"Welcome to Pinepods!"}</h2>
+                <p class="mb-6 text-text-color">{"Let's set up your administrator account to get started."}</p>
+
+                <form onsubmit={onsubmit} class="space-y-4">
+                    <div>
+                        <label for="fullname" class="block text-sm font-medium text-text-color mb-1">
+                            {"Full Name"}
+                        </label>
+                        <input
+                            type="text"
+                            id="fullname"
+                            value={(*fullname).clone()}
+                            onchange={let fullname = fullname.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    fullname.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="John Doe"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-text-color mb-1">
+                            {"Username"}
+                        </label>
+                        <input
+                            type="text"
+                            id="username"
+                            value={(*username).clone()}
+                            onchange={let username = username.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    username.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="johndoe"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-text-color mb-1">
+                            {"Email"}
+                        </label>
+                        <input
+                            type="email"
+                            id="email"
+                            value={(*email).clone()}
+                            onchange={let email = email.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    email.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="john@example.com"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-text-color mb-1">
+                            {"Password"}
+                        </label>
+                        <input
+                            type="password"
+                            id="password"
+                            value={(*password).clone()}
+                            onchange={let password = password.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    password.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="••••••••"
+                        />
+                    </div>
+
+                    if let Some(message) = &*validation_message {
+                        <div class="text-error-color text-sm mt-2">
+                            {message}
+                        </div>
+                    }
+
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button
+                            type="submit"
+                            class="px-4 py-2 bg-button-color text-button-text-color rounded-md hover:bg-hover-color focus:outline-none focus:ring transition-colors"
+                        >
+                            {"Create Admin Account"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -60,40 +223,46 @@ pub fn login() -> Html {
     let page_state = use_state(|| PageState::Default);
     let self_service_enabled = use_state(|| false); // State to store self-service status
     let effect_self_service = self_service_enabled.clone();
+    let first_admin_created = use_state(|| true);
 
     use_effect_with((), move |_| {
         initialize_default_theme();
         || ()
     });
+    let first_admin_create_effect = first_admin_created.clone();
+    use_effect_with((), move |_| {
+        let self_service_enabled = effect_self_service.clone();
+        let first_admin_created = first_admin_create_effect.clone();
 
-    use_effect_with(
-        // No dependencies, so we pass an empty tuple to run this effect once on component mount
-        (),
-        move |_| {
-            let self_service_enabled = effect_self_service.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                // Example server_name retrieval, adjust according to your needs
-                let window = web_sys::window().expect("no global `window` exists");
-                let location = window.location();
-                let server_name = location
-                    .href()
-                    .expect("should have a href")
-                    .trim_end_matches('/')
-                    .to_string();
-                match call_self_service_login_status(server_name).await {
-                    Ok(status) => {
-                        self_service_enabled.set(status);
-                    }
-                    Err(_e) => {
-                        // web_sys::console::log_1(&format!("Error fetching self service status: {:?}", e).into());
-                    }
+        wasm_bindgen_futures::spawn_local(async move {
+            let window = web_sys::window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location
+                .href()
+                .expect("should have a href")
+                .trim_end_matches('/')
+                .to_string();
+
+            match call_self_service_login_status(server_name).await {
+                Ok((status, admin_created)) => {
+                    web_sys::console::log_1(
+                        &format!("Status: {}, Admin Created: {}", status, admin_created).into(),
+                    );
+                    self_service_enabled.set(status);
+                    first_admin_created.set(admin_created);
+                    web_sys::console::log_1(
+                        &format!("After set - first_admin_created: {}", *first_admin_created)
+                            .into(),
+                    );
                 }
-            });
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Error checking status: {:?}", e).into());
+                }
+            }
+        });
 
-            // Cleanup function, not needed in this case
-            || ()
-        },
-    );
+        || ()
+    });
 
     {
         let ui_dispatch = _dispatch.clone();
@@ -1278,6 +1447,52 @@ pub fn login() -> Html {
             });
         })
     };
+    let first_admin_create_clone = first_admin_created.clone();
+    let on_admin_setup = {
+        let history = history.clone();
+        let first_admin_created = first_admin_create_clone.clone();
+        let dispatch_wasm = dispatch.clone();
+
+        Callback::from(move |data: AdminSetupData| {
+            let history = history.clone();
+            let first_admin_created = first_admin_created.clone();
+            let audio_dispatch = dispatch_wasm.clone();
+
+            // Get server name from window location
+            let window = web_sys::window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location
+                .href()
+                .expect("should have a href")
+                .trim_end_matches('/')
+                .to_string();
+
+            let request = AdminSetupData {
+                username: data.username,
+                password: data.password,
+                email: data.email,
+                fullname: data.fullname,
+            };
+
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_create_first_admin(&server_name, request).await {
+                    Ok(_) => {
+                        first_admin_created.set(true);
+                        audio_dispatch.reduce_mut(|state| {
+                            state.info_message =
+                                Some("Admin account created successfully".to_string());
+                        });
+                        history.push("/"); // Redirect to login
+                    }
+                    Err(e) => {
+                        audio_dispatch.reduce_mut(|state| {
+                            state.error_message = Some(format!("Failed to create admin: {}", e));
+                        });
+                    }
+                }
+            });
+        })
+    };
 
     let mfa_code_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
@@ -1308,6 +1523,21 @@ pub fn login() -> Html {
         </div>
     };
 
+    let modal_content = {
+        web_sys::console::log_1(
+            &format!("Rendering - first_admin_created: {}", *first_admin_created).into(),
+        );
+        if !*first_admin_created {
+            html! {
+                <FirstAdminModal
+                    on_submit={on_admin_setup}
+                />
+            }
+        } else {
+            html! {}
+        }
+    };
+
     html! {
         <>
         if *loading {
@@ -1331,6 +1561,7 @@ pub fn login() -> Html {
             _ => html! {},
             }
         }
+        {modal_content}
 
             <div class="flex justify-center items-center h-screen">
                 <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">

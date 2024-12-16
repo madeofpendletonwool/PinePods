@@ -94,11 +94,6 @@ services:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       PEOPLE_API_URL: 'https://people.pinepods.online'
-      # Default Admin User Information
-      USERNAME: myadminuser01
-      PASSWORD: myS3curepass
-      FULLNAME: Pinepods Admin
-      EMAIL: user@pinepods.online
       # Database Vars
       DB_TYPE: postgresql
       DB_HOST: db
@@ -153,11 +148,6 @@ services:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       PEOPLE_API_URL: 'https://people.pinepods.online'
-      # Default Admin User Information
-      USERNAME: myadminuser01
-      PASSWORD: myS3curepass
-      FULLNAME: Pinepods Admin
-      EMAIL: user@pinepods.online
       # Database Vars
       DB_TYPE: mariadb
       DB_HOST: db
@@ -182,6 +172,7 @@ services:
 Make sure you change these variables to variables specific to yourself at a minimum.
 
 ```
+      # These next 4 are optional. They allow you to set an admin without setting on the first boot
       USERNAME: pinepods
       PASSWORD: password
       FULLNAME: John Pinepods
