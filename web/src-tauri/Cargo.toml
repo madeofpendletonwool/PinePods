@@ -23,7 +23,7 @@ dirs = "5.0.1"
 # reqwest = { version = "0.12.5", features = ["blocking", "json"] }
 tokio = { version = "1.38.0", features = ["full"] }
 warp = "0.3.7"
-ureq = "=2.10.1"
+ureq = "=2.12.1"
 
 
 [features]

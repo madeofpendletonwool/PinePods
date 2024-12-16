@@ -1,5 +1,5 @@
 use crate::components::context::{AppState, UIState};
-use crate::requests::setting_reqs::{call_set_theme, SetThemeRequest};
+use crate::requests::setting_reqs::{call_set_theme, call_get_theme, SetThemeRequest};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::console;
@@ -13,8 +13,40 @@ pub fn theme() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let (_audio_state, audio_dispatch) = use_store::<UIState>();
     // Use state to manage the selected theme
-    let selected_theme = use_state(|| "Light".to_string());
+    let selected_theme = use_state(|| "".to_string());
+    let loading = use_state(|| true);
     // let selected_theme = state.selected_theme.as_ref();
+
+    {
+        let selected_theme = selected_theme.clone();
+        let loading = loading.clone();
+        let state = state.clone();
+
+        use_effect_with((), move |_| {
+            let selected_theme = selected_theme.clone();
+            let loading = loading.clone();
+
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                spawn_local(async move {
+                    match call_get_theme(server_name, api_key, &user_id).await {
+                        Ok(theme) => {
+                            selected_theme.set(theme);
+                            loading.set(false);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(&format!("Error fetching theme: {:?}", e).into());
+                            loading.set(false);
+                        }
+                    }
+                });
+            }
+            || ()
+        });
+    }
 
     let on_change = {
         let selected_theme = selected_theme.clone();
@@ -28,101 +60,108 @@ pub fn theme() -> Html {
     let on_submit = {
         let selected_theme = selected_theme.clone();
         let state = state.clone();
+        
         Callback::from(move |_| {
             let audio_dispatch = audio_dispatch.clone();
-            let theme = (*selected_theme).to_string();
-            changeTheme(&theme);
+            let theme = (*selected_theme).clone();
+
+            if theme.is_empty() {
+                return;
+            }
+            
+            // Call JavaScript theme change function
+            unsafe { changeTheme(&theme) };
+
+            // Store in local storage
             if let Some(window) = web_sys::window() {
-                if let Ok(Some(local_storage)) = window.local_storage() {
-                    match local_storage.set_item("selected_theme", &theme) {
+                if let Ok(Some(storage)) = window.local_storage() {
+                    let _ = storage.set_item("selected_theme", &theme);
+                }
+            }
+
+            // Update server
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                let request = SetThemeRequest {
+                    user_id,
+                    new_theme: theme.clone(),
+                };
+
+                spawn_local(async move {
+                    match call_set_theme(&Some(server_name), &Some(api_key), &request).await {
                         Ok(_) => {
-                            console::log_1(&format!("Theme updated in local storage").into());
+                            audio_dispatch.reduce_mut(|state| {
+                                state.info_message = Some("Theme updated successfully!".to_string());
+                            });
                         }
-                        Err(e) => console::log_1(
-                            &format!("Error updating theme in local storage: {:?}", e).into(),
-                        ),
+                        Err(e) => {
+                            audio_dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!("Failed to update theme: {}", e));
+                            });
+                        }
                     }
-                }
+                });
             }
-            log_css_variables();
-
-            // Optionally, store in local storage
-            if let Some(window) = window() {
-                let _ = window
-                    .local_storage()
-                    .unwrap()
-                    .unwrap()
-                    .set_item("theme", &theme);
-            }
-
-            let api_key = state
-                .auth_details
-                .as_ref()
-                .map(|ud| ud.api_key.clone())
-                .flatten()
-                .unwrap();
-            let user_id = state
-                .user_details
-                .as_ref()
-                .map(|ud| ud.UserID.clone())
-                .unwrap();
-            let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
-            let request = SetThemeRequest {
-                user_id,
-                new_theme: theme.clone(),
-            };
-
-            spawn_local(async move {
-                if let Ok(_) = call_set_theme(&server_name, &Some(api_key), &request).await {
-                    audio_dispatch.reduce_mut(|audio_state| {
-                        audio_state.info_message =
-                            Option::from("Theme Settings Updated!".to_string())
-                    });
-                } else {
-                    audio_dispatch.reduce_mut(|audio_state| {
-                        audio_state.error_message = Option::from("Error Updating Theme".to_string())
-                    });
-                }
-            });
         })
     };
 
-    html! {
-        <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{"Theme Select:"}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{"You can select your application theme here. Choosing a theme will follow you to any official Pinepods application as your theme preference gets saved to your user settings."}</p> // Styled paragraph
+    let theme_options = vec![
+        "Light", "Dark", "Nordic Light", "Nordic", "Abyss", "Dracula",
+        "Midnight Ocean", "Forest Depths", "Sunset Horizon", "Arctic Frost",
+        "Cyber Synthwave", "Github Light", "Neon", "Kimbie", "Gruvbox Light",
+        "Gruvbox Dark", "Greenie Meanie", "Wildberries", "Hot Dog Stand - MY EYES"
+    ];
 
-            <div class="theme-select-dropdown relative inline-block">
-                <select onchange={on_change} class="theme-select-dropdown appearance-none w-full border px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
-                    <option value="Light" selected={(*selected_theme) == "Light"}>{"Light"}</option>
-                    <option value="Dark" selected={(*selected_theme) == "Dark"}>{"Dark"}</option>
-                    <option value="Nordic Light" selected={(*selected_theme) == "Nordic Light"}>{"Nordic Light"}</option>
-                    <option value="Nordic" selected={(*selected_theme) == "Nordic"}>{"Nordic"}</option>
-                    <option value="Abyss" selected={(*selected_theme) == "Abyss"}>{"Abyss"}</option>
-                    <option value="Dracula" selected={(*selected_theme) == "Dracula"}>{"Dracula"}</option>
-                    <option value="Midnight Ocean" selected={(*selected_theme) == "Midnight Ocean"}>{"Midnight Ocean"}</option>
-                    <option value="Forest Depths" selected={(*selected_theme) == "Forest Depths"}>{"Forest Depths"}</option>
-                    <option value="Sunset Horizon" selected={(*selected_theme) == "Sunset Horizon"}>{"Sunset Horizon"}</option>
-                    <option value="Arctic Frost" selected={(*selected_theme) == "Arctic Frost"}>{"Arctic Frost"}</option>
-                    <option value="Cyber Synthwave" selected={(*selected_theme) == "Cyber Synthwave"}>{"Cyber Synthwave"}</option>
-                    <option value="Github Light" selected={(*selected_theme) == "Github Light"}>{"Github Light"}</option>
-                    <option value="Neon" selected={(*selected_theme) == "Neon"}>{"Neon"}</option>
-                    <option value="Kimbie" selected={(*selected_theme) == "Kimbie"}>{"Kimbie"}</option>
-                    <option value="Gruvbox Light" selected={(*selected_theme) == "Gruvbox Light"}>{"Gruvbox Light"}</option>
-                    <option value="Gruvbox Dark" selected={(*selected_theme) == "Gruvbox Dark"}>{"Gruvbox Dark"}</option>
-                    <option value="Greenie Meanie" selected={(*selected_theme) == "Greenie Meanie"}>{"Greenie Meanie"}</option>
-                    <option value="Wildberries" selected={(*selected_theme) == "Wildberries"}>{"Wildberries"}</option>
-                    <option value="Hot Dog Stand - MY EYES" selected={(*selected_theme) == "Hot Dog Stand - MY EYES"}>{"Hot Dog Stand - MY EYES"}</option>
-                </select>
-                <div class="theme-dropdown-arrow pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
-                    <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M6.293 9.293a1 1 0 0 1 1.414 0L10 10.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-3 3a1 1 0 0 1-1.414 0l-3-3a1 1 0 0 1 0-1.414z"/></svg>
-                </div>
+    html! {
+        <div class="p-6 space-y-4">
+            <div class="flex items-center gap-3 mb-6">
+                <i class="ph ph-paint-roller text-2xl"></i>
+                <h2 class="text-xl font-semibold item_container-text">{"Theme Settings"}</h2>
             </div>
 
-            <button onclick={on_submit} class="theme-submit-button mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
-                {"Submit"}
-            </button>
+            <div class="mb-6">
+                <p class="item_container-text mb-2">
+                    {"Choose your preferred theme. Your selection will sync across all your Pinepods applications."}
+                </p>
+            </div>
+
+            if *loading {
+                <div class="flex justify-center">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500"></div>
+                </div>
+            } else {
+                <div class="theme-select-container relative">
+                    <select 
+                        onchange={on_change}
+                        class="theme-select-dropdown w-full p-3 pr-10 rounded-lg border appearance-none cursor-pointer"
+                        value={(*selected_theme).clone()}
+                    >
+                        <option value="" disabled=true>{"Select a theme"}</option>
+                        {theme_options.into_iter().map(|theme| {
+                            let current_theme = (*selected_theme).clone();
+                            html! {
+                                <option value={theme} selected={theme == current_theme}>
+                                    {theme}
+                                </option>
+                            }
+                        }).collect::<Html>()}
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+                        <i class="ph ph-caret-down text-2xl"></i>
+                    </div>
+                </div>
+
+                <button 
+                    onclick={on_submit}
+                    class="theme-submit-button mt-4 w-full p-3 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                >
+                    <i class="ph ph-thumbs-up text-2xl"></i>
+                    {"Apply Theme"}
+                </button>
+            }
         </div>
     }
 }
