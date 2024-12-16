@@ -281,7 +281,7 @@ try:
         cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
                             UserSettingID SERIAL PRIMARY KEY,
                             UserID INT UNIQUE,
-                            Theme VARCHAR(255) DEFAULT 'nordic',
+                            Theme VARCHAR(255) DEFAULT 'Nordic',
                             FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                         )""")
     except Exception as e:
@@ -322,16 +322,16 @@ try:
                 ON CONFLICT (UserID) DO NOTHING
             """)
             cursor.execute("""
-                INSERT INTO "UserSettings" (UserID, Theme) VALUES (2, 'nordic')
+                INSERT INTO "UserSettings" (UserID, Theme) VALUES (2, 'Nordic')
                 ON CONFLICT (UserID) DO NOTHING
             """)
         cnx.commit()
     except Exception as e:
         print(f"Error creating user stats/settings: {e}")
 
-    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('1', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
+    cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('1', 'Nordic') ON CONFLICT (UserID) DO NOTHING""")
     if admin_created:
-        cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('2', 'nordic') ON CONFLICT (UserID) DO NOTHING""")
+        cursor.execute("""INSERT INTO "UserSettings" (UserID, Theme) VALUES ('2', 'Nordic') ON CONFLICT (UserID) DO NOTHING""")
 
 
     try:
