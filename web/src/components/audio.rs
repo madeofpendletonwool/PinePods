@@ -1321,6 +1321,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                 </div>
                 <div class="line-content">
+                <div class="mobile-progress-container md:hidden">
+                    <div
+                        class="mobile-progress-bar"
+                        style={format!("width: {}%",
+                            (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
+                        )}
+                    />
+                </div>
                 <div class="left-group">
                     <div onclick={title_click.clone()} class="artwork-container">
                         <img class={artwork_class} src={audio_props.artwork_url.clone()} />
@@ -1340,7 +1348,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     <button onclick={skip_forward} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                         <i class="ph ph-fast-forward text-2xl"></i>
                     </button>
-                    <div class="flex-grow flex items-center sm:block hidden">
+                    <div class="flex-grow flex items-center md:block hidden">
                         <div class="flex items-center flex-nowrap">
                             <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
                             <input type="range"
