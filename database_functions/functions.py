@@ -6,6 +6,7 @@ import mysql.connector.pooling
 import sys
 import os
 import requests
+import feedgenerator
 import datetime
 import time
 import appdirs
@@ -22,7 +23,7 @@ import re
 import requests
 from requests.auth import HTTPBasicAuth
 from urllib.parse import urlparse, urlunparse
-from typing import List
+from typing import List, Optional
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -3563,6 +3564,156 @@ def verify_api_key(cnx, database_type, passed_key):
 
     return True if result else False
 
+
+def get_rss_feed_status(cnx, database_type: str, user_id: int) -> bool:
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            cursor.execute('SELECT EnableRSSFeeds FROM "Users" WHERE UserID = %s', (user_id,))
+        else:
+            cursor.execute("SELECT EnableRSSFeeds FROM Users WHERE UserID = %s", (user_id,))
+        
+        result = cursor.fetchone()
+        
+        # Handle different return types
+        if result:
+            if isinstance(result, dict):
+                return bool(result.get('EnableRSSFeeds', False))
+            else:
+                return bool(result[0]) if result[0] is not None else False
+        return False
+    finally:
+        cursor.close()
+
+def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
+    cursor = cnx.cursor()
+    try:
+        # Get current status
+        if database_type == "postgresql":
+            cursor.execute('SELECT EnableRSSFeeds FROM "Users" WHERE UserID = %s', (user_id,))
+        else:
+            cursor.execute("SELECT EnableRSSFeeds FROM Users WHERE UserID = %s", (user_id,))
+        
+        current_status = cursor.fetchone()
+        
+        # Handle different return types
+        if isinstance(current_status, dict):
+            new_status = not current_status.get('EnableRSSFeeds', False)
+        else:
+            new_status = not bool(current_status[0]) if current_status and current_status[0] is not None else True
+
+        # Update status
+        if database_type == "postgresql":
+            cursor.execute(
+                'UPDATE "Users" SET EnableRSSFeeds = %s WHERE UserID = %s',
+                (new_status, user_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE Users SET EnableRSSFeeds = %s WHERE UserID = %s",
+                (new_status, user_id)
+            )
+        cnx.commit()
+        return new_status
+    finally:
+        cursor.close()
+
+def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, podcast_id: Optional[int] = None) -> str:
+    """Generate RSS feed for either all podcasts or a specific podcast"""
+    cursor = cnx.cursor()
+    
+    try:
+        # Check if RSS feeds are enabled for user
+        if not get_rss_feed_status(cnx, database_type, user_id):
+            raise HTTPException(status_code=403, detail="RSS feeds not enabled for this user")
+
+        # Get user info for feed metadata
+        if database_type == "postgresql":
+            cursor.execute('SELECT Username FROM "Users" WHERE UserID = %s', (user_id,))
+        else:
+            cursor.execute("SELECT Username FROM Users WHERE UserID = %s", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Initialize feed
+        feed = feedgenerator.Rss201rev2Feed(
+            title=f"Pinepods - {'All Podcasts' if podcast_id is None else 'Single Podcast'} Feed",
+            link="https://github.com/madeofpendletonwool/pinepods",
+            description=f"RSS feed for {'all' if podcast_id is None else 'selected'} podcasts from Pinepods",
+            language="en",
+            author_name=user[0],
+            feed_url="",  # Will be set by the API endpoint
+            ttl="60"
+        )
+
+        # Build query based on whether we're getting all podcasts or a specific one
+        if database_type == "postgresql":
+            base_query = '''
+                SELECT e.*, p.PodcastName, p.Author, p.ArtworkURL 
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+                WHERE p.UserID = %s
+            '''
+        else:
+            base_query = '''
+                SELECT e.*, p.PodcastName, p.Author, p.ArtworkURL 
+                FROM Episodes e
+                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                WHERE p.UserID = %s
+            '''
+
+        params = [user_id]
+        if podcast_id is not None:
+            base_query += " AND p.PodcastID = %s"
+            params.append(podcast_id)
+
+        base_query += " ORDER BY e.EpisodePubDate DESC LIMIT 100"
+        
+        cursor.execute(base_query, tuple(params))
+        episodes = cursor.fetchall()
+
+        # Add items to feed
+        for episode in episodes:
+            feed.add_item(
+                title=episode[2],  # EpisodeTitle
+                link=episode[4],   # EpisodeURL
+                description=episode[3],  # EpisodeDescription
+                unique_id=str(episode[0]),  # EpisodeID
+                enclosure=feedgenerator.Enclosure(
+                    url=episode[4],
+                    length='0',
+                    mime_type='audio/mpeg'
+                ),
+                pubdate=episode[6],  # EpisodePubDate
+                author=episode[12],  # Author from Podcasts table
+                image_url=episode[5] or episode[13]  # EpisodeArtwork or PodcastArtwork
+            )
+
+        return feed.writeString('utf-8')
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating RSS feed: {str(e)}")
+    finally:
+        cursor.close()
+
+def set_rss_feed_status(cnx, database_type: str, user_id: int, enable: bool) -> bool:
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            cursor.execute(
+                'UPDATE "Users" SET EnableRSSFeeds = %s WHERE UserID = %s',
+                (enable, user_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE Users SET EnableRSSFeeds = %s WHERE UserID = %s",
+                (enable, user_id)
+            )
+        cnx.commit()
+        return enable
+    finally:
+        cursor.close()
 
 
 def get_api_key(cnx, database_type, username):

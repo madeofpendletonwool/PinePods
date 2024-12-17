@@ -4793,6 +4793,96 @@ def restore_server_fun(database_pass: str, server_restore_data: str):
         cnx.close()
 
 
+@app.get("/api/data/rss_feed_status")
+async def get_rss_feed_status(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get RSS feed enabled status for current user"""
+    try:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if not key_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+
+        status = database_functions.functions.get_rss_feed_status(cnx, database_type, key_id)
+        return status
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/data/toggle_rss_feeds")
+async def toggle_rss_feeds_endpoint(
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Toggle RSS feed status for current user"""
+    try:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if not key_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+        
+        new_status = database_functions.functions.toggle_rss_feeds(cnx, database_type, key_id)
+        
+        # If feeds were enabled, generate the feed in the background
+        if new_status:
+            background_tasks.add_task(
+                database_functions.functions.generate_podcast_rss,
+                database_type,
+                cnx,
+                key_id,
+                api_key,
+                None
+            )
+            
+        return {"success": True, "enabled": new_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feed/{user_id}")
+async def get_user_feed(
+    user_id: int,
+    podcast_id: Optional[int] = None,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get RSS feed for all podcasts or a specific podcast"""
+    try:
+        # Verify API key
+        if not database_functions.functions.verify_api_key(cnx, database_type, api_key):
+            raise HTTPException(status_code=403, detail="Invalid API key")
+            
+        feed_content = database_functions.functions.generate_podcast_rss(database_type, cnx, user_id, api_key, podcast_id)
+        return Response(
+            content=feed_content,
+            media_type="application/rss+xml"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/data/rss_feed_status/{user_id}")
+async def toggle_rss_feeds(
+    user_id: int,
+    enable: bool,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Enable or disable RSS feeds for a user"""
+    try:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if not key_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+            
+        new_status = database_functions.functions.set_rss_feed_status(cnx, database_type, user_id, enable)
+        return {"status": "success", "enabled": new_status}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 class InitRequest(BaseModel):
     api_key: str
 

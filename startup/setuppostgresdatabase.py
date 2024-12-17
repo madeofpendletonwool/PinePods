@@ -125,6 +125,20 @@ try:
         )
     """)
 
+    # Add EnableRSSFeeds column if it doesn't exist
+    cursor.execute("""
+    DO $$ 
+    BEGIN 
+        IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'Users' 
+            AND column_name = 'EnableRSSFeeds'
+        ) THEN
+            ALTER TABLE "Users" ADD COLUMN EnableRSSFeeds BOOLEAN DEFAULT FALSE;
+        END IF;
+    END $$;
+    """)
+
     ensure_usernames_lowercase(cnx)
 
 

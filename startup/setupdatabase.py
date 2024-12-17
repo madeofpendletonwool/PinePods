@@ -85,6 +85,17 @@ try:
         )
     """)
 
+    # Add EnableRSSFeeds column if it doesn't exist
+    cursor.execute("""
+    SELECT COUNT(*) 
+    FROM information_schema.columns 
+    WHERE table_name = 'Users' 
+    AND column_name = 'EnableRSSFeeds'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Users ADD COLUMN EnableRSSFeeds TINYINT(1) DEFAULT 0")
+
+
     ensure_usernames_lowercase(cnx)
 
     def add_pod_sync_if_not_exists(cursor, table_name, column_name, column_definition):

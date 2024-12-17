@@ -12,4 +12,5 @@ pub mod email_settings;
 pub mod backup_server;
 pub mod restore_server;
 pub mod custom_feed;
+pub mod rss_feeds;
 // ...other submodule declarations if any...
