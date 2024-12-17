@@ -3899,26 +3899,79 @@ class GpodderSettings(BaseModel):
     gpodder_username: str
     gpodder_password: str
 
+
 @app.post("/api/data/add_gpodder_server")
-async def add_gpodder_server(data: GpodderSettings, cnx=Depends(get_database_connection),
-                              api_key: str = Depends(get_api_key_from_header)):
+async def add_gpodder_server(
+    data: GpodderSettings,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.add_gpodder_server(database_type, cnx, data.user_id, data.gpodder_url, data.gpodder_username, data.gpodder_password)
+        # First add the gpodder server
+        result = database_functions.functions.add_gpodder_server(
+            database_type,
+            cnx,
+            data.user_id,
+            data.gpodder_url,
+            data.gpodder_username,
+            data.gpodder_password
+        )
+
+        # Get the user's gpodder settings - similar to what refresh_nextcloud_subscription does
+        if database_type == "postgresql":
+            cursor = cnx.cursor()
+            cursor.execute('''
+                SELECT "userid", "gpodderurl", "gpoddertoken", "gpodderloginname"
+                FROM "Users"
+                WHERE "userid" = %s AND "gpodderurl" IS NOT NULL
+            ''', (data.user_id,))
+            user = cursor.fetchone()
+        else:
+            cursor = cnx.cursor()
+            cursor.execute('''
+                SELECT UserID, GpodderUrl, GpodderToken, GpodderLoginName
+                FROM Users
+                WHERE UserID = %s AND GpodderUrl IS NOT NULL
+            ''', (data.user_id,))
+            user = cursor.fetchone()
+
+        if user:
+            if isinstance(user, dict):
+                if database_type == "postgresql":
+                    gpodder_url = user["gpodderurl"]
+                    gpodder_token = user["gpoddertoken"]
+                    gpodder_login = user["gpodderloginname"]
+                else:
+                    gpodder_url = user["GpodderUrl"]
+                    gpodder_token = user["GpodderToken"]
+                    gpodder_login = user["GpodderLoginName"]
+            else:
+                _, gpodder_url, gpodder_token, gpodder_login = user
+
+            # Add the refresh task for just this user
+            background_tasks.add_task(
+                refresh_nextcloud_subscription_for_user,
+                database_type,
+                data.user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login
+            )
+
         return {"data": result}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only add your own gpodder data!")
+
 
 class RemoveGpodderSettings(BaseModel):
     user_id: int
