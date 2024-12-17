@@ -45,37 +45,41 @@ pub fn login() -> Html {
     let temp_server_name = use_state(|| "".to_string());
     let info_message = _state.info_message.clone();
     // Define the initial state
+    // Define states for both self-service and first admin
     let page_state = use_state(|| PageState::Default);
-    let self_service_enabled = use_state(|| false); // State to store self-service status
-    let effect_self_service = self_service_enabled.clone();
-    use_effect_with(
-        // No dependencies, so we pass an empty tuple to run this effect once on component mount
-        (),
-        move |_| {
-            let self_service_enabled = effect_self_service.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                // Example server_name retrieval, adjust according to your needs
-                let window = web_sys::window().expect("no global `window` exists");
-                let location = window.location();
-                let server_name = location
-                    .href()
-                    .expect("should have a href")
-                    .trim_end_matches('/')
-                    .to_string();
-                match call_self_service_login_status(server_name).await {
-                    Ok(status) => {
-                        self_service_enabled.set(status);
-                    }
-                    Err(_e) => {
-                        // web_sys::console::log_1(&format!("Error fetching self service status: {:?}", e).into());
-                    }
-                }
-            });
+    let self_service_enabled = use_state(|| false);
+    let first_admin_created = use_state(|| false);
 
-            // Cleanup function, not needed in this case
-            || ()
-        },
-    );
+    // Clone states for the effect
+    let effect_self_service = self_service_enabled.clone();
+    let effect_first_admin = first_admin_created.clone();
+
+    use_effect_with((), move |_| {
+        let self_service_enabled = effect_self_service.clone();
+        let first_admin_created = effect_first_admin.clone();
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let window = web_sys::window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location
+                .href()
+                .expect("should have a href")
+                .trim_end_matches('/')
+                .to_string();
+
+            match call_self_service_login_status(server_name).await {
+                Ok((status, admin_created)) => {
+                    self_service_enabled.set(status);
+                    first_admin_created.set(admin_created);
+                }
+                Err(_e) => {
+                    // Handle error if needed
+                }
+            }
+        });
+
+        || ()
+    });
 
     {
         let ui_dispatch = _dispatch.clone();

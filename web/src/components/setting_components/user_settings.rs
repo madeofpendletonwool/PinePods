@@ -1,16 +1,20 @@
+use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::validate_user_input;
+use crate::components::gen_funcs::{
+    encode_password, validate_email, validate_username, ValidationError,
+};
+use crate::requests::setting_reqs::call_get_user_info;
+use crate::requests::setting_reqs::{
+    call_add_user, call_check_admin, call_delete_user, call_set_email, call_set_fullname,
+    call_set_isadmin, call_set_password, call_set_username, AddSettingsUserRequest, SettingsUser,
+};
+use std::borrow::Borrow;
+use wasm_bindgen::JsCast;
+use web_sys::console;
+use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::{UIState, AppState};
-use yew::platform::spawn_local;
-use crate::requests::setting_reqs::call_get_user_info;
-use web_sys::console;
-use std::borrow::Borrow;
-use crate::requests::setting_reqs::{SettingsUser, call_add_user, call_delete_user, AddSettingsUserRequest, call_set_password, call_set_email, call_set_fullname, call_set_username, call_check_admin, call_set_isadmin};
-use crate::components::gen_funcs::{ValidationError, encode_password, validate_email, validate_username};
-use crate::components::gen_funcs::validate_user_input;
-use wasm_bindgen::JsCast;
 // use crate::gen_components::_ErrorMessageProps::error_message;
-
 
 #[function_component(UserSettings)]
 pub fn user_settings() -> Html {
@@ -34,32 +38,61 @@ pub fn user_settings() -> Html {
 
     // Define the type of user in the Vec
     let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
+    // let selected_user = users
+    //     .iter()
+    //     .find(|u| Some(Some(u.userid)) == *selected_user_id);
 
     {
         let users = users.clone();
         let update_trigger_effect = update_trigger.clone();
-        use_effect_with((api_key.clone(), server_name.clone(), *update_trigger_effect), move |(api_key, server_name, _update_trigger_effect)| {
-            let users = users.clone();
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let future = async move {
-                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                    let response = call_get_user_info(server_name, api_key.unwrap()).await;
-                    match response {
-                        Ok(user_info) => {
-                            users.set(user_info);
-                        },
-                        Err(e) => {
-                            console::log_1(&format!("Error getting user info: {}", e).into());
+        use_effect_with(
+            (api_key.clone(), server_name.clone(), *update_trigger_effect),
+            move |(api_key, server_name, _update_trigger_effect)| {
+                let users = users.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let future = async move {
+                    if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                        let response = call_get_user_info(server_name, api_key.unwrap()).await;
+                        match response {
+                            Ok(user_info) => {
+                                users.set(user_info);
+                            }
+                            Err(e) => {
+                                console::log_1(&format!("Error getting user info: {}", e).into());
 
-                            // user_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
-                        },
+                                // user_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
+                            }
+                        }
                     }
+                };
+                spawn_local(future);
+                // Return cleanup function
+                || {}
+            },
+        );
+    }
+
+    {
+        let selected_user_id = selected_user_id.clone();
+        let users = users.clone();
+        let new_username = new_username.clone();
+        let fullname = fullname.clone();
+        let email = email.clone();
+        let admin_status = admin_status.clone();
+        let new_password = new_password.clone(); // Add this
+
+        use_effect_with(selected_user_id.clone(), move |_| {
+            if let Some(Some(user_id)) = *selected_user_id {
+                if let Some(user) = users.iter().find(|u| u.userid == user_id) {
+                    new_username.set(user.username.clone());
+                    fullname.set(user.fullname.clone());
+                    email.set(user.email.clone());
+                    admin_status.set(user.isadmin == 1);
+                    new_password.set("password".to_string()); // Set default password
                 }
-            };
-            spawn_local(future);
-            // Return cleanup function
-            || {}
+            }
+            || ()
         });
     }
 
@@ -133,35 +166,52 @@ pub fn user_settings() -> Html {
     let on_fullname_change = {
         let fullname = fullname.clone();
         Callback::from(move |e: InputEvent| {
-            fullname.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            let value = e
+                .target_unchecked_into::<web_sys::HtmlInputElement>()
+                .value();
+            // This resets the default value to whatever was typed
+            fullname.set(value);
         })
     };
-    
+
     let on_username_change = {
         let new_username = new_username.clone();
         Callback::from(move |e: InputEvent| {
-            new_username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            let value = e
+                .target_unchecked_into::<web_sys::HtmlInputElement>()
+                .value();
+            // This resets the default value to whatever was typed
+            new_username.set(value);
         })
     };
-    
+
     let on_email_change = {
         let email = email.clone();
         Callback::from(move |e: InputEvent| {
-            email.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            let value = e
+                .target_unchecked_into::<web_sys::HtmlInputElement>()
+                .value();
+            // This resets the default value to whatever was typed
+            email.set(value);
         })
     };
-    
+
     let on_password_change = {
         let new_password = new_password.clone();
         Callback::from(move |e: InputEvent| {
-            new_password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            new_password.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
     let on_admin_change = {
         let admin_status = admin_status.clone();
-        Callback::from(move |e: InputEvent| {
-            admin_status.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().checked());
+        Callback::from(move |e: Event| {
+            let target = e.target().unwrap();
+            let input = target.dyn_into::<web_sys::HtmlInputElement>().unwrap();
+            admin_status.set(input.checked());
         })
     };
     let error_container_create = error_container.clone();
@@ -197,13 +247,13 @@ pub fn user_settings() -> Html {
             } else {
                 username_error.set(username_error_notice::Hidden);
             }
-            
+
             if errors.contains(&ValidationError::PasswordTooShort) {
                 password_error.set(password_error_notice::Shown);
             } else {
                 password_error.set(password_error_notice::Hidden);
             }
-            
+
             if errors.contains(&ValidationError::InvalidEmail) {
                 email_error.set(email_error_notice::Shown);
             } else {
@@ -224,15 +274,22 @@ pub fn user_settings() -> Html {
                         wasm_bindgen_futures::spawn_local(async move {
                             let on_update_trigger = update_trigger.clone();
                             if let Some(add_user_request_value) = add_user_request {
-                                match call_add_user(call_server.unwrap(), call_api.unwrap().unwrap(), &add_user_request_value).await {
+                                match call_add_user(
+                                    call_server.unwrap(),
+                                    call_api.unwrap().unwrap(),
+                                    &add_user_request_value,
+                                )
+                                .await
+                                {
                                     Ok(_success) => {
                                         on_update_trigger.set(!*update_trigger);
-                                    },
+                                    }
                                     Err(e) => {
                                         console::log_1(&format!("Error adding user: {}", e).into());
                                         error_container.set(error_container_state::Shown);
-                                        error_message_container.set("Error adding user".to_string());
-                                    },
+                                        error_message_container
+                                            .set("Error adding user".to_string());
+                                    }
                                 }
                             } else {
                                 console::log_1(&format!("Error adding user").into());
@@ -240,7 +297,7 @@ pub fn user_settings() -> Html {
                                 error_message_container.set("Error adding user".to_string());
                             }
                         });
-                    },
+                    }
                     Err(e) => {
                         console::log_1(&format!("Error adding user: {}", e).into());
                         error_container.set(error_container_state::Shown);
@@ -320,7 +377,10 @@ pub fn user_settings() -> Html {
             // admin_edit_status.set(is_admin);
             Callback::from(move |_| {
                 if select_user_id == 1 {
-                    user_dispatch.reduce_mut(|state| state.error_message = Option::from("You cannot edit the guest user.".to_string()));
+                    user_dispatch.reduce_mut(|state| {
+                        state.error_message =
+                            Option::from("You cannot edit the background_tasks user.".to_string())
+                    });
                     return;
                 }
                 edit_admin_call.set(is_admin);
@@ -329,10 +389,10 @@ pub fn user_settings() -> Html {
             })
         }
     };
-    
+
     let error_message_container_edit = error_message_container.clone();
     let error_container_edit = error_container.clone();
-    
+
     let delete_dispatch = ui_user.clone();
     let on_delete_click = {
         let server_name = server_name.clone();
@@ -348,25 +408,37 @@ pub fn user_settings() -> Html {
                 let page_state = page_state.clone();
                 let user_dispatch = user_dispatch.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_delete_user(server_name.unwrap(), api_key.unwrap().unwrap(), user_id).await {
+                    match call_delete_user(server_name.unwrap(), api_key.unwrap().unwrap(), user_id)
+                        .await
+                    {
                         Ok(response) => {
-                            web_sys::console::log_1(&format!("User deleted: {}", response.status).into());
-                            user_dispatch.reduce_mut(|state| state.info_message = Some("User deleted successfully".to_string()));
+                            web_sys::console::log_1(
+                                &format!("User deleted: {}", response.status).into(),
+                            );
+                            user_dispatch.reduce_mut(|state| {
+                                state.info_message = Some("User deleted successfully".to_string())
+                            });
                             page_state.set(PageState::Hidden); // Navigate back to the list page state
                         }
                         Err(e) => {
-                            web_sys::console::log_1(&format!("Failed to delete user: {}", e).into());
-                            user_dispatch.reduce_mut(|state| state.error_message = Some("Failed to delete user".to_string()));
+                            web_sys::console::log_1(
+                                &format!("Failed to delete user: {}", e).into(),
+                            );
+                            user_dispatch.reduce_mut(|state| {
+                                state.error_message = Some("Failed to delete user".to_string())
+                            });
                         }
                     }
                 });
             } else {
-                user_dispatch.reduce_mut(|state| state.error_message = Some("No user selected".to_string()));
+                user_dispatch
+                    .reduce_mut(|state| state.error_message = Some("No user selected".to_string()));
             }
         })
     };
-
-    
+    let edit_users = users.clone();
+    let username_users = users.clone();
+    let admin_status_clone = admin_status.clone();
     let on_edit_submit = {
         let fullname = fullname.clone().to_string();
         let page_state = page_state.clone();
@@ -388,16 +460,16 @@ pub fn user_settings() -> Html {
             let username_error = username_error_edit.clone();
             let email_error = email_error_edit.clone();
             let password_error = password_error_edit.clone();
-            
+
             let dispatch_wasm = dispatch_wasm.clone();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
             let fullname = fullname.clone();
             let email = email.clone();
-            let admin_status = admin_status.clone();
+            let admin_status = admin_status_clone.clone();
             let call_selected_user_id = edit_selected_user_id.clone();
             e.prevent_default();
-            
+
             // Check if each field has input and call the corresponding API function
             let fullname_dispatch = dispatch_wasm.clone();
             let page_state_name = page_state.clone();
@@ -415,44 +487,81 @@ pub fn user_settings() -> Html {
             let update_trigger_true = on_update_trigger.clone();
             let update_trigger_false = on_update_trigger.clone();
             let error_container_name = error_container.clone();
-            let error_message_container_name= error_message_container.clone();
-            if !fullname.is_empty() {
+            let error_message_container_name = error_message_container.clone();
+            if !fullname.is_empty()
+                && fullname
+                    != username_users
+                        .iter()
+                        .find(|u| Some(Some(u.userid)) == *selected_user_id)
+                        .map(|u| u.fullname.clone())
+                        .unwrap_or_default()
+            {
                 wasm_bindgen_futures::spawn_local({
                     let update_trigger_in_check = update_trigger_name.clone();
                     let server_name_cloned = server_name.clone();
                     let api_key_cloned = api_key.clone();
                     let name_cloned = fullname.clone();
                     let selected_user_id_cloned = call_selected_user_id.clone();
-            
+
                     async move {
                         if let Some(server_name_unwrapped) = server_name_cloned {
-                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                            if let Some(api_key_unwrapped) =
+                                api_key_cloned.as_ref().and_then(|key| key.as_ref())
+                            {
                                 if let Some(user_id) = *selected_user_id_cloned {
                                     page_state_name.set(PageState::Hidden);
-                                    match call_set_fullname(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), name_cloned).await {
+                                    match call_set_fullname(
+                                        server_name_unwrapped,
+                                        api_key_unwrapped.clone(),
+                                        user_id.unwrap(),
+                                        name_cloned,
+                                    )
+                                    .await
+                                    {
                                         Ok(_) => {
                                             update_trigger_in_check.set(!*update_trigger_in_check);
-                                        },
+                                        }
                                         Err(e) => {
                                             error_container_name.set(error_container_state::Shown);
-                                            error_message_container_name.set(format!("Error updating name: {}", e).to_string());
-                                        },
+                                            error_message_container_name.set(
+                                                format!("Error updating name: {}", e).to_string(),
+                                            );
+                                        }
                                     }
                                 } else {
-                                    fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("User ID not available for name update.".to_string()));
+                                    fullname_dispatch.reduce_mut(|state| {
+                                        state.error_message = Option::from(
+                                            "User ID not available for name update.".to_string(),
+                                        )
+                                    });
                                 }
                             } else {
-                                fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("API key not available for name update.".to_string()));
+                                fullname_dispatch.reduce_mut(|state| {
+                                    state.error_message = Option::from(
+                                        "API key not available for name update.".to_string(),
+                                    )
+                                });
                             }
                         } else {
-                            fullname_dispatch.reduce_mut(|state| state.error_message = Option::from("Server name not available for name update.".to_string()));
+                            fullname_dispatch.reduce_mut(|state| {
+                                state.error_message = Option::from(
+                                    "Server name not available for name update.".to_string(),
+                                )
+                            });
                         }
                     }
                 });
             }
             let error_container_user = error_container.clone();
             let error_message_container_user = error_message_container.clone();
-            if !new_username.is_empty() {
+            if !new_username.is_empty()
+                && new_username
+                    != username_users
+                        .iter()
+                        .find(|u| Some(Some(u.userid)) == *selected_user_id)
+                        .map(|u| u.username.clone())
+                        .unwrap_or_default()
+            {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
                     let api_key_cloned = api_key.clone();
@@ -460,10 +569,12 @@ pub fn user_settings() -> Html {
 
                     let user_cloned = new_username.clone();
                     let selected_user_id_cloned = call_selected_user_id.clone();
-            
+
                     async move {
                         if let Some(server_name_unwrapped) = server_name_cloned {
-                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                            if let Some(api_key_unwrapped) =
+                                api_key_cloned.as_ref().and_then(|key| key.as_ref())
+                            {
                                 if let Some(user_id) = *selected_user_id_cloned {
                                     let errors = validate_username(new_username.clone().as_str());
 
@@ -471,33 +582,60 @@ pub fn user_settings() -> Html {
                                         username_error.set(username_error_notice::Shown);
                                     } else {
                                         page_state_user.set(PageState::Hidden);
-                                        match call_set_username(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), user_cloned).await {
+                                        match call_set_username(
+                                            server_name_unwrapped,
+                                            api_key_unwrapped.clone(),
+                                            user_id.unwrap(),
+                                            user_cloned,
+                                        )
+                                        .await
+                                        {
                                             Ok(_) => {
-                                                update_trigger_in_check.set(!*update_trigger_in_check);
-                                            },
+                                                update_trigger_in_check
+                                                    .set(!*update_trigger_in_check);
+                                            }
                                             Err(_e) => {
-                                                error_container_user.set(error_container_state::Shown);
+                                                error_container_user
+                                                    .set(error_container_state::Shown);
                                                 error_message_container_user.set("Error updating username. Usernames must be at least 4 characters long.".to_string());
-                                            },
+                                            }
                                         }
                                     }
-
                                 } else {
-                                    dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("API key not available for username update.".to_string()));
-
+                                    dispatch_wasm.reduce_mut(|state| {
+                                        state.error_message = Option::from(
+                                            "API key not available for username update."
+                                                .to_string(),
+                                        )
+                                    });
                                 }
                             } else {
-                                dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("API key not available for username update.".to_string()));
+                                dispatch_wasm.reduce_mut(|state| {
+                                    state.error_message = Option::from(
+                                        "API key not available for username update.".to_string(),
+                                    )
+                                });
                             }
                         } else {
-                            dispatch_wasm.reduce_mut(|state| state.error_message = Option::from("Server name not available for username update.".to_string()));
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.error_message = Option::from(
+                                    "Server name not available for username update.".to_string(),
+                                )
+                            });
                         }
                     }
                 });
             }
             let error_container_email = error_container.clone();
             let error_message_container_email = error_message_container.clone();
-            if !email.is_empty() {
+            if !email.is_empty()
+                && email
+                    != username_users
+                        .iter()
+                        .find(|u| Some(Some(u.userid)) == *selected_user_id)
+                        .map(|u| u.email.clone())
+                        .unwrap_or_default()
+            {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
                     let api_key_cloned = api_key.clone();
@@ -507,7 +645,9 @@ pub fn user_settings() -> Html {
 
                     async move {
                         if let Some(server_name_unwrapped) = server_name_cloned {
-                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                            if let Some(api_key_unwrapped) =
+                                api_key_cloned.as_ref().and_then(|key| key.as_ref())
+                            {
                                 if let Some(user_id) = *selected_user_id_cloned {
                                     let errors = validate_email(email_cloned.clone().as_str());
 
@@ -515,19 +655,29 @@ pub fn user_settings() -> Html {
                                         email_error.set(email_error_notice::Shown);
                                     } else {
                                         page_state_email.set(PageState::Hidden);
-                                        match call_set_email(server_name_unwrapped, api_key_unwrapped.clone(), user_id.unwrap(), email_cloned).await {
+                                        match call_set_email(
+                                            server_name_unwrapped,
+                                            api_key_unwrapped.clone(),
+                                            user_id.unwrap(),
+                                            email_cloned,
+                                        )
+                                        .await
+                                        {
                                             Ok(_) => {
-                                                update_trigger_in_check.set(!*update_trigger_in_check);
-                                            },
+                                                update_trigger_in_check
+                                                    .set(!*update_trigger_in_check);
+                                            }
                                             Err(_e) => {
-                                                error_container_email.set(error_container_state::Shown);
+                                                error_container_email
+                                                    .set(error_container_state::Shown);
                                                 error_message_container_email.set(format!("Error updating email. The formatting didn't look quite right").to_string());
-                                            },
+                                            }
                                         }
                                     }
-
                                 } else {
-                                    console::log_1(&"User ID not available for email update.".into());
+                                    console::log_1(
+                                        &"User ID not available for email update.".into(),
+                                    );
                                 }
                             } else {
                                 console::log_1(&"API key not available for email update.".into());
@@ -538,11 +688,11 @@ pub fn user_settings() -> Html {
                     }
                 });
             }
-            
+
             let error_container_pass = error_container.clone();
             let error_message_container_pass = error_message_container.clone();
-            
-            if !new_password.is_empty() {
+
+            if !new_password.is_empty() && new_password.to_string() != "password" {
                 wasm_bindgen_futures::spawn_local({
                     let server_name_cloned = server_name.clone();
                     let api_key_cloned = api_key.clone();
@@ -552,41 +702,64 @@ pub fn user_settings() -> Html {
 
                     async move {
                         if let Some(server_name_unwrapped) = server_name_cloned {
-                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
+                            if let Some(api_key_unwrapped) =
+                                api_key_cloned.as_ref().and_then(|key| key.as_ref())
+                            {
                                 if let Some(Some(user_id)) = selected_user_id_cloned {
                                     match encode_password(&new_password_cloned) {
                                         Ok(hash_pw) => {
-                                            let errors = validate_email(&new_password_cloned.clone().as_str());
+                                            let errors = validate_email(
+                                                &new_password_cloned.clone().as_str(),
+                                            );
 
                                             if errors.contains(&ValidationError::PasswordTooShort) {
                                                 password_error.set(password_error_notice::Shown);
                                             } else {
                                                 page_state_pass.set(PageState::Hidden);
-                                                web_sys::console::log_1(&format!("pw: {}", hash_pw.clone()).into());
-                                                match call_set_password(server_name_unwrapped, api_key_unwrapped.clone(), user_id, hash_pw).await {
+                                                web_sys::console::log_1(
+                                                    &format!("pw: {}", hash_pw.clone()).into(),
+                                                );
+                                                match call_set_password(
+                                                    server_name_unwrapped,
+                                                    api_key_unwrapped.clone(),
+                                                    user_id,
+                                                    hash_pw,
+                                                )
+                                                .await
+                                                {
                                                     Ok(_) => {
-                                                        update_trigger_in_check.set(!*update_trigger_in_check);
-                                                    },
+                                                        update_trigger_in_check
+                                                            .set(!*update_trigger_in_check);
+                                                    }
                                                     Err(_e) => {
-                                                        error_container_pass.set(error_container_state::Shown);
+                                                        error_container_pass
+                                                            .set(error_container_state::Shown);
                                                         error_message_container_pass.set(format!("Error updating password. Passwords must be at least 6 characters long.").to_string());
-                                                    },
+                                                    }
                                                 }
                                             }
-
-                                        },
+                                        }
                                         Err(e) => {
-                                            console::log_1(&format!("Password encoding failed: {:?}", e).into());
+                                            console::log_1(
+                                                &format!("Password encoding failed: {:?}", e)
+                                                    .into(),
+                                            );
                                         }
                                     }
                                 } else {
-                                    console::log_1(&"User ID not available for password update.".into());
+                                    console::log_1(
+                                        &"User ID not available for password update.".into(),
+                                    );
                                 }
                             } else {
-                                console::log_1(&"API key not available for password update.".into());
+                                console::log_1(
+                                    &"API key not available for password update.".into(),
+                                );
                             }
                         } else {
-                            console::log_1(&"Server name not available for password update.".into());
+                            console::log_1(
+                                &"Server name not available for password update.".into(),
+                            );
                         }
                     }
                 });
@@ -601,32 +774,61 @@ pub fn user_settings() -> Html {
                     let selected_user_id_cloned = (*call_selected_user_id).clone();
                     let update_trigger_in_check = update_trigger_true.clone();
 
-                    async move {
-                        if let Some(server_name_unwrapped) = server_name_cloned {
-                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
-                                if let Some(Some(user_id)) = selected_user_id_cloned {
-                                    if *admin_edit_status_call == 0 {
-                                        page_state_true.set(PageState::Hidden);
-                                    }
-                                    // page_state_true.set(PageState::Hidden);
-                                    match call_set_isadmin(server_name_unwrapped, api_key_unwrapped.clone(), user_id, *admin_status_cloned).await {
-                                        Ok(_) => {
-                                            update_trigger_in_check.set(!*update_trigger_in_check);
-                                        },
-                                        Err(e) => {
-                                            error_container_admin.set(error_container_state::Shown);
-                                            error_message_container_admin.set(format!("Error updating admin status: {:?}", e).to_string());
-                                        },
+                    let users = edit_users.clone();
 
+                    async move {
+                        let current_admin_status = users
+                            .iter()
+                            .find(|u| Some(Some(u.userid)) == selected_user_id_cloned)
+                            .map(|u| u.isadmin == 1)
+                            .unwrap_or(false);
+                        if *admin_status_cloned != current_admin_status {
+                            if let Some(server_name_unwrapped) = server_name_cloned {
+                                if let Some(api_key_unwrapped) =
+                                    api_key_cloned.as_ref().and_then(|key| key.as_ref())
+                                {
+                                    if let Some(Some(user_id)) = selected_user_id_cloned {
+                                        if *admin_edit_status_call == 0 {
+                                            page_state_true.set(PageState::Hidden);
+                                        }
+                                        // page_state_true.set(PageState::Hidden);
+                                        match call_set_isadmin(
+                                            server_name_unwrapped,
+                                            api_key_unwrapped.clone(),
+                                            user_id,
+                                            *admin_status_cloned,
+                                        )
+                                        .await
+                                        {
+                                            Ok(_) => {
+                                                update_trigger_in_check
+                                                    .set(!*update_trigger_in_check);
+                                            }
+                                            Err(e) => {
+                                                error_container_admin
+                                                    .set(error_container_state::Shown);
+                                                error_message_container_admin.set(
+                                                    format!("Error updating admin status: {:?}", e)
+                                                        .to_string(),
+                                                );
+                                            }
+                                        }
+                                    } else {
+                                        console::log_1(
+                                            &"User ID not available for admin status update."
+                                                .into(),
+                                        );
                                     }
                                 } else {
-                                    console::log_1(&"User ID not available for admin status update.".into());
+                                    console::log_1(
+                                        &"API key not available for admin status update.".into(),
+                                    );
                                 }
                             } else {
-                                console::log_1(&"API key not available for admin status update.".into());
+                                console::log_1(
+                                    &"Server name not available for admin status update.".into(),
+                                );
                             }
-                        } else {
-                            console::log_1(&"Server name not available for admin status update.".into());
                         }
                     }
                 });
@@ -639,49 +841,90 @@ pub fn user_settings() -> Html {
                     let admin_status_cloned = admin_status.clone();
                     let selected_user_id_cloned = (*call_selected_user_id).clone();
                     let update_trigger_in_check = update_trigger_false.clone();
-                    async move {
-                        if let Some(server_name_unwrapped) = server_name_cloned {
-                            if let Some(api_key_unwrapped) = api_key_cloned.as_ref().and_then(|key| key.as_ref()) {
-                                if let Some(Some(user_id)) = selected_user_id_cloned {
-                                    match call_check_admin(server_name_unwrapped.clone(), api_key_unwrapped.clone(), user_id).await {
-                                        Ok(final_admin) => {
-                                            if final_admin.final_admin == true {
-                                                error_container.set(error_container_state::Shown);
-                                                error_message_container.set(format!("Unable to remove admin status from final administrator").to_string());
-                                            } else {
-                                                if *admin_edit_status_false == 1 {
-                                                    page_state_false.set(PageState::Hidden);
-                                                }
-                                                // page_state_false.set(PageState::Hidden);
-                                                match call_set_isadmin(server_name_unwrapped, api_key_unwrapped.clone(), user_id, *admin_status_cloned).await {
-                                                    Ok(_) => {
-                                                        update_trigger_in_check.set(!*update_trigger_in_check);
-                                                    },
-                                                    Err(e) => {
-                                                        error_container.set(error_container_state::Shown);
-                                                        error_message_container.set(format!("Error updating admin status: {:?}", e).to_string());
-                                                    },
 
+                    let users = edit_users.clone();
+
+                    async move {
+                        let current_admin_status = users
+                            .iter()
+                            .find(|u| Some(Some(u.userid)) == selected_user_id_cloned)
+                            .map(|u| u.isadmin == 1)
+                            .unwrap_or(false);
+                        if *admin_status_cloned != current_admin_status {
+                            if let Some(server_name_unwrapped) = server_name_cloned {
+                                if let Some(api_key_unwrapped) =
+                                    api_key_cloned.as_ref().and_then(|key| key.as_ref())
+                                {
+                                    if let Some(Some(user_id)) = selected_user_id_cloned {
+                                        match call_check_admin(
+                                            server_name_unwrapped.clone(),
+                                            api_key_unwrapped.clone(),
+                                            user_id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(final_admin) => {
+                                                if final_admin.final_admin == true {
+                                                    error_container
+                                                        .set(error_container_state::Shown);
+                                                    error_message_container.set(format!("Unable to remove admin status from final administrator").to_string());
+                                                } else {
+                                                    if *admin_edit_status_false == 1 {
+                                                        page_state_false.set(PageState::Hidden);
+                                                    }
+                                                    // page_state_false.set(PageState::Hidden);
+                                                    match call_set_isadmin(
+                                                        server_name_unwrapped,
+                                                        api_key_unwrapped.clone(),
+                                                        user_id,
+                                                        *admin_status_cloned,
+                                                    )
+                                                    .await
+                                                    {
+                                                        Ok(_) => {
+                                                            update_trigger_in_check
+                                                                .set(!*update_trigger_in_check);
+                                                        }
+                                                        Err(e) => {
+                                                            error_container
+                                                                .set(error_container_state::Shown);
+                                                            error_message_container.set(
+                                                                format!(
+                                                                    "Error updating admin status: {:?}",
+                                                                    e
+                                                                )
+                                                                .to_string(),
+                                                            );
+                                                        }
+                                                    }
                                                 }
                                             }
-                                        },
-                                        Err(e) => console::log_1(&format!("Error checking admin status: {:?}", e).into()),
+                                            Err(e) => console::log_1(
+                                                &format!("Error checking admin status: {:?}", e)
+                                                    .into(),
+                                            ),
+                                        }
+                                    } else {
+                                        console::log_1(
+                                            &"User ID not available for admin status update."
+                                                .into(),
+                                        );
                                     }
                                 } else {
-                                    console::log_1(&"User ID not available for admin status update.".into());
+                                    console::log_1(
+                                        &"API key not available for admin status update.".into(),
+                                    );
                                 }
                             } else {
-                                console::log_1(&"API key not available for admin status update.".into());
+                                console::log_1(
+                                    &"Server name not available for admin status update.".into(),
+                                );
                             }
-                        } else {
-                            console::log_1(&"Server name not available for admin status update.".into());
                         }
                     }
                 });
             }
 
-
-    
             // Handle admin status change if applicable
         })
     };
@@ -709,7 +952,7 @@ pub fn user_settings() -> Html {
                         <form class="space-y-4" action="#">
                             <div>
                                 <label for="username" class="block mb-2 text-sm font-medium">{"Username"}</label>
-                                <input oninput={on_username_change.clone()} placeholder="pinepods_user1" type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                <input oninput={on_username_change.clone()} value={new_username.to_string()} placeholder="pinepods_user1" type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                                 {
                                     match *username_error {
                                         username_error_notice::Hidden => html! {},
@@ -719,11 +962,11 @@ pub fn user_settings() -> Html {
                             </div>
                             <div>
                                 <label for="fullname" class="block mb-2 text-sm font-medium">{"Full Name"}</label>
-                                <input oninput={on_fullname_change} placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_fullname_change} value={fullname.to_string()} placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                             </div>
                             <div>
                                 <label for="email" class="block mb-2 text-sm font-medium">{"Email"}</label>
-                                <input oninput={on_email_change} placeholder="user@pinepods.online" type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                <input oninput={on_email_change} value={email.to_string()} placeholder="user@pinepods.online" type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
                                 {
                                     match *email_error {
                                         email_error_notice::Hidden => html! {},
@@ -733,7 +976,16 @@ pub fn user_settings() -> Html {
                             </div>
                             <div>
                                 <label for="password" class="block mb-2 text-sm font-medium">{"Password"}</label>
-                                <input oninput={on_password_change.clone()} placeholder="my_S3creT_P@$$" type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                <input
+                                    oninput={on_password_change.clone()}
+                                    value={new_password.to_string()}  // Use state instead of static value
+                                    placeholder="my_S3creT_P@$$"
+                                    type="password"
+                                    id="password"
+                                    name="password"
+                                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                                    required=true
+                                />
                                 {
                                     match *password_error {
                                         password_error_notice::Hidden => html! {},
@@ -744,7 +996,15 @@ pub fn user_settings() -> Html {
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center">
                                     <label for="admin" class="mr-2 text-sm font-medium">{"Admin User?"}</label>
-                                    <input oninput={on_admin_change} type="checkbox" id="admin" name="admin" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
+                                    <input
+                                        onchange={on_admin_change} // Changed from oninput to onchange
+                                        checked={*admin_status}    // Use the state value instead of computing from users
+                                        type="checkbox"
+                                        id="admin"
+                                        name="admin"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white"
+                                        required=true
+                                    />
                                 </div>
                                 <button
                                     type="button"
@@ -752,7 +1012,7 @@ pub fn user_settings() -> Html {
                                     class="delete-button bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
                                 >
                                     {"Delete User"}
-                            
+
                                 </button>
                             </div>
                             <button type="submit" onclick={on_edit_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
@@ -775,7 +1035,7 @@ pub fn user_settings() -> Html {
         }
             <div class="p-4">
                 <p class="item_container-text text-lg font-bold mb-4">{"User Management:"}</p>
-                <p class="item_container-text text-md mb-4">{"You can manage users here. Click a user in the table to manage settings for that existing user or click 'Create New' to add a new user. Note that the guest user will always show regardless of whether it's enabled or not. View the Guest Settings Area to properly manage that."}</p>
+                <p class="item_container-text text-md mb-4">{"You can manage users here. Click a user in the table to manage settings for that existing user or click 'Create New' to add a new user. Note that the background_tasks user will always show and cannot be edited."}</p>
                 <button onclick={on_create_new_user} class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                     {"Create New User"}
                 </button>

@@ -3267,15 +3267,15 @@ def set_fullname(cnx, database_type, user_id, new_name):
 def set_isadmin(cnx, database_type, user_id, isadmin):
     cursor = cnx.cursor()
 
-    # Convert boolean isadmin value to integer (0 or 1)
-    isadmin_int = int(isadmin)
-
     if database_type == "postgresql":
         query = 'UPDATE "Users" SET IsAdmin = %s WHERE UserID = %s'
+        # For PostgreSQL, use boolean directly instead of converting to int
+        cursor.execute(query, (isadmin, user_id))
     else:  # MySQL or MariaDB
         query = "UPDATE Users SET IsAdmin = %s WHERE UserID = %s"
+        isadmin_int = int(isadmin)
+        cursor.execute(query, (isadmin_int, user_id))
 
-    cursor.execute(query, (isadmin_int, user_id))
     cnx.commit()
     cursor.close()
 
@@ -3381,7 +3381,6 @@ def user_admin_check(cnx, database_type, user_id):
         logging.error(f"KeyError: {e} - Result: {result}")
         return False
 
-
 def final_admin(cnx, database_type, user_id):
     cursor = cnx.cursor()
 
@@ -3389,24 +3388,29 @@ def final_admin(cnx, database_type, user_id):
         query = 'SELECT COUNT(*) FROM "Users" WHERE IsAdmin = TRUE'
     else:  # MySQL or MariaDB
         query = "SELECT COUNT(*) FROM Users WHERE IsAdmin = 1"
+
     cursor.execute(query)
-    admin_count = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    # Handle both tuple and dict results
+    admin_count = result[0] if isinstance(result, tuple) else result['count']
 
     if admin_count == 1:
         if database_type == "postgresql":
             query = 'SELECT IsAdmin FROM "Users" WHERE UserID = %s'
         else:  # MySQL or MariaDB
             query = "SELECT IsAdmin FROM Users WHERE UserID = %s"
+
         cursor.execute(query, (user_id,))
-        is_admin = cursor.fetchone()[0]
-        if is_admin == 1:
+        result = cursor.fetchone()
+        # Handle both tuple and dict results
+        is_admin = result[0] if isinstance(result, tuple) else result['isadmin']
+
+        # For PostgreSQL boolean or MySQL/MariaDB int
+        if is_admin:
             return True
 
     cursor.close()
-
     return False
-
-
 
 def download_status(cnx, database_type):
     if database_type == "postgresql":

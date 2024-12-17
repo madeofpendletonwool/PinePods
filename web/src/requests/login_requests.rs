@@ -1,5 +1,5 @@
+use crate::components::gen_components::AdminSetupData;
 use crate::components::gen_funcs::encode_password;
-use crate::components::login::AdminSetupData;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use gloo_net::http::Request;

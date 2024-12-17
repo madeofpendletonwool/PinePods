@@ -2689,7 +2689,7 @@ async def api_set_password(
 ):
     hash_pw = request.hash_pw  # Extract the hash_pw from the request model
 
-    is_valid_key = database_functions.functions.verify_api_key(cnx, api_key)
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
 
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")

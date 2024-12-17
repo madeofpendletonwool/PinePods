@@ -336,6 +336,166 @@ pub fn search_bar() -> Html {
     }
 }
 
+#[derive(Properties, PartialEq)]
+pub struct FirstAdminModalProps {
+    pub on_submit: Callback<AdminSetupData>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AdminSetupData {
+    pub username: String,
+    pub password: String,
+    pub email: String,
+    pub fullname: String,
+}
+
+#[function_component(FirstAdminModal)]
+pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
+    let username = use_state(|| String::new());
+    let password = use_state(|| String::new());
+    let email = use_state(|| String::new());
+    let fullname = use_state(|| String::new());
+    let validation_message = use_state(|| None::<String>);
+
+    let onsubmit = {
+        let username = username.clone();
+        let password = password.clone();
+        let email = email.clone();
+        let fullname = fullname.clone();
+        let validation_message = validation_message.clone();
+        let on_submit = props.on_submit.clone();
+
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default();
+
+            // Basic validation
+            if username.is_empty() || password.is_empty() || email.is_empty() || fullname.is_empty()
+            {
+                validation_message.set(Some("All fields are required".to_string()));
+                return;
+            }
+
+            if password.len() < 8 {
+                validation_message.set(Some("Password must be at least 8 characters".to_string()));
+                return;
+            }
+
+            // Email validation
+            if !email.contains('@') {
+                validation_message.set(Some("Please enter a valid email address".to_string()));
+                return;
+            }
+
+            let data = AdminSetupData {
+                username: (*username).clone(),
+                password: (*password).clone(),
+                email: (*email).clone(),
+                fullname: (*fullname).clone(),
+            };
+
+            on_submit.emit(data);
+        })
+    };
+
+    html! {
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-container-background rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
+                <h2 class="text-2xl font-bold mb-6 text-text-color">{"Welcome to Pinepods!"}</h2>
+                <p class="mb-6 text-text-color">{"Let's set up your administrator account to get started."}</p>
+
+                <form onsubmit={onsubmit} class="space-y-4">
+                    <div>
+                        <label for="fullname" class="block text-sm font-medium text-text-color mb-1">
+                            {"Full Name"}
+                        </label>
+                        <input
+                            type="text"
+                            id="fullname"
+                            value={(*fullname).clone()}
+                            onchange={let fullname = fullname.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    fullname.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="John Doe"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-text-color mb-1">
+                            {"Username"}
+                        </label>
+                        <input
+                            type="text"
+                            id="username"
+                            value={(*username).clone()}
+                            onchange={let username = username.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    username.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="johndoe"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-text-color mb-1">
+                            {"Email"}
+                        </label>
+                        <input
+                            type="email"
+                            id="email"
+                            value={(*email).clone()}
+                            onchange={let email = email.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    email.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="john@example.com"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-text-color mb-1">
+                            {"Password"}
+                        </label>
+                        <input
+                            type="password"
+                            id="password"
+                            value={(*password).clone()}
+                            onchange={let password = password.clone(); move |e: Event| {
+                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                    password.set(input.value());
+                                }
+                            }}
+                            class="search-bar-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:border-accent-color"
+                            placeholder="••••••••"
+                        />
+                    </div>
+
+                    if let Some(message) = &*validation_message {
+                        <div class="text-error-color text-sm mt-2">
+                            {message}
+                        </div>
+                    }
+
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button
+                            type="submit"
+                            class="px-4 py-2 bg-button-color text-button-text-color rounded-md hover:bg-hover-color focus:outline-none focus:ring transition-colors"
+                        >
+                            {"Create Admin Account"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}
+
 #[derive(Properties, Clone)]
 pub struct ContextButtonProps {
     pub episode: Box<dyn EpisodeTrait>,
