@@ -115,29 +115,27 @@ try:
             Reset_Expiry TIMESTAMP,
             MFA_Secret VARCHAR(70),
             TimeZone VARCHAR(50) DEFAULT 'UTC',
-            TimeFormat INT  DEFAULT 24,
+            TimeFormat INT DEFAULT 24,
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin BOOLEAN DEFAULT false,
             GpodderUrl VARCHAR(255) DEFAULT '',
             Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
-            GpodderToken VARCHAR(255) DEFAULT ''
+            GpodderToken VARCHAR(255) DEFAULT '',
+            EnableRSSFeeds BOOLEAN DEFAULT FALSE
         )
     """)
 
     # Add EnableRSSFeeds column if it doesn't exist
     cursor.execute("""
-    DO $$ 
-    BEGIN 
-        IF NOT EXISTS (
-            SELECT FROM information_schema.columns 
-            WHERE table_name = 'Users' 
-            AND column_name = 'EnableRSSFeeds'
-        ) THEN
-            ALTER TABLE "Users" ADD COLUMN EnableRSSFeeds BOOLEAN DEFAULT FALSE;
-        END IF;
-    END $$;
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'Users' 
+        AND column_name = 'enablerssfeeds'
     """)
+    if cursor.fetchone() is None:
+        cursor.execute('ALTER TABLE "Users" ADD COLUMN EnableRSSFeeds BOOLEAN DEFAULT FALSE')
+
 
     ensure_usernames_lowercase(cnx)
 
