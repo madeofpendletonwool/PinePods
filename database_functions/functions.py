@@ -1587,21 +1587,68 @@ def return_pods(database_type, cnx, user_id):
         cursor = cnx.cursor(dictionary=True)
 
     if database_type == "postgresql":
-        query = (
-            'SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit, PodcastIndexID '
-            'FROM "Podcasts" '
-            'WHERE UserID = %s'
-        )
+        query = """
+            SELECT
+                p.PodcastID,
+                p.PodcastName,
+                p.ArtworkURL,
+                p.Description,
+                p.EpisodeCount,
+                p.WebsiteURL,
+                p.FeedURL,
+                p.Author,
+                p.Categories,
+                p.Explicit,
+                p.PodcastIndexID,
+                COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
+                MIN(e.EpisodePubDate) as oldest_episode_date,
+                COALESCE(
+                    (SELECT COUNT(DISTINCT ueh.EpisodeID)
+                     FROM "UserEpisodeHistory" ueh
+                     JOIN "Episodes" ep ON ueh.EpisodeID = ep.EpisodeID
+                     WHERE ep.PodcastID = p.PodcastID
+                     AND ueh.UserID = %s),
+                    0
+                ) as episodes_played
+            FROM "Podcasts" p
+            LEFT JOIN "Episodes" e ON p.PodcastID = e.PodcastID
+            LEFT JOIN "UserEpisodeHistory" h ON e.EpisodeID = h.EpisodeID AND h.UserID = %s
+            WHERE p.UserID = %s
+            GROUP BY p.PodcastID
+        """
     else:  # MySQL or MariaDB
-        query = (
-            "SELECT PodcastID, PodcastName, ArtworkURL, Description, EpisodeCount, WebsiteURL, FeedURL, Author, Categories, Explicit, PodcastIndexID "
-            "FROM Podcasts "
-            "WHERE UserID = %s"
-        )
+        query = """
+            SELECT
+                p.PodcastID,
+                p.PodcastName,
+                p.ArtworkURL,
+                p.Description,
+                p.EpisodeCount,
+                p.WebsiteURL,
+                p.FeedURL,
+                p.Author,
+                p.Categories,
+                p.Explicit,
+                p.PodcastIndexID,
+                COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
+                MIN(e.EpisodePubDate) as oldest_episode_date,
+                COALESCE(
+                    (SELECT COUNT(DISTINCT ueh.EpisodeID)
+                     FROM UserEpisodeHistory ueh
+                     JOIN Episodes ep ON ueh.EpisodeID = ep.EpisodeID
+                     WHERE ep.PodcastID = p.PodcastID
+                     AND ueh.UserID = %s),
+                    0
+                ) as episodes_played
+            FROM Podcasts p
+            LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
+            LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = %s
+            WHERE p.UserID = %s
+            GROUP BY p.PodcastID
+        """
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, user_id, user_id))
     rows = cursor.fetchall()
-
     cursor.close()
 
     if not rows:

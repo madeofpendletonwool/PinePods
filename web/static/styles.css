@@ -1511,6 +1511,10 @@ input[type="range"]::-moz-range-thumb {
     background-position-x: 98%;
     background-position-y: 50%;
     cursor: pointer;
+    padding-right: 2rem; /* Increase right padding to prevent text overlap with arrow */
+    background-image: url("data:image/svg+xml;utf8,<svg fill='%23FFFFFF' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
+    background-position: right 0.5rem center; /* Move arrow slightly more to the right */
+    background-repeat: no-repeat;
 }
 
 .filter-dropdown select:focus {
