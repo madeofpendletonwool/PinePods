@@ -1490,10 +1490,16 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .download-button {
-    color: var(--button-text-color);
+    color: var(--button-text-color) !important;
     background-color: var(--button-color);
     border-color: var(--border-color);
     margin-bottom: 10px;
+}
+
+.filter-button {
+    color: var(--button-text-color);
+    background-color: var(--button-color);
+    border-color: var(--border-color);
 }
 
 .filter-input {
@@ -1504,7 +1510,13 @@ input[type="range"]::-moz-range-thumb {
     font-size: 1rem;
     border-radius: 5px;
     border: none;
-    width: 165px; /* or whatever width matches your design */
+    width: 157px;
+}
+
+@media (max-width: 530px) {
+    .filter-input {
+        width: 100px;
+    }
 }
 
 .filter-input::placeholder {
@@ -1554,8 +1566,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Style for when dropdown is open */
-.filter-dropdown select:active,
-.filter-dropdown select:hover {
+.filter-dropdown select:active {
     background-color: var(--hover-color);
 }
 

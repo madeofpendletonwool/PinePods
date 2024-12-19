@@ -19,6 +19,16 @@ use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 
+#[derive(Clone, PartialEq)]
+pub enum HistorySortDirection {
+    NewestFirst,
+    OldestFirst,
+    ShortestFirst,
+    LongestFirst,
+    TitleAZ,
+    TitleZA,
+}
+
 #[function_component(PodHistory)]
 pub fn history() -> Html {
     let (state, dispatch) = use_store::<AppState>();
@@ -44,6 +54,10 @@ pub fn history() -> Html {
     let on_modal_close = Callback::from(move |_| {
         active_modal_clone.set(None);
     });
+    let episode_search_term = use_state(|| String::new());
+    let episode_sort_direction = use_state(|| Some(HistorySortDirection::NewestFirst)); // Default to newest first
+    let show_completed = use_state(|| false); // Toggle for showing completed episodes only
+    let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -177,6 +191,75 @@ pub fn history() -> Html {
         });
     }
 
+    let filtered_episodes = use_memo(
+        (
+            state.episode_history.clone(), // Changed from saved_episodes to episode_history
+            episode_search_term.clone(),
+            episode_sort_direction.clone(),
+            show_completed.clone(),
+            show_in_progress.clone(),
+        ),
+        |(history_eps, search, sort_dir, show_completed, show_in_progress)| {
+            if let Some(history_episodes) = history_eps {
+                let mut filtered = history_episodes
+                    .data // Note: accessing .data instead of .episodes
+                    .iter()
+                    .filter(|episode| {
+                        // Search filter
+                        let matches_search = if !search.is_empty() {
+                            episode
+                                .episodetitle
+                                .to_lowercase()
+                                .contains(&search.to_lowercase())
+                                || episode
+                                    .episodedescription
+                                    .to_lowercase()
+                                    .contains(&search.to_lowercase())
+                        } else {
+                            true
+                        };
+
+                        // Completion status filter
+                        let matches_status = if **show_completed {
+                            episode.completed
+                        } else if **show_in_progress {
+                            episode.listenduration.is_some() && !episode.completed
+                        } else {
+                            true // Show all if no filter is active
+                        };
+
+                        matches_search && matches_status
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                // Apply sorting
+                if let Some(direction) = (*sort_dir).as_ref() {
+                    filtered.sort_by(|a, b| match direction {
+                        HistorySortDirection::NewestFirst => {
+                            b.episodepubdate.cmp(&a.episodepubdate)
+                        }
+                        HistorySortDirection::OldestFirst => {
+                            a.episodepubdate.cmp(&b.episodepubdate)
+                        }
+                        HistorySortDirection::ShortestFirst => {
+                            a.episodeduration.cmp(&b.episodeduration)
+                        }
+                        HistorySortDirection::LongestFirst => {
+                            b.episodeduration.cmp(&a.episodeduration)
+                        }
+                        HistorySortDirection::TitleAZ => a.episodetitle.cmp(&b.episodetitle),
+                        HistorySortDirection::TitleZA => b.episodetitle.cmp(&a.episodetitle),
+                    });
+                }
+                filtered
+            } else {
+                vec![]
+            }
+        },
+    );
+    let show_in_prog_button = show_in_progress.clone();
+
     html! {
         <>
         <div class="main-container">
@@ -205,18 +288,172 @@ pub fn history() -> Html {
                     }
 
 
+                    {
+                                            html! {
+                                                <div class="flex justify-between items-center mb-4">
+                                                    <div class="flex gap-4">
+                                                        // Search input
+                                                        <div class="filter-dropdown filter-button relative">
+                                                            <input
+                                                                type="text"
+                                                                class="filter-input appearance-none pr-8"
+                                                                placeholder="Search"
+                                                                value={(*episode_search_term).clone()}
+                                                                oninput={let episode_search_term = episode_search_term.clone();
+                                                                    Callback::from(move |e: InputEvent| {
+                                                                        if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                                            episode_search_term.set(input.value());
+                                                                        }
+                                                                    })
+                                                                }
+                                                            />
+                                                            <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                                                        </div>
+
+                                                        // Filter buttons
+                                                        <button
+                                                            onclick={
+                                                                let show_completed = show_completed.clone();
+                                                                let show_in_progress = show_in_progress.clone();
+                                                                let episode_search_term = episode_search_term.clone();
+                                                                Callback::from(move |_| {
+                                                                    show_completed.set(false);
+                                                                    show_in_progress.set(false);
+                                                                    episode_search_term.set(String::new());
+                                                                })
+                                                            }
+                                                            class="filter-button font-medium py-2 px-2 rounded inline-flex items-center"
+                                                        >
+                                                            <i class="ph ph-broom text-2xl"></i>
+                                                            <span class="text-lg ml-2 hidden md:inline">{"Clear"}</span>
+                                                        </button>
+                                                        <button
+                                                            onclick={let show_completed = show_completed.clone();
+                                                                Callback::from(move |_| {
+                                                                    show_completed.set(!*show_completed);
+                                                                    // Ensure only one filter is active at a time
+                                                                    if *show_completed {
+                                                                        show_in_prog_button.set(false);
+                                                                    }
+                                                                })
+                                                            }
+                                                            class={classes!(
+                                                                "filter-button",
+                                                                "font-medium",
+                                                                "py-2",
+                                                                "px-2",
+                                                                "rounded",
+                                                                "inline-flex",
+                                                                "items-center",
+                                                                if *show_completed { "bg-accent-color" } else { "" }
+                                                            )}
+                                                        >
+                                                            <i class="ph ph-check-circle text-2xl"></i>
+                                                            <span class="text-lg ml-2 hidden md:inline">{"Completed"}</span>
+                                                        </button>
+
+                                                        <button
+                                                            onclick={let show_in_progress = show_in_progress.clone();
+                                                                Callback::from(move |_| {
+                                                                    show_in_progress.set(!*show_in_progress);
+                                                                    // Ensure only one filter is active at a time
+                                                                    if *show_in_progress {
+                                                                        show_completed.set(false);
+                                                                    }
+                                                                })
+                                                            }
+                                                            class={classes!(
+                                                                "filter-button",
+                                                                "font-medium",
+                                                                "py-2",
+                                                                "px-2",
+                                                                "rounded",
+                                                                "inline-flex",
+                                                                "items-center",
+                                                                if *show_in_progress { "bg-accent-color" } else { "" }
+                                                            )}
+                                                        >
+                                                            <i class="ph ph-hourglass-medium text-2xl"></i>
+                                                            <span class="text-lg ml-2 hidden md:inline">{"In Progress"}</span>
+                                                        </button>
+
+                                                        // Sort dropdown
+                                                        <div class="filter-dropdown font-medium rounded relative">
+                                                            // Normal select for screens > 530px
+                                                            <select
+                                                                class="category-select appearance-none pr-8 hidden sm:block"
+                                                                onchange={
+                                                                    let episode_sort_direction = episode_sort_direction.clone();
+                                                                    Callback::from(move |e: Event| {
+                                                                        let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
+                                                                        let value = target.value();
+                                                                        match value.as_str() {
+                                                                            "newest" => episode_sort_direction.set(Some(HistorySortDirection::NewestFirst)),
+                                                                            "oldest" => episode_sort_direction.set(Some(HistorySortDirection::OldestFirst)),
+                                                                            "shortest" => episode_sort_direction.set(Some(HistorySortDirection::ShortestFirst)),
+                                                                            "longest" => episode_sort_direction.set(Some(HistorySortDirection::LongestFirst)),
+                                                                            "title_az" => episode_sort_direction.set(Some(HistorySortDirection::TitleAZ)),
+                                                                            "title_za" => episode_sort_direction.set(Some(HistorySortDirection::TitleZA)),
+                                                                            _ => episode_sort_direction.set(None),
+                                                                        }
+                                                                    })
+                                                                }
+                                                            >
+                                                                <option value="newest" selected=true>{"Newest First"}</option>
+                                                                <option value="oldest">{"Oldest First"}</option>
+                                                                <option value="shortest">{"Shortest First"}</option>
+                                                                <option value="longest">{"Longest First"}</option>
+                                                                <option value="title_az">{"Title A to Z"}</option>
+                                                                <option value="title_za">{"Title Z to A"}</option>
+                                                            </select>
+
+                                                            // Icon button with dropdown for screens <= 530px
+                                                            <div class="block sm:hidden relative">
+                                                                <select
+                                                                    class="category-select appearance-none pr-8 pl-8 w-20"
+                                                                    onchange={
+                                                                        let episode_sort_direction = episode_sort_direction.clone();
+                                                                        Callback::from(move |e: Event| {
+                                                                            let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
+                                                                            let value = target.value();
+                                                                            match value.as_str() {
+                                                                                "newest" => episode_sort_direction.set(Some(HistorySortDirection::NewestFirst)),
+                                                                                "oldest" => episode_sort_direction.set(Some(HistorySortDirection::OldestFirst)),
+                                                                                "shortest" => episode_sort_direction.set(Some(HistorySortDirection::ShortestFirst)),
+                                                                                "longest" => episode_sort_direction.set(Some(HistorySortDirection::LongestFirst)),
+                                                                                "title_az" => episode_sort_direction.set(Some(HistorySortDirection::TitleAZ)),
+                                                                                "title_za" => episode_sort_direction.set(Some(HistorySortDirection::TitleZA)),
+                                                                                _ => episode_sort_direction.set(None),
+                                                                            }
+                                                                        })
+                                                                    }
+                                                                    style="background-image: none;"
+                                                                >
+                                                                    <i class="ph ph-sort-ascending absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl pointer-events-none"></i>
+                                                                    <option value="newest" selected=true>{"Newest"}</option>
+                                                                    <option value="oldest">{"Oldest"}</option>
+                                                                    <option value="shortest">{"Shortest"}</option>
+                                                                    <option value="longest">{"Longest"}</option>
+                                                                    <option value="title_az">{"A -> Z"}</option>
+                                                                    <option value="title_za">{"Z -> A"}</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        }
+
                         {
-
-
                             if let Some(history_eps) = state.episode_history.clone() {
-                                if history_eps.data.is_empty() {
+                                if (*filtered_episodes).is_empty() {
                                     empty_message(
                                         "No Episode History Found",
                                         "This one is pretty straightforward. You should get listening! Podcasts you listen to will show up here!."
                                     )
                                 } else {
 
-                                    history_eps.data.into_iter().map(|episode| {
+                                    (*filtered_episodes).iter().map(|episode| {
                                         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
                                         let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                                         let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -302,7 +539,7 @@ pub fn history() -> Html {
                                             .contains(&check_episode_id);
                                         let episode_id_clone = Some(episode.episodeid).clone();
                                         let item = episode_item(
-                                            Box::new(episode),
+                                            Box::new(episode.clone()),
                                             sanitized_description,
                                             is_expanded,
                                             &format_release,

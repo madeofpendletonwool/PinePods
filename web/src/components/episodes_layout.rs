@@ -158,7 +158,7 @@ impl Reducer<UIState> for UIStateMsg {
 }
 
 #[derive(Clone, PartialEq)]
-enum EpisodeSortDirection {
+pub enum EpisodeSortDirection {
     NewestFirst,
     OldestFirst,
     ShortestFirst,
@@ -1892,7 +1892,7 @@ pub fn episode_layout() -> Html {
                                                 <input
                                                     type="text"
                                                     class="filter-input appearance-none pr-8"
-                                                    placeholder="Search episodes..."
+                                                    placeholder="Search"
                                                     value={(*episode_search_term).clone()}
                                                     oninput={
                                                         let episode_search_term = episode_search_term.clone();
