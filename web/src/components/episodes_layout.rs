@@ -157,6 +157,16 @@ impl Reducer<UIState> for UIStateMsg {
     }
 }
 
+#[derive(Clone, PartialEq)]
+enum EpisodeSortDirection {
+    NewestFirst,
+    OldestFirst,
+    ShortestFirst,
+    LongestFirst,
+    TitleAZ,
+    TitleZA,
+}
+
 #[function_component(EpisodeLayout)]
 pub fn episode_layout() -> Html {
     let is_added = use_state(|| false);
@@ -166,6 +176,8 @@ pub fn episode_layout() -> Html {
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
+    let episode_search_term = use_state(|| String::new());
+    let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst)); // Default to newest first
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -1516,6 +1528,51 @@ pub fn episode_layout() -> Html {
         }
     };
 
+    let filtered_episodes = use_memo(
+        (
+            podcast_feed_results.clone(),
+            episode_search_term.clone(),
+            episode_sort_direction.clone(),
+        ),
+        |(episodes, search, sort_dir)| {
+            if let Some(results) = episodes {
+                let mut filtered = results
+                    .episodes
+                    .iter()
+                    .filter(|episode| {
+                        // Search filter
+                        let matches_search = if !search.is_empty() {
+                            episode.title.as_ref().map_or(false, |title| {
+                                title.to_lowercase().contains(&search.to_lowercase())
+                            }) || episode.description.as_ref().map_or(false, |desc| {
+                                desc.to_lowercase().contains(&search.to_lowercase())
+                            })
+                        } else {
+                            true
+                        };
+                        matches_search
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                // Apply sorting
+                if let Some(direction) = (*sort_dir).as_ref() {
+                    filtered.sort_by(|a, b| match direction {
+                        EpisodeSortDirection::NewestFirst => b.pub_date.cmp(&a.pub_date),
+                        EpisodeSortDirection::OldestFirst => a.pub_date.cmp(&b.pub_date),
+                        EpisodeSortDirection::ShortestFirst => a.duration.cmp(&b.duration),
+                        EpisodeSortDirection::LongestFirst => b.duration.cmp(&a.duration),
+                        EpisodeSortDirection::TitleAZ => a.title.cmp(&b.title),
+                        EpisodeSortDirection::TitleZA => b.title.cmp(&a.title),
+                    });
+                }
+                filtered
+            } else {
+                vec![]
+            }
+        },
+    );
+
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -1826,13 +1883,70 @@ pub fn episode_layout() -> Html {
                                 }
                             }
                             {
+                                // Add this right after the podcast info section but before the episode list
+                                html! {
+                                    <div class="flex justify-between items-center mb-4">
+                                        <div class="flex gap-4">
+                                            // Search input
+                                            <div class="filter-dropdown download-button relative">
+                                                <input
+                                                    type="text"
+                                                    class="filter-input appearance-none pr-8"
+                                                    placeholder="Search episodes..."
+                                                    value={(*episode_search_term).clone()}
+                                                    oninput={
+                                                        let episode_search_term = episode_search_term.clone();
+                                                        Callback::from(move |e: InputEvent| {
+                                                            if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                                episode_search_term.set(input.value());
+                                                            }
+                                                        })
+                                                    }
+                                                />
+                                                <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                                            </div>
+
+                                            // Sort dropdown
+                                            <div class="filter-dropdown font-bold rounded relative">
+                                                <select
+                                                    class="category-select appearance-none pr-8"
+                                                    onchange={
+                                                        let episode_sort_direction = episode_sort_direction.clone();
+                                                        Callback::from(move |e: Event| {
+                                                            let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
+                                                            let value = target.value();
+                                                            match value.as_str() {
+                                                                "newest" => episode_sort_direction.set(Some(EpisodeSortDirection::NewestFirst)),
+                                                                "oldest" => episode_sort_direction.set(Some(EpisodeSortDirection::OldestFirst)),
+                                                                "shortest" => episode_sort_direction.set(Some(EpisodeSortDirection::ShortestFirst)),
+                                                                "longest" => episode_sort_direction.set(Some(EpisodeSortDirection::LongestFirst)),
+                                                                "title_az" => episode_sort_direction.set(Some(EpisodeSortDirection::TitleAZ)),
+                                                                "title_za" => episode_sort_direction.set(Some(EpisodeSortDirection::TitleZA)),
+                                                                _ => episode_sort_direction.set(None),
+                                                            }
+                                                        })
+                                                    }
+                                                >
+                                                    <option value="newest" selected=true>{"Newest First"}</option>
+                                                    <option value="oldest">{"Oldest First"}</option>
+                                                    <option value="shortest">{"Shortest First"}</option>
+                                                    <option value="longest">{"Longest First"}</option>
+                                                    <option value="title_az">{"Title A to Z"}</option>
+                                                    <option value="title_za">{"Title Z to A"}</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            {
                                 if let Some(results) = podcast_feed_results {
                                     let podcast_link_clone = clicked_podcast_info.clone().unwrap().feedurl.clone();
                                     let podcast_title = clicked_podcast_info.clone().unwrap().podcastname.clone();
 
                                     html! {
                                         <PodcastEpisodeVirtualList
-                                            episodes={results.episodes.clone()}
+                                            episodes={(*filtered_episodes).clone()}
                                             item_height={220.0} // Adjust this based on your actual episode item height
                                             podcast_added={podcast_added}
                                             search_state={search_state.clone()}

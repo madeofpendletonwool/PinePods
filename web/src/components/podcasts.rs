@@ -80,7 +80,7 @@ fn render_layout_toggle(
     html! {
         <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" {onclick}>
             <i class={classes!(icon, "text-2xl")}></i>
-            <span class="text-lg ml-2">{text}</span>
+            <span class="text-lg ml-2 hidden sm:inline">{text}</span>
         </button>
     }
 }
@@ -796,7 +796,7 @@ pub fn podcasts() -> Html {
                             <div class="flex gap-4">
                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_filter_dropdown}>
                                     <i class="ph ph-funnel text-2xl"></i>
-                                    <span class="text-lg ml-2">{"Filter"}</span>
+                                    <span class="text-lg ml-2 hidden sm:inline">{"Filter"}</span>
                                 </button>
                                 <div class="filter-dropdown font-bold rounded">
                                 // In the select element, modify it to match the default sort state:
@@ -837,7 +837,7 @@ pub fn podcasts() -> Html {
                             </div>
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_custom_modal}>
                                 <i class="ph ph-plus-circle text-2xl"></i>
-                                <span class="text-lg ml-2">{"Custom Feed"}</span>
+                                <span class="text-lg ml-2 hidden sm:inline">{"Custom Feed"}</span>
                             </button>
                         </div>
                     </div>
@@ -850,7 +850,7 @@ pub fn podcasts() -> Html {
                             // Clear Filter button
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={clear_filter}>
                                 <i class="ph ph-broom text-2xl"></i>
-                                <span class="text-lg ml-2">{"Clear Filter"}</span>
+                                <span class="text-lg ml-2 hidden sm:inline">{"Clear Filter"}</span>
                             </button>
                             // Category dropdown
                             <div class="filter-dropdown font-bold rounded">
@@ -877,11 +877,11 @@ pub fn podcasts() -> Html {
                                 }
                             </div>
                             // Search input
-                            <div class="filter-dropdown relative">
+                            <div class="filter-dropdown download-button font-bold rounded relative">
                                 <input
                                     type="text"
-                                    class="category-select"
-                                    placeholder="Search podcasts..."
+                                    class="filter-input appearance-none pr-8"
+                                    placeholder="Search podcasts"
                                     value={(*search_term).clone()}
                                     oninput={let search_term = search_term.clone();
                                         Callback::from(move |e: InputEvent| {
@@ -891,7 +891,7 @@ pub fn podcasts() -> Html {
                                         })
                                     }
                                 />
-                                <i class="ph ph-magnifying-glass absolute right-3 top-1/2 transform -translate-y-1/2 text-lg"></i>
+                                <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                             </div>
                         </div>
                     }

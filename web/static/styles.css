@@ -1496,6 +1496,27 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 10px;
 }
 
+.filter-input {
+    background-color: var(--button-color);
+    color: var(--button-text-color);
+    padding: 0.7rem;
+    margin-bottom: 9px;
+    font-size: 1rem;
+    border-radius: 5px;
+    border: none;
+    width: 165px; /* or whatever width matches your design */
+}
+
+.filter-input::placeholder {
+    color: var(--button-text-color);
+    opacity: 0.7;
+}
+
+.filter-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--button-color), 0.5);
+}
+
 .filter-dropdown select {
     background-color: var(--button-color); /* Semi-transparent background */
     color: var(--button-text-color);
@@ -1515,6 +1536,16 @@ input[type="range"]::-moz-range-thumb {
     background-image: url("data:image/svg+xml;utf8,<svg fill='%23FFFFFF' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
     background-position: right 0.5rem center; /* Move arrow slightly more to the right */
     background-repeat: no-repeat;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important; /* Standard */
+    text-indent: 1px;
+    text-overflow: "";
+    padding-right: 2rem;
+}
+
+.filter-dropdown select::-ms-expand {
+    display: none;
 }
 
 .filter-dropdown select:focus {
@@ -2049,7 +2080,6 @@ input[type="range"]::-moz-range-thumb {
         align-items: center;
         gap: 20px; /* Space between the elements */
         margin: 8px auto;
-        padding: 12px;
         max-width: 90%;
         flex-wrap: wrap; /* Allow wrapping on very small screens */
         text-align: center;
