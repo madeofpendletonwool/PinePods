@@ -3636,16 +3636,20 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        # Handle both dict and tuple return types
+        username = user['username'] if isinstance(user, dict) else user[0]
+
         # Initialize feed
         feed = feedgenerator.Rss201rev2Feed(
             title=f"Pinepods - {'All Podcasts' if podcast_id is None else 'Single Podcast'} Feed",
             link="https://github.com/madeofpendletonwool/pinepods",
             description=f"RSS feed for {'all' if podcast_id is None else 'selected'} podcasts from Pinepods",
             language="en",
-            author_name=user[0],
+            author_name=username,
             feed_url="",  # Will be set by the API endpoint
             ttl="60"
         )
+
 
         # Build query based on whether we're getting all podcasts or a specific one
         if database_type == "postgresql":

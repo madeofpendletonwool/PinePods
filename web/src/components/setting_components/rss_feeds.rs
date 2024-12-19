@@ -44,7 +44,7 @@ pub fn rss_feed_settings() -> Html {
     // Generate RSS feed URL
     let rss_feed_url = if let (Some(server_name), Some(user_id), Some(api_key)) = 
         (server_name.clone(), user_id.clone(), api_key.clone()) {
-        format!("{}/api/feeds/{}?api_key={}", 
+        format!("{}/rss/{}?api_key={}", 
             server_name, 
             user_id, 
             api_key.unwrap()
