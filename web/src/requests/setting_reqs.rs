@@ -505,6 +505,57 @@ pub async fn call_guest_status(server_name: String, api_key: String) -> Result<b
     }
 }
 
+// setting_reqs.rs
+
+pub async fn call_rss_feed_status(
+    server_name: String,
+    api_key: String,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/rss_feed_status", server_name);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<bool>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error getting RSS feed status: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_toggle_rss_feeds(
+    server_name: String,
+    api_key: String,
+) -> Result<SuccessResponse, Error> {
+    let url = format!("{}/api/data/toggle_rss_feeds", server_name);
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<SuccessResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error toggling RSS feeds: {}",
+            response.status_text()
+        )))
+    }
+}
+
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct DownloadStatusResponse {
     download_status: bool,

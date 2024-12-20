@@ -74,16 +74,28 @@ try:
             Reset_Expiry DATETIME,
             MFA_Secret VARCHAR(70),
             TimeZone VARCHAR(50) DEFAULT 'UTC',
-            TimeFormat INT  DEFAULT 24,
+            TimeFormat INT DEFAULT 24,
             DateFormat VARCHAR(3) DEFAULT 'ISO',
             FirstLogin TINYINT(1) DEFAULT 0,
             GpodderUrl VARCHAR(255) DEFAULT '',
             Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT '',
+            EnableRSSFeeds TINYINT(1) DEFAULT 0,
             UNIQUE (Username)
         )
     """)
+
+    # Add EnableRSSFeeds column if it doesn't exist
+    cursor.execute("""
+        SELECT COUNT(*) 
+        FROM information_schema.columns 
+        WHERE table_name = 'Users'
+        AND column_name = 'EnableRSSFeeds'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Users ADD COLUMN EnableRSSFeeds TINYINT(1) DEFAULT 0")
+
 
     ensure_usernames_lowercase(cnx)
 

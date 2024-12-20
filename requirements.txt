@@ -27,3 +27,4 @@ httpx
 qrcode[pil]
 psycopg[pool]
 redis
+feedgenerator
