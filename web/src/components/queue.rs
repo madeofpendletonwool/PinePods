@@ -11,6 +11,7 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::QueuedEpisodesResponse;
+use gloo_utils::document;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -438,12 +439,17 @@ pub fn queue() -> Html {
                                     })
                                 };
 
+                                // The key issue is in the touchend handler. Here's the fixed version:
                                 let ontouchend = {
                                     let dragged_element = dragged_element.clone();
                                     let is_dragging = is_dragging.clone();
                                     let scroll_state = scroll_state.clone();
                                     let dispatch = dispatch.clone();
                                     let episodes = queued_eps.clone();
+                                    let server_name = server_name.clone();
+                                    let api_key = api_key.clone();
+                                    let user_id = user_id.clone();
+
                                     Callback::from(move |e: TouchEvent| {
                                         // Stop any ongoing scrolling
                                         if let Some(interval_id) = scroll_state.interval_id {
@@ -453,30 +459,31 @@ pub fn queue() -> Html {
                                                 scroll_direction: 0.0,
                                             });
                                         }
+
                                         if *is_dragging {
                                             if let Some(dragged) = (*dragged_element).clone() {
                                                 let dragged_rect = dragged.get_bounding_client_rect();
                                                 let dragged_center_y = dragged_rect.top() + dragged_rect.height() / 2.0;
+                                                let window = window().unwrap();
+                                                let scroll_y = window.scroll_y().unwrap();
 
                                                 let mut closest_element = None;
                                                 let mut min_distance = f64::MAX;
 
-                                                // Find the closest element
-                                                if let Some(parent) = dragged.parent_element() {
-                                                    if let Ok(children) = parent.query_selector_all(".item-container") {
-                                                        let length = children.length();
-                                                        for i in 0..length {
-                                                            if let Some(node) = children.item(i) {
-                                                                if let Some(element) = node.dyn_ref::<Element>() {
-                                                                    if element != &dragged {
-                                                                        let rect = element.get_bounding_client_rect();
-                                                                        let center_y = rect.top() + rect.height() / 2.0;
-                                                                        let distance = (center_y - dragged_center_y).abs();
+                                                // Find all item containers and determine the closest one
+                                                if let Ok(containers) = document().query_selector_all(".item-container") {
+                                                    for i in 0..containers.length() {
+                                                        if let Some(container) = containers.get(i) {
+                                                            if let Some(element) = container.dyn_ref::<Element>() {
+                                                                if element != &dragged {
+                                                                    let rect = element.get_bounding_client_rect();
+                                                                    // Adjust for scroll position
+                                                                    let actual_center_y = rect.top() + rect.height() / 2.0 + scroll_y;
+                                                                    let distance = (actual_center_y - (dragged_center_y + scroll_y)).abs();
 
-                                                                        if distance < min_distance {
-                                                                            min_distance = distance;
-                                                                            closest_element = Some(element.clone());
-                                                                        }
+                                                                    if distance < min_distance {
+                                                                        min_distance = distance;
+                                                                        closest_element = Some(element.clone());
                                                                     }
                                                                 }
                                                             }
@@ -484,43 +491,54 @@ pub fn queue() -> Html {
                                                     }
                                                 }
 
-                                                // Reorder the elements
+                                                // Reorder the elements if we found a closest element
                                                 if let Some(target) = closest_element {
-                                                    let dragged_id = dragged.get_attribute("data-id").unwrap().parse::<i32>().unwrap();
-                                                    let target_id = target.get_attribute("data-id").unwrap().parse::<i32>().unwrap();
+                                                    let dragged_id = dragged
+                                                        .get_attribute("data-id")
+                                                        .unwrap_or_default()
+                                                        .parse::<i32>()
+                                                        .unwrap_or_default();
+                                                    let target_id = target
+                                                        .get_attribute("data-id")
+                                                        .unwrap_or_default()
+                                                        .parse::<i32>()
+                                                        .unwrap_or_default();
 
-                                                    let mut episodes_vec = episodes.episodes.clone();
-                                                    let dragged_index = episodes_vec
-                                                        .iter()
-                                                        .position(|x| x.episodeid == dragged_id)
-                                                        .unwrap();
-                                                    let target_index = episodes_vec
-                                                        .iter()
-                                                        .position(|x| x.episodeid == target_id)
-                                                        .unwrap();
+                                                    // Only proceed if we have valid IDs
+                                                    if dragged_id != 0 && target_id != 0 && dragged_id != target_id {
+                                                        let mut episodes_vec = episodes.episodes.clone();
+                                                        if let (Some(dragged_index), Some(target_index)) = (
+                                                            episodes_vec.iter().position(|x| x.episodeid == dragged_id),
+                                                            episodes_vec.iter().position(|x| x.episodeid == target_id),
+                                                        ) {
+                                                            // Remove and reinsert at the correct position
+                                                            let dragged_item = episodes_vec.remove(dragged_index);
+                                                            episodes_vec.insert(target_index, dragged_item);
 
-                                                    // Remove the dragged item and reinsert it at the target position
-                                                    let dragged_item = episodes_vec.remove(dragged_index);
-                                                    episodes_vec.insert(target_index, dragged_item);
+                                                            // Update the state
+                                                            let episode_ids: Vec<i32> = episodes_vec.iter().map(|ep| ep.episodeid).collect();
+                                                            dispatch.reduce_mut(|state| {
+                                                                state.queued_episodes = Some(QueuedEpisodesResponse {
+                                                                    episodes: episodes_vec.clone(),
+                                                                });
+                                                            });
 
-                                                    // Extract episode IDs
-                                                    let episode_ids: Vec<i32> = episodes_vec.iter().map(|ep| ep.episodeid).collect();
-
-                                                    dispatch.reduce_mut(|state| {
-                                                        state.queued_episodes = Some(QueuedEpisodesResponse {
-                                                            episodes: episodes_vec.clone(),
-                                                        });
-                                                    });
-
-                                                    // Make a backend call to update the order on the server side
-                                                    let server_name = server_name.clone();
-                                                    let api_key = api_key.clone();
-                                                    let user_id = user_id.clone();
-                                                    wasm_bindgen_futures::spawn_local(async move {
-                                                        if let Err(err) = pod_req::call_reorder_queue(&server_name.unwrap(), &api_key.unwrap(), &user_id.unwrap(), &episode_ids).await {
-                                                            web_sys::console::log_1(&format!("Failed to update order on server: {:?}", err).into());
+                                                            // Update server
+                                                            let server_name = server_name.clone();
+                                                            let api_key = api_key.clone();
+                                                            let user_id = user_id.clone();
+                                                            wasm_bindgen_futures::spawn_local(async move {
+                                                                if let Err(err) = pod_req::call_reorder_queue(
+                                                                    &server_name.unwrap(),
+                                                                    &api_key.unwrap(),
+                                                                    &user_id.unwrap(),
+                                                                    &episode_ids
+                                                                ).await {
+                                                                    web_sys::console::log_1(&format!("Failed to update order on server: {:?}", err).into());
+                                                                }
+                                                            });
                                                         }
-                                                    });
+                                                    }
                                                 }
 
                                                 // Reset the dragged element's style
@@ -531,6 +549,8 @@ pub fn queue() -> Html {
                                             }
                                             e.prevent_default();
                                         }
+
+                                        // Always reset the drag state
                                         is_dragging.set(false);
                                         dragged_element.set(None);
                                     })
