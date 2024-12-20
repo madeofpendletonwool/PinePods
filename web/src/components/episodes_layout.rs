@@ -1307,60 +1307,60 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                             </div>
+                            // Categories section of the modal
                             <div>
                                 <label for="category_adjust" class="block mb-2 text-sm font-medium">
                                     {"Adjust Podcast Categories:"}
                                 </label>
-                                <div class="flex flex-wrap items-center space-x-2">
+                                <div class="flex flex-wrap gap-2">
                                 {
                                     if let Some(feed) = clicked_feed.as_ref() {
-                                        // If clicked_feed is populated, proceed with rendering categories
-                                        if let Some(categories) = feed.categories.clone() {
-                                            let categories = Rc::new(categories);
+                                        if let Some(categories) = &feed.categories {
                                             html! {
                                                 <>
-                                                    { for categories.iter().map(|(_, category_name)| {
+                                                    { categories.iter().map(|(_, category_name)| {
                                                         let category_name = category_name.clone();
                                                         let onclick_remove = onclick_remove.clone();
                                                         html! {
-                                                            <div class="flex items-center category-item space-x-1">
-                                                                <span class="category-box">{ &category_name }</span>
+                                                            <div class="category-tag">
+                                                                <span>{&category_name}</span>
                                                                 <button
-                                                                    class="minus-button text-red-500 font-bold"
+                                                                    class="category-remove-btn"
                                                                     onclick={onclick_remove}
                                                                     data-category={category_name.clone()}
+                                                                    aria-label={format!("Remove {}", category_name)}
                                                                 >
-                                                                    {"-"}
+                                                                    <i class="ph ph-trash text-lg" />
                                                                 </button>
                                                             </div>
                                                         }
-                                                    }) }
+                                                    }).collect::<Html>() }
                                                 </>
                                             }
                                         } else {
-                                            html! { <p>{ "No categories available" }</p> }
+                                            html! { <p class="text-sm text-muted">{ "No categories available" }</p> }
                                         }
                                     } else {
-                                        // If clicked_feed is None, show a loading state or an empty placeholder
-                                        html! { <p>{ "Loading..." }</p> }
+                                        html! { <p class="text-sm text-muted">{ "Loading..." }</p> }
                                     }
                                 }
-
                                 </div>
 
-                                <div class="mt-4">
-                                    <input type="text"
+                                <div class="relative mt-4">
+                                    <input
+                                        type="text"
                                         id="new_category"
-                                        class="category-input w-full md:w-auto px-3 py-2 border rounded-md mr-2"
+                                        class="category-input w-full px-4 py-3 pr-24 rounded-lg border"
                                         placeholder="New category"
                                         value={(*new_category).clone()}
-                                        oninput={new_category_input.clone()} // Input handler to update `new_category`
+                                        oninput={new_category_input}
                                     />
                                     <button
-                                        class="add-category-button text-sm font-medium rounded-lg border focus:ring-4 focus:outline-none search-btn py-2 px-4 rounded-md"
+                                        class="category-add-btn"
                                         onclick={onclick_add}
                                     >
-                                        {"New Category"}
+                                        <i class="ph ph-plus text-lg" />
+                                        <span class="hidden md:inline">{"Add"}</span>
                                     </button>
                                 </div>
                             </div>
