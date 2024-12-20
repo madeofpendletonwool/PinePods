@@ -1900,7 +1900,7 @@ pub fn episode_layout() -> Html {
                                                                 html! {}
                                                             }
                                                         }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
+                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
                                                             { button_content }
                                                         </button>
                                                         {

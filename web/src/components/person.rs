@@ -10,7 +10,7 @@ use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
-    truncate_description,
+    strip_images_from_html, truncate_description,
 };
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::people_req::{
@@ -717,6 +717,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                 });
                                             })
                                         };
+                                        let preview_description = strip_images_from_html(&podcast_description_clone.unwrap());
+
 
                                         let description_class = if desc_expanded {
                                             "desc-expanded".to_string()
@@ -748,7 +750,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                                         onclick={toggle_expanded}  // Make the description container clickable
                                                                         id={format!("desc-{}", podcast.podcastid)}
                                                                     >
-                                                                        <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
+                                                                        <SafeHtml html={preview_description} />
                                                                     </div>
                                                                 </div>
                                                             }

@@ -272,3 +272,24 @@ pub fn convert_time_to_seconds(time: &str) -> Result<u32, Box<dyn std::error::Er
         _ => Err("Invalid time format".into()),
     }
 }
+
+pub fn strip_images_from_html(html: &str) -> String {
+    let document = web_sys::window().unwrap().document().unwrap();
+
+    // Create a temporary div to parse the HTML
+    let temp_div = document.create_element("div").unwrap();
+    temp_div.set_inner_html(html);
+
+    // Remove all img elements
+    if let Ok(images) = temp_div.query_selector_all("img") {
+        for i in 0..images.length() {
+            if let Some(img) = images.item(i) {
+                if let Some(parent) = img.parent_node() {
+                    let _ = parent.remove_child(&img);
+                }
+            }
+        }
+    }
+
+    temp_div.inner_html()
+}
