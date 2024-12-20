@@ -118,6 +118,33 @@ fn sanitize_html(html: &str) -> String {
     }
 }
 
+fn get_rss_base_url() -> String {
+    let window = window().expect("no global `window` exists");
+    let location = window.location();
+    let current_url = location
+        .href()
+        .unwrap_or_else(|_| "Unable to retrieve URL".to_string());
+
+    if let Some(storage) = window.local_storage().ok().flatten() {
+        if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&auth_state) {
+                if let Some(server_name) = json
+                    .get("auth_details")
+                    .and_then(|auth| auth.get("server_name"))
+                    .and_then(|name| name.as_str())
+                {
+                    return format!("{}/rss", server_name);
+                }
+            }
+        }
+    }
+    // Fallback to using the current URL's origin
+    format!(
+        "{}/rss",
+        current_url.split('/').take(3).collect::<Vec<_>>().join("/")
+    )
+}
+
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
@@ -876,6 +903,7 @@ pub fn episode_layout() -> Html {
         Shown,
         Download,
         Delete,
+        RSSFeed,
     }
 
     let button_content = if *is_added { trash_icon() } else { add_icon() };
@@ -1150,6 +1178,67 @@ pub fn episode_layout() -> Html {
             || ()
         });
     }
+
+    let rss_feed_modal = {
+        let rss_url = format!(
+            "{}/{}?api_key={}&podcast_id={}",
+            get_rss_base_url(),
+            user_id.clone().unwrap_or_default(),
+            api_key.clone().unwrap().unwrap_or_default(),
+            *podcast_id
+        );
+
+        let copy_onclick = {
+            let rss_url = rss_url.clone();
+            Callback::from(move |_| {
+                if let Some(window) = web_sys::window() {
+                    let _ = window.navigator().clipboard().write_text(&rss_url);
+                }
+            })
+        };
+
+        html! {
+            <div id="rss_feed_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                            <h3 class="text-xl font-semibold">
+                                {"RSS Feed URL"}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{"Close modal"}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <div>
+                                <label for="rss_link" class="block mb-2 text-sm font-medium">{"NOTE: You must have RSS feeds enabled in your settings for the link below to work"}</label>
+                                <label for="rss_link" class="block mb-2 text-sm font-medium">{"Use this RSS feed URL in your favorite podcast app to subscribe to this podcast:"}</label>
+                                <div class="relative">
+                                    <input
+                                        type="text"
+                                        id="rss_link"
+                                        class="input-black w-full px-3 py-2 border border-gray-300 rounded-md pr-20"
+                                        value={rss_url}
+                                        readonly=true
+                                    />
+                                    <button
+                                        onclick={copy_onclick}
+                                        class="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                    >
+                                        {"Copy"}
+                                    </button>
+                                </div>
+                                <p class="mt-2 text-sm text-gray-500">{"This URL includes your API key, so keep it private. This is going to change very shortly in a future release to a temporary key so that you can share these links."}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    };
 
     // Define the modal components
     let clicked_feed = clicked_podcast_info.clone();
@@ -1601,6 +1690,7 @@ pub fn episode_layout() -> Html {
                 PageState::Shown => podcast_option_model,
                 PageState::Download => download_all_model,
                 PageState::Delete => delete_pod_model,
+                PageState::RSSFeed => rss_feed_modal,
                 _ => html! {},
                 }
             }
@@ -1850,7 +1940,7 @@ pub fn episode_layout() -> Html {
                                                                             <button
                                                                                 onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
                                                                                 title={funding.description.clone()}
-                                                                                class="item-container-button font-bold rounded-full self-center mr-8"
+                                                                                class="item-container-button font-bold rounded-full self-center mr-4"
                                                                                 style="width: 30px; height: 30px;"
                                                                             >
                                                                                 { payment_icon } // Replace with your payment_icon component
@@ -1866,27 +1956,26 @@ pub fn episode_layout() -> Html {
                                                             html! {}
                                                         }
                                                     }
-                                                    // {
-                                                    //     if state.rss_enabled.unwrap_or(false) {
-                                                    //         let feed_url = format!(
-                                                    //             "/api/feed/{}?api_key={}&podcast_id={}",
-                                                    //             user_id.clone().unwrap_or_default(),
-                                                    //             api_key.clone().unwrap_or_default(),
-                                                    //             podcast_id
-                                                    //         );
-                                                    //         html! {
-                                                    //             <button
-                                                    //                 onclick={Callback::from(move |_| web_link.clone().emit(feed_url.to_string()))}
-                                                    //                 title="Subscribe to RSS Feed"
-                                                    //                 class={"item-container-button font-bold rounded-full self-center mr-4"}
-                                                    //                 style="width: 30px; height: 30px;">
-                                                    //                 { rss_feed }
-                                                    //             </button>
-                                                    //         }
-                                                    //     } else {
-                                                    //         html! {}
-                                                    //     }
-                                                    // }
+                                                    {
+                                                        if search_state.podcast_added.unwrap_or(false) {
+                                                            html! {
+                                                                <button
+                                                                    onclick={
+                                                                        let page_state = page_state.clone();
+                                                                        Callback::from(move |_| {
+                                                                            page_state.set(PageState::RSSFeed);
+                                                                        })
+                                                                    }
+                                                                    title="Get RSS Feed URL"
+                                                                    class={"item-container-button font-bold rounded-full self-center mr-4"}
+                                                                    style="width: 30px; height: 30px;">
+                                                                    { rss_icon }
+                                                                </button>
+                                                            }
+                                                        } else {
+                                                            html! {}
+                                                        }
+                                                    }
                                                     <div class="item-header-info">
 
                                                         <p class="header-text">{ format!("Episode Count: {}", &podcast_info.episodecount) }</p>

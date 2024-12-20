@@ -3780,7 +3780,6 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
 
         base_query += f' ORDER BY {"e.episodepubdate" if database_type == "postgresql" else "e.EpisodePubDate"} DESC LIMIT 100'
 
-        logger.info(f"Executing query: {base_query} with params: {params}")
         cursor.execute(base_query, tuple(params))
         print('q1')
         # Get column names and create result mapping
@@ -3788,21 +3787,11 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
         column_map = {name: idx for idx, name in enumerate(columns)}
         # Inside generate_podcast_rss, replace the dictionary creation section with:
 
-        print('q2')
-        logger.info("Starting dictionary creation")
-        logger.info(f"Columns: {columns}")
-        logger.info(f"Column map: {column_map}")
-        logger.info("Starting dictionary creation")
-        logger.info(f"Columns: {columns}")
-
         episodes = []
         all_rows = cursor.fetchall()
-        logger.info(f"Found {len(all_rows)} rows")
 
         for row_idx, row in enumerate(all_rows):
             try:
-                logger.info(f"Starting to process row {row_idx}")
-                logger.info(f"Row data: {row}")
                 episode_dict = {}
 
                 # If row is already a dictionary, use it directly
@@ -3815,7 +3804,6 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                 # Process each column
                 for col in columns:
                     try:
-                        logger.info(f"Processing column {col}")
 
                         # Get value either from dictionary or by index
                         if isinstance(row, dict):
@@ -3824,18 +3812,14 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                             col_idx = column_map[col]
                             raw_value = row[col_idx] if col_idx < len(row) else None
 
-                        logger.info(f"Raw value for {col}: {raw_value}")
-
                         # Special handling for dates
                         if col == 'episodepubdate' and raw_value is not None:
                             try:
-                                logger.info(f"Parsing date value: {raw_value}")
                                 if isinstance(raw_value, dt):
                                     value = raw_value if raw_value.tzinfo else raw_value.replace(tzinfo=timezone.utc)
                                 else:
                                     value = dt.strptime(str(raw_value), '%Y-%m-%d %H:%M:%S')
                                     value = value.replace(tzinfo=timezone.utc)
-                                logger.info(f"Successfully parsed date: {value}")
                             except Exception as e:
                                 logger.error(f"Date parsing failed: {str(e)}")
                                 value = dt.now(timezone.utc)
@@ -3843,7 +3827,6 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                             value = raw_value if raw_value is not None else ''
 
                         episode_dict[col] = value
-                        logger.info(f"Successfully added {col} to episode dict")
 
                     except Exception as e:
                         logger.error(f"Error processing column {col}: {str(e)}", exc_info=True)
@@ -3853,8 +3836,6 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                         else:
                             episode_dict[col] = ''
 
-                logger.info(f"Finished processing row {row_idx}, adding to episodes list")
-                logger.info(f"Episode dict keys: {episode_dict.keys()}")
                 episodes.append(episode_dict)
 
             except Exception as e:
