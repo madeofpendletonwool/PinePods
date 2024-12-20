@@ -48,6 +48,12 @@ fn payments_icon() -> Html {
     }
 }
 
+fn rss_icon() -> Html {
+    html! {
+        <i class="ph ph-rss text-2xl"></i>
+    }
+}
+
 fn website_icon() -> Html {
     html! {
         <i class="ph ph-globe text-2xl"></i>
@@ -886,6 +892,7 @@ pub fn episode_layout() -> Html {
     };
 
     let payment_icon = { payments_icon() };
+    let rss_icon = { rss_icon() };
 
     let website_icon = { website_icon() };
 
@@ -1581,6 +1588,10 @@ pub fn episode_layout() -> Html {
 
     let web_link = open_in_new_tab.clone();
     let pod_layout_data = clicked_podcast_info.clone();
+
+    let api_key_rss = api_key.clone();
+    let podcast_id_rss = podcast_id.clone();
+
     html! {
         <div class="main-container">
             <Search_nav />
@@ -1668,6 +1679,32 @@ pub fn episode_layout() -> Html {
                                                                 }
                                                             } else {
                                                                 html! {}
+                                                            }
+                                                        } else {
+                                                            html! {}
+                                                        }
+                                                    }
+                                                    {
+                                                        if search_state.podcast_added.unwrap() {
+                                                            html! {
+                                                                <button
+                                                                    onclick={Callback::from(move |_| {
+                                                                        if let Some(api_key) = api_key_rss.clone().clone() {
+                                                                            let feed_url = format!(
+                                                                                "/rss/{}?api_key={}&podcast_id={}",
+                                                                                user_id.clone().unwrap(),
+                                                                                api_key.unwrap(),
+                                                                                *podcast_id_rss
+                                                                            );
+                                                                            open_in_new_tab.emit(feed_url);
+                                                                        }
+                                                                    })}
+                                                                    title="Subscribe to RSS Feed"
+                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
+                                                                    style="width: 30px; height: 30px;"
+                                                                >
+                                                                    { rss_icon }
+                                                                </button>
                                                             }
                                                         } else {
                                                             html! {}
@@ -1829,6 +1866,27 @@ pub fn episode_layout() -> Html {
                                                             html! {}
                                                         }
                                                     }
+                                                    // {
+                                                    //     if state.rss_enabled.unwrap_or(false) {
+                                                    //         let feed_url = format!(
+                                                    //             "/api/feed/{}?api_key={}&podcast_id={}",
+                                                    //             user_id.clone().unwrap_or_default(),
+                                                    //             api_key.clone().unwrap_or_default(),
+                                                    //             podcast_id
+                                                    //         );
+                                                    //         html! {
+                                                    //             <button
+                                                    //                 onclick={Callback::from(move |_| web_link.clone().emit(feed_url.to_string()))}
+                                                    //                 title="Subscribe to RSS Feed"
+                                                    //                 class={"item-container-button font-bold rounded-full self-center mr-4"}
+                                                    //                 style="width: 30px; height: 30px;">
+                                                    //                 { rss_feed }
+                                                    //             </button>
+                                                    //         }
+                                                    //     } else {
+                                                    //         html! {}
+                                                    //     }
+                                                    // }
                                                     <div class="item-header-info">
 
                                                         <p class="header-text">{ format!("Episode Count: {}", &podcast_info.episodecount) }</p>

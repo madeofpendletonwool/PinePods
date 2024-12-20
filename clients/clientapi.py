@@ -4801,10 +4801,12 @@ async def get_rss_feed_status(
     """Get RSS feed enabled status for current user"""
     try:
         key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        print(f'user_id for rss: {key_id}')
         if not key_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
 
         status = database_functions.functions.get_rss_feed_status(cnx, database_type, key_id)
+        print(status)
         return status
 
     except Exception as e:
@@ -4839,7 +4841,7 @@ async def get_user_feed(
         key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
         if not key_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
-            
+
         feed_content = database_functions.functions.generate_podcast_rss(
             database_type,
             cnx,
@@ -4866,7 +4868,7 @@ async def toggle_rss_feeds(
         key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
         if not key_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
-            
+
         new_status = database_functions.functions.set_rss_feed_status(cnx, database_type, user_id, enable)
         return {"status": "success", "enabled": new_status}
 

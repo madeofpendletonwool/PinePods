@@ -24,6 +24,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 from urllib.parse import urlparse, urlunparse
 from typing import List, Optional
+import pytz
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -3614,23 +3615,26 @@ def verify_api_key(cnx, database_type, passed_key):
 
 def get_rss_feed_status(cnx, database_type: str, user_id: int) -> bool:
     cursor = cnx.cursor()
+    logging.info(f"Checking RSS feed status for user {user_id}")
     try:
         if database_type == "postgresql":
-            cursor.execute('SELECT EnableRSSFeeds FROM "Users" WHERE UserID = %s', (user_id,))
+            cursor.execute('SELECT enablerssfeeds FROM "Users" WHERE userid = %s', (user_id,))
         else:
             cursor.execute("SELECT EnableRSSFeeds FROM Users WHERE UserID = %s", (user_id,))
-        
+
         result = cursor.fetchone()
-        
-        # Handle different return types
-        if result:
-            if isinstance(result, dict):
-                return bool(result.get('EnableRSSFeeds', False))
-            else:
-                return bool(result[0]) if result[0] is not None else False
+        logging.info(f"RSS feed status raw result: {result}")
+
+        value = get_value_from_result(result, 'enablerssfeeds', False)
+        logging.info(f"RSS feed status processed value: {value}")
+
+        return bool(value)
+    except Exception as e:
+        logging.error(f"Error checking RSS feed status: {e}")
         return False
     finally:
         cursor.close()
+
 
 def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
     cursor = cnx.cursor()
@@ -3640,9 +3644,9 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
             cursor.execute('SELECT EnableRSSFeeds FROM "Users" WHERE UserID = %s', (user_id,))
         else:
             cursor.execute("SELECT EnableRSSFeeds FROM Users WHERE UserID = %s", (user_id,))
-        
+
         current_status = cursor.fetchone()
-        
+
         # Handle different return types
         if isinstance(current_status, dict):
             new_status = not current_status.get('EnableRSSFeeds', False)
@@ -3665,10 +3669,53 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
     finally:
         cursor.close()
 
+
+def parse_date_safely(date_str):
+    """Safely parse a date string into a datetime object"""
+    if isinstance(date_str, dt):
+        return date_str if date_str.tzinfo else date_str.replace(tzinfo=timezone.utc)
+
+    try:
+        # PostgreSQL timestamp format
+        dt_obj = dt.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        return dt_obj.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        try:
+            # Try with microseconds
+            dt_obj = dt.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f')
+            return dt_obj.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            try:
+                # ISO format
+                dt_obj = dt.fromisoformat(date_str.replace('Z', '+00:00'))
+                return dt_obj if dt_obj.tzinfo else dt_obj.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                # Default to current time if all parsing fails
+                return dt.now(timezone.utc)
+
+
+def get_value_from_rss_result(result, key_name: str, default=None):
+    """Helper function to safely extract values from psycopg results"""
+    if result is None:
+        return default
+
+    # Handle dictionary result
+    if isinstance(result, dict):
+        # Try different case variations for PostgreSQL
+        return result.get(key_name.lower()) or result.get(key_name.upper()) or default
+
+    # Handle tuple result
+    if isinstance(result, (tuple, list)) and len(result) > 0:
+        return result[0] if result[0] is not None else default
+
+    return default
+
 def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, podcast_id: Optional[int] = None) -> str:
-    """Generate RSS feed for either all podcasts or a specific podcast"""
+    from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
-    
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
     try:
         # Check if RSS feeds are enabled for user
         if not get_rss_feed_status(cnx, database_type, user_id):
@@ -3676,39 +3723,51 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
 
         # Get user info for feed metadata
         if database_type == "postgresql":
-            cursor.execute('SELECT Username FROM "Users" WHERE UserID = %s', (user_id,))
+            cursor.execute('SELECT username FROM "Users" WHERE userid = %s', (user_id,))
         else:
             cursor.execute("SELECT Username FROM Users WHERE UserID = %s", (user_id,))
+
         user = cursor.fetchone()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Handle both dict and tuple return types
-        username = user['username'] if isinstance(user, dict) else user[0]
+        username = get_value_from_rss_result(user, 'username', 'Unknown User')
 
-        # Initialize feed
-        feed = feedgenerator.Rss201rev2Feed(
-            title=f"Pinepods - {'All Podcasts' if podcast_id is None else 'Single Podcast'} Feed",
-            link="https://github.com/madeofpendletonwool/pinepods",
-            description=f"RSS feed for {'all' if podcast_id is None else 'selected'} podcasts from Pinepods",
-            language="en",
-            author_name=username,
-            feed_url="",  # Will be set by the API endpoint
-            ttl="60"
-        )
-
-
-        # Build query based on whether we're getting all podcasts or a specific one
+        # Build the query with correct case for each database type
         if database_type == "postgresql":
             base_query = '''
-                SELECT e.*, p.PodcastName, p.Author, p.ArtworkURL 
+                SELECT
+                    e.episodeid,
+                    e.podcastid,
+                    e.episodetitle,
+                    e.episodedescription,
+                    e.episodeurl,
+                    e.episodeartwork,
+                    e.episodepubdate,
+                    e.episodeduration,
+                    p.podcastname,
+                    p.author,
+                    p.artworkurl,
+                    p.description as podcastdescription
                 FROM "Episodes" e
-                JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-                WHERE p.UserID = %s
+                JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                WHERE p.userid = %s
             '''
         else:
             base_query = '''
-                SELECT e.*, p.PodcastName, p.Author, p.ArtworkURL 
+                SELECT
+                    e.EpisodeID,
+                    e.PodcastID,
+                    e.EpisodeTitle,
+                    e.EpisodeDescription,
+                    e.EpisodeURL,
+                    e.EpisodeArtwork,
+                    e.EpisodePubDate,
+                    e.EpisodeDuration,
+                    p.PodcastName,
+                    p.Author,
+                    p.ArtworkURL,
+                    p.Description as PodcastDescription
                 FROM Episodes e
                 JOIN Podcasts p ON e.PodcastID = p.PodcastID
                 WHERE p.UserID = %s
@@ -3716,37 +3775,157 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
 
         params = [user_id]
         if podcast_id is not None:
-            base_query += " AND p.PodcastID = %s"
+            base_query += f' AND {"p.podcastid" if database_type == "postgresql" else "p.PodcastID"} = %s'
             params.append(podcast_id)
 
-        base_query += " ORDER BY e.EpisodePubDate DESC LIMIT 100"
-        
+        base_query += f' ORDER BY {"e.episodepubdate" if database_type == "postgresql" else "e.EpisodePubDate"} DESC LIMIT 100'
+
+        logger.info(f"Executing query: {base_query} with params: {params}")
         cursor.execute(base_query, tuple(params))
-        episodes = cursor.fetchall()
+        print('q1')
+        # Get column names and create result mapping
+        columns = [desc[0].lower() for desc in cursor.description]
+        column_map = {name: idx for idx, name in enumerate(columns)}
+        # Inside generate_podcast_rss, replace the dictionary creation section with:
+
+        print('q2')
+        logger.info("Starting dictionary creation")
+        logger.info(f"Columns: {columns}")
+        logger.info(f"Column map: {column_map}")
+        logger.info("Starting dictionary creation")
+        logger.info(f"Columns: {columns}")
+
+        episodes = []
+        all_rows = cursor.fetchall()
+        logger.info(f"Found {len(all_rows)} rows")
+
+        for row_idx, row in enumerate(all_rows):
+            try:
+                logger.info(f"Starting to process row {row_idx}")
+                logger.info(f"Row data: {row}")
+                episode_dict = {}
+
+                # If row is already a dictionary, use it directly
+                if isinstance(row, dict):
+                    source_dict = row
+                else:
+                    # Convert tuple to dictionary using column names
+                    source_dict = dict(zip(columns, row))
+
+                # Process each column
+                for col in columns:
+                    try:
+                        logger.info(f"Processing column {col}")
+
+                        # Get value either from dictionary or by index
+                        if isinstance(row, dict):
+                            raw_value = row.get(col)
+                        else:
+                            col_idx = column_map[col]
+                            raw_value = row[col_idx] if col_idx < len(row) else None
+
+                        logger.info(f"Raw value for {col}: {raw_value}")
+
+                        # Special handling for dates
+                        if col == 'episodepubdate' and raw_value is not None:
+                            try:
+                                logger.info(f"Parsing date value: {raw_value}")
+                                if isinstance(raw_value, dt):
+                                    value = raw_value if raw_value.tzinfo else raw_value.replace(tzinfo=timezone.utc)
+                                else:
+                                    value = dt.strptime(str(raw_value), '%Y-%m-%d %H:%M:%S')
+                                    value = value.replace(tzinfo=timezone.utc)
+                                logger.info(f"Successfully parsed date: {value}")
+                            except Exception as e:
+                                logger.error(f"Date parsing failed: {str(e)}")
+                                value = dt.now(timezone.utc)
+                        else:
+                            value = raw_value if raw_value is not None else ''
+
+                        episode_dict[col] = value
+                        logger.info(f"Successfully added {col} to episode dict")
+
+                    except Exception as e:
+                        logger.error(f"Error processing column {col}: {str(e)}", exc_info=True)
+                        # Use safe defaults
+                        if col == 'episodepubdate':
+                            episode_dict[col] = dt.now(timezone.utc)
+                        else:
+                            episode_dict[col] = ''
+
+                logger.info(f"Finished processing row {row_idx}, adding to episodes list")
+                logger.info(f"Episode dict keys: {episode_dict.keys()}")
+                episodes.append(episode_dict)
+
+            except Exception as e:
+                logger.error(f"Error processing row {row_idx}: {str(e)}", exc_info=True)
+                continue
+
+        logger.info(f"Successfully processed {len(episodes)} episodes")
+
+        # Get podcast name if podcast_id is provided
+        podcast_name = "All Podcasts"
+        if podcast_id is not None:
+            try:
+                if database_type == "postgresql":
+                    cursor.execute(
+                        'SELECT podcastname FROM "Podcasts" WHERE podcastid = %s',
+                        (podcast_id,)
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT PodcastName FROM Podcasts WHERE PodcastID = %s",
+                        (podcast_id,)
+                    )
+                result = cursor.fetchone()
+                if result:
+                    podcast_name = result[0] if isinstance(result, tuple) else result.get('podcastname', 'Unknown Podcast')
+                else:
+                    podcast_name = "Unknown Podcast"
+            except Exception as e:
+                logger.error(f"Error fetching podcast name: {str(e)}")
+                podcast_name = "Unknown Podcast"
+
+        # Initialize feed
+        feed = feedgenerator.Rss201rev2Feed(
+            title=f"Pinepods - {podcast_name}",
+            link="https://github.com/madeofpendletonwool/pinepods",
+            description=f"RSS feed for {'all' if podcast_id is None else 'selected'} podcasts from Pinepods",
+            language="en",
+            author_name=username,
+            feed_url="",
+            ttl="60"
+        )
 
         # Add items to feed
         for episode in episodes:
-            feed.add_item(
-                title=episode[2],  # EpisodeTitle
-                link=episode[4],   # EpisodeURL
-                description=episode[3],  # EpisodeDescription
-                unique_id=str(episode[0]),  # EpisodeID
-                enclosure=feedgenerator.Enclosure(
-                    url=episode[4],
-                    length='0',
-                    mime_type='audio/mpeg'
-                ),
-                pubdate=episode[6],  # EpisodePubDate
-                author=episode[12],  # Author from Podcasts table
-                image_url=episode[5] or episode[13]  # EpisodeArtwork or PodcastArtwork
-            )
+            try:
+                feed.add_item(
+                    title=str(episode.get('episodetitle', 'Untitled Episode')),
+                    link=str(episode.get('episodeurl', '')),
+                    description=str(episode.get('episodedescription', '')),
+                    unique_id=str(episode.get('episodeid', '')),
+                    enclosure=feedgenerator.Enclosure(
+                        url=str(episode.get('episodeurl', '')),
+                        length=str(episode.get('episodeduration', '0')),
+                        mime_type='audio/mpeg'
+                    ),
+                    pubdate=episode.get('episodepubdate', dt.now(timezone.utc)),
+                    author=str(episode.get('author', '')),
+                    image_url=str(episode.get('episodeartwork', '') or episode.get('artworkurl', ''))
+                )
+            except Exception as e:
+                logger.error(f"Error adding episode to feed: {str(e)}", exc_info=True)
+                continue
 
         return feed.writeString('utf-8')
 
     except Exception as e:
+        logger.error(f"Error generating RSS feed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating RSS feed: {str(e)}")
     finally:
         cursor.close()
+
 
 def set_rss_feed_status(cnx, database_type: str, user_id: int, enable: bool) -> bool:
     cursor = cnx.cursor()
@@ -3838,42 +4017,48 @@ def get_api_user(cnx, database_type, api_key):
         print(f"An error occurred: {str(e)}")
         return f"An error occurred: {str(e)}"
 
+def get_value_from_result(result, key_name: str, default=None):
+    """Helper function to safely extract values from psycopg results"""
+    if result is None:
+        return default
+
+    # Handle dictionary result
+    if isinstance(result, dict):
+        # Try different case variations for PostgreSQL
+        return result.get(key_name.lower()) or result.get(key_name.upper()) or default
+
+    # Handle tuple result
+    if isinstance(result, (tuple, list)):
+        # For tuples, we assume the first element is what we want
+        return result[0] if result[0] is not None else default
+
+    return default
 
 
 def id_from_api_key(cnx, database_type, passed_key):
     logging.info(f"Fetching user ID for API key: {passed_key}")
-
-    if database_type == "postgresql":
-        cursor = cnx.cursor()  # psycopg3 default cursor should be fine here
-    else:
-        cursor = cnx.cursor()
+    cursor = cnx.cursor()
 
     try:
         if database_type == "postgresql":
-            query = 'SELECT UserID FROM "APIKeys" WHERE APIKey = %s'
+            query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s'
         else:
             query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
 
         cursor.execute(query, (passed_key,))
         result = cursor.fetchone()
-        logging.info(f"Query result: {result}")
+        logging.info(f"API key lookup raw result: {result}")
 
-        if result:
-            # Ensure accessing the first element of the tuple
-            if database_type == "postgresql":
-                user_id = result[0] if isinstance(result, tuple) else result['userid']
-            else:
-                user_id = result[0] if isinstance(result, tuple) else result['UserID']
-            logging.info(f"Found user ID: {user_id} for API key: {passed_key}")
-            return user_id
-        else:
-            logging.warning(f"No user ID found for API key: {passed_key}")
-            return None
+        user_id = get_value_from_result(result, 'userid')
+        logging.info(f"API key lookup processed value: {user_id}")
+
+        return user_id
     except Exception as e:
-        logging.error(f"Error fetching user ID for API key: {passed_key}, error: {e}")
+        logging.error(f"Error fetching user ID for API key: {e}")
         return None
     finally:
         cursor.close()
+
 
 
 
@@ -6133,328 +6318,394 @@ def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login,
         print(f"Failed to remove podcast from oPodSync: {e}")
         print(f"Response body: {response.text}")
 
-
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
-    # Fetch encryption key
-    print('runnin a sync')
-    encryption_key = get_encryption_key(cnx, database_type)
-    encryption_key_bytes = base64.b64decode(encryption_key)
+    import logging
+    from requests.exceptions import RequestException
 
-    cipher_suite = Fernet(encryption_key_bytes)
+    # Set up logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
-    # Decrypt the token
-    if encrypted_gpodder_token is not None:
-        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-        gpodder_token = decrypted_token_bytes.decode()
-    else:
-        gpodder_token = None
-
-    # Prepare for Basic Auth
-    auth = HTTPBasicAuth(gpodder_login, gpodder_token)
-
-    # Now, use the decrypted token in your API request
-    print(f"Decrypted gPodder token: {gpodder_token}")
-    response = requests.get(f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions", auth=auth)
-    response.raise_for_status()  # This will raise an exception for HTTP errors
-    print(f"Response status: {response.status_code}, Content: {response.text}")
-
-    nextcloud_podcasts = response.json().get("add", [])
-    print(f"Nextcloud podcasts: {nextcloud_podcasts}")
-
-    cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'SELECT FeedURL FROM "Podcasts" WHERE UserID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
-
-    cursor.execute(query, (user_id,))
-    local_podcasts = [row[0] for row in cursor.fetchall()]
-    print(f"Local podcasts: {local_podcasts}")
-
-    podcasts_to_add = set(nextcloud_podcasts) - set(local_podcasts)
-    podcasts_to_remove = set(local_podcasts) - set(nextcloud_podcasts)
-    print(f"Podcasts to add: {podcasts_to_add}, Podcasts to remove: {podcasts_to_remove}")
-
-    # Update local database
-    # Add new podcasts
-    print("Adding new podcasts...")
-    for feed_url in podcasts_to_add:
-        podcast_values = get_podcast_values(feed_url, user_id)
-        return_value = add_podcast(cnx, database_type, podcast_values, user_id)
-        if return_value:
-            print(f"{feed_url} added!")
-        else:
-            print(f"error adding {feed_url}")
-
-    # Remove podcasts no longer in the subscription
-    print("Removing podcasts...")
-    for feed_url in podcasts_to_remove:
-        print(f"Removing {feed_url}...")
-        if database_type == "postgresql":
-            query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
-        else:  # MySQL or MariaDB
-            query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
-
-        cursor.execute(query, (feed_url,))
-        result = cursor.fetchone()
-        print(f"Result: {result}")
-        print(f"Feed URL: {feed_url}")
-        if result:
-            podcast_name = result[0]  # Unpack the tuple to get the podcast name
-            remove_podcast(cnx, database_type, podcast_name, feed_url, user_id)
-        else:
-            print(f"No podcast found with URL: {feed_url}")
-
-    cnx.commit()
-    cursor.close()
-
-
-    # Notify Nextcloud of changes made locally (if any)
-    print("Syncing subscription changes...")
-    if podcasts_to_add or podcasts_to_remove:
-        sync_subscription_change(gpodder_url, {"Authorization": f"Bearer {gpodder_token}"}, list(podcasts_to_add),
-                                 list(podcasts_to_remove))
-
-    # from requests.exceptions import RequestException
-
-    # Fetch episode actions from Nextcloud
-    print("Fetching episode actions from Nextcloud...")
     try:
-        episode_actions_response = requests.get(
+        # Fetch and decrypt token
+        encryption_key = get_encryption_key(cnx, database_type)
+        encryption_key_bytes = base64.b64decode(encryption_key)
+        cipher_suite = Fernet(encryption_key_bytes)
+
+        if encrypted_gpodder_token is not None:
+            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+            gpodder_token = decrypted_token_bytes.decode()
+        else:
+            gpodder_token = None
+
+        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+        logger.info("Starting Nextcloud subscription refresh")
+
+        # Get Nextcloud subscriptions
+        response = requests.get(
+            f"{gpodder_url}/index.php/apps/gpoddersync/subscriptions",
+            auth=auth
+        )
+        response.raise_for_status()
+
+        nextcloud_podcasts = response.json().get("add", [])
+        logger.info(f"Fetched Nextcloud podcasts: {nextcloud_podcasts}")
+
+        # Get local podcasts
+        cursor = cnx.cursor()
+        if database_type == "postgresql":
+            query = 'SELECT FeedURL FROM "Podcasts" WHERE UserID = %s'
+        else:
+            query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
+
+        cursor.execute(query, (user_id,))
+        local_podcasts = [row[0] for row in cursor.fetchall()]
+
+        podcasts_to_add = set(nextcloud_podcasts) - set(local_podcasts)
+        podcasts_to_remove = set(local_podcasts) - set(nextcloud_podcasts)
+
+        # Track successful operations
+        successful_additions = set()
+        successful_removals = set()
+
+        # Add new podcasts with individual error handling
+        logger.info("Adding new podcasts...")
+        for feed_url in podcasts_to_add:
+            try:
+                podcast_values = get_podcast_values(feed_url, user_id)
+                return_value = add_podcast(cnx, database_type, podcast_values, user_id)
+                if return_value:
+                    logger.info(f"Successfully added {feed_url}")
+                    successful_additions.add(feed_url)
+                else:
+                    logger.error(f"Failed to add {feed_url}")
+            except Exception as e:
+                logger.error(f"Error processing {feed_url}: {str(e)}")
+                continue  # Continue with next podcast even if this one fails
+
+        # Remove podcasts with individual error handling
+        logger.info("Removing podcasts...")
+        for feed_url in podcasts_to_remove:
+            try:
+                if database_type == "postgresql":
+                    query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
+                else:
+                    query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
+
+                cursor.execute(query, (feed_url,))
+                result = cursor.fetchone()
+
+                if result:
+                    podcast_name = result[0]
+                    if remove_podcast(cnx, database_type, podcast_name, feed_url, user_id):
+                        successful_removals.add(feed_url)
+                        logger.info(f"Successfully removed {feed_url}")
+                    else:
+                        logger.error(f"Failed to remove {feed_url}")
+                else:
+                    logger.warning(f"No podcast found with URL: {feed_url}")
+            except Exception as e:
+                logger.error(f"Error removing {feed_url}: {str(e)}")
+                continue
+
+        cnx.commit()
+        cursor.close()
+
+        # Sync changes with Nextcloud
+        if successful_additions or successful_removals:
+            try:
+                sync_subscription_change(
+                    gpodder_url,
+                    {"Authorization": f"Bearer {gpodder_token}"},
+                    list(successful_additions),
+                    list(successful_removals)
+                )
+            except Exception as e:
+                logger.error(f"Error syncing changes with Nextcloud: {str(e)}")
+
+        # Process episode actions
+        try:
+            process_nextcloud_episode_actions(gpodder_url, gpodder_token, cnx, database_type, user_id)
+        except Exception as e:
+            logger.error(f"Error processing episode actions: {str(e)}")
+
+        # Sync local episode times
+        try:
+            sync_nextcloud_episode_times(gpodder_url, gpodder_login, gpodder_token, cnx, database_type, user_id)
+        except Exception as e:
+            logger.error(f"Error syncing local episode times: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"Major error in refresh_nextcloud_subscription: {str(e)}")
+        raise
+
+def process_nextcloud_episode_actions(gpodder_url, gpodder_token, cnx, database_type, user_id):
+    logger = logging.getLogger(__name__)
+
+    try:
+        response = requests.get(
             f"{gpodder_url}/index.php/apps/gpoddersync/episode_action",
             headers={"Authorization": f"Bearer {gpodder_token}"}
         )
-        episode_actions_response.raise_for_status()  # This will raise an exception for HTTP errors
-        episode_actions = episode_actions_response.json()
-    except RequestException as e:
-        print(f"Error fetching Nextcloud episode actions: {e}")
-        episode_actions = []
+        response.raise_for_status()
+        episode_actions = response.json()
 
-    # Process episode actions from Nextcloud
-    print("Processing episode actions...")
-    for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
-        try:
-            # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
-            print(f"Processing action: {action}")
-            if action["action"].lower() in ["play", "update_time"]:
-                print(f"Action details - Podcast: {action['podcast']}, Episode: {action['episode']}, Position: {action.get('position')}")
-                if "position" in action and action["position"] != -1:
-                    episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
-                    if episode_id:
-                        print(f"Recording listen duration for episode ID {episode_id} with position {action['position']}")
-                        record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
-                    else:
-                        print(f"No episode ID found for URL {action['episode']}")
-                else:
-                    print(f"Skipping action due to invalid position: {action}")
+        for action in episode_actions.get('actions', []):
+            try:
+                if action["action"].lower() in ["play", "update_time"]:
+                    if "position" in action and action["position"] != -1:
+                        episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
+                        if episode_id:
+                            record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+                            logger.info(f"Recorded listen duration for episode {episode_id}")
+                        else:
+                            logger.warning(f"No episode ID found for URL {action['episode']}")
+            except Exception as e:
+                logger.error(f"Error processing episode action {action}: {str(e)}")
+                continue
+    except Exception as e:
+        logger.error(f"Error fetching episode actions: {str(e)}")
+        raise
 
-        except Exception as e:
-            print(f"Error processing episode action {action}: {e}")
+def sync_nextcloud_episode_times(gpodder_url, gpodder_login, gpodder_token, cnx, database_type, user_id, UPLOAD_BULK_SIZE=30):
+    logger = logging.getLogger(__name__)
 
-    # Collect local episode listen times and push to Nextcloud if necessary
-    print("Collecting local episode listen times...")
     try:
         local_episode_times = get_local_episode_times(cnx, database_type, user_id)
+        update_actions = []
+
+        for episode_time in local_episode_times:
+            update_actions.append({
+                "podcast": episode_time["podcast_url"],
+                "episode": episode_time["episode_url"],
+                "action": "play",
+                "timestamp": current_timestamp(),
+                "position": episode_time["listen_duration"],
+                "started": 0,
+                "total": episode_time["episode_duration"],
+                "guid": generate_guid(episode_time)
+            })
+
+        # Split into chunks and process
+        update_actions_chunks = [
+            update_actions[i:i + UPLOAD_BULK_SIZE]
+            for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)
+        ]
+
+        from urllib.parse import urljoin
+        for chunk in update_actions_chunks:
+            try:
+                url = urljoin(gpodder_url, "/index.php/apps/gpoddersync/episode_action/create")
+                response = requests.post(
+                    url,
+                    json=chunk,
+                    auth=HTTPBasicAuth(gpodder_login, gpodder_token),
+                    headers={"Accept": "application/json"}
+                )
+                response.raise_for_status()
+                logger.info(f"Successfully uploaded chunk of {len(chunk)} episode times")
+            except Exception as e:
+                logger.error(f"Error uploading chunk: {str(e)}")
+                continue
+
     except Exception as e:
-        print(f"Error fetching local episode times: {e}")
-        local_episode_times = []
-
-    UPLOAD_BULK_SIZE = 30
-    # Send local episode listen times to Nextcloud
-    update_actions = []
-    for episode_time in local_episode_times:
-        update_actions.append({
-            "podcast": episode_time["podcast_url"],
-            "episode": episode_time["episode_url"],
-            "action": "play",
-            "timestamp": current_timestamp(),
-            "position": episode_time["listen_duration"],
-            "started": 0,
-            "total": episode_time["episode_duration"],
-            "guid": generate_guid(episode_time)
-        })
-    print(f"Update actions: {update_actions}")
-    # Split the list of update actions into chunks
-    update_actions_chunks = [update_actions[i:i + UPLOAD_BULK_SIZE] for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)]
-
-    from urllib.parse import urljoin
-    for chunk in update_actions_chunks:
-        try:
-            url = urljoin(gpodder_url, "/index.php/apps/gpoddersync/episode_action/create")
-            response = requests.post(
-                url,
-                json=chunk,
-                auth=HTTPBasicAuth(gpodder_login, gpodder_token),
-                headers={"Accept": "application/json"}
-            )
-            if response.status_code != 200:
-                raise RequestException(f"Unexpected status code: {response.status_code}")
-            print(f"Update episode times response: {response.status_code}")
-        except RequestException as e:
-            print(f"Error updating episode times in Nextcloud: {e}")
+        logger.error(f"Error syncing local episode times: {str(e)}")
+        raise
 
 def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
+    import logging
 
-    # Fetch encryption key
-    encryption_key = get_encryption_key(cnx, database_type)
-    encryption_key_bytes = base64.b64decode(encryption_key)
+    # Set up logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
-    cipher_suite = Fernet(encryption_key_bytes)
+    try:
+        # Fetch encryption key
+        encryption_key = get_encryption_key(cnx, database_type)
+        encryption_key_bytes = base64.b64decode(encryption_key)
+        cipher_suite = Fernet(encryption_key_bytes)
 
-    # Decrypt the token
-    if encrypted_gpodder_token is not None:
-        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-        gpodder_token = decrypted_token_bytes.decode()
-    else:
-        gpodder_token = None
-
-    # Prepare for Basic Auth
-    auth = HTTPBasicAuth(gpodder_login, gpodder_token)
-
-    # Now, use the decrypted token in your API request
-    print(f"Decrypted gPodder token: {gpodder_token}")
-    response = requests.get(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", auth=auth)
-    response.raise_for_status()  # This will raise an exception for HTTP errors
-    print(f"Response status: {response.status_code}, Content: {response.text}")
-
-    gpodder_data = response.json()
-    gpodder_podcasts_add = set(gpodder_data.get("add", []))
-    gpodder_podcasts_remove = set(gpodder_data.get("remove", []))
-    print(f"gPodder podcasts to add: {gpodder_podcasts_add}")
-    print(f"gPodder podcasts to remove: {gpodder_podcasts_remove}")
-
-    cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'SELECT FeedURL FROM "Podcasts" WHERE UserID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
-
-    cursor.execute(query, (user_id,))
-    local_podcasts = set(row[0] for row in cursor.fetchall())
-    print(f"Local podcasts: {local_podcasts}")
-
-    podcasts_to_add = gpodder_podcasts_add - local_podcasts
-    podcasts_to_remove = gpodder_podcasts_remove & local_podcasts
-    print(f"Podcasts to add: {podcasts_to_add}, Podcasts to remove: {podcasts_to_remove}")
-
-    # Update local database
-    # Add new podcasts
-    print("Adding new podcasts...")
-    for feed_url in podcasts_to_add:
-        podcast_values = get_podcast_values(feed_url, user_id)
-        return_value = add_podcast(cnx, database_type, podcast_values, user_id)
-        if return_value:
-            print(f"{feed_url} added!")
+        # Decrypt the token
+        if encrypted_gpodder_token is not None:
+            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+            gpodder_token = decrypted_token_bytes.decode()
         else:
-            print(f"Error adding {feed_url}")
+            gpodder_token = None
 
-    # Remove podcasts no longer in the subscription
-    print("Removing podcasts...")
-    for feed_url in podcasts_to_remove:
-        print(f"Removing {feed_url}...")
+        # Prepare for Basic Auth
+        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+        # Get gPodder subscriptions
+        response = requests.get(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", auth=auth)
+        response.raise_for_status()
+
+        gpodder_data = response.json()
+        gpodder_podcasts_add = set(gpodder_data.get("add", []))
+        gpodder_podcasts_remove = set(gpodder_data.get("remove", []))
+
+        logger.info(f"gPodder podcasts to add: {gpodder_podcasts_add}")
+        logger.info(f"gPodder podcasts to remove: {gpodder_podcasts_remove}")
+
+        # Get local podcasts
+        cursor = cnx.cursor()
         if database_type == "postgresql":
-            query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
-        else:  # MySQL or MariaDB
-            query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
-
-        cursor.execute(query, (feed_url,))
-        result = cursor.fetchone()
-        print(f"Result: {result}")
-        print(f"Feed URL: {feed_url}")
-        if result:
-            podcast_name = result[0]  # Unpack the tuple to get the podcast name
-            remove_podcast(cnx, database_type, podcast_name, feed_url, user_id)
+            query = 'SELECT FeedURL FROM "Podcasts" WHERE UserID = %s'
         else:
-            print(f"No podcast found with URL: {feed_url}")
+            query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
 
-    cnx.commit()
-    cursor.close()
+        cursor.execute(query, (user_id,))
+        local_podcasts = set(row[0] for row in cursor.fetchall())
 
-    # Notify gPodder of changes made locally (if any)
-    print("Syncing subscription changes...")
-    if podcasts_to_add or podcasts_to_remove:
-        sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, list(podcasts_to_add), list(podcasts_to_remove))
+        podcasts_to_add = gpodder_podcasts_add - local_podcasts
+        podcasts_to_remove = gpodder_podcasts_remove & local_podcasts
 
-    # Fetch episode actions from gPodder
-    print("Fetching episode actions from gPodder...")
+        # Track successful additions and removals for sync
+        successful_additions = set()
+        successful_removals = set()
+
+        # Add new podcasts with individual error handling
+        logger.info("Adding new podcasts...")
+        for feed_url in podcasts_to_add:
+            try:
+                podcast_values = get_podcast_values(feed_url, user_id)
+                return_value = add_podcast(cnx, database_type, podcast_values, user_id)
+                if return_value:
+                    logger.info(f"Successfully added {feed_url}")
+                    successful_additions.add(feed_url)
+                else:
+                    logger.error(f"Failed to add {feed_url}")
+            except Exception as e:
+                logger.error(f"Error processing {feed_url}: {str(e)}")
+                continue  # Continue with next podcast even if this one fails
+
+        # Remove podcasts with individual error handling
+        logger.info("Removing podcasts...")
+        for feed_url in podcasts_to_remove:
+            try:
+                if database_type == "postgresql":
+                    query = 'SELECT PodcastName FROM "Podcasts" WHERE FeedURL = %s'
+                else:
+                    query = "SELECT PodcastName FROM Podcasts WHERE FeedURL = %s"
+
+                cursor.execute(query, (feed_url,))
+                result = cursor.fetchone()
+
+                if result:
+                    podcast_name = result[0]
+                    if remove_podcast(cnx, database_type, podcast_name, feed_url, user_id):
+                        successful_removals.add(feed_url)
+                        logger.info(f"Successfully removed {feed_url}")
+                    else:
+                        logger.error(f"Failed to remove {feed_url}")
+                else:
+                    logger.warning(f"No podcast found with URL: {feed_url}")
+            except Exception as e:
+                logger.error(f"Error removing {feed_url}: {str(e)}")
+                continue
+
+        cnx.commit()
+        cursor.close()
+
+        # Only sync successfully processed changes
+        if successful_additions or successful_removals:
+            try:
+                sync_subscription_change_gpodder(
+                    gpodder_url,
+                    gpodder_login,
+                    auth,
+                    list(successful_additions),
+                    list(successful_removals)
+                )
+            except Exception as e:
+                logger.error(f"Error syncing changes with gPodder: {str(e)}")
+
+        # Process episode actions
+        try:
+            process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id)
+        except Exception as e:
+            logger.error(f"Error processing episode actions: {str(e)}")
+
+        # Sync local episode times
+        try:
+            sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_type, user_id)
+        except Exception as e:
+            logger.error(f"Error syncing local episode times: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"Major error in refresh_gpodder_subscription: {str(e)}")
+        raise
+
+def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id):
+    logger = logging.getLogger(__name__)
+
     try:
         episode_actions_response = requests.get(
             f"{gpodder_url}/api/2/episodes/{gpodder_login}.json",
             auth=auth
         )
-        episode_actions_response.raise_for_status()  # This will raise an exception for HTTP errors
+        episode_actions_response.raise_for_status()
         episode_actions = episode_actions_response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching gPodder episode actions: {e}")
-        episode_actions = []
 
-    # Process episode actions from gPodder
-    print("Processing episode actions...")
-    for action in episode_actions.get('actions', []):  # Ensure default to empty list if 'actions' is not found
-        try:
-            # Ensure action is relevant, such as a 'play' or 'update_time' action with a valid position
-            print(f"Processing action: {action}")
-            if action["action"].lower() in ["play", "update_time"]:
-                print(f"Action details - Podcast: {action['podcast']}, Episode: {action['episode']}, Position: {action.get('position')}")
-                if "position" in action and action["position"] != -1:
-                    episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
-                    if episode_id:
-                        print(f"Recording listen duration for episode ID {episode_id} with position {action['position']}")
-                        record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
-                    else:
-                        print(f"No episode ID found for URL {action['episode']}")
-                else:
-                    print(f"Skipping action due to invalid position: {action}")
+        for action in episode_actions.get('actions', []):
+            try:
+                if action["action"].lower() in ["play", "update_time"]:
+                    if "position" in action and action["position"] != -1:
+                        episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
+                        if episode_id:
+                            record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+            except Exception as e:
+                logger.error(f"Error processing episode action {action}: {str(e)}")
+                continue
+    except Exception as e:
+        logger.error(f"Error fetching episode actions: {str(e)}")
+        raise
 
-        except Exception as e:
-            print(f"Error processing episode action {action}: {e}")
+def sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_type, user_id, UPLOAD_BULK_SIZE=30):
+    logger = logging.getLogger(__name__)
 
-    # Collect local episode listen times and push to gPodder if necessary
-    print("Collecting local episode listen times...")
     try:
         local_episode_times = get_local_episode_times(cnx, database_type, user_id)
+        update_actions = []
+
+        for episode_time in local_episode_times:
+            update_actions.append({
+                "podcast": episode_time["podcast_url"],
+                "episode": episode_time["episode_url"],
+                "action": "play",
+                "timestamp": current_timestamp(),
+                "position": episode_time["listen_duration"],
+                "started": 0,
+                "total": episode_time["episode_duration"],
+                "guid": generate_guid(episode_time)
+            })
+
+        # Split into chunks and process
+        update_actions_chunks = [
+            update_actions[i:i + UPLOAD_BULK_SIZE]
+            for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)
+        ]
+
+        for chunk in update_actions_chunks:
+            try:
+                url = f"{gpodder_url}/api/2/episodes/{gpodder_login}.json"
+                response = requests.post(
+                    url,
+                    json=chunk,
+                    auth=auth,
+                    headers={"Accept": "application/json"}
+                )
+                response.raise_for_status()
+            except Exception as e:
+                logger.error(f"Error uploading chunk: {str(e)}")
+                continue
+
     except Exception as e:
-        print(f"Error fetching local episode times: {e}")
-        local_episode_times = []
-
-    UPLOAD_BULK_SIZE = 30
-    # Send local episode listen times to gPodder
-    update_actions = []
-    for episode_time in local_episode_times:
-        update_actions.append({
-            "podcast": episode_time["podcast_url"],
-            "episode": episode_time["episode_url"],
-            "action": "play",
-            "timestamp": current_timestamp(),
-            "position": episode_time["listen_duration"],
-            "started": 0,
-            "total": episode_time["episode_duration"],
-            "guid": generate_guid(episode_time)
-        })
-    print(f"Update actions: {update_actions}")
-    # Split the list of update actions into chunks
-    update_actions_chunks = [update_actions[i:i + UPLOAD_BULK_SIZE] for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)]
-
-    from urllib.parse import urljoin
-    for chunk in update_actions_chunks:
-        try:
-            url = urljoin(gpodder_url, f"/api/2/episodes/{gpodder_login}.json")
-            response = requests.post(
-                url,
-                json=chunk,
-                auth=auth,
-                headers={"Accept": "application/json"}
-            )
-            if response.status_code != 200:
-                raise requests.exceptions.RequestException(f"Unexpected status code: {response.status_code}")
-            print(f"Update episode times response: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            print(f"Error updating episode times in gPodder: {e}")
-
+        logger.error(f"Error syncing local episode times: {str(e)}")
+        raise
 
 
 # database_functions.py
