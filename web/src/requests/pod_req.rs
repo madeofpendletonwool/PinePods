@@ -332,6 +332,120 @@ pub async fn call_get_podcasts(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct PodcastResponseExtra {
+    pub pods: Option<Vec<PodcastExtra>>, // Changed from Podcast to PodcastExtra
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
+#[serde(rename_all = "lowercase")]
+pub struct PodcastExtra {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub description: Option<String>,
+    pub episodecount: i32,
+    pub websiteurl: Option<String>,
+    pub feedurl: String,
+    pub author: Option<String>,
+    pub categories: String,
+    #[serde(deserialize_with = "bool_from_int")]
+    pub explicit: bool,
+    pub podcastindexid: i64,
+    #[serde(default)]
+    pub play_count: i64,
+    #[serde(default)]
+    pub episodes_played: i32,
+    #[serde(default)]
+    pub oldest_episode_date: Option<String>,
+}
+
+// Add these implementations after your struct definitions
+
+// Convert from Podcast to PodcastExtra
+impl From<Podcast> for PodcastExtra {
+    fn from(podcast: Podcast) -> Self {
+        PodcastExtra {
+            podcastid: podcast.podcastid,
+            podcastname: podcast.podcastname,
+            artworkurl: podcast.artworkurl,
+            description: podcast.description,
+            episodecount: podcast.episodecount,
+            websiteurl: podcast.websiteurl,
+            feedurl: podcast.feedurl,
+            author: podcast.author,
+            categories: podcast.categories,
+            explicit: podcast.explicit,
+            podcastindexid: podcast.podcastindexid,
+            play_count: 0,             // Default value
+            episodes_played: 0,        // Default value
+            oldest_episode_date: None, // Default value
+        }
+    }
+}
+
+// Convert from PodcastExtra to Podcast if needed
+impl From<PodcastExtra> for Podcast {
+    fn from(podcast_extra: PodcastExtra) -> Self {
+        Podcast {
+            podcastid: podcast_extra.podcastid,
+            podcastname: podcast_extra.podcastname,
+            artworkurl: podcast_extra.artworkurl,
+            description: podcast_extra.description,
+            episodecount: podcast_extra.episodecount,
+            websiteurl: podcast_extra.websiteurl,
+            feedurl: podcast_extra.feedurl,
+            author: podcast_extra.author,
+            categories: podcast_extra.categories,
+            explicit: podcast_extra.explicit,
+            podcastindexid: podcast_extra.podcastindexid,
+        }
+    }
+}
+
+pub async fn call_get_podcasts_extra(
+    server_name: &String,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<Vec<PodcastExtra>, anyhow::Error> {
+    let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch podcasts: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to get response text".to_string());
+
+    match serde_json::from_str::<PodcastResponseExtra>(&response_text) {
+        Ok(response_body) => Ok(response_body.pods.unwrap_or_else(Vec::new)),
+        Err(e) => {
+            web_sys::console::log_1(
+                &format!("Unable to parse Podcasts: {}", &response_text).into(),
+            );
+            Err(anyhow::Error::msg(format!(
+                "Failed to deserialize response: {}",
+                e
+            )))
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct TimeInfoResponse {
