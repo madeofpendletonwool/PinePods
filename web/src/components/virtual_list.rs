@@ -3,10 +3,10 @@ use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::{AppStateMsg, SafeHtml};
-use crate::components::gen_funcs::format_time;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
+use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::requests::search_pods::Episode;
 use gloo::events::EventListener;
 use std::rc::Rc;
@@ -219,6 +219,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     ).emit(MouseEvent::new("click").unwrap());
                 })
             };
+            let preview_description = strip_images_from_html(&description);
+
 
             html! {
                 <>
@@ -238,7 +240,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                 <div class="item-description-text cursor-pointer hidden md:block"
                                      onclick={on_modal_open.clone()}>
                                     <div class="item_container-text line-clamp-2">
-                                        <SafeHtml html={description.clone()} />
+                                        <SafeHtml html={preview_description} />
                                     </div>
                                 </div>
                             }

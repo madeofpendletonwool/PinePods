@@ -4,7 +4,7 @@ use crate::components::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::gen_funcs::format_time;
+use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::requests::people_req::PersonEpisode;
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
@@ -1780,6 +1780,7 @@ pub fn episode_item(
 
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
+    let preview_description = strip_images_from_html(&description);
 
     #[wasm_bindgen]
     extern "C" {
@@ -1834,7 +1835,7 @@ pub fn episode_item(
                                             on_modal_open.emit(episode_id);
                                         })}>
                                 <div class="item_container-text line-clamp-2">
-                                    <SafeHtml html={description.clone()} />
+                                    <SafeHtml html={preview_description} />
                                 </div>
                             </div>
                         }
@@ -1945,6 +1946,7 @@ pub fn virtual_episode_item(
 
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
+    let preview_description = strip_images_from_html(&description);
 
     #[wasm_bindgen]
     extern "C" {
@@ -1995,7 +1997,7 @@ pub fn virtual_episode_item(
                             <div class="item-description-text cursor-pointer hidden md:block"
                                  onclick={on_modal_open}>
                                 <div class="item_container-text line-clamp-2">
-                                    <SafeHtml html={description.clone()} />
+                                    <SafeHtml html={preview_description} />
                                 </div>
                             </div>
                         }
@@ -2101,6 +2103,7 @@ pub fn download_episode_item(
     });
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
+    let preview_description = strip_images_from_html(&description);
 
     #[wasm_bindgen]
     extern "C" {
@@ -2159,7 +2162,7 @@ pub fn download_episode_item(
                             <div class="item-description-text cursor-pointer hidden md:block"
                                  onclick={on_modal_open}>
                                 <div class="item_container-text line-clamp-2">
-                                    <SafeHtml html={description.clone()} />
+                                    <SafeHtml html={preview_description} />
                                 </div>
                             </div>
                         }
@@ -2272,6 +2275,7 @@ pub fn queue_episode_item(
     });
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
+    let preview_description = strip_images_from_html(&description);
 
     #[wasm_bindgen]
     extern "C" {
@@ -2343,7 +2347,7 @@ pub fn queue_episode_item(
                                             on_modal_open.emit(episode_id);
                                         })}>
                                 <div class="item_container-text line-clamp-2">
-                                    <SafeHtml html={description.clone()} />
+                                    <SafeHtml html={preview_description} />
                                 </div>
                             </div>
                         }
@@ -2450,6 +2454,7 @@ pub fn person_episode_item(
     });
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
+    let preview_description = strip_images_from_html(&description);
 
     #[wasm_bindgen]
     extern "C" {
@@ -2505,7 +2510,7 @@ pub fn person_episode_item(
                                             on_modal_open.emit(episode_id);
                                         })}>
                                 <div class="item_container-text line-clamp-2">
-                                    <SafeHtml html={description.clone()} />
+                                    <SafeHtml html={preview_description} />
                                 </div>
                             </div>
                         }

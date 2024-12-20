@@ -12,6 +12,7 @@ Next Minor Version:
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 
+- [] Need to fix rss refresh api issue on episode_layout
 
 Version 0.7.0
 
