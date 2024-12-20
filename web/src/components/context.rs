@@ -5,6 +5,7 @@ use crate::requests::login_requests::AddUserRequest;
 use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
 use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
+use crate::requests::pod_req::PodcastResponseExtra;
 use crate::requests::pod_req::{
     Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
     HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
@@ -88,6 +89,7 @@ pub struct AppState {
     pub clicked_podcast_info: Option<ClickedFeedURL>,
     pub pods: Option<Podcast>,
     pub podcast_feed_return: Option<PodcastResponse>,
+    pub podcast_feed_return_extra: Option<PodcastResponseExtra>,
     pub is_loading: Option<bool>,
     pub is_refreshing: Option<bool>,
     pub gravatar_url: Option<String>,

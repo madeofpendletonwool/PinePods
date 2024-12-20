@@ -3,11 +3,11 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::gen_components::{Search_nav, UseScrollToTop};
+use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
-use crate::requests::pod_req::Podcast;
-use crate::requests::pod_req::{call_remove_podcasts, PodcastResponse, RemovePodcastValues};
+use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
+use crate::requests::pod_req::{Podcast, PodcastExtra};
 use crate::requests::setting_reqs::call_add_custom_feed;
 use gloo_timers::callback::Timeout;
 use serde::Deserialize;
@@ -40,7 +40,7 @@ impl Reducer<AppState> for AppStateMsg {
         match self {
             // ... other cases ...
             AppStateMsg::RemovePodcast(podcast_id) => {
-                if let Some(podcasts) = &mut state_mut.podcast_feed_return {
+                if let Some(podcasts) = &mut state_mut.podcast_feed_return_extra {
                     podcasts.pods = Some(
                         podcasts
                             .pods
@@ -80,13 +80,13 @@ fn render_layout_toggle(
     html! {
         <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" {onclick}>
             <i class={classes!(icon, "text-2xl")}></i>
-            <span class="text-lg ml-2">{text}</span>
+            <span class="text-lg ml-2 hidden sm:inline">{text}</span>
         </button>
     }
 }
 
 fn render_podcasts(
-    podcasts: &[Podcast],
+    podcasts: &[PodcastExtra],
     layout: Option<PodcastLayout>,
     dispatch: Dispatch<AppState>,
     history: &BrowserHistory,
@@ -256,6 +256,20 @@ pub fn podcasts() -> Html {
     let pod_pass = use_state(|| "".to_string());
     let error_message = use_state(|| None::<String>);
     let info_message = use_state(|| None::<String>);
+    let search_term = use_state(|| String::new());
+
+    #[derive(Clone, PartialEq)]
+    enum SortDirection {
+        AlphaAsc,
+        AlphaDesc,
+        EpisodeCountHigh,
+        EpisodeCountLow,
+        OldestFirst,
+        NewestFirst,
+        MostPlayed,
+        LeastPlayed,
+    }
+    let sort_direction = use_state(|| Some(SortDirection::AlphaAsc));
 
     // filter selections
     let selected_category = use_state(|| None as Option<String>);
@@ -333,11 +347,13 @@ pub fn podcasts() -> Html {
                     let dispatch = effect_dispatch.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
-                        match pod_req::call_get_podcasts(&server_name, &api_key, &user_id).await {
+                        match pod_req::call_get_podcasts_extra(&server_name, &api_key, &user_id)
+                            .await
+                        {
                             Ok(fetched_podcasts) => {
                                 let fetch_casts = fetched_podcasts.clone();
                                 dispatch.reduce_mut(move |state| {
-                                    state.podcast_feed_return = Some(PodcastResponse {
+                                    state.podcast_feed_return_extra = Some(PodcastResponseExtra {
                                         pods: Some(fetch_casts),
                                     });
                                 });
@@ -582,17 +598,19 @@ pub fn podcasts() -> Html {
                     Ok(new_podcast) => {
                         info_message.set(Some("Podcast Successfully Added".to_string()));
                         dispatch_call.reduce_mut(move |state| {
-                            if let Some(ref mut podcast_response) = state.podcast_feed_return {
+                            if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
+                            {
                                 if let Some(ref mut pods) = podcast_response.pods {
                                     web_sys::console::log_1(&JsValue::from_str("Adding Podcast"));
-                                    pods.push(new_podcast.clone());
+                                    pods.push(PodcastExtra::from(new_podcast.clone()));
                                 } else {
                                     web_sys::console::log_1(&JsValue::from_str("Creating Podcast"));
-                                    podcast_response.pods = Some(vec![new_podcast.clone()]);
+                                    podcast_response.pods =
+                                        Some(vec![PodcastExtra::from(new_podcast.clone())]);
                                 }
                             } else {
-                                state.podcast_feed_return = Some(PodcastResponse {
-                                    pods: Some(vec![new_podcast.clone()]),
+                                state.podcast_feed_return_extra = Some(PodcastResponseExtra {
+                                    pods: Some(vec![PodcastExtra::from(new_podcast)]),
                                 });
                             }
                         });
@@ -681,19 +699,60 @@ pub fn podcasts() -> Html {
         })
     };
 
-    // Create a memoized filtered podcast list
     let filtered_pods = use_memo(
-        (state.podcast_feed_return.clone(), selected_category.clone()),
-        |(podcasts, selected_cat)| {
+        (
+            state.podcast_feed_return_extra.clone(),
+            selected_category.clone(),
+            search_term.clone(),
+            sort_direction.clone(),
+        ),
+        |(podcasts, selected_cat, search, sort_dir)| {
             if let Some(pods) = podcasts.as_ref().and_then(|p| p.pods.as_ref()) {
-                if let Some(cat) = selected_cat.as_ref() {
-                    pods.iter()
-                        .filter(|podcast| podcast.categories.split(',').any(|c| c.trim() == cat))
-                        .cloned()
-                        .collect::<Vec<_>>()
-                } else {
-                    pods.clone()
+                let mut filtered = pods
+                    .iter()
+                    .filter(|podcast| {
+                        let matches_search = if !search.is_empty() {
+                            podcast
+                                .podcastname
+                                .to_lowercase()
+                                .contains(&search.to_lowercase())
+                        } else {
+                            true
+                        };
+                        let matches_category = if let Some(cat) = selected_cat.as_ref() {
+                            podcast.categories.split(',').any(|c| c.trim() == cat)
+                        } else {
+                            true
+                        };
+                        matches_search && matches_category
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                // Apply sorting
+                if let Some(direction) = (*sort_dir).as_ref() {
+                    filtered.sort_by(|a, b| match direction {
+                        SortDirection::AlphaAsc => a
+                            .podcastname
+                            .to_lowercase()
+                            .cmp(&b.podcastname.to_lowercase()),
+                        SortDirection::AlphaDesc => b
+                            .podcastname
+                            .to_lowercase()
+                            .cmp(&a.podcastname.to_lowercase()),
+                        SortDirection::EpisodeCountHigh => b.episodecount.cmp(&a.episodecount),
+                        SortDirection::EpisodeCountLow => a.episodecount.cmp(&b.episodecount),
+                        SortDirection::OldestFirst => {
+                            a.oldest_episode_date.cmp(&b.oldest_episode_date)
+                        }
+                        SortDirection::NewestFirst => {
+                            b.oldest_episode_date.cmp(&a.oldest_episode_date)
+                        }
+                        SortDirection::MostPlayed => b.play_count.cmp(&a.play_count),
+                        SortDirection::LeastPlayed => a.play_count.cmp(&b.play_count),
+                    });
                 }
+                filtered
             } else {
                 vec![]
             }
@@ -707,10 +766,16 @@ pub fn podcasts() -> Html {
         })
     };
 
-    let clear_filter = Callback::from(move |_| {
-        selected_category.set(None);
-        // Reset other filter states here as well
-    });
+    let clear_filter = {
+        let selected_category = selected_category.clone();
+        let search_term = search_term.clone();
+        let sort_direction = sort_direction.clone();
+        Callback::from(move |_| {
+            selected_category.set(None);
+            search_term.set(String::new());
+            sort_direction.set(None);
+        })
+    };
 
     html! {
         <>
@@ -731,13 +796,48 @@ pub fn podcasts() -> Html {
                             <div class="flex gap-4">
                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_filter_dropdown}>
                                     <i class="ph ph-funnel text-2xl"></i>
-                                    <span class="text-lg ml-2">{"Filter"}</span>
+                                    <span class="text-lg ml-2 hidden sm:inline">{"Filter"}</span>
                                 </button>
+                                <div class="filter-dropdown font-bold rounded">
+                                // In the select element, modify it to match the default sort state:
+                                <select
+                                class="category-select appearance-none pr-8"
+                                    value="alpha_asc"  // Add this line to set default selected option
+                                    onchange={
+                                        let sort_direction = sort_direction.clone();
+                                        Callback::from(move |e: Event| {
+                                            let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
+                                            let value = target.value();
+                                            match value.as_str() {
+                                                "alpha_asc" => sort_direction.set(Some(SortDirection::AlphaAsc)),
+                                                "alpha_desc" => sort_direction.set(Some(SortDirection::AlphaDesc)),
+                                                "episodes_high" => sort_direction.set(Some(SortDirection::EpisodeCountHigh)),
+                                                "episodes_low" => sort_direction.set(Some(SortDirection::EpisodeCountLow)),
+                                                "oldest" => sort_direction.set(Some(SortDirection::OldestFirst)),
+                                                "newest" => sort_direction.set(Some(SortDirection::NewestFirst)),
+                                                "most_played" => sort_direction.set(Some(SortDirection::MostPlayed)),
+                                                "least_played" => sort_direction.set(Some(SortDirection::LeastPlayed)),
+                                                _ => sort_direction.set(None),
+                                            }
+                                        })
+                                    }
+                                >
+                                    <option value="alpha_asc" selected=true>{"A to Z ↑"}</option>
+                                    <option value="alpha_desc">{"Z to A ↓"}</option>
+                                    <option value="episodes_high">{"Most Episodes"}</option>
+                                    <option value="episodes_low">{"Least Episodes"}</option>
+                                    <option value="oldest">{"Oldest First"}</option>
+                                    <option value="newest">{"Newest First"}</option>
+                                    <option value="most_played">{"Most Played"}</option>
+                                    <option value="least_played">{"Least Played"}</option>
+                                </select>
+                                <i class="ph ph-caret-down absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                                </div>
                                 {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
                             </div>
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_custom_modal}>
                                 <i class="ph ph-plus-circle text-2xl"></i>
-                                <span class="text-lg ml-2">{"Custom Feed"}</span>
+                                <span class="text-lg ml-2 hidden sm:inline">{"Custom Feed"}</span>
                             </button>
                         </div>
                     </div>
@@ -750,7 +850,7 @@ pub fn podcasts() -> Html {
                             // Clear Filter button
                             <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={clear_filter}>
                                 <i class="ph ph-broom text-2xl"></i>
-                                <span class="text-lg ml-2">{"Clear Filter"}</span>
+                                <span class="text-lg ml-2 hidden sm:inline">{"Clear Filter"}</span>
                             </button>
                             // Category dropdown
                             <div class="filter-dropdown font-bold rounded">
@@ -776,6 +876,23 @@ pub fn podcasts() -> Html {
                                     }
                                 }
                             </div>
+                            // Search input
+                            <div class="filter-dropdown download-button font-bold rounded relative">
+                                <input
+                                    type="text"
+                                    class="filter-input appearance-none pr-8"
+                                    placeholder="Search podcasts"
+                                    value={(*search_term).clone()}
+                                    oninput={let search_term = search_term.clone();
+                                        Callback::from(move |e: InputEvent| {
+                                            if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                search_term.set(input.value());
+                                            }
+                                        })
+                                    }
+                                />
+                                <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            </div>
                         </div>
                     }
                 } else {
@@ -784,19 +901,16 @@ pub fn podcasts() -> Html {
             }
 
 
+
             {
-                if let Some(podcasts) = state.podcast_feed_return.clone() {
+                if let Some(podcasts) = state.podcast_feed_return_extra.clone() {
                     let int_podcasts = podcasts.clone();
                     if let Some(_pods) = int_podcasts.pods.clone() {
                         if filtered_pods.is_empty() {
-                            // Render "No Podcasts Found" message
-                            html! {
-                                <div class="empty-episodes-container">
-                                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                    <h1>{ "No Podcasts Found" }</h1>
-                                    <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
-                                </div>
-                                    }
+                            empty_message(
+                                "No Podcasts Found",
+                                "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                            )
                         } else {
                             // render_podcasts(&filtered_pods, state.podcast_layout.clone(), dispatch.clone(), &history)
                             render_podcasts(
@@ -815,22 +929,16 @@ pub fn podcasts() -> Html {
 
 
                     } else {
-                        html! {
-                            <div class="empty-episodes-container">
-                                <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                <h1>{ "No Podcasts Found" }</h1>
-                                <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
-                            </div>
-                        }
+                        empty_message(
+                            "No Podcasts Found",
+                            "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                        )
                     }
                 } else {
-                    html! {
-                        <div class="empty-episodes-container">
-                            <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                            <h1>{ "No Podcasts Found" }</h1>
-                            <p>{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
-                        </div>
-                    }
+                    empty_message(
+                        "No Podcasts Found",
+                        "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                    )
                 }
             }
         </div>
