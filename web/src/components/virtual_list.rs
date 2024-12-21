@@ -1,6 +1,6 @@
 use super::gen_components::{on_shownotes_click, ContextButton, EpisodeModal, EpisodeTrait};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::{AppStateMsg, SafeHtml};
 use crate::components::gen_funcs::{
@@ -168,7 +168,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 })
             };
 
-            let on_play_click = on_play_click(
+            let on_play_pause = on_play_pause(
                 episode_url_clone.clone(),
                 episode_title_clone.clone(),
                 episode_artwork_clone.clone(),
@@ -194,6 +194,17 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
             let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
             let formatted_duration = format_time(episode_duration_in_seconds.into());
+            let is_current_episode = props.search_ui_state
+                .currently_playing
+                .as_ref()
+                .map_or(false, |current| {
+                    // Compare both title and URL for uniqueness since we don't have IDs
+                    current.title == episode.title.clone().unwrap_or_default() &&
+                    current.src == episode.enclosure_url.clone().unwrap_or_default()
+                });
+
+            let is_playing = props.search_ui_state.audio_playing.unwrap_or(false);
+
 
             let episode_url_for_ep_item = episode_url_clone.clone();
             let shownotes_episode_url = episode_url_clone.clone();
@@ -263,9 +274,15 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                 if should_show_buttons {
                                     <button
                                         class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                        onclick={on_play_click}
+                                        onclick={on_play_pause}
                                     >
-                                        <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                        {
+                                            if is_current_episode && is_playing {
+                                                html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                                            } else {
+                                                html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                                            }
+                                        }
                                     </button>
                                     {
                                         if props.podcast_added {

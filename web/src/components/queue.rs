@@ -2,7 +2,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{
     empty_message, on_shownotes_click, queue_episode_item, Search_nav, UseScrollToTop,
 };
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
@@ -562,6 +562,14 @@ pub fn queue() -> Html {
                             let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
                             let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                             let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+                            let is_current_episode = audio_state
+                                .currently_playing
+                                .as_ref()
+                                .map_or(false, |current| current.episode_id == episode.episodeid);
+                            let is_playing = audio_state.audio_playing.unwrap_or(false);
+
+
                             let history_clone = history.clone();
                             let id_string = &episode.episodeid.to_string();
 
@@ -607,7 +615,7 @@ pub fn queue() -> Html {
                             let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
 
-                            let on_play_click = on_play_click(
+                            let on_play_pause = on_play_pause(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
                                 episode_artwork_for_closure.clone(),
@@ -648,7 +656,7 @@ pub fn queue() -> Html {
                                 sanitized_description,
                                 is_expanded,
                                 &format_release,
-                                on_play_click,
+                                on_play_pause,
                                 on_shownotes_click,
                                 toggle_expanded,
                                 episode_duration_clone,
@@ -668,6 +676,8 @@ pub fn queue() -> Html {
                                 *active_modal == episode_id_clone,
                                 on_modal_open.clone(),
                                 on_modal_close.clone(),
+                                is_current_episode,
+                                is_playing,
                             );
 
                             item

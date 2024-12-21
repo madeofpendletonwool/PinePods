@@ -2,7 +2,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{
     empty_message, on_shownotes_click, virtual_episode_item, Search_nav, UseScrollToTop,
 };
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::{
@@ -392,6 +392,15 @@ pub fn episode(props: &EpisodeProps) -> Html {
         })
     };
 
+    let is_current_episode = audio_state
+        .currently_playing
+        .as_ref()
+        .map_or(false, |current| {
+            current.episode_id == props.episode.episodeid
+        });
+
+    let is_playing = audio_state.audio_playing.unwrap_or(false);
+
     {
         let container_height = container_height.clone();
         use_effect_with((), move |_| {
@@ -427,7 +436,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         });
     }
 
-    let on_play_click = on_play_click(
+    let on_play_pause = on_play_pause(
         props.episode.episodeurl.clone(),
         props.episode.episodetitle.clone(),
         props.episode.episodeartwork.clone(),
@@ -471,7 +480,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         sanitize_html_with_blank_target(&props.episode.episodedescription),
         desc_expanded,
         &format_release,
-        on_play_click,
+        on_play_pause,
         on_shownotes_click,
         toggle_expanded,
         props.episode.episodeduration,
@@ -485,6 +494,8 @@ pub fn episode(props: &EpisodeProps) -> Html {
         on_modal_open.clone(),
         on_modal_close.clone(),
         (*container_height).clone(),
+        is_current_episode,
+        is_playing,
     );
 
     item
