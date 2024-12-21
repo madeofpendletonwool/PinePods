@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::start_local_file_server;
+use crate::components::gen_components::EpisodeModal;
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
@@ -164,6 +165,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let show_modal = use_state(|| false);
+    let on_modal_close = {
+        let show_modal = show_modal.clone();
+        Callback::from(move |_: MouseEvent| show_modal.set(false))
+    };
 
     // Add error handling state
     let last_playback_position = use_state(|| 0.0);
@@ -1217,19 +1223,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 .currently_playing
                 .as_ref()
                 .map(|audio_props| audio_props.episode_id);
+            let show_modal = show_modal.clone();
 
             Callback::from(move |_: MouseEvent| {
-                let dispatch_clone = dispatch.clone();
-                let history_clone = history.clone();
-                if let Some(episode_id) = episode_id {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        dispatch_clone.reduce_mut(move |state| {
-                            state.selected_episode_id = Some(episode_id);
-                            state.fetched_episode = None;
-                        });
-                        history_clone.push("/episode"); // Use the route path
-                    });
-                }
+                show_modal.set(true); // Show modal instead of navigating
             })
         };
 
@@ -1349,7 +1346,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 <>
                                 <button onclick={Callback::from(move |e: MouseEvent| {
                                     on_shownotes_click.emit(e.clone());
-                                    title_click_emit.emit(e);
+                                    // title_click_emit.emit(e);
                                 })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
                                     { "Shownotes" }
                                 </button>
@@ -1425,12 +1422,61 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 max={audio_props.duration_sec.to_string().clone()}
                                 value={audio_state.current_time_seconds.to_string()}
                                 oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration}</span>
+                            <span class="time-display px-2">{formatted_duration.clone()}</span>
                         </div>
                     </div>
                 </div>
             </div>
             </div>
+            {
+                if *show_modal && audio_state.currently_playing.is_some() {
+                    let props = audio_state.currently_playing.as_ref().unwrap();
+                    let listen_duration_percentage = if props.duration_sec > 0.0 {
+                        (audio_state.current_time_seconds / props.duration_sec) * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    // Navigation callback for the "Go to Episode Page" button
+                    let nav_to_episode = {
+                        let history = history.clone();
+                        let dispatch = _dispatch.clone();
+                        let episode_id = props.episode_id;
+                        let show_modal = show_modal.clone();
+                        let title_click = title_click.clone();
+
+                        Callback::from(move |e: MouseEvent| {
+                            show_modal.set(false);  // Close modal before navigation
+                            title_click.emit(e);
+                            let dispatch_clone = dispatch.clone();
+                            let history_clone = history.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                dispatch_clone.reduce_mut(move |state| {
+                                    state.selected_episode_id = Some(episode_id);
+                                    state.fetched_episode = None;
+                                });
+                                history_clone.push("/episode");
+                            });
+                        })
+                    };
+
+                    html! {
+                        <EpisodeModal
+                            episode_id={props.episode_id}
+                            episode_artwork={props.artwork_url.clone()}
+                            episode_title={props.title.clone()}
+                            description={props.title.clone()}  // You might need to fetch this
+                            format_release={props.title.clone()}
+                            duration={formatted_duration}
+                            on_close={on_modal_close.clone()}
+                            on_show_notes={nav_to_episode}
+                            listen_duration_percentage={listen_duration_percentage}
+                        />
+                    }
+                } else {
+                    html! {}
+                }
+            }
             </>
         }
     } else {
