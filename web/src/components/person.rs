@@ -886,12 +886,25 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         };
 
                                         let formatted_date = unix_timestamp_to_datetime_string(episode_pubdate_clone);
+                                        let date_format = match_date_format(search_state_clone.date_format.as_deref());
+                                        // let datetime_str = if let Some(timestamp) = episode.datePublished {
+                                        //     if let Some(dt) = DateTime::<Utc>::from_timestamp(timestamp, 0) {
+                                        //         dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                                        //     } else {
+                                        //         "Invalid Date".to_string()
+                                        //     }
+                                        // } else {
+                                        //     "No Date Provided".to_string()
+                                        // };
+                                        let datetime = parse_date(&formatted_date, &search_state_clone.user_tz);
+                                        let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
+                                        let formatted_duration = format_time(episode_duration_clone.into());
 
                                         let on_play_pause = on_play_pause(
                                             episode_url_clone.clone(),
                                             episode_title_clone.clone(),
                                             episode_description_clone.clone(),
-                                            formatted_date,
+                                            formatted_duration.clone(),
                                             episode_artwork_clone.clone(),
                                             episode_duration_clone,
                                             episode_id_clone.clone(),
@@ -910,19 +923,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             "desc-collapsed".to_string()
                                         };
 
-                                        let date_format = match_date_format(search_state_clone.date_format.as_deref());
-                                        let datetime_str = if let Some(timestamp) = episode.datePublished {
-                                            if let Some(dt) = DateTime::<Utc>::from_timestamp(timestamp, 0) {
-                                                dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-                                            } else {
-                                                "Invalid Date".to_string()
-                                            }
-                                        } else {
-                                            "No Date Provided".to_string()
-                                        };
-                                        let datetime = parse_date(&datetime_str, &search_state_clone.user_tz);
-                                        let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
-                                        let formatted_duration = format_time(episode_duration_clone.into());
                                         let episode_url_for_ep_item = episode_url_clone.clone();
                                         let episode_id_for_ep_item = 0;
                                         let shownotes_episode_url = episode_url_clone.clone();

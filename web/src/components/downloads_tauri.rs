@@ -839,6 +839,10 @@ pub fn render_podcast_with_episodes(
                                                             .map_or(false, |current| current.episode_id == episode.episodeid);
                             let is_playing = audio_state.audio_playing.unwrap_or(false);
 
+                            let date_format = match_date_format(state.date_format.as_deref());
+                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+
 
                             let on_play_pause = on_play_pause_offline(episode.clone(), audio_dispatch, audio_state);
 
@@ -853,9 +857,6 @@ pub fn render_podcast_with_episodes(
                                 None,
                             );
 
-                            let date_format = match_date_format(state.date_format.as_deref());
-                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                             let on_checkbox_change_cloned = on_checkbox_change.clone();
                             let episode_url_for_ep_item = episode_url_clone.clone();
                             let sanitized_description =

@@ -170,11 +170,15 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 })
             };
 
+            let date_format = match_date_format(search_state_clone.date_format.as_deref());
+            let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
+            let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
+
             let on_play_pause = on_play_pause(
                 episode_url_clone.clone(),
                 episode_title_clone.clone(),
                 episode_description_clone.clone(),
-                episode_release_clone.clone(),
+                format_release.clone(),
                 episode_artwork_clone.clone(),
                 episode_duration_in_seconds,
                 episode_id_clone.clone(),
@@ -193,9 +197,6 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 "desc-collapsed".to_string()
             };
 
-            let date_format = match_date_format(search_state_clone.date_format.as_deref());
-            let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
-            let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
             let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
             let formatted_duration = format_time(episode_duration_in_seconds.into());
             let is_current_episode = props.search_ui_state

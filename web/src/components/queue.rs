@@ -619,11 +619,15 @@ pub fn queue() -> Html {
                             let api_key_play = api_key.clone();
                             let audio_dispatch = audio_dispatch.clone();
 
+                            let date_format = match_date_format(state.date_format.as_deref());
+                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+
                             let on_play_pause = on_play_pause(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
                                 episode_description_for_closure.clone(),
-                                episode_release_for_closure.clone(),
+                                format_release.clone(),
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
@@ -647,9 +651,6 @@ pub fn queue() -> Html {
                                 None,
                             );
                             let episode_url_for_ep_item = episode_url_clone.clone();
-                            let date_format = match_date_format(state.date_format.as_deref());
-                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                             let check_episode_id = &episode.episodeid.clone();
                             let is_completed = state
                                 .completed_episodes

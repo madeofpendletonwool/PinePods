@@ -1,4 +1,5 @@
 use super::app_drawer::App_drawer;
+use super::gen_components::_EpisodeModalProps::format_release;
 use super::gen_components::{
     empty_message, on_shownotes_click, virtual_episode_item, Search_nav, UseScrollToTop,
 };
@@ -436,11 +437,18 @@ pub fn episode(props: &EpisodeProps) -> Html {
         });
     }
 
+    let date_format = match_date_format(state.date_format.as_deref());
+    let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
+    let formatted_date = format!(
+        "{}",
+        format_datetime(&datetime, &state.hour_preference, date_format)
+    );
+
     let on_play_pause = on_play_pause(
         props.episode.episodeurl.clone(),
         props.episode.episodetitle.clone(),
         props.episode.episodedescription.clone(),
-        props.episode.episodepubdate.clone(),
+        formatted_date.clone(),
         props.episode.episodeartwork.clone(),
         props.episode.episodeduration.clone(),
         props.episode.episodeid.clone(),
@@ -464,13 +472,6 @@ pub fn episode(props: &EpisodeProps) -> Html {
         None,
     );
 
-    let date_format = match_date_format(state.date_format.as_deref());
-    let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
-    let format_release = format!(
-        "{}",
-        format_datetime(&datetime, &state.hour_preference, date_format)
-    );
-
     let is_completed = state
         .completed_episodes
         .as_ref()
@@ -481,7 +482,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         Box::new(props.episode.clone()),
         sanitize_html_with_blank_target(&props.episode.episodedescription),
         desc_expanded,
-        &format_release,
+        &formatted_date,
         on_play_pause,
         on_shownotes_click,
         toggle_expanded,

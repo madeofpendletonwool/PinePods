@@ -440,7 +440,7 @@ fn render_host_with_episodes(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
                                 episode_description_for_closure.clone(),
-                                episode_release_for_closure.clone(),
+                                format_release.clone(),
                                 episode_artwork_for_closure.clone().unwrap(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
