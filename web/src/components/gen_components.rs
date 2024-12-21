@@ -1,3 +1,4 @@
+use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
@@ -1748,7 +1749,7 @@ pub fn episode_item(
     description: String,
     is_expanded: bool,
     format_release: &str,
-    on_play_click: Callback<MouseEvent>,
+    on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
@@ -1762,6 +1763,8 @@ pub fn episode_item(
     on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
     container_height: String,
+    is_current_episode: bool,
+    is_playing: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -1880,9 +1883,15 @@ pub fn episode_item(
                             if should_show_buttons {
                                 <button
                                     class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                    onclick={on_play_click}
+                                    onclick={on_play_pause}
                                 >
-                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                    {
+                                        if is_current_episode && is_playing {
+                                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                                        } else {
+                                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                                        }
+                                    }
                                 </button>
                                 <div class="hidden sm:block"> // This will hide the context button below 640px
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
@@ -1914,7 +1923,7 @@ pub fn virtual_episode_item(
     description: String,
     is_expanded: bool,
     format_release: &str,
-    on_play_click: Callback<MouseEvent>,
+    on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
@@ -1928,6 +1937,8 @@ pub fn virtual_episode_item(
     on_modal_open: Callback<MouseEvent>,
     on_modal_close: Callback<MouseEvent>,
     container_height: String,
+    is_current_episode: bool,
+    is_playing: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2042,9 +2053,15 @@ pub fn virtual_episode_item(
                             if should_show_buttons {
                                 <button
                                     class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                    onclick={on_play_click}
+                                    onclick={on_play_pause}
                                 >
-                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                    {
+                                        if is_current_episode && is_playing {
+                                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                                        } else {
+                                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                                        }
+                                    }
                                 </button>
                                 <div class="hidden sm:block"> // This will hide the context button below 640px
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
@@ -2076,7 +2093,7 @@ pub fn download_episode_item(
     description: String,
     is_expanded: bool,
     format_release: &str,
-    on_play_click: Callback<MouseEvent>,
+    on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
@@ -2089,6 +2106,8 @@ pub fn download_episode_item(
     show_modal: bool,
     on_modal_open: Callback<MouseEvent>,
     on_modal_close: Callback<MouseEvent>,
+    is_current_episode: bool,
+    is_playing: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2206,9 +2225,15 @@ pub fn download_episode_item(
                             if should_show_buttons {
                                 <button
                                     class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                    onclick={on_play_click}
+                                    onclick={on_play_pause}
                                 >
-                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                    {
+                                        if is_current_episode && is_playing {
+                                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                                        } else {
+                                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                                        }
+                                    }
                                 </button>
                                 <div class="show-on-large">
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
@@ -2240,7 +2265,7 @@ pub fn queue_episode_item(
     description: String,
     is_expanded: bool,
     format_release: &str,
-    on_play_click: Callback<MouseEvent>,
+    on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
@@ -2260,6 +2285,8 @@ pub fn queue_episode_item(
     show_modal: bool,
     on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
+    is_current_episode: bool,
+    is_playing: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2391,9 +2418,15 @@ pub fn queue_episode_item(
                             if should_show_buttons {
                                 <button
                                     class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                    onclick={on_play_click}
+                                    onclick={on_play_pause}
                                 >
-                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                    {
+                                        if is_current_episode && is_playing {
+                                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                                        } else {
+                                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                                        }
+                                    }
                                 </button>
                                 <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
                             }
@@ -2425,7 +2458,7 @@ pub fn person_episode_item(
     description: String,
     is_expanded: bool,
     format_release: &str,
-    on_play_click: Callback<MouseEvent>,
+    on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
     toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
@@ -2438,6 +2471,8 @@ pub fn person_episode_item(
     show_modal: bool,
     on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
+    is_current_episode: bool,
+    is_playing: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2554,9 +2589,15 @@ pub fn person_episode_item(
                             if should_show_buttons {
                                 <button
                                     class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                    onclick={on_play_click}
+                                    onclick={on_play_pause}
                                 >
-                                    <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                    {
+                                        if is_current_episode && is_playing {
+                                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                                        } else {
+                                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                                        }
+                                    }
                                 </button>
                                 <div class="hidden sm:block">
                                     <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />

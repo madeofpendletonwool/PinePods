@@ -2,7 +2,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{
     download_episode_item, empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
 };
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::{
@@ -539,7 +539,13 @@ pub fn render_podcast_with_episodes(
                             let audio_dispatch = audio_dispatch.clone();
                             let is_local = Option::from(true);
 
-                            let on_play_click = on_play_click(
+                            let is_current_episode = audio_state
+                                                            .currently_playing
+                                                            .as_ref()
+                                                            .map_or(false, |current| current.episode_id == episode.episodeid);
+                            let is_playing = audio_state.audio_playing.unwrap_or(false);
+
+                            let on_play_pause = on_play_pause(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
                                 episode_artwork_for_closure.clone(),
@@ -584,7 +590,7 @@ pub fn render_podcast_with_episodes(
                                 sanitized_description.clone(),
                                 desc_expanded,
                                 &format_release,
-                                on_play_click,
+                                on_play_pause,
                                 on_shownotes_click,
                                 toggle_expanded,
                                 episode_duration_clone,
@@ -597,6 +603,8 @@ pub fn render_podcast_with_episodes(
                                 show_modal,
                                 on_modal_open.clone(),
                                 on_modal_close.clone(),
+                                is_current_episode,
+                                is_playing,
                             )
                         }) }
                     </div>

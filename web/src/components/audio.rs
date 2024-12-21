@@ -1438,6 +1438,69 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     }
 }
 
+pub fn on_play_pause(
+    episode_url_for_closure: String,
+    episode_title_for_closure: String,
+    episode_artwork_for_closure: String,
+    episode_duration_for_closure: i32,
+    episode_id_for_closure: i32,
+    listen_duration_for_closure: Option<i32>,
+    api_key: String,
+    user_id: i32,
+    server_name: String,
+    audio_dispatch: Dispatch<UIState>,
+    audio_state: Rc<UIState>,
+    is_local: Option<bool>,
+) -> Callback<MouseEvent> {
+    Callback::from(move |e: MouseEvent| {
+        let episode_url_for_play = episode_url_for_closure.clone();
+        let episode_title_for_play = episode_title_for_closure.clone();
+        let episode_artwork_for_play = episode_artwork_for_closure.clone();
+        let episode_duration_for_play = episode_duration_for_closure.clone();
+        let episode_id_for_play = episode_id_for_closure.clone();
+        let server_play = server_name.clone();
+        let api_play = api_key.clone();
+        let audio_dis_play = audio_dispatch.clone();
+        let audio_state_play = audio_state.clone();
+        // Changed from '_' to 'e'
+        let is_current = audio_state
+            .currently_playing
+            .as_ref()
+            .map_or(false, |current| {
+                current.episode_id == episode_id_for_closure
+            });
+        if is_current {
+            audio_dispatch.reduce_mut(|state| {
+                let currently_playing = state.audio_playing.unwrap_or(false);
+                state.audio_playing = Some(!currently_playing);
+                if let Some(audio) = &state.audio_element {
+                    if currently_playing {
+                        let _ = audio.pause();
+                    } else {
+                        let _ = audio.play();
+                    }
+                }
+            });
+        } else {
+            on_play_click(
+                episode_url_for_play,
+                episode_title_for_play,
+                episode_artwork_for_play,
+                episode_duration_for_play,
+                episode_id_for_play,
+                listen_duration_for_closure,
+                api_play,
+                user_id,
+                server_play,
+                audio_dis_play,
+                audio_state_play,
+                is_local,
+            )
+            .emit(e); // Pass the event instead of '_'
+        }
+    })
+}
+
 pub fn on_play_click(
     episode_url_for_closure: String,
     episode_title_for_closure: String,
@@ -1722,6 +1785,41 @@ pub fn on_play_click(
                 });
             }
         });
+    })
+}
+
+#[cfg(not(feature = "server_build"))]
+pub fn on_play_pause_offline(
+    episode_info: EpisodeDownload,
+    audio_dispatch: Dispatch<UIState>,
+    audio_state: Rc<UIState>,
+) -> Callback<MouseEvent> {
+    Callback::from(move |_: MouseEvent| {
+        let episode_info_for_closure = episode_info.clone();
+        let audio_dispatch = audio_dispatch.clone();
+
+        let is_current = audio_state
+            .currently_playing
+            .as_ref()
+            .map_or(false, |current| {
+                current.episode_id == episode_info.episodeid
+            });
+
+        if is_current {
+            audio_dispatch.reduce_mut(|state| {
+                let currently_playing = state.audio_playing.unwrap_or(false);
+                state.audio_playing = Some(!currently_playing);
+                if let Some(audio) = &state.audio_element {
+                    if currently_playing {
+                        let _ = audio.pause();
+                    } else {
+                        let _ = audio.play();
+                    }
+                }
+            });
+        } else {
+            on_play_click_offline(episode_info_for_closure, audio_dispatch).emit(_);
+        }
     })
 }
 

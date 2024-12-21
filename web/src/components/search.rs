@@ -2,7 +2,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{
     empty_message, episode_item, on_shownotes_click, Search_nav, UseScrollToTop,
 };
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
@@ -287,6 +287,11 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let episode_listened_clone = episode.listenduration.clone();
                                     let history_clone = history.clone();
                                     let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
+                                    let is_current_episode = audio_state
+                                        .currently_playing
+                                        .as_ref()
+                                        .map_or(false, |current| current.episode_id == episode.episodeid);
+                                    let is_playing = audio_state.audio_playing.unwrap_or(false);
 
                                     let toggle_expanded = {
                                         let search_dispatch_clone = dispatch.clone();
@@ -317,7 +322,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let api_key_play = api_key.clone();
                                     let audio_dispatch = audio_dispatch.clone();
 
-                                    let on_play_click = on_play_click(
+                                    let on_play_pause = on_play_pause(
                                         episode_url_for_closure.clone(),
                                         episode_title_for_closure.clone(),
                                         episode_artwork_for_closure.clone(),
@@ -360,7 +365,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         sanitized_description,
                                         is_expanded,
                                         &format_release,
-                                        on_play_click,
+                                        on_play_pause,
                                         on_shownotes_click,
                                         toggle_expanded,
                                         episode_duration_clone,
@@ -374,6 +379,8 @@ pub fn search(_props: &SearchProps) -> Html {
                                         on_modal_open.clone(),
                                         on_modal_close.clone(),
                                         (*container_height).clone(),
+                                        is_current_episode,
+                                        is_playing,
                                     );
 
                                     item
