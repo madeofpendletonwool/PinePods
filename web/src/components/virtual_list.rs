@@ -126,6 +126,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
 
             let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
             let episode_title_clone = episode.title.clone().unwrap_or_default();
+            let episode_description_clone = episode.description.clone().unwrap_or_default();
+            let episode_release_clone = episode.pub_date.clone().unwrap_or_default();
             let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
             let episode_duration_clone = episode.duration.clone().unwrap_or_default();
             let episode_duration_in_seconds = match convert_time_to_seconds(&episode_duration_clone) {
@@ -171,6 +173,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             let on_play_pause = on_play_pause(
                 episode_url_clone.clone(),
                 episode_title_clone.clone(),
+                episode_description_clone.clone(),
+                episode_release_clone.clone(),
                 episode_artwork_clone.clone(),
                 episode_duration_in_seconds,
                 episode_id_clone.clone(),

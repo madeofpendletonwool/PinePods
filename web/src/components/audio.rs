@@ -35,6 +35,8 @@ use yewdux::prelude::*;
 pub struct AudioPlayerProps {
     pub src: String,
     pub title: String,
+    pub description: String,
+    pub release_date: String,
     pub artwork_url: String,
     pub duration: String,
     pub episode_id: i32,
@@ -745,6 +747,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             on_play_click(
                                                 next_episode.episodeurl.clone(),
                                                 next_episode.episodetitle.clone(),
+                                                next_episode.episodedescription.clone(),
+                                                next_episode.episodepubdate.clone(),
                                                 next_episode.episodeartwork.clone(),
                                                 next_episode.episodeduration,
                                                 next_episode.episodeid,
@@ -1019,6 +1023,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             on_play_click(
                                 next_episode.episodeurl.clone(),
                                 next_episode.episodetitle.clone(),
+                                next_episode.episodedescription.clone(),
+                                next_episode.episodepubdate.clone(),
                                 next_episode.episodeartwork.clone(),
                                 next_episode.episodeduration,
                                 next_episode.episodeid,
@@ -1465,8 +1471,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             episode_id={props.episode_id}
                             episode_artwork={props.artwork_url.clone()}
                             episode_title={props.title.clone()}
-                            description={props.title.clone()}  // You might need to fetch this
-                            format_release={props.title.clone()}
+                            description={props.description.clone()}  // You might need to fetch this
+                            format_release={props.release_date.clone()}
                             duration={formatted_duration}
                             on_close={on_modal_close.clone()}
                             on_show_notes={nav_to_episode}
@@ -1487,6 +1493,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 pub fn on_play_pause(
     episode_url_for_closure: String,
     episode_title_for_closure: String,
+    episode_description_for_closure: String,
+    episode_release_date_for_closure: String,
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
     episode_id_for_closure: i32,
@@ -1501,6 +1509,8 @@ pub fn on_play_pause(
     Callback::from(move |e: MouseEvent| {
         let episode_url_for_play = episode_url_for_closure.clone();
         let episode_title_for_play = episode_title_for_closure.clone();
+        let episode_description_for_play = episode_description_for_closure.clone();
+        let episode_release_date_for_play = episode_release_date_for_closure.clone();
         let episode_artwork_for_play = episode_artwork_for_closure.clone();
         let episode_duration_for_play = episode_duration_for_closure.clone();
         let episode_id_for_play = episode_id_for_closure.clone();
@@ -1531,6 +1541,8 @@ pub fn on_play_pause(
             on_play_click(
                 episode_url_for_play,
                 episode_title_for_play,
+                episode_description_for_play,
+                episode_release_date_for_play,
                 episode_artwork_for_play,
                 episode_duration_for_play,
                 episode_id_for_play,
@@ -1550,6 +1562,8 @@ pub fn on_play_pause(
 pub fn on_play_click(
     episode_url_for_closure: String,
     episode_title_for_closure: String,
+    episode_description_for_closure: String,
+    episode_release_date_for_closure: String,
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
     episode_id_for_closure: i32,
@@ -1564,6 +1578,8 @@ pub fn on_play_click(
     Callback::from(move |_: MouseEvent| {
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
+        let episode_description_for_closure = episode_description_for_closure.clone();
+        let episode_release_date_for_closure = episode_release_date_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
         let episode_duration_for_closure = episode_duration_for_closure.clone();
         let listen_duration_for_closure = listen_duration_for_closure.clone();
@@ -1581,6 +1597,8 @@ pub fn on_play_click(
         let check_api_key = api_key.clone();
         let check_user_id = user_id.clone();
         let episode_title_for_wasm = episode_title_for_closure.clone();
+        let episode_description_for_wasm = episode_description_for_closure.clone();
+        let episode_release_date_for_wasm = episode_release_date_for_closure.clone();
         let episode_url_for_wasm = call_ep_url.clone();
         let episode_artwork_for_wasm = episode_artwork_for_closure.clone();
         let episode_duration_for_wasm = episode_duration_for_closure.clone();
@@ -1776,6 +1794,8 @@ pub fn on_play_click(
                                     audio_state.currently_playing = Some(AudioPlayerProps {
                                         src: src.clone(),
                                         title: episode_title_for_wasm.clone(),
+                                        description: episode_description_for_wasm.clone(),
+                                        release_date: episode_release_date_for_wasm.clone(),
                                         artwork_url: episode_artwork_for_wasm.clone(),
                                         duration: episode_duration_for_wasm.clone().to_string(),
                                         episode_id: episode_id_for_wasm.clone(),
@@ -1815,6 +1835,8 @@ pub fn on_play_click(
                     audio_state.currently_playing = Some(AudioPlayerProps {
                         src: src.clone(),
                         title: episode_title_for_wasm.clone(),
+                        description: episode_description_for_wasm.clone(),
+                        release_date: episode_release_date_for_wasm.clone(),
                         artwork_url: episode_artwork_for_wasm.clone(),
                         duration: episode_duration_for_wasm.clone().to_string(),
                         episode_id: episode_id_for_wasm.clone(),
@@ -1941,6 +1963,8 @@ pub fn on_play_click_offline(
 pub fn on_play_click_shared(
     episode_url: String,
     episode_title: String,
+    episode_description: String,
+    episode_release_date: String,
     episode_artwork: String,
     episode_duration: i32,
     episode_id: i32,
@@ -1949,6 +1973,8 @@ pub fn on_play_click_shared(
     Callback::from(move |_: MouseEvent| {
         let episode_url = episode_url.clone();
         let episode_title = episode_title.clone();
+        let episode_description = episode_description.clone();
+        let episode_release_date = episode_release_date.clone();
         let episode_artwork = episode_artwork.clone();
         let episode_duration = episode_duration.clone();
         let episode_id = episode_id.clone();
@@ -1971,9 +1997,11 @@ pub fn on_play_click_shared(
                 audio_state.currently_playing = Some(AudioPlayerProps {
                     src: episode_url.clone(),
                     title: episode_title.clone(),
+                    description: episode_description.clone(),
+                    release_date: episode_release_date.clone(),
                     artwork_url: episode_artwork.clone(),
                     duration: episode_duration.to_string(),
-                    episode_id: episode_id,
+                    episode_id,
                     duration_sec: episode_duration as f64,
                     start_pos_sec: 0.0, // Start playing from the beginning
                     end_pos_sec: 0.0,

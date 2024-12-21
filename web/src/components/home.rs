@@ -223,7 +223,7 @@ pub fn home() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }
@@ -439,6 +439,8 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let on_play_pause = on_play_pause(
         props.episode.episodeurl.clone(),
         props.episode.episodetitle.clone(),
+        props.episode.episodedescription.clone(),
+        props.episode.episodepubdate.clone(),
         props.episode.episodeartwork.clone(),
         props.episode.episodeduration.clone(),
         props.episode.episodeid.clone(),

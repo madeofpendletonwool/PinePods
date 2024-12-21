@@ -10,7 +10,7 @@ use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
-    strip_images_from_html, truncate_description,
+    strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
 };
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::people_req::{
@@ -831,6 +831,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let podcast_title = episode.feedTitle.clone().unwrap_or_default();
                                         let episode_url_clone = episode.enclosureUrl.clone().unwrap_or_default();
                                         let episode_title_clone = episode.title.clone().unwrap_or_default();
+                                        let episode_description_clone = episode.description.clone().unwrap_or_default();
+                                        let episode_pubdate_clone = episode.datePublished.clone().unwrap_or_default();
                                         let episode_artwork_clone = episode.feedImage.clone().unwrap_or_default();                                        let episode_duration_clone = episode.duration.clone().unwrap_or_default();
 
                                         let episode_id_clone = 0;
@@ -883,9 +885,13 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             })
                                         };
 
+                                        let formatted_date = unix_timestamp_to_datetime_string(episode_pubdate_clone);
+
                                         let on_play_pause = on_play_pause(
                                             episode_url_clone.clone(),
                                             episode_title_clone.clone(),
+                                            episode_description_clone.clone(),
+                                            formatted_date,
                                             episode_artwork_clone.clone(),
                                             episode_duration_clone,
                                             episode_id_clone.clone(),
@@ -998,7 +1004,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
 
                 {
                     if let Some(audio_props) = &audio_state.currently_playing {
-                        html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                        html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
                     } else {
                         html! {}
                     }
