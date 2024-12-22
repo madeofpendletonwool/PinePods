@@ -4,6 +4,7 @@ use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
+use web_sys::FormData;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct GetThemeResponse {
@@ -129,6 +130,12 @@ pub struct AddSettingsUserRequest {
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct AddUserResponse {
     detail: String,
+    user_id: Option<i32>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ErrorResponse {
+    detail: String,
 }
 
 pub async fn call_add_user(
@@ -138,10 +145,6 @@ pub async fn call_add_user(
 ) -> Result<bool, Error> {
     let server = server_name.clone();
     let url = format!("{}/api/data/add_user", server);
-
-    // let add_user_req = add_user.as_ref().unwrap();
-
-    // Serialize `add_user` into JSON
     let json_body = serde_json::to_string(&add_user)?;
 
     let response = Request::post(&url)
@@ -155,10 +158,17 @@ pub async fn call_add_user(
         let response_body = response.json::<AddUserResponse>().await?;
         Ok(response_body.detail == "Success")
     } else {
-        Err(Error::msg(format!(
-            "Error adding user: {}",
-            response.status_text()
-        )))
+        // Try to get a detailed error message
+        let error_text = response.text().await?;
+
+        // Try to parse as JSON error response
+        match serde_json::from_str::<ErrorResponse>(&error_text) {
+            Ok(error_response) => Err(Error::msg(error_response.detail)),
+            Err(_) => {
+                // If we can't parse the JSON, return the raw error text
+                Err(Error::msg(error_text))
+            }
+        }
     }
 }
 
@@ -507,10 +517,7 @@ pub async fn call_guest_status(server_name: String, api_key: String) -> Result<b
 
 // setting_reqs.rs
 
-pub async fn call_rss_feed_status(
-    server_name: String,
-    api_key: String,
-) -> Result<bool, Error> {
+pub async fn call_rss_feed_status(server_name: String, api_key: String) -> Result<bool, Error> {
     let url = format!("{}/api/data/rss_feed_status", server_name);
     let response = Request::get(&url)
         .header("Api-Key", &api_key)
@@ -961,30 +968,17 @@ pub async fn call_backup_server(
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct RestoreServerRequest {
-    database_pass: String,
-    server_restore_data: String,
-}
-
 pub async fn call_restore_server(
     server_name: &str,
-    database_pass: &str,
-    server_restore_data: &str,
+    form_data: FormData,
     api_key: &str,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/restore_server", server_name);
-    let request_body = RestoreServerRequest {
-        database_pass: database_pass.to_string().clone(),
-        server_restore_data: server_restore_data.to_string().clone(),
-    };
-    log::info!("db: {:?}", database_pass.to_string().clone());
-    log::info!("restore: {:?}", server_restore_data.to_string().clone());
 
     let response = Request::post(&url)
-        .header("Content-Type", "application/json")
         .header("Api-Key", api_key)
-        .body(serde_json::to_string(&request_body)?)?
+        // Using form_data directly here instead of JSON
+        .body(form_data)?
         .send()
         .await
         .map_err(Error::msg)?;

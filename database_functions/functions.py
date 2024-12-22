@@ -443,131 +443,76 @@ def add_person_podcast(cnx, database_type, podcast_values, user_id, username=Non
     # Return True to indicate success
     return True
 
+
 def add_user(cnx, database_type, user_values):
-    cursor = cnx.cursor()
-    print(f'user func')
-    logging.debug(f'user func')
-
-    if database_type == "postgresql":
-        add_user_query = """
-            INSERT INTO "Users"
-            (Fullname, Username, Email, Hashed_PW, IsAdmin)
-            VALUES (%s, %s, %s, %s, false)
-            RETURNING UserID
-        """
-    else:  # MySQL or MariaDB
-        add_user_query = """
-            INSERT INTO Users
-            (Fullname, Username, Email, Hashed_PW, IsAdmin)
-            VALUES (%s, %s, %s, %s, 0)
-        """
-
-    cursor.execute(add_user_query, user_values)
-    # result = cursor.fetchone()
-    # if isinstance(result, dict):
-    #     user_id = result['userid']
-    # else:
-    #     user_id = result[0]
-    print(f'in postgres {database_type}')
-    logging.debug(f'in postgres {database_type}')
-    if database_type == "postgresql":
-        result = cursor.fetchone()
-        print(f'debug result: {result}')
-        logging.debug(f'debug result: {result}')
-        user_id = result['userid'] if isinstance(result, dict) else result[0]
-    else:  # MySQL or MariaDB
-        user_id = cursor.lastrowid
-
-    if database_type == "postgresql":
-        add_user_settings_query = """
-            INSERT INTO "UserSettings"
-            (UserID, Theme)
-            VALUES (%s, %s)
-        """
-    else:  # MySQL or MariaDB
-        add_user_settings_query = """
-            INSERT INTO UserSettings
-            (UserID, Theme)
-            VALUES (%s, %s)
-        """
-    cursor.execute(add_user_settings_query, (user_id, 'Nordic'))
-
-    if database_type == "postgresql":
-        add_user_stats_query = """
-            INSERT INTO "UserStats"
-            (UserID)
-            VALUES (%s)
-        """
-    else:  # MySQL or MariaDB
-        add_user_stats_query = """
-            INSERT INTO UserStats
-            (UserID)
-            VALUES (%s)
-        """
-    cursor.execute(add_user_stats_query, (user_id,))
-
-    cnx.commit()
-    cursor.close()
-
-def add_admin_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
             add_user_query = """
-                WITH inserted_user AS (
-                    INSERT INTO "Users"
-                    (Fullname, Username, Email, Hashed_PW, IsAdmin)
-                    VALUES (%s, %s, %s, %s, TRUE)
-                    ON CONFLICT (Username) DO NOTHING
-                    RETURNING UserID
-                )
-                SELECT UserID FROM inserted_user
-                UNION ALL
-                SELECT UserID FROM "Users" WHERE Username = %s
-                LIMIT 1
+                INSERT INTO "Users"
+                (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                VALUES (%s, %s, %s, %s, false)
+                RETURNING UserID
             """
-            # Note: we add the username as an extra parameter here
-            cursor.execute(add_user_query, user_values + (user_values[1],))
-            user_id = cursor.fetchone()[0]
         else:  # MySQL or MariaDB
             add_user_query = """
                 INSERT INTO Users
                 (Fullname, Username, Email, Hashed_PW, IsAdmin)
-                VALUES (%s, %s, %s, %s, 1)
+                VALUES (%s, %s, %s, %s, 0)
             """
-            cursor.execute(add_user_query, user_values)
+
+        cursor.execute(add_user_query, user_values)
+
+        # Handle the user ID retrieval
+        if database_type == "postgresql":
+            result = cursor.fetchone()
+            if result is None:
+                raise Exception("Failed to create user - no ID returned")
+
+            # Handle both tuple and dict return types
+            user_id = result[0] if isinstance(result, tuple) else result.get('userid', result[0])
+
+            if not user_id:
+                raise Exception("Failed to create user - invalid ID returned")
+
+            logging.debug(f"PostgreSQL insert result: {result}, extracted user_id: {user_id}")
+        else:
             user_id = cursor.lastrowid
+            if not user_id:
+                raise Exception("Failed to create user - no ID returned")
 
-        # Now add settings and stats
-        if database_type == "postgresql":
-            add_user_settings_query = """
-                INSERT INTO "UserSettings"
-                (UserID, Theme)
-                VALUES (%s, %s)
-            """
-        else:
-            add_user_settings_query = """
-                INSERT INTO UserSettings
-                (UserID, Theme)
-                VALUES (%s, %s)
-            """
-        cursor.execute(add_user_settings_query, (user_id, 'Nordic'))
+        # Add user settings
+        settings_query = """
+            INSERT INTO "UserSettings"
+            (UserID, Theme)
+            VALUES (%s, %s)
+        """ if database_type == "postgresql" else """
+            INSERT INTO UserSettings
+            (UserID, Theme)
+            VALUES (%s, %s)
+        """
+        cursor.execute(settings_query, (user_id, 'Nordic'))
 
-        if database_type == "postgresql":
-            add_user_stats_query = """
-                INSERT INTO "UserStats"
-                (UserID)
-                VALUES (%s)
-            """
-        else:
-            add_user_stats_query = """
-                INSERT INTO UserStats
-                (UserID)
-                VALUES (%s)
-            """
-        cursor.execute(add_user_stats_query, (user_id,))
+        # Add user stats
+        stats_query = """
+            INSERT INTO "UserStats"
+            (UserID)
+            VALUES (%s)
+        """ if database_type == "postgresql" else """
+            INSERT INTO UserStats
+            (UserID)
+            VALUES (%s)
+        """
+        cursor.execute(stats_query, (user_id,))
+
         cnx.commit()
         return user_id
+
+    except Exception as e:
+        cnx.rollback()
+        logging.error(f"Error in add_user: {str(e)}")
+        raise
+
     finally:
         cursor.close()
 
@@ -7020,67 +6965,71 @@ def backup_user(database_type, cnx, user_id):
 
 
 def backup_server(database_type, cnx, database_pass):
-    # Replace with your database and authentication details
-    print(f'pass: {database_pass}')
+    # Get database name from environment variable
+    db_name = os.environ.get("DB_NAME", "pinepods_database")  # Default to pinepods_database if not set
+    db_host = os.environ.get("DB_HOST", "db")
+    db_port = os.environ.get("DB_PORT", "5432" if database_type == "postgresql" else "3306")
+    db_user = os.environ.get("DB_USER", "postgres" if database_type == "postgresql" else "root")
 
+    print(f'pass: {database_pass}')
     if database_type == "postgresql":
         os.environ['PGPASSWORD'] = database_pass
         cmd = [
             "pg_dump",
-            "-h", 'db',
-            "-p", '5432',
-            "-U", "postgres",
-            "-d", "pypods_database",
+            "-h", db_host,
+            "-p", db_port,
+            "-U", db_user,
+            "-d", db_name,
             "-w"
         ]
     else:  # Assuming MySQL or MariaDB
-        # Using --password=<password> flag for safety
         cmd = [
             "mysqldump",
-            "-h", 'db',
-            "-P", '3306',
-            "-u", "root",
+            "-h", db_host,
+            "-P", db_port,
+            "-u", db_user,
             "--password=" + database_pass,
-            "pypods_database"
+            db_name
         ]
-
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         print("STDOUT:", stdout.decode())
         print("STDERR:", stderr.decode())
-
         if process.returncode != 0:
             # Handle error
             raise Exception(f"Backup failed with error: {stderr.decode()}")
-
         return stdout.decode()
     finally:
         if database_type == "postgresql":
             del os.environ['PGPASSWORD']
 
 
-def restore_server(cnx, database_pass, server_restore_data):
+def restore_server(cnx, database_pass, file_content):
     import tempfile
-    # Create a temporary file to store the content. This is because the mysql command reads from a file.
-    with tempfile.NamedTemporaryFile(mode='w+', delete=True) as tempf:
-        tempf.write(server_restore_data)
+
+    with tempfile.NamedTemporaryFile(mode='wb', delete=True) as tempf:
+        tempf.write(file_content)
         tempf.flush()
+
         cmd = [
             "mysql",
-            "-h", 'db',
-            "-P", '3306',
-            "-u", "root",
-            "-p" + database_pass,
-            "pypods_database"
+            "-h", os.environ.get("DB_HOST", "db"),
+            "-P", os.environ.get("DB_PORT", "3306"),
+            "-u", os.environ.get("DB_USER", "root"),
+            f"-p{database_pass}",
+            os.environ.get("DB_NAME", "pinepods_database")
         ]
 
-        # Use the file's content as input for the mysql command
-        with open(tempf.name, 'r') as file:
-            process = subprocess.Popen(cmd, stdin=file, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+        process = subprocess.Popen(
+            cmd,
+            stdin=open(tempf.name, 'rb'),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
 
-            if process.returncode != 0:
-                raise Exception(f"Restoration failed with error: {stderr.decode()}")
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            raise Exception(f"Restoration failed with error: {stderr.decode()}")
 
     return "Restoration completed successfully!"

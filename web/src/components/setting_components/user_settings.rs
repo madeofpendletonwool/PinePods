@@ -228,6 +228,7 @@ pub fn user_settings() -> Html {
         let password_error = password_error.clone();
         let email_error = email_error.clone();
         let on_update_trigger = update_trigger.clone();
+
         Callback::from(move |e: MouseEvent| {
             let error_container = error_container_create.clone();
             let error_message_container = error_message_container_create.clone();
@@ -238,8 +239,10 @@ pub fn user_settings() -> Html {
             let new_password = new_password.clone();
             let fullname = fullname.clone();
             let email = email.clone();
+
             e.prevent_default();
-            // Hash the password and generate a salt
+
+            // Validate input
             let errors = validate_user_input(&new_username, &new_password, &email);
 
             if errors.contains(&ValidationError::UsernameTooShort) {
@@ -271,6 +274,7 @@ pub fn user_settings() -> Html {
                         };
                         let add_user_request = Some(user_settings);
                         page_state.set(PageState::Hidden);
+
                         wasm_bindgen_futures::spawn_local(async move {
                             let on_update_trigger = update_trigger.clone();
                             if let Some(add_user_request_value) = add_user_request {
@@ -285,23 +289,21 @@ pub fn user_settings() -> Html {
                                         on_update_trigger.set(!*update_trigger);
                                     }
                                     Err(e) => {
-                                        console::log_1(&format!("Error adding user: {}", e).into());
                                         error_container.set(error_container_state::Shown);
-                                        error_message_container
-                                            .set("Error adding user".to_string());
+                                        // Display the actual error message from the server
+                                        error_message_container.set(e.to_string());
                                     }
                                 }
                             } else {
-                                console::log_1(&format!("Error adding user").into());
                                 error_container.set(error_container_state::Shown);
-                                error_message_container.set("Error adding user".to_string());
+                                error_message_container
+                                    .set("Invalid user data provided".to_string());
                             }
                         });
                     }
                     Err(e) => {
-                        console::log_1(&format!("Error adding user: {}", e).into());
                         error_container.set(error_container_state::Shown);
-                        error_message_container.set("Error adding user".to_string());
+                        error_message_container.set(format!("Error creating password hash: {}", e));
                     }
                 }
             }

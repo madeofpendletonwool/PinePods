@@ -2941,10 +2941,6 @@ button.item-container-action-button.item-container-action-button {
     border: 1px solid var(--button-border-color);
 }
 
-.settings-button:hover {
-    background-color: var(--hover-color);
-}
-
 .input-button {
     display: none;
     /* Hide the default file input */

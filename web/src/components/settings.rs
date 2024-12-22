@@ -285,7 +285,7 @@ pub fn settings() -> Html {
                             <AccordionItem title="User Self Service Settings" content={html!{ <setting_components::user_self_service::SelfServiceSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Email Settings" content={html!{ <setting_components::email_settings::EmailSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Backup Server" content={html!{ <setting_components::backup_server::BackupServer /> }} position={AccordionItemPosition::Middle}/>
-                            // <AccordionItem title="Restore Server" content={html!{ <setting_components::restore_server::RestoreServer /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Restore Server" content={html!{ <setting_components::restore_server::RestoreServer /> }} position={AccordionItemPosition::Middle}/>
                         </div>
                         }
                     } else {
