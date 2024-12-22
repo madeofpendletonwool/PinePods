@@ -1579,8 +1579,24 @@ input[type="range"]::-moz-range-thumb {
     width: 157px;
 }
 
+.filter-input-pods {
+    background-color: var(--button-color);
+    color: var(--button-text-color);
+    padding: 0.7rem;
+    font-size: 1rem;
+    border-radius: 5px;
+    border: none;
+    width: 157px;
+}
+
 @media (max-width: 530px) {
     .filter-input {
+        width: 100px;
+    }
+}
+
+@media (max-width: 530px) {
+    .filter-input-pods {
         width: 100px;
     }
 }
@@ -1590,9 +1606,48 @@ input[type="range"]::-moz-range-thumb {
     opacity: 0.7;
 }
 
+.filter-input-pods::placeholder {
+    color: var(--button-text-color);
+    opacity: 0.7;
+}
+
 .filter-input:focus {
     outline: none;
     box-shadow: 0 0 0 2px rgba(var(--button-color), 0.5);
+}
+
+.filter-input-pods:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--button-color), 0.5);
+}
+
+.filter-dropdown-pods select {
+    background-color: var(--button-color); /* Semi-transparent background */
+    color: var(--button-text-color);
+    padding: 0.7rem;
+    margin-bottom: 9px;
+    font-size: 1rem;
+    border-radius: 5px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg fill='black' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
+    background-repeat: no-repeat;
+    background-position-x: 98%;
+    background-position-y: 50%;
+    cursor: pointer;
+    padding-right: 2rem; /* Increase right padding to prevent text overlap with arrow */
+    background-image: url("data:image/svg+xml;utf8,<svg fill='%23FFFFFF' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
+    background-position: right 0.5rem center; /* Move arrow slightly more to the right */
+    background-repeat: no-repeat;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important; /* Standard */
+    text-indent: 1px;
+    text-overflow: "";
+    padding-right: 2rem;
+    padding: 0.5rem 2rem 0.5rem 0.5rem; /* Adjusted padding to match py-2 px-2 */
+    line-height: 1.8rem;
 }
 
 .filter-dropdown select {
@@ -1620,13 +1675,25 @@ input[type="range"]::-moz-range-thumb {
     text-indent: 1px;
     text-overflow: "";
     padding-right: 2rem;
+    padding: 0.5rem 2rem 0.5rem 0.5rem; /* Adjusted padding to match py-2 px-2 */
+    margin-bottom: 0; /* Remove margin-bottom if it's causing extra space */
+    line-height: 2.5rem;
 }
 
 .filter-dropdown select::-ms-expand {
     display: none;
 }
 
+.filter-dropdown-pods select::-ms-expand {
+    display: none;
+}
+
 .filter-dropdown select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--button-color), 0.5);
+}
+
+.filter-dropdown-pods select:focus {
     outline: none;
     box-shadow: 0 0 0 2px rgba(var(--button-color), 0.5);
 }
@@ -1636,8 +1703,18 @@ input[type="range"]::-moz-range-thumb {
     background-color: var(--hover-color);
 }
 
+.filter-dropdown-pods select:active {
+    background-color: var(--hover-color);
+}
+
 /* Style for the options in the dropdown */
 .filter-dropdown select option {
+    background-color: var(--button-color); /* Light grey background */
+    color: var(--text-color, #333); /* Dark grey text */
+    padding: 10px;
+}
+
+.filter-dropdown-pods select option {
     background-color: var(--button-color); /* Light grey background */
     color: var(--text-color, #333); /* Dark grey text */
     padding: 10px;
@@ -1653,8 +1730,28 @@ input[type="range"]::-moz-range-thumb {
     color: var(--dropdown-hover-text-color, #000); /* Black text on hover */
 }
 
+.filter-dropdown-pods select option:hover,
+.filter-dropdown-pods select option:focus {
+    background-color: var(
+        --dropdown-hover-bg-color,
+        #e0e0e0
+    ); /* Slightly darker on hover */
+    color: var(--dropdown-hover-text-color, #000); /* Black text on hover */
+}
+
 /* Style for the selected option */
 .filter-dropdown select option:checked {
+    background-color: var(
+        --dropdown-selected-bg-color,
+        #d0d0d0
+    ); /* Even darker for selected */
+    color: var(
+        --dropdown-selected-text-color,
+        #000
+    ); /* Black text for selected */
+}
+
+.filter-dropdown-pods select option:checked {
     background-color: var(
         --dropdown-selected-bg-color,
         #d0d0d0
@@ -1701,10 +1798,6 @@ input[type="range"]::-moz-range-thumb {
 .focus\:ring-primary:focus {
     --tw-ring-color: var(--accent-color);
     --tw-ring-opacity: 0.2;
-}
-
-.download-button:hover {
-    background-color: var(--hover-color);
 }
 
 .share:hover {

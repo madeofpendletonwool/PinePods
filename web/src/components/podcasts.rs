@@ -798,7 +798,7 @@ pub fn podcasts() -> Html {
                                     <i class="ph ph-funnel text-2xl"></i>
                                     <span class="text-lg ml-2 hidden sm:inline">{"Filter"}</span>
                                 </button>
-                                <div class="filter-dropdown font-bold rounded">
+                                <div class="filter-dropdown-pods font-bold rounded">
                                 // In the select element, modify it to match the default sort state:
                                 <select
                                 class="category-select appearance-none pr-8"
@@ -853,7 +853,7 @@ pub fn podcasts() -> Html {
                                 <span class="text-lg ml-2 hidden sm:inline">{"Clear Filter"}</span>
                             </button>
                             // Category dropdown
-                            <div class="filter-dropdown font-bold rounded">
+                            <div class="filter-dropdown-pods font-bold rounded">
                                 {
                                     if let Some(categories) = &filter_state.category_filter_list {
                                         let categories_clone = categories.clone();
@@ -880,8 +880,8 @@ pub fn podcasts() -> Html {
                             <div class="filter-dropdown download-button font-bold rounded relative">
                                 <input
                                     type="text"
-                                    class="filter-input appearance-none pr-8"
-                                    placeholder="Search podcasts"
+                                    class="filter-input-pods appearance-none pr-8"
+                                    placeholder="Search"
                                     value={(*search_term).clone()}
                                     oninput={let search_term = search_term.clone();
                                         Callback::from(move |e: InputEvent| {

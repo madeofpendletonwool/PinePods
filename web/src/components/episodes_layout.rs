@@ -1115,12 +1115,16 @@ pub fn episode_layout() -> Html {
         let category_to_remove = category_to_remove.clone();
         Callback::from(move |event: MouseEvent| {
             event.prevent_default();
-            let category = event
-                .target()
-                .and_then(|t| t.dyn_into::<Element>().ok())
-                .and_then(|e| e.get_attribute("data-category"))
-                .unwrap_or_default();
-            category_to_remove.set(Some(category));
+            let target = event.target_unchecked_into::<Element>();
+            let closest_button = target.closest("button").unwrap();
+            if let Some(button) = closest_button {
+                if let Some(category) = button.get_attribute("data-category") {
+                    web_sys::console::log_1(
+                        &format!("Setting category to remove: {}", category).into(),
+                    );
+                    category_to_remove.set(Some(category));
+                }
+            }
         })
     };
 
@@ -1184,7 +1188,8 @@ pub fn episode_layout() -> Html {
             "{}/{}?api_key={}&podcast_id={}",
             get_rss_base_url(),
             user_id.clone().unwrap_or_default(),
-            api_key.clone().unwrap().unwrap_or_default(),
+            // Replace the double unwrap with a safe fallback
+            api_key.clone().flatten().unwrap_or_default(),
             *podcast_id
         );
 
@@ -1321,14 +1326,25 @@ pub fn episode_layout() -> Html {
                                                     { categories.iter().map(|(_, category_name)| {
                                                         let category_name = category_name.clone();
                                                         let onclick_remove = onclick_remove.clone();
+                                                        let category_to_remove = category_to_remove.clone();
+
+                                                        let remove_callback = {
+                                                            let category_name = category_name.clone();
+                                                            let onclick_remove = onclick_remove.clone();
+                                                            Callback::from(move |e: MouseEvent| {
+                                                                e.prevent_default();
+                                                                onclick_remove.emit(e);
+                                                                category_to_remove.set(Some(category_name.clone()));
+                                                            })
+                                                        };
+
                                                         html! {
                                                             <div class="category-tag">
                                                                 <span>{&category_name}</span>
                                                                 <button
                                                                     class="category-remove-btn"
-                                                                    onclick={onclick_remove}
+                                                                    onclick={remove_callback}
                                                                     data-category={category_name.clone()}
-                                                                    aria-label={format!("Remove {}", category_name)}
                                                                 >
                                                                     <i class="ph ph-trash text-lg" />
                                                                 </button>
@@ -2038,7 +2054,7 @@ pub fn episode_layout() -> Html {
                                             <div class="filter-dropdown download-button relative">
                                                 <input
                                                     type="text"
-                                                    class="filter-input appearance-none pr-8"
+                                                    class="filter-input-pods appearance-none pr-8"
                                                     placeholder="Search"
                                                     value={(*episode_search_term).clone()}
                                                     oninput={
@@ -2054,7 +2070,7 @@ pub fn episode_layout() -> Html {
                                             </div>
 
                                             // Sort dropdown
-                                            <div class="filter-dropdown font-bold rounded relative">
+                                            <div class="filter-dropdown-pods font-bold rounded relative">
                                                 <select
                                                     class="category-select appearance-none pr-8"
                                                     onchange={

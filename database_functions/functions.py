@@ -516,6 +516,68 @@ def add_user(cnx, database_type, user_values):
     finally:
         cursor.close()
 
+def add_admin_user(cnx, database_type, user_values):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            add_user_query = """
+                WITH inserted_user AS (
+                    INSERT INTO "Users"
+                    (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES (%s, %s, %s, %s, TRUE)
+                    ON CONFLICT (Username) DO NOTHING
+                    RETURNING UserID
+                )
+                SELECT UserID FROM inserted_user
+                UNION ALL
+                SELECT UserID FROM "Users" WHERE Username = %s
+                LIMIT 1
+            """
+            # Note: we add the username as an extra parameter here
+            cursor.execute(add_user_query, user_values + (user_values[1],))
+            user_id = cursor.fetchone()[0]
+        else:  # MySQL or MariaDB
+            add_user_query = """
+                INSERT INTO Users
+                (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                VALUES (%s, %s, %s, %s, 1)
+            """
+            cursor.execute(add_user_query, user_values)
+            user_id = cursor.lastrowid
+
+        # Now add settings and stats
+        if database_type == "postgresql":
+            add_user_settings_query = """
+                INSERT INTO "UserSettings"
+                (UserID, Theme)
+                VALUES (%s, %s)
+            """
+        else:
+            add_user_settings_query = """
+                INSERT INTO UserSettings
+                (UserID, Theme)
+                VALUES (%s, %s)
+            """
+        cursor.execute(add_user_settings_query, (user_id, 'Nordic'))
+
+        if database_type == "postgresql":
+            add_user_stats_query = """
+                INSERT INTO "UserStats"
+                (UserID)
+                VALUES (%s)
+            """
+        else:
+            add_user_stats_query = """
+                INSERT INTO UserStats
+                (UserID)
+                VALUES (%s)
+            """
+        cursor.execute(add_user_stats_query, (user_id,))
+        cnx.commit()
+        return user_id
+    finally:
+        cursor.close()
+
 def get_pinepods_version():
     try:
         with open('/pinepods/current_version', 'r') as file:
@@ -3655,6 +3717,32 @@ def get_value_from_rss_result(result, key_name: str, default=None):
 
     return default
 
+# Define the custom feed class at module level
+class PodcastFeed(feedgenerator.Rss201rev2Feed):
+    def root_attributes(self):
+        attrs = super().root_attributes()
+        attrs['xmlns:itunes'] = 'http://www.itunes.com/dtds/podcast-1.0.dtd'
+        return attrs
+
+    def add_root_elements(self, handler):
+        super().add_root_elements(handler)
+        # Access podcast_image and podcast_name through instance variables
+        if hasattr(self, 'podcast_image') and self.podcast_image:
+            handler.addQuickElement('itunes:image',
+                attrs={'href': self.podcast_image})
+            handler.startElement('image', {})
+            handler.addQuickElement('url', self.podcast_image)
+            handler.addQuickElement('title', self.podcast_name)
+            handler.addQuickElement('link', 'https://github.com/madeofpendletonwool/pinepods')
+            handler.endElement('image')
+
+    def add_item_elements(self, handler, item):
+        super().add_item_elements(handler, item)
+        if 'artwork_url' in item:
+            handler.addQuickElement('itunes:image',
+                attrs={'href': item['artwork_url']})
+
+
 def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, podcast_id: Optional[int] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
@@ -3791,29 +3879,32 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
 
         # Get podcast name if podcast_id is provided
         podcast_name = "All Podcasts"
+        feed_image = "/var/www/html/static/assets/favicon.png"  # Default to Pinepods logo
+
         if podcast_id is not None:
             try:
                 if database_type == "postgresql":
                     cursor.execute(
-                        'SELECT podcastname FROM "Podcasts" WHERE podcastid = %s',
+                        'SELECT podcastname, artworkurl FROM "Podcasts" WHERE podcastid = %s',  # Added artworkurl
                         (podcast_id,)
                     )
                 else:
                     cursor.execute(
-                        "SELECT PodcastName FROM Podcasts WHERE PodcastID = %s",
+                        "SELECT PodcastName, ArtworkURL FROM Podcasts WHERE PodcastID = %s",  # Added ArtworkURL
                         (podcast_id,)
                     )
                 result = cursor.fetchone()
                 if result:
                     podcast_name = result[0] if isinstance(result, tuple) else result.get('podcastname', 'Unknown Podcast')
+                    feed_image = result[1] if isinstance(result, tuple) else result.get('artworkurl', feed_image)
                 else:
                     podcast_name = "Unknown Podcast"
             except Exception as e:
                 logger.error(f"Error fetching podcast name: {str(e)}")
                 podcast_name = "Unknown Podcast"
 
-        # Initialize feed
-        feed = feedgenerator.Rss201rev2Feed(
+        # Initialize feed with custom class
+        feed = PodcastFeed(
             title=f"Pinepods - {podcast_name}",
             link="https://github.com/madeofpendletonwool/pinepods",
             description=f"RSS feed for {'all' if podcast_id is None else 'selected'} podcasts from Pinepods",
@@ -3823,9 +3914,24 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
             ttl="60"
         )
 
+        # Set feed image - use podcast artwork for specific podcast, Pinepods logo for all podcasts
+        feed.podcast_image = feed_image
+        feed.podcast_name = podcast_name
+
+        # Set podcast image if available
+        if episodes:
+            feed.podcast_image = episodes[0].get('artworkurl')
+            feed.podcast_name = podcast_name
+
+        # Debug logging for image URLs
+        logger.info(f"Podcast artwork URL: {episodes[0].get('artworkurl') if episodes else 'None'}")
+
         # Add items to feed
         for episode in episodes:
             try:
+                episode_image = episode.get('episodeartwork') or episode.get('artworkurl', '')
+                logger.info(f"Episode {episode.get('episodetitle')} artwork: {episode_image}")
+
                 feed.add_item(
                     title=str(episode.get('episodetitle', 'Untitled Episode')),
                     link=str(episode.get('episodeurl', '')),
@@ -3838,10 +3944,10 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                     ),
                     pubdate=episode.get('episodepubdate', dt.now(timezone.utc)),
                     author=str(episode.get('author', '')),
-                    image_url=str(episode.get('episodeartwork', '') or episode.get('artworkurl', ''))
+                    artwork_url=episode_image
                 )
             except Exception as e:
-                logger.error(f"Error adding episode to feed: {str(e)}", exc_info=True)
+                logger.error(f"Error adding episode to feed: {str(e)}")
                 continue
 
         return feed.writeString('utf-8')
