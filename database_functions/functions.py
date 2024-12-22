@@ -447,6 +447,7 @@ def add_person_podcast(cnx, database_type, podcast_values, user_id, username=Non
 def add_user(cnx, database_type, user_values):
     cursor = cnx.cursor()
     try:
+        print(f"Adding user with values: {user_values}")
         if database_type == "postgresql":
             add_user_query = """
                 INSERT INTO "Users"
@@ -469,18 +470,19 @@ def add_user(cnx, database_type, user_values):
             if result is None:
                 raise Exception("Failed to create user - no ID returned")
 
-            # Handle both tuple and dict return types
-            user_id = result[0] if isinstance(result, tuple) else result.get('userid', result[0])
+            # Print the result for debugging
+            print(f"Raw PostgreSQL result: {result}")
+            logging.debug(f"Raw PostgreSQL result: {result}")
+
+            # Handle different return types
+            if isinstance(result, dict):
+                # Try different case variations
+                user_id = result.get('userid') or result.get('UserID') or result.get('userId') or result.get('user_id')
+            else:
+                user_id = result[0]
 
             if not user_id:
                 raise Exception("Failed to create user - invalid ID returned")
-
-            logging.debug(f"PostgreSQL insert result: {result}, extracted user_id: {user_id}")
-        else:
-            user_id = cursor.lastrowid
-            if not user_id:
-                raise Exception("Failed to create user - no ID returned")
-
         # Add user settings
         settings_query = """
             INSERT INTO "UserSettings"
