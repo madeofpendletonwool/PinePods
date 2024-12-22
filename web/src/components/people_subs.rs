@@ -310,6 +310,8 @@ pub fn subscribed_people() -> Html {
                         <AudioPlayer
                             src={audio_props.src.clone()}
                             title={audio_props.title.clone()}
+                            description={audio_props.description.clone()}
+                            release_date={audio_props.release_date.clone()}
                             artwork_url={audio_props.artwork_url.clone()}
                             duration={audio_props.duration.clone()}
                             episode_id={audio_props.episode_id.clone()}
@@ -408,6 +410,8 @@ fn render_host_with_episodes(
                             let desc_expanded = desc_rc.expanded_descriptions.contains(&id_string);
                             let episode_url_for_closure = episode.episodeurl.clone();
                             let episode_title_for_closure = episode.episodetitle.clone();
+                            let episode_description_for_closure = episode.episodedescription.clone();
+                            let episode_release_for_closure = episode.episodepubdate.clone();
                             let episode_artwork_for_closure = episode.episodeartwork.clone();
                             let episode_duration_for_closure = episode.episodeduration.clone();
                             let listener_duration_for_closure = episode.listenduration.clone();
@@ -435,6 +439,8 @@ fn render_host_with_episodes(
                             let on_play_pause = on_play_pause(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
+                                episode_description_for_closure.clone(),
+                                format_release.clone(),
                                 episode_artwork_for_closure.clone().unwrap(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),

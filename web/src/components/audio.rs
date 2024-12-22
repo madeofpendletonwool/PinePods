@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::start_local_file_server;
+use crate::components::gen_components::EpisodeModal;
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
@@ -15,6 +16,7 @@ use crate::requests::pod_req::{
 };
 use gloo_timers::callback::Interval;
 use js_sys::Array;
+use js_sys::Object;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
 use std::path::Path;
@@ -24,7 +26,10 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, Navigator};
+use web_sys::{
+    window, HtmlAudioElement, HtmlElement, HtmlInputElement, MediaPositionState,
+    MediaSessionPlaybackState, Navigator,
+};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -34,6 +39,8 @@ use yewdux::prelude::*;
 pub struct AudioPlayerProps {
     pub src: String,
     pub title: String,
+    pub description: String,
+    pub release_date: String,
     pub artwork_url: String,
     pub duration: String,
     pub episode_id: i32,
@@ -164,6 +171,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let show_modal = use_state(|| false);
+    let on_modal_close = {
+        let show_modal = show_modal.clone();
+        Callback::from(move |_: MouseEvent| show_modal.set(false))
+    };
 
     // Add error handling state
     let last_playback_position = use_state(|| 0.0);
@@ -739,6 +751,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             on_play_click(
                                                 next_episode.episodeurl.clone(),
                                                 next_episode.episodetitle.clone(),
+                                                next_episode.episodedescription.clone(),
+                                                next_episode.episodepubdate.clone(),
                                                 next_episode.episodeartwork.clone(),
                                                 next_episode.episodeduration,
                                                 next_episode.episodeid,
@@ -778,6 +792,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     {
         let audio_state = audio_state.clone();
         let audio_dispatch = _audio_dispatch.clone();
+        let audio_state_clone = audio_state.clone();
 
         use_effect_with(audio_state.clone(), move |_| {
             if let Some(window) = web_sys::window() {
@@ -797,33 +812,70 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                 // Create artwork array
                                 let artwork_array = Array::new();
-                                let artwork_object = js_sys::Object::new();
+                                let artwork_object = Object::new();
 
-                                // Set up artwork properties safely
-                                let setup_successful = js_sys::Reflect::set(
+                                // Set up artwork properties
+                                let _ = js_sys::Reflect::set(
                                     &artwork_object,
                                     &"src".into(),
                                     &audio_props.artwork_url.clone().into(),
-                                )
-                                .is_ok()
-                                    && js_sys::Reflect::set(
-                                        &artwork_object,
-                                        &"sizes".into(),
-                                        &"512x512".into(),
-                                    )
-                                    .is_ok()
-                                    && js_sys::Reflect::set(
-                                        &artwork_object,
-                                        &"type".into(),
-                                        &"image/jpeg".into(),
-                                    )
-                                    .is_ok();
+                                );
+                                let _ = js_sys::Reflect::set(
+                                    &artwork_object,
+                                    &"sizes".into(),
+                                    &"512x512".into(),
+                                );
+                                let _ = js_sys::Reflect::set(
+                                    &artwork_object,
+                                    &"type".into(),
+                                    &"image/jpeg".into(),
+                                );
 
-                                if setup_successful {
-                                    artwork_array.push(&artwork_object);
-                                    metadata.set_artwork(&artwork_array.into());
-                                    media_session.set_metadata(Some(&metadata));
+                                artwork_array.push(&artwork_object);
+                                metadata.set_artwork(&artwork_array.into());
+                                media_session.set_metadata(Some(&metadata));
+
+                                // Set playback state
+                                if audio_state_clone.audio_playing.unwrap() {
+                                    media_session
+                                        .set_playback_state(MediaSessionPlaybackState::Playing);
+                                } else {
+                                    media_session
+                                        .set_playback_state(MediaSessionPlaybackState::Paused);
                                 }
+
+                                // Update position state
+                                if let Some(audio_element) = &audio_state_clone.audio_element {
+                                    let position_state = MediaPositionState::new();
+                                    position_state.set_duration(audio_props.duration_sec);
+                                    position_state
+                                        .set_playback_rate(audio_state_clone.playback_speed);
+                                    position_state.set_position(audio_element.current_time());
+                                    let _ = media_session
+                                        .set_position_state_with_state(&position_state);
+                                }
+                            }
+                            // Inside your use_effect_with block, after setting up the initial position state:
+                            // Inside your media session setup use_effect:
+                            if let Some(audio_element) = &audio_state_clone.audio_element {
+                                let media_session_clone = media_session.clone();
+                                let audio_state_for_callback = audio_state_clone.clone();
+                                let audio_element_clone = audio_element.clone();
+                                let timeupdate_callback = Closure::wrap(Box::new(move || {
+                                    let position_state = MediaPositionState::new();
+                                    position_state.set_duration(audio_element_clone.duration()); // Use the element's duration directly
+                                    position_state
+                                        .set_playback_rate(audio_state_for_callback.playback_speed);
+                                    position_state.set_position(audio_element_clone.current_time());
+                                    let _ = media_session_clone
+                                        .set_position_state_with_state(&position_state);
+                                })
+                                    as Box<dyn FnMut()>);
+
+                                audio_element.set_ontimeupdate(Some(
+                                    timeupdate_callback.as_ref().unchecked_ref(),
+                                ));
+                                timeupdate_callback.forget();
                             }
                         }
 
@@ -1013,6 +1065,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             on_play_click(
                                 next_episode.episodeurl.clone(),
                                 next_episode.episodetitle.clone(),
+                                next_episode.episodedescription.clone(),
+                                next_episode.episodepubdate.clone(),
                                 next_episode.episodeartwork.clone(),
                                 next_episode.episodeduration,
                                 next_episode.episodeid,
@@ -1217,19 +1271,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 .currently_playing
                 .as_ref()
                 .map(|audio_props| audio_props.episode_id);
+            let show_modal = show_modal.clone();
 
             Callback::from(move |_: MouseEvent| {
-                let dispatch_clone = dispatch.clone();
-                let history_clone = history.clone();
-                if let Some(episode_id) = episode_id {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        dispatch_clone.reduce_mut(move |state| {
-                            state.selected_episode_id = Some(episode_id);
-                            state.fetched_episode = None;
-                        });
-                        history_clone.push("/episode"); // Use the route path
-                    });
-                }
+                show_modal.set(true); // Show modal instead of navigating
             })
         };
 
@@ -1349,7 +1394,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 <>
                                 <button onclick={Callback::from(move |e: MouseEvent| {
                                     on_shownotes_click.emit(e.clone());
-                                    title_click_emit.emit(e);
+                                    // title_click_emit.emit(e);
                                 })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
                                     { "Shownotes" }
                                 </button>
@@ -1425,12 +1470,61 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 max={audio_props.duration_sec.to_string().clone()}
                                 value={audio_state.current_time_seconds.to_string()}
                                 oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration}</span>
+                            <span class="time-display px-2">{formatted_duration.clone()}</span>
                         </div>
                     </div>
                 </div>
             </div>
             </div>
+            {
+                if *show_modal && audio_state.currently_playing.is_some() {
+                    let props = audio_state.currently_playing.as_ref().unwrap();
+                    let listen_duration_percentage = if props.duration_sec > 0.0 {
+                        (audio_state.current_time_seconds / props.duration_sec) * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    // Navigation callback for the "Go to Episode Page" button
+                    let nav_to_episode = {
+                        let history = history.clone();
+                        let dispatch = _dispatch.clone();
+                        let episode_id = props.episode_id;
+                        let show_modal = show_modal.clone();
+                        let title_click = title_click.clone();
+
+                        Callback::from(move |e: MouseEvent| {
+                            show_modal.set(false);  // Close modal before navigation
+                            title_click.emit(e);
+                            let dispatch_clone = dispatch.clone();
+                            let history_clone = history.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                dispatch_clone.reduce_mut(move |state| {
+                                    state.selected_episode_id = Some(episode_id);
+                                    state.fetched_episode = None;
+                                });
+                                history_clone.push("/episode");
+                            });
+                        })
+                    };
+
+                    html! {
+                        <EpisodeModal
+                            episode_id={props.episode_id}
+                            episode_artwork={props.artwork_url.clone()}
+                            episode_title={props.title.clone()}
+                            description={props.description.clone()}  // You might need to fetch this
+                            format_release={props.release_date.clone()}
+                            duration={formatted_duration}
+                            on_close={on_modal_close.clone()}
+                            on_show_notes={nav_to_episode}
+                            listen_duration_percentage={listen_duration_percentage}
+                        />
+                    }
+                } else {
+                    html! {}
+                }
+            }
             </>
         }
     } else {
@@ -1441,6 +1535,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 pub fn on_play_pause(
     episode_url_for_closure: String,
     episode_title_for_closure: String,
+    episode_description_for_closure: String,
+    episode_release_date_for_closure: String,
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
     episode_id_for_closure: i32,
@@ -1455,6 +1551,8 @@ pub fn on_play_pause(
     Callback::from(move |e: MouseEvent| {
         let episode_url_for_play = episode_url_for_closure.clone();
         let episode_title_for_play = episode_title_for_closure.clone();
+        let episode_description_for_play = episode_description_for_closure.clone();
+        let episode_release_date_for_play = episode_release_date_for_closure.clone();
         let episode_artwork_for_play = episode_artwork_for_closure.clone();
         let episode_duration_for_play = episode_duration_for_closure.clone();
         let episode_id_for_play = episode_id_for_closure.clone();
@@ -1485,6 +1583,8 @@ pub fn on_play_pause(
             on_play_click(
                 episode_url_for_play,
                 episode_title_for_play,
+                episode_description_for_play,
+                episode_release_date_for_play,
                 episode_artwork_for_play,
                 episode_duration_for_play,
                 episode_id_for_play,
@@ -1504,6 +1604,8 @@ pub fn on_play_pause(
 pub fn on_play_click(
     episode_url_for_closure: String,
     episode_title_for_closure: String,
+    episode_description_for_closure: String,
+    episode_release_date_for_closure: String,
     episode_artwork_for_closure: String,
     episode_duration_for_closure: i32,
     episode_id_for_closure: i32,
@@ -1518,6 +1620,8 @@ pub fn on_play_click(
     Callback::from(move |_: MouseEvent| {
         let episode_url_for_closure = episode_url_for_closure.clone();
         let episode_title_for_closure = episode_title_for_closure.clone();
+        let episode_description_for_closure = episode_description_for_closure.clone();
+        let episode_release_date_for_closure = episode_release_date_for_closure.clone();
         let episode_artwork_for_closure = episode_artwork_for_closure.clone();
         let episode_duration_for_closure = episode_duration_for_closure.clone();
         let listen_duration_for_closure = listen_duration_for_closure.clone();
@@ -1535,6 +1639,8 @@ pub fn on_play_click(
         let check_api_key = api_key.clone();
         let check_user_id = user_id.clone();
         let episode_title_for_wasm = episode_title_for_closure.clone();
+        let episode_description_for_wasm = episode_description_for_closure.clone();
+        let episode_release_date_for_wasm = episode_release_date_for_closure.clone();
         let episode_url_for_wasm = call_ep_url.clone();
         let episode_artwork_for_wasm = episode_artwork_for_closure.clone();
         let episode_duration_for_wasm = episode_duration_for_closure.clone();
@@ -1730,6 +1836,8 @@ pub fn on_play_click(
                                     audio_state.currently_playing = Some(AudioPlayerProps {
                                         src: src.clone(),
                                         title: episode_title_for_wasm.clone(),
+                                        description: episode_description_for_wasm.clone(),
+                                        release_date: episode_release_date_for_wasm.clone(),
                                         artwork_url: episode_artwork_for_wasm.clone(),
                                         duration: episode_duration_for_wasm.clone().to_string(),
                                         episode_id: episode_id_for_wasm.clone(),
@@ -1769,6 +1877,8 @@ pub fn on_play_click(
                     audio_state.currently_playing = Some(AudioPlayerProps {
                         src: src.clone(),
                         title: episode_title_for_wasm.clone(),
+                        description: episode_description_for_wasm.clone(),
+                        release_date: episode_release_date_for_wasm.clone(),
                         artwork_url: episode_artwork_for_wasm.clone(),
                         duration: episode_duration_for_wasm.clone().to_string(),
                         episode_id: episode_id_for_wasm.clone(),
@@ -1818,7 +1928,8 @@ pub fn on_play_pause_offline(
                 }
             });
         } else {
-            on_play_click_offline(episode_info_for_closure, audio_dispatch).emit(_);
+            on_play_click_offline(episode_info_for_closure, audio_dispatch)
+                .emit(MouseEvent::new("click").unwrap());
         }
     })
 }
@@ -1845,6 +1956,8 @@ pub fn on_play_click_offline(
         };
 
         let episode_title_for_wasm = episode_info_for_closure.episodetitle.clone();
+        let episode_description_for_wasm = episode_info_for_closure.episodedescription.clone();
+        let episode_release_date_for_wasm = episode_info_for_closure.episodepubdate.clone();
         let episode_artwork_for_wasm = episode_info_for_closure.episodeartwork.clone();
         let episode_duration_for_wasm = episode_info_for_closure.episodeduration.clone();
         let episode_id_for_wasm = episode_info_for_closure.episodeid.clone();
@@ -1866,6 +1979,8 @@ pub fn on_play_click_offline(
                         audio_state.currently_playing = Some(AudioPlayerProps {
                             src: src.clone(),
                             title: episode_title_for_wasm.clone(),
+                            description: episode_description_for_wasm.clone(),
+                            release_date: episode_release_date_for_wasm.clone(),
                             artwork_url: episode_artwork_for_wasm.clone(),
                             duration: episode_duration_for_wasm.clone().to_string(),
                             episode_id: episode_id_for_wasm.clone(),
@@ -1895,6 +2010,8 @@ pub fn on_play_click_offline(
 pub fn on_play_click_shared(
     episode_url: String,
     episode_title: String,
+    episode_description: String,
+    episode_release_date: String,
     episode_artwork: String,
     episode_duration: i32,
     episode_id: i32,
@@ -1903,6 +2020,8 @@ pub fn on_play_click_shared(
     Callback::from(move |_: MouseEvent| {
         let episode_url = episode_url.clone();
         let episode_title = episode_title.clone();
+        let episode_description = episode_description.clone();
+        let episode_release_date = episode_release_date.clone();
         let episode_artwork = episode_artwork.clone();
         let episode_duration = episode_duration.clone();
         let episode_id = episode_id.clone();
@@ -1925,9 +2044,11 @@ pub fn on_play_click_shared(
                 audio_state.currently_playing = Some(AudioPlayerProps {
                     src: episode_url.clone(),
                     title: episode_title.clone(),
+                    description: episode_description.clone(),
+                    release_date: episode_release_date.clone(),
                     artwork_url: episode_artwork.clone(),
                     duration: episode_duration.to_string(),
-                    episode_id: episode_id,
+                    episode_id,
                     duration_sec: episode_duration as f64,
                     start_pos_sec: 0.0, // Start playing from the beginning
                     end_pos_sec: 0.0,

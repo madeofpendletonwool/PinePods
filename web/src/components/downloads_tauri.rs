@@ -737,7 +737,7 @@ pub fn downloads() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }
@@ -839,6 +839,10 @@ pub fn render_podcast_with_episodes(
                                                             .map_or(false, |current| current.episode_id == episode.episodeid);
                             let is_playing = audio_state.audio_playing.unwrap_or(false);
 
+                            let date_format = match_date_format(state.date_format.as_deref());
+                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+
 
                             let on_play_pause = on_play_pause_offline(episode.clone(), audio_dispatch, audio_state);
 
@@ -853,9 +857,6 @@ pub fn render_podcast_with_episodes(
                                 None,
                             );
 
-                            let date_format = match_date_format(state.date_format.as_deref());
-                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                             let on_checkbox_change_cloned = on_checkbox_change.clone();
                             let episode_url_for_ep_item = episode_url_clone.clone();
                             let sanitized_description =

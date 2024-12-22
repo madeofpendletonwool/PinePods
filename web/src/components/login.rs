@@ -1134,48 +1134,86 @@ pub fn login() -> Html {
     }
 
     let time_zone_setup_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-                            {"Time Zone Setup"}
-                        </h3>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold">
-                            {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+        <div class="modal-overlay">
+            <div class="item_container-test modal-content">
+                // Header
+                <div class="modal-header">
+                    <i class="ph ph-clock text-xl"></i>
+                    <h3 class="text-lg">{"Time Zone Setup"}</h3>
+                </div>
+
+                // Content
+                <div class="modal-body">
+                    <form>
+                        <div class="modal-welcome">
+                            <i class="ph ph-hand-waving text-xl"></i>
+                            <p>
+                                {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
                             </p>
-                            <div>
-                                <label for="hour_format" style="margin-right: 10px;">{"Hour Format:"}</label>
-                                <select id="hour_format" name="hour_format" class="email-select border p-2 rounded" oninput={on_time_pref_change}>
-                                    <option value="12">{"12 Hour"}</option>
-                                    <option value="24">{"24 Hour"}</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="time_zone" style="margin-right: 10px;">{"Time Zone:"}</label>
-                                <select id="time_zone" name="time_zone" class="email-select border p-2 rounded" oninput={on_tz_change}>
-                                    { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
-                                </select>
-                            </div>
-                            <div>
-                            <label for="date_format" style="margin-right: 10px;">{"Date Format:"}</label>
-                            <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
-                                <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
-                                <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
-                                <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
-                                <option value="JUL">{"JUL (YY/DDD)"}</option>
-                                <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
-                                <option value="USA">{"USA (MM/DD/YYYY)"}</option>
-                                <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
-                                <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                        </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-clock-clockwise"></i>
+                                <span>{"Hour Format"}</span>
+                            </label>
+                            <select
+                                id="hour_format"
+                                name="hour_format"
+                                class="modal-select"
+                                oninput={on_time_pref_change}
+                            >
+                                <option value="12">{"12 Hour"}</option>
+                                <option value="24">{"24 Hour"}</option>
                             </select>
                         </div>
-                            <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
-                        </form>
-                    </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-globe"></i>
+                                <span>{"Time Zone"}</span>
+                            </label>
+                            <select
+                                id="time_zone"
+                                name="time_zone"
+                                class="modal-select"
+                                oninput={on_tz_change}
+                            >
+                                { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                            </select>
+                        </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-calendar"></i>
+                                <span>{"Date Format"}</span>
+                            </label>
+                            <select
+                                id="date_format"
+                                name="date_format"
+                                class="modal-select"
+                                oninput={on_df_change}
+                            >
+                                <option value="MDY">{"MM-DD-YYYY"}</option>
+                                <option value="DMY">{"DD-MM-YYYY"}</option>
+                                <option value="YMD">{"YYYY-MM-DD"}</option>
+                                <option value="JUL">{"YY/DDD (Julian)"}</option>
+                                <option value="ISO">{"ISO 8601"}</option>
+                                <option value="USA">{"MM/DD/YYYY"}</option>
+                                <option value="EUR">{"DD.MM.YYYY"}</option>
+                                <option value="JIS">{"YYYY-MM-DD"}</option>
+                            </select>
+                        </div>
+
+                        <button
+                            type="submit"
+                            onclick={on_time_zone_submit}
+                            class="modal-button"
+                        >
+                            <i class="ph ph-check"></i>
+                            <span>{"Save Preferences"}</span>
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -1921,48 +1959,86 @@ pub fn login() -> Html {
     }
 
     let time_zone_setup_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold">
-                            {"Time Zone Setup"}
-                        </h3>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold">
-                            {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+        <div class="modal-overlay">
+            <div class="item_container-text modal-content">
+                // Header
+                <div class="item_container-text modal-header">
+                    <i class="ph ph-clock text-xl"></i>
+                    <h3 class="text-lg">{"Time Zone Setup"}</h3>
+                </div>
+
+                // Content
+                <div class="modal-body">
+                    <form>
+                        <div class="modal-welcome">
+                            <i class="ph ph-hand-waving text-xl"></i>
+                            <p>
+                                {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
                             </p>
-                            <div>
-                                <label for="hour_format" style="margin-right: 10px;">{"Hour Format:"}</label>
-                                <select id="hour_format" name="hour_format" class="email-select border p-2 rounded" oninput={on_time_pref_change}>
-                                    <option value="12">{"12 Hour"}</option>
-                                    <option value="24">{"24 Hour"}</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="time_zone" style="margin-right: 10px;">{"Time Zone:"}</label>
-                                <select id="time_zone" name="time_zone" class="email-select border p-2 rounded" oninput={on_tz_change}>
-                                    { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
-                                </select>
-                            </div>
-                            <div>
-                            <label for="date_format" style="margin-right: 10px;">{"Date Format:"}</label>
-                            <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
-                                <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
-                                <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
-                                <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
-                                <option value="JUL">{"JUL (YY/DDD)"}</option>
-                                <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
-                                <option value="USA">{"USA (MM/DD/YYYY)"}</option>
-                                <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
-                                <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                        </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-clock-clockwise"></i>
+                                <span>{"Hour Format"}</span>
+                            </label>
+                            <select
+                                id="hour_format"
+                                name="hour_format"
+                                class="modal-select"
+                                oninput={on_time_pref_change}
+                            >
+                                <option value="12">{"12 Hour"}</option>
+                                <option value="24">{"24 Hour"}</option>
                             </select>
                         </div>
-                            <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
-                        </form>
-                    </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-globe"></i>
+                                <span>{"Time Zone"}</span>
+                            </label>
+                            <select
+                                id="time_zone"
+                                name="time_zone"
+                                class="modal-select"
+                                oninput={on_tz_change}
+                            >
+                                { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                            </select>
+                        </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-calendar"></i>
+                                <span>{"Date Format"}</span>
+                            </label>
+                            <select
+                                id="date_format"
+                                name="date_format"
+                                class="modal-select"
+                                oninput={on_df_change}
+                            >
+                                <option value="MDY">{"MM-DD-YYYY"}</option>
+                                <option value="DMY">{"DD-MM-YYYY"}</option>
+                                <option value="YMD">{"YYYY-MM-DD"}</option>
+                                <option value="JUL">{"YY/DDD (Julian)"}</option>
+                                <option value="ISO">{"ISO 8601"}</option>
+                                <option value="USA">{"MM/DD/YYYY"}</option>
+                                <option value="EUR">{"DD.MM.YYYY"}</option>
+                                <option value="JIS">{"YYYY-MM-DD"}</option>
+                            </select>
+                        </div>
+
+                        <button
+                            type="submit"
+                            onclick={on_time_zone_submit}
+                            class="modal-button"
+                        >
+                            <i class="ph ph-check"></i>
+                            <span>{"Save Preferences"}</span>
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>

@@ -429,7 +429,7 @@ pub fn downloads() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
             } else {
                 html! {}
             }
@@ -498,6 +498,8 @@ pub fn render_podcast_with_episodes(
 
                             let episode_url_clone = episode.episodeurl.clone();
                             let episode_title_clone = episode.episodetitle.clone();
+                            let episode_description_clone = episode.episodedescription.clone();
+                            let episode_release_clone = episode.episodepubdate.clone();
                             let episode_artwork_clone = episode.episodeartwork.clone();
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
@@ -529,6 +531,8 @@ pub fn render_podcast_with_episodes(
 
                             let episode_url_for_closure = episode_url_clone.clone();
                             let episode_title_for_closure = episode_title_clone.clone();
+                            let episode_description_for_closure = episode_description_clone.clone();
+                            let episode_release_for_closure = episode_release_clone.clone();
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
                             let listener_duration_for_closure = episode_listened_clone.clone();
@@ -545,9 +549,15 @@ pub fn render_podcast_with_episodes(
                                                             .map_or(false, |current| current.episode_id == episode.episodeid);
                             let is_playing = audio_state.audio_playing.unwrap_or(false);
 
+                            let date_format = match_date_format(state.date_format.as_deref());
+                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+
                             let on_play_pause = on_play_pause(
                                 episode_url_for_closure.clone(),
                                 episode_title_for_closure.clone(),
+                                episode_description_for_closure.clone(),
+                                format_release.clone(),
                                 episode_artwork_for_closure.clone(),
                                 episode_duration_for_closure.clone(),
                                 episode_id_for_closure.clone(),
@@ -571,9 +581,6 @@ pub fn render_podcast_with_episodes(
                                 None,
                             );
 
-                            let date_format = match_date_format(state.date_format.as_deref());
-                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
                             let on_checkbox_change_cloned = on_checkbox_change.clone();
                             let episode_url_for_ep_item = episode_url_clone.clone();
                             let sanitized_description =
