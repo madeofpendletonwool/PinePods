@@ -273,6 +273,11 @@ pub struct AddUserResponse {
     detail: String,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct UserErrorResponse {
+    pub detail: String,
+}
+
 #[allow(dead_code)]
 pub async fn call_add_login_user(
     server_name: String,
@@ -284,7 +289,6 @@ pub async fn call_add_login_user(
 
     // Serialize `add_user` into JSON
     let json_body = serde_json::to_string(&add_user_req)?;
-
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
         .body(json_body)?
@@ -294,10 +298,34 @@ pub async fn call_add_login_user(
     if response.ok() {
         Ok(true)
     } else {
-        Err(Error::msg(format!(
-            "Error adding user: {}",
-            response.status_text()
-        )))
+        // Try to get the detailed error message from the response
+        let error_text = response.text().await?;
+
+        // Attempt to parse the error response as JSON
+        match serde_json::from_str::<UserErrorResponse>(&error_text) {
+            Ok(error_response) => {
+                // Return the detailed error message
+                Err(Error::msg(error_response.detail))
+            }
+            Err(_) => {
+                // If we can't parse the error response, return a more user-friendly message
+                if error_text.contains("duplicate key value") && error_text.contains("username") {
+                    Err(Error::msg(
+                        "This username is already taken. Please choose a different username.",
+                    ))
+                } else if error_text.contains("duplicate key value") && error_text.contains("email")
+                {
+                    Err(Error::msg(
+                        "This email is already registered. Please use a different email address.",
+                    ))
+                } else {
+                    Err(Error::msg(format!(
+                        "Unable to create user account. Please try again or contact support if the problem persists. Error: {}",
+                        error_text
+                    )))
+                }
+            }
+        }
     }
 }
 

@@ -654,9 +654,9 @@ pub fn login() -> Html {
             let email = email.clone();
             let page_state = page_state.clone();
 
-            // let error_message_clone = error_message_create.clone();
             e.prevent_default();
-            // Hash the password and generate a salt
+
+            // Validate input fields
             let errors = validate_user_input(&new_username, &new_password, &email);
 
             if errors.contains(&ValidationError::UsernameTooShort) {
@@ -676,6 +676,7 @@ pub fn login() -> Html {
             } else {
                 email_error.set(email_error_notice::Hidden);
             }
+
             if errors.is_empty() {
                 match encode_password(&new_password) {
                     Ok(hash_pw) => {
@@ -687,37 +688,32 @@ pub fn login() -> Html {
                         };
                         let add_user_request = Some(user_settings);
 
-                        // let add_user_request = add_user_request.clone();
                         wasm_bindgen_futures::spawn_local(async move {
                             match call_add_login_user(server_name, &add_user_request).await {
                                 Ok(success) => {
                                     if success {
                                         page_state.set(PageState::Default);
                                         create_state.reduce_mut(|state| {
-                                            state.info_message =
-                                                Option::from(format!("You can now login!"))
-                                        });
-                                    } else {
-                                        console::log_1(&"Error adding user".into());
-                                        page_state.set(PageState::Default);
-                                        create_state.reduce_mut(|state| {
-                                            state.error_message =
-                                                Option::from(format!("Error adding user"))
+                                            state.info_message = Some(
+                                                "Account created successfully! You can now login."
+                                                    .to_string(),
+                                            )
                                         });
                                     }
                                 }
                                 Err(e) => {
-                                    page_state.set(PageState::Default);
+                                    // The error message is now user-friendly from our updated call_add_login_user
                                     create_state.reduce_mut(|state| {
-                                        state.error_message =
-                                            Option::from(format!("Error adding user: {:?}", e))
+                                        state.error_message = Some(e.to_string())
                                     });
                                 }
                             }
                         });
                     }
-                    Err(_e) => {
-                        // console::log_1(&"User added successfully".into());
+                    Err(e) => {
+                        create_state.reduce_mut(|state| {
+                            state.error_message = Some(format!("Error creating account: {}", e))
+                        });
                     }
                 }
             }
@@ -1135,7 +1131,7 @@ pub fn login() -> Html {
 
     let time_zone_setup_modal = html! {
         <div class="modal-overlay">
-            <div class="item_container-test modal-content">
+            <div class="item_container-text modal-content">
                 // Header
                 <div class="modal-header">
                     <i class="ph ph-clock text-xl"></i>

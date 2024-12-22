@@ -1,6 +1,6 @@
 # Fast API
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Header, Body, Path, Form, Query, \
-    security, BackgroundTasks
+    security, BackgroundTasks, UploadFile
 from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import PlainTextResponse, JSONResponse, Response, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +21,7 @@ from mysql.connector import Error
 import psycopg
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
+from psycopg.errors import UniqueViolation, ForeignKeyViolation, OperationalError
 import os
 import xml.etree.ElementTree as ET
 from fastapi.middleware.gzip import GZipMiddleware
@@ -2632,25 +2633,126 @@ class UserValues(BaseModel):
 
 
 @app.post("/api/data/add_user")
-async def api_add_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header),
-                       user_values: UserValues = Body(...)):
-    database_functions.functions.add_user(cnx, database_type, (
-        user_values.fullname, user_values.username.lower(), user_values.email, user_values.hash_pw))
-    return {"detail": "User added."}
+async def api_add_user(is_admin: bool = Depends(check_if_admin),
+                      cnx=Depends(get_database_connection),
+                      api_key: str = Depends(get_api_key_from_header),
+                      user_values: UserValues = Body(...)):
+    try:
+        user_id = database_functions.functions.add_user(cnx, database_type, (
+            user_values.fullname, user_values.username.lower(), user_values.email, user_values.hash_pw))
+
+        if not user_id:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create user - no user ID returned"
+            )
+
+        return {"detail": "Success", "user_id": user_id}
+
+    except psycopg.errors.UniqueViolation as e:
+        error_detail = str(e)
+        if "Users_username_key" in error_detail:
+            raise HTTPException(
+                status_code=409,
+                detail="This username is already taken. Please choose a different username."
+            )
+        elif "Users_email_key" in error_detail:
+            raise HTTPException(
+                status_code=409,
+                detail="This email address is already registered. Please use a different email."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="A conflict occurred while creating the user. Please try again with different credentials."
+            )
+
+    except psycopg.errors.OperationalError as e:
+        logging.error(f"Database operational error: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to connect to the database. Please try again later."
+        )
+
+    except mysql.connector.errors.IntegrityError as e:
+        error_msg = str(e)
+        if "Duplicate entry" in error_msg and "username" in error_msg.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="This username is already taken. Please choose a different username."
+            )
+        elif "Duplicate entry" in error_msg and "email" in error_msg.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="This email address is already registered. Please use a different email."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="A conflict occurred while creating the user. Please try again with different credentials."
+            )
+
+    except Exception as e:
+        logging.error(f"Unexpected error adding user: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred while creating the user: {str(e)}"
+        )
 
 
 @app.post("/api/data/add_login_user")
 async def api_add_user(cnx=Depends(get_database_connection),
-                       user_values: UserValues = Body(...)):
-    self_service = database_functions.functions.check_self_service(cnx, database_type)
-    if self_service:
-        database_functions.functions.add_user(cnx, database_type, (
-            user_values.fullname, user_values.username.lower(), user_values.email, user_values.hash_pw))
-        return {"detail": "User added."}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                      user_values: UserValues = Body(...)):
+    try:
+        self_service = database_functions.functions.check_self_service(cnx, database_type)
+        if not self_service:
+            raise HTTPException(
+                status_code=403,
+                detail="Your API key is either invalid or does not have correct permission"
+            )
 
+        user_id = database_functions.functions.add_user(cnx, database_type, (
+            user_values.fullname, user_values.username.lower(), user_values.email, user_values.hash_pw))
+
+        if not user_id:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create user account - no user ID returned"
+            )
+
+        return {"detail": "User added successfully", "user_id": user_id}
+
+    except UniqueViolation as e:
+        error_detail = str(e)
+        if "Users_username_key" in error_detail:
+            raise HTTPException(
+                status_code=409,
+                detail="This username is already taken. Please choose a different username."
+            )
+        elif "Users_email_key" in error_detail:
+            raise HTTPException(
+                status_code=409,
+                detail="This email address is already registered. Please use a different email."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="A conflict occurred while creating the user. Please try again with different credentials."
+            )
+
+    except OperationalError as e:
+        logging.error(f"Database operational error: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to connect to the database. Please try again later."
+        )
+
+    except Exception as e:
+        logging.error(f"Unexpected error adding user: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred while creating your account: {str(e)}"
+        )
 
 @app.put("/api/data/set_fullname/{user_id}")
 async def api_set_fullname(user_id: int, new_name: str = Query(...), cnx=Depends(get_database_connection),
@@ -4768,19 +4870,27 @@ async def backup_server(request: BackupServerRequest, is_admin: bool = Depends(c
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return Response(content=dump_data, media_type="text/plain")
 
-class RestoreServer(BaseModel):
-    database_pass: str
-    server_restore_data: str
-
-
 @app.post("/api/data/restore_server")
-async def api_restore_server(data: RestoreServer, background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin), cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header)):
-
+async def api_restore_server(
+    background_tasks: BackgroundTasks,
+    backup_file: UploadFile,
+    database_pass: str = Form(...),
+    is_admin: bool = Depends(check_if_admin),
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
-    logging.info(f"Restoring server with data")
-    # Proceed with restoration but in the background
-    background_tasks.add_task(restore_server_fun, data.database_pass, data.server_restore_data)
+
+    if not backup_file.filename.endswith('.sql'):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only .sql files are allowed")
+
+    file_content = await backup_file.read()
+    if len(file_content) > 100 * 1024 * 1024:  # 100MB limit
+        raise HTTPException(status_code=413, detail="File too large")
+
+    logging.info(f"Restoring server with uploaded backup file")
+    background_tasks.add_task(restore_server_fun, database_pass, file_content)
     return JSONResponse(content={"detail": "Server restoration started."})
 
 def restore_server_fun(database_pass: str, server_restore_data: str):
@@ -4791,7 +4901,6 @@ def restore_server_fun(database_pass: str, server_restore_data: str):
         database_functions.functions.restore_server(cnx, database_pass, server_restore_data)
     finally:
         cnx.close()
-
 
 @app.get("/api/data/rss_feed_status")
 async def get_rss_feed_status(
@@ -4933,7 +5042,7 @@ if __name__ == '__main__':
         "clientapi:app",
         host="0.0.0.0",
         port=args.port,
-        log_config=config_file
-        # ssl_keyfile="/opt/pinepods/certs/key.pem",
-        # ssl_certfile="/opt/pinepods/certs/cert.pem"
+        log_config=config_file,
+        limit_concurrency=1000,
+        limit_max_requests=1000
     )
