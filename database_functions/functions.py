@@ -490,7 +490,7 @@ def add_user(cnx, database_type, user_values):
             (UserID, Theme)
             VALUES (%s, %s)
         """
-    cursor.execute(add_user_settings_query, (user_id, 'nordic'))
+    cursor.execute(add_user_settings_query, (user_id, 'Nordic'))
 
     if database_type == "postgresql":
         add_user_stats_query = """
@@ -551,7 +551,7 @@ def add_admin_user(cnx, database_type, user_values):
                 (UserID, Theme)
                 VALUES (%s, %s)
             """
-        cursor.execute(add_user_settings_query, (user_id, 'nordic'))
+        cursor.execute(add_user_settings_query, (user_id, 'Nordic'))
 
         if database_type == "postgresql":
             add_user_stats_query = """

@@ -16,6 +16,7 @@ use crate::requests::pod_req::{
 };
 use gloo_timers::callback::Interval;
 use js_sys::Array;
+use js_sys::Object;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
 use std::path::Path;
@@ -25,7 +26,10 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, Navigator};
+use web_sys::{
+    window, HtmlAudioElement, HtmlElement, HtmlInputElement, MediaPositionState,
+    MediaSessionPlaybackState, Navigator,
+};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -788,6 +792,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     {
         let audio_state = audio_state.clone();
         let audio_dispatch = _audio_dispatch.clone();
+        let audio_state_clone = audio_state.clone();
 
         use_effect_with(audio_state.clone(), move |_| {
             if let Some(window) = web_sys::window() {
@@ -807,33 +812,70 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                 // Create artwork array
                                 let artwork_array = Array::new();
-                                let artwork_object = js_sys::Object::new();
+                                let artwork_object = Object::new();
 
-                                // Set up artwork properties safely
-                                let setup_successful = js_sys::Reflect::set(
+                                // Set up artwork properties
+                                let _ = js_sys::Reflect::set(
                                     &artwork_object,
                                     &"src".into(),
                                     &audio_props.artwork_url.clone().into(),
-                                )
-                                .is_ok()
-                                    && js_sys::Reflect::set(
-                                        &artwork_object,
-                                        &"sizes".into(),
-                                        &"512x512".into(),
-                                    )
-                                    .is_ok()
-                                    && js_sys::Reflect::set(
-                                        &artwork_object,
-                                        &"type".into(),
-                                        &"image/jpeg".into(),
-                                    )
-                                    .is_ok();
+                                );
+                                let _ = js_sys::Reflect::set(
+                                    &artwork_object,
+                                    &"sizes".into(),
+                                    &"512x512".into(),
+                                );
+                                let _ = js_sys::Reflect::set(
+                                    &artwork_object,
+                                    &"type".into(),
+                                    &"image/jpeg".into(),
+                                );
 
-                                if setup_successful {
-                                    artwork_array.push(&artwork_object);
-                                    metadata.set_artwork(&artwork_array.into());
-                                    media_session.set_metadata(Some(&metadata));
+                                artwork_array.push(&artwork_object);
+                                metadata.set_artwork(&artwork_array.into());
+                                media_session.set_metadata(Some(&metadata));
+
+                                // Set playback state
+                                if audio_state_clone.audio_playing.unwrap() {
+                                    media_session
+                                        .set_playback_state(MediaSessionPlaybackState::Playing);
+                                } else {
+                                    media_session
+                                        .set_playback_state(MediaSessionPlaybackState::Paused);
                                 }
+
+                                // Update position state
+                                if let Some(audio_element) = &audio_state_clone.audio_element {
+                                    let position_state = MediaPositionState::new();
+                                    position_state.set_duration(audio_props.duration_sec);
+                                    position_state
+                                        .set_playback_rate(audio_state_clone.playback_speed);
+                                    position_state.set_position(audio_element.current_time());
+                                    let _ = media_session
+                                        .set_position_state_with_state(&position_state);
+                                }
+                            }
+                            // Inside your use_effect_with block, after setting up the initial position state:
+                            // Inside your media session setup use_effect:
+                            if let Some(audio_element) = &audio_state_clone.audio_element {
+                                let media_session_clone = media_session.clone();
+                                let audio_state_for_callback = audio_state_clone.clone();
+                                let audio_element_clone = audio_element.clone();
+                                let timeupdate_callback = Closure::wrap(Box::new(move || {
+                                    let position_state = MediaPositionState::new();
+                                    position_state.set_duration(audio_element_clone.duration()); // Use the element's duration directly
+                                    position_state
+                                        .set_playback_rate(audio_state_for_callback.playback_speed);
+                                    position_state.set_position(audio_element_clone.current_time());
+                                    let _ = media_session_clone
+                                        .set_position_state_with_state(&position_state);
+                                })
+                                    as Box<dyn FnMut()>);
+
+                                audio_element.set_ontimeupdate(Some(
+                                    timeupdate_callback.as_ref().unchecked_ref(),
+                                ));
+                                timeupdate_callback.forget();
                             }
                         }
 
@@ -1886,7 +1928,8 @@ pub fn on_play_pause_offline(
                 }
             });
         } else {
-            on_play_click_offline(episode_info_for_closure, audio_dispatch).emit(_);
+            on_play_click_offline(episode_info_for_closure, audio_dispatch)
+                .emit(MouseEvent::new("click").unwrap());
         }
     })
 }
@@ -1913,6 +1956,8 @@ pub fn on_play_click_offline(
         };
 
         let episode_title_for_wasm = episode_info_for_closure.episodetitle.clone();
+        let episode_description_for_wasm = episode_info_for_closure.episodedescription.clone();
+        let episode_release_date_for_wasm = episode_info_for_closure.episodepubdate.clone();
         let episode_artwork_for_wasm = episode_info_for_closure.episodeartwork.clone();
         let episode_duration_for_wasm = episode_info_for_closure.episodeduration.clone();
         let episode_id_for_wasm = episode_info_for_closure.episodeid.clone();
@@ -1934,6 +1979,8 @@ pub fn on_play_click_offline(
                         audio_state.currently_playing = Some(AudioPlayerProps {
                             src: src.clone(),
                             title: episode_title_for_wasm.clone(),
+                            description: episode_description_for_wasm.clone(),
+                            release_date: episode_release_date_for_wasm.clone(),
                             artwork_url: episode_artwork_for_wasm.clone(),
                             duration: episode_duration_for_wasm.clone().to_string(),
                             episode_id: episode_id_for_wasm.clone(),
