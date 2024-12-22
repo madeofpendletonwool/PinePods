@@ -428,8 +428,10 @@ paru -S pinepods
 
 You can search for Pinepods in your favorite flatpak installer gui app such as Gnome Software.
 
+Flathub page can be found [here](https://flathub.org/apps/com.gooseberrydevelopment.pinepods)
+
 ```
-Flathub link and install command will be here soon (post 0.7.0 launch and compile)
+flatpak install flathub com.gooseberrydevelopment.pinepods
 ```
 
 #### Snap
@@ -502,35 +504,16 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 
 ## ToDo pre-1.0
 
-- [x] Additional Downloads Page organization - Organize by Podcast
-- [x] Download entire podcast button. For episode archival
-- [x] Offline mode for playing locally downloaded episodes
-- [x] Installable PWA
-- [x] Custom Podcast Start and End Position
-- [x] Jump to clicked timestamp
-- [x] Timestamps in playing page
-- [x] Chapter Image Support
-- [x] Drag to reorganize queue
-- [x] Allow for reading transcrips
-- [x] Add Funding Links when offered
-- [x] Chapter images
-- [x] Sharing System - Episode and Podcast Share implemented. This also includes an option to share individual episodes with users who don't have an account on the server
-- [x] Link Sharing to a podcast to share and allow people to listen to that episode on the server without logging in
-- [x] Guest Parsing and search page. Use people tags to show other podcasts a specific guest is part of
-- [ ] Restore Server via GUI
 - [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
 - [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
 - [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
-- [ ] Subscription filtering (The ability to search within a given podcast for specific keywords. Give additional searching options, such as searching based on length of episodes)
 - [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
 - [ ] How-to guides on doing things in the app
 - [ ] *Pinepods Firewood*. A light, terminal based client used as a remote streaming device or to just listen to podcasts in your terminal! No GUI
-- [ ] Add highlight to indicate which page you're on
 - [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts.
 - [ ] Suggestions page - Create podcasts you might like based on the ones you already added
 - [ ] Playlist Priority - Similar to podcast republic
 - [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] Rating System
 - [ ] Implement Podroll to Podcast page when offered
 - [ ] Option to use login images as background throughout app.
 - [ ] Side load audio from the web

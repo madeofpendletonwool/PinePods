@@ -12,7 +12,26 @@ Next Minor Version:
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 
-- [] Need to fix rss refresh api issue on episode_layout
+Version 0.7.2
+
+- [x] Mobile Progress line (little line that appears above the line player to indicate your progress in the episode)
+- [x] Dynamically Adjusting chapters. Chapters now adapt and update as you play each one
+- [x] Dynamic Play button. This means when you play an episode it will update to a pause button as you see it in a list of other episodes
+- [x] Fixed issue where Gpodder wasn't adding in podcasts right away after being connected.
+- [x] Fixed issues with admin user add component where you could adjust user settings
+- [x] Also adjusted error messages on user component so that it's more clear what went wrong
+- [x] Added in RSS feed capability. There's a new setting to turn on RSS feeds in the user settings. This will allow you to get a feed of all your Pinepods podcasts that you can add into another podcast app.
+- [x] Individual Podcasts can also be subscribed to with feeds as well. Opening the individual Podcast page there's a new RSS icon you can click to get the feed
+- [x] Fixed issues where theme wasn't staying applied sometimes
+- [x] Added filtering throughout the app. You can now selectively filter whether podcasts is completed or in progress
+- [x] Added quick search in numerous places. This allows you to quickly search for a podcast based on the name. Pages like History, Saved, Podcast have all gotten this
+- [x] Added Sorting throughout the app. You can now sort podcasts in numerous ways, such as a-z, longest to shortest, newest to oldest, etc...
+- [x] Fixed issue where images in descriptions could break the layout of episodes
+- [x] Adjusted categories to look nicer in the podcast page
+- [x] Fixed issues with DB backup options
+- [x] Implemented DB restore options
+- [x] Fixed issue where the Queue on mobile wasn't adjusting episode placement
+
 
 Version 0.7.0
 
