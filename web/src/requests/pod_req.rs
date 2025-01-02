@@ -2444,3 +2444,42 @@ pub async fn call_remove_category(
         )))
     }
 }
+
+// In your search_pods.rs or a new youtube.rs module:
+#[derive(Deserialize, Debug)]
+pub struct YouTubeSubscribeResponse {
+    pub success: bool,
+    pub podcast_id: i32,
+    pub message: String,
+}
+
+pub async fn call_subscribe_to_channel(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    channel_id: &str,
+) -> Result<YouTubeSubscribeResponse, anyhow::Error> {
+    let endpoint = format!("{}/api/data/youtube/subscribe?user_id={}", server, user_id);
+
+    let resp = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&serde_json::json!({
+            "channel_id": channel_id,
+            "user_id": user_id,
+        }))
+        .map_err(|e| anyhow::anyhow!("Failed to create request: {}", e))?
+        .send()
+        .await
+        .context("Network Request Error")?;
+
+    if resp.ok() {
+        resp.json::<YouTubeSubscribeResponse>()
+            .await
+            .context("Response Parsing Error")
+    } else {
+        Err(anyhow::anyhow!(
+            "Error subscribing to channel. Server Response: {}",
+            resp.status_text()
+        ))
+    }
+}

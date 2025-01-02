@@ -28,3 +28,4 @@ qrcode[pil]
 psycopg[pool]
 redis
 feedgenerator
+yt-dlp

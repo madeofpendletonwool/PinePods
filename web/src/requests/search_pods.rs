@@ -719,3 +719,85 @@ pub async fn call_search_database(
 
     Ok(results)
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct YouTubeVideo {
+    pub id: String,
+    pub title: String,
+    pub duration: Option<f64>,
+    pub url: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct YouTubeChannel {
+    pub channel_id: String,
+    pub name: String,
+    pub description: String,
+    pub subscriber_count: Option<i64>,
+    pub url: String,
+    pub video_count: Option<i32>,
+    pub recent_videos: Vec<YouTubeVideo>,
+    pub thumbnail_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct YouTubeSearchResults {
+    pub channels: Vec<YouTubeChannel>,
+    pub videos: Vec<YouTubeVideo>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct YouTubeSearchResponse {
+    pub results: Vec<YouTubeChannel>,
+}
+
+pub async fn call_youtube_search(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    query: &str,
+    search_type: &str,
+    max_results: i32,
+) -> Result<YouTubeSearchResponse, Error> {
+    let encoded_query = js_sys::encode_uri_component(query)
+        .as_string()
+        .unwrap_or_else(|| query.to_string());
+
+    let url = format!(
+        "{}/api/data/search_youtube_channels?user_id={}&query={}&max_results={}",
+        server_name, user_id, encoded_query, max_results
+    );
+
+    web_sys::console::log_1(&format!("Making request to: {}", url).into());
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
+
+    if response.ok() {
+        let text = response
+            .text()
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get response text: {}", e)))?;
+
+        web_sys::console::log_1(&format!("Raw response: {}", text).into());
+
+        let search_results: YouTubeSearchResponse = serde_json::from_str(&text).map_err(|e| {
+            web_sys::console::log_1(&format!("Parse error: {}", e).into());
+            Error::msg(format!(
+                "Failed to parse response: {} - Raw text: {}",
+                e, text
+            ))
+        })?;
+
+        Ok(search_results)
+    } else {
+        let error_text = response.status_text();
+        Err(Error::msg(format!(
+            "Error searching YouTube. Server response: {}",
+            error_text
+        )))
+    }
+}

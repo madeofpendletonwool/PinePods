@@ -128,9 +128,9 @@ try:
 
     # Add EnableRSSFeeds column if it doesn't exist
     cursor.execute("""
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'Users' 
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'Users'
         AND column_name = 'enablerssfeeds'
     """)
     if cursor.fetchone() is None:
@@ -366,6 +366,7 @@ try:
                 EndSkip INT DEFAULT 0,
                 Username TEXT,
                 Password TEXT,
+                IsYouTubeChannel BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -373,40 +374,28 @@ try:
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
 
-    def add_user_pass_columns_if_not_exist(cursor, cnx):
+    def add_youtube_column_if_not_exist(cursor, cnx):
         try:
-            # Check if the columns exist
             cursor.execute("""
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name='Podcasts'
-                AND column_name IN ('username', 'password')
+                AND column_name = 'isyoutubechannel'
             """)
-            existing_columns = cursor.fetchall()
-            existing_columns = [col[0] for col in existing_columns]
+            existing_column = cursor.fetchone()
 
-            # Add Username column if it doesn't exist
-            if 'username' not in existing_columns:
+            if not existing_column:
                 cursor.execute("""
                     ALTER TABLE "Podcasts"
-                    ADD COLUMN "Username" TEXT
+                    ADD COLUMN "isyoutubechannel" BOOLEAN DEFAULT FALSE
                 """)
-                print("Added 'Username' column to 'Podcasts' table.")
-
-            # Add Password column if it doesn't exist
-            if 'password' not in existing_columns:
-                cursor.execute("""
-                    ALTER TABLE "Podcasts"
-                    ADD COLUMN "Password" TEXT
-                """)
-                print("Added 'Password' column to 'Podcasts' table.")
-
-            cnx.commit()  # Ensure changes are committed
+                print("Added 'IsYouTubeChannel' column to 'Podcasts' table.")
+                cnx.commit()
         except Exception as e:
-            print(f"Error adding columns to Podcasts table: {e}")
+            print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
 
     # Usage
-    add_user_pass_columns_if_not_exist(cursor, cnx)
+    add_youtube_column_if_not_exist(cursor, cnx)
 
 
 
@@ -431,6 +420,28 @@ try:
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Episodes table: {e}")
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "YouTubeVideos" (
+                VideoID SERIAL PRIMARY KEY,
+                PodcastID INT,
+                VideoTitle TEXT,
+                VideoDescription TEXT,
+                VideoURL TEXT,
+                ThumbnailURL TEXT,
+                PublishedAt TIMESTAMP,
+                Duration INT,
+                YouTubeVideoID TEXT,
+                Completed BOOLEAN DEFAULT FALSE,
+                ListenPosition INT DEFAULT 0,
+                FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+            )
+        """)
+
+        cnx.commit()  # Ensure changes are committed
+    except Exception as e:
+        print(f"Error adding YoutubeVideos table: {e}")
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
         cursor.execute(f"""

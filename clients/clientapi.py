@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import lru_cache, wraps
+from yt_dlp import YoutubeDL
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -75,6 +76,7 @@ import database_functions.auth_functions
 import database_functions.app_functions
 import database_functions.import_progress
 import database_functions.valkey_client
+import database_functions.youtube
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -4985,6 +4987,207 @@ async def toggle_rss_feeds(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class YouTubeChannel(BaseModel):
+    channel_id: str
+    name: str
+    description: str
+    subscriber_count: Optional[int]
+    url: str
+    video_count: Optional[int]
+    thumbnail_url: Optional[str]
+    recent_videos: List[dict] = []
+
+@app.get("/api/data/search_youtube_channels")
+async def search_youtube_channels(
+    query: str,
+    max_results: int = 5,
+    user_id: int = None,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    # Validate API key
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Check if web key and verify user permission
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not (key_id == user_id or is_web_key):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only search with your own account."
+        )
+
+    try:
+        # First get channel ID using a search
+        search_url = f"ytsearch{max_results*2}:{query}"
+
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'extract_info': True,
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
+            logging.info(f"Searching YouTube with query: {query}")
+            results = ydl.extract_info(search_url, download=False)
+
+            if not results or 'entries' not in results:
+                return {"results": []}
+
+            processed_results = []
+            seen_channels = set()  # Track unique channels
+
+            for entry in results.get('entries', []):
+                try:
+                    channel_id = entry.get('channel_id') or entry.get('uploader_id')
+                    if not channel_id or channel_id in seen_channels:
+                        continue
+
+                    seen_channels.add(channel_id)
+
+                    # Get minimal channel info
+                    channel_opts = ydl_opts.copy()
+                    channel_opts['extract_flat'] = True
+                    channel_opts['process'] = False
+
+                    channel_url = f"https://www.youtube.com/channel/{channel_id}"
+                    channel_info = ydl.extract_info(
+                        channel_url,
+                        download=False,
+                        process=False  # Don't process more than necessary
+                    )
+
+                    # Get avatar URL from channel info
+                    # Get avatar URL from channel info
+                    thumbnail_url = None
+                    if channel_info and channel_info.get('thumbnails'):
+                        # Try to find avatar-specific thumbnails first
+                        avatar_thumbnails = [t for t in channel_info['thumbnails']
+                                            if t.get('id', '').startswith('avatar')]
+
+                        if avatar_thumbnails:
+                            # Get the largest avatar thumbnail
+                            thumbnail_url = avatar_thumbnails[-1]['url']
+                        else:
+                            # Fallback: try to find any thumbnail with "avatar" in the URL
+                            avatar_thumbnails = [t for t in channel_info['thumbnails']
+                                               if 'avatar' in t.get('url', '').lower()]
+                            if avatar_thumbnails:
+                                thumbnail_url = avatar_thumbnails[-1]['url']
+                            else:
+                                # Last resort: use the first thumbnail
+                                thumbnail_url = channel_info['thumbnails'][0]['url']
+
+                    channel = YouTubeChannel(
+                        channel_id=channel_id,
+                        name=entry.get('channel', '') or entry.get('uploader', ''),
+                        description=entry.get('description', '')[:500] if entry.get('description') else '',
+                        subscriber_count=None,
+                        url=f"https://www.youtube.com/channel/{channel_id}",
+                        video_count=None,
+                        thumbnail_url=thumbnail_url or entry.get('channel_thumbnail', ''),
+                        recent_videos=[{
+                            'id': entry.get('id', ''),
+                            'title': entry.get('title', ''),
+                            'duration': entry.get('duration'),
+                            'url': f"https://www.youtube.com/watch?v={entry.get('id')}"
+                        }] if entry.get('id') else []
+                    )
+
+                    if len(processed_results) < max_results:
+                        processed_results.append(channel.dict())
+                    else:
+                        break
+
+                except Exception as entry_error:
+                    logging.error(f"Error processing channel entry: {entry_error}")
+                    continue
+
+            logging.info(f"Found {len(processed_results)} channels")
+            return {"results": processed_results}
+
+    except Exception as e:
+        logging.error(f"YouTube channel search error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error searching YouTube channels: {str(e)}"
+        )
+
+def process_youtube_channel(podcast_id: int, channel_id: str):
+    """Background task to process videos and download audio"""
+    from datetime import datetime, timedelta
+    cnx = create_database_connection()
+    try:
+        # Get videos from last 30 days
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+            'no_warnings': True,
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
+            channel_url = f"https://www.youtube.com/channel/{channel_id}/videos"
+            results = ydl.extract_info(channel_url, download=False)
+
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            recent_videos = [
+                video for video in results.get('entries', [])
+                if datetime.strptime(video['upload_date'], '%Y%m%d') > thirty_days_ago
+            ]
+
+            # Add videos to database
+            database_functions.functions.add_youtube_videos(cnx, podcast_id, recent_videos)
+
+            # Download audio for each video
+            for video in recent_videos:
+                output_path = f"/opt/pinepods/downloads/youtube/{video['id']}.mp3"
+                database_functions.youtube.download_youtube_audio(video['id'], output_path)
+
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
+
+@app.post("/api/data/youtube/subscribe")
+async def subscribe_to_youtube_channel(
+    channel_id: str,
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Subscribe to a YouTube channel"""
+    # Validate API key and permissions...
+
+    try:
+        # Get channel info using existing search function
+        channel_info = await database_functions.youtube.get_channel_info(channel_id)
+
+        # Add channel to Podcasts table
+        podcast_id = database_functions.functions.add_youtube_channel(cnx, channel_info, user_id)
+
+        # Start background task for videos
+        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id)
+
+        return {
+            "success": True,
+            "podcast_id": podcast_id,
+            "message": "Channel subscription initiated. Videos will be processed in background."
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error subscribing to channel: {str(e)}"
+        )
 
 class InitRequest(BaseModel):
     api_key: str

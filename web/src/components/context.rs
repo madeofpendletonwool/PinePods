@@ -12,7 +12,8 @@ use crate::requests::pod_req::{
     RecentEps, RefreshProgress, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
-    PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse,
+    PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
+    YouTubeSearchResults,
 };
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
 use crate::requests::stat_reqs::UserStats;
@@ -121,6 +122,9 @@ pub struct AppState {
     pub locally_downloaded_episodes: Option<Vec<i32>>,
     pub podcast_layout: Option<PodcastLayout>,
     pub refresh_progress: Option<RefreshProgress>,
+    pub youtube_search_results: Option<YouTubeSearchResults>,
+    pub selected_youtube_channel: Option<YouTubeChannel>,
+    pub is_youtube_loading: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

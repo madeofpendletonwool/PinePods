@@ -807,6 +807,58 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
     return first_episode_id
 
 
+# database_functions/youtube.py
+def add_youtube_channel(cnx, channel_info: dict, user_id: int) -> int:
+    """Add YouTube channel to Podcasts table"""
+    cursor = cnx.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO "Podcasts" (
+                PodcastName, ArtworkURL, Author, Description,
+                WebsiteURL, UserID, IsYouTubeChannel
+            ) VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            RETURNING PodcastID
+        """, (
+            channel_info['name'],
+            channel_info['thumbnail_url'],
+            channel_info['name'],
+            channel_info['description'],
+            f"https://www.youtube.com/channel/{channel_info['channel_id']}",
+            user_id
+        ))
+        podcast_id = cursor.fetchone()[0]
+        cnx.commit()
+        return podcast_id
+    except Exception as e:
+        cnx.rollback()
+        raise e
+
+def add_youtube_videos(cnx, podcast_id: int, videos: list):
+    """Add YouTube videos to YouTubeVideos table"""
+    cursor = cnx.cursor()
+    try:
+        for video in videos:
+            cursor.execute("""
+                INSERT INTO "YouTubeVideos" (
+                    PodcastID, VideoTitle, VideoDescription,
+                    VideoURL, ThumbnailURL, PublishedAt,
+                    Duration, YouTubeVideoID
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                podcast_id,
+                video['title'],
+                video['description'],
+                video['url'],
+                video['thumbnail'],
+                video['publish_date'],
+                video['duration'],
+                video['id']
+            ))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+
 def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, feed_url: str):
     import feedparser
     import dateutil.parser

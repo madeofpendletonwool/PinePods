@@ -20,7 +20,10 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::Episode as SearchNewEpisode;
 use crate::requests::search_pods::SearchEpisode;
-use crate::requests::search_pods::{call_get_podcast_info, test_connection, PeopleEpisode};
+use crate::requests::search_pods::{
+    call_get_podcast_info, call_youtube_search, test_connection, PeopleEpisode,
+    YouTubeSearchResults,
+};
 use gloo_events::EventListener;
 use std::any::Any;
 use wasm_bindgen::closure::Closure;
@@ -119,7 +122,8 @@ pub fn search_bar() -> Html {
     // State for toggling the dropdown in mobile view
     let mobile_dropdown_open = use_state(|| false);
     let on_submit = {
-        Callback::from(move |_: ()| {
+        Callback::from(move |_| {
+            let submit_state = state.clone();
             let api_url = state.server_details.as_ref().map(|ud| ud.api_url.clone());
             let history = history_clone.clone();
             let search_value = podcast_value_clone.clone();
@@ -128,28 +132,82 @@ pub fn search_bar() -> Html {
 
             wasm_bindgen_futures::spawn_local(async move {
                 dispatch.reduce_mut(|state| state.is_loading = Some(true));
-                let cloned_api_url = &api_url.clone();
-                match test_connection(&cloned_api_url.clone().unwrap()).await {
+
+                match test_connection(&api_url.clone().unwrap()).await {
                     Ok(_) => {
-                        match call_get_podcast_info(&search_value, &api_url.unwrap(), &search_index)
+                        if *search_index == "youtube" {
+                            let server_name = submit_state
+                                .auth_details
+                                .as_ref()
+                                .map(|ud| ud.server_name.clone())
+                                .unwrap();
+                            let api_key = submit_state
+                                .auth_details
+                                .as_ref()
+                                .map(|ud| ud.api_key.clone())
+                                .unwrap()
+                                .unwrap();
+                            let user_id = submit_state
+                                .user_details
+                                .as_ref()
+                                .map(|ud| ud.UserID.clone())
+                                .unwrap();
+
+                            match call_youtube_search(
+                                &server_name,
+                                &api_key,
+                                user_id,
+                                &search_value,
+                                "channel",
+                                10,
+                            )
                             .await
-                        {
-                            Ok(search_results) => {
-                                dispatch.reduce_mut(move |state| {
-                                    state.search_results = Some(search_results);
-                                    state.podcast_added = Some(false);
-                                });
-                                dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                                history.push("/pod_layout"); // Use the route path
+                            {
+                                Ok(yt_results) => {
+                                    let search_results = YouTubeSearchResults {
+                                        channels: yt_results.results,
+                                        videos: Vec::new(),
+                                    };
+
+                                    dispatch.reduce_mut(|state| {
+                                        state.youtube_search_results = Some(search_results);
+                                        state.is_loading = Some(false);
+                                    });
+
+                                    history.push("/youtube_layout");
+                                }
+                                Err(e) => {
+                                    dispatch.reduce_mut(|state| {
+                                        state.error_message =
+                                            Some(format!("YouTube search error: {}", e));
+                                        state.is_loading = Some(false);
+                                    });
+                                }
                             }
-                            Err(_) => {
-                                dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                        } else {
+                            match call_get_podcast_info(
+                                &search_value,
+                                &api_url.unwrap(),
+                                &search_index,
+                            )
+                            .await
+                            {
+                                Ok(search_results) => {
+                                    dispatch.reduce_mut(move |state| {
+                                        state.search_results = Some(search_results);
+                                        state.podcast_added = Some(false);
+                                    });
+                                    dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                    history.push("/pod_layout");
+                                }
+                                Err(_) => {
+                                    dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                }
                             }
                         }
                     }
                     Err(e) => {
-                        let error = JsValue::from_str(&format!("Error testing connection: {}", e));
-                        console::log_1(&error); // Log the error from test_connection
+                        web_sys::console::log_1(&format!("Error testing connection: {}", e).into());
                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
@@ -227,9 +285,15 @@ pub fn search_bar() -> Html {
         Callback::from(move |_| on_dropdown_select("podcast_index"))
     };
 
+    let on_dropdown_select_youtube = {
+        let on_dropdown_select = on_dropdown_select.clone();
+        Callback::from(move |_| on_dropdown_select("youtube"))
+    };
+
     let search_index_display = match search_index.as_str() {
         "podcast_index" => "Podcast Index",
         "itunes" => "iTunes",
+        "youtube" => "youtube",
         _ => "Unknown",
     };
 
@@ -258,6 +322,7 @@ pub fn search_bar() -> Html {
                                     <ul class="dropdown-container py-2 text-sm">
                                         <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
                                         <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
+                                        <li class="dropdown-option" onclick={on_dropdown_select_youtube.clone()}>{ "YouTube" }</li>
                                         // Add more categories as needed
                                     </ul>
                                 </div>
