@@ -16,7 +16,9 @@ Version 0.7.3
 
 - [ ] Youtube Subscriptions
 - [ ] Fix refreshing so it handlees youtube subscriptions
-- [ ] Speed up channel add process by only checking recent videos up to 30 days. Once we hit one older than 30 stop processing
+- [ ] Thumbnails for youtube episodes currently are just sections of the video
+- [ ] Validate some more channel adds
+- [ ] Speed up channel add process by only checking recent videos up to 30 days.
 - [ ] Container can be ran as host machine user
 - [ ] Nextcloud Sync Fixed
 - [ ] Episode Completion Status is now pushed to Nextcloud/Gpodder

@@ -2620,13 +2620,14 @@ def get_download_value(result, key, default=None):
 def get_youtube_video_location(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
     try:
-        # Join YouTubeVideos with Podcasts to verify user ownership
+        logging.info(f"Looking up YouTube video location for episode_id: {episode_id}, user_id: {user_id}")
+        
         if database_type == "postgresql":
             query = '''
-                SELECT "YouTubeVideos".YouTubeVideoID
+                SELECT "YouTubeVideos"."youtubevideoid"
                 FROM "YouTubeVideos"
-                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
-                WHERE "YouTubeVideos".VideoID = %s AND "Podcasts".UserID = %s
+                INNER JOIN "Podcasts" ON "YouTubeVideos"."podcastid" = "Podcasts"."podcastid"
+                WHERE "YouTubeVideos"."videoid" = %s AND "Podcasts"."userid" = %s
             '''
         else:
             query = '''
@@ -2635,24 +2636,42 @@ def get_youtube_video_location(cnx, database_type, episode_id, user_id):
                 INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
                 WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s
             '''
-
+            
+        logging.info(f"Executing query: {query}")
+        logging.info(f"With parameters: episode_id={episode_id}, user_id={user_id}")
+        
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
-
+        
+        logging.info(f"Query result: {result}")
+        
         if result:
-            youtube_id = result[0]
-            # Check both potential file paths due to the double .mp3 issue
+            # Handle both dict and tuple results
+            youtube_id = result['youtubevideoid'] if isinstance(result, dict) else result[0]
+            logging.info(f"Found YouTube ID: {youtube_id}")
+            
             file_path = os.path.join('/opt/pinepods/downloads/youtube', f'{youtube_id}.mp3')
             file_path_double = os.path.join('/opt/pinepods/downloads/youtube', f'{youtube_id}.mp3.mp3')
-
+            
+            logging.info(f"Checking paths: {file_path} and {file_path_double}")
+            
             if os.path.exists(file_path):
+                logging.info(f"Found file at {file_path}")
                 return file_path
             elif os.path.exists(file_path_double):
+                logging.info(f"Found file at {file_path_double}")
                 return file_path_double
-
+            else:
+                logging.info("No file found at either path")
+                
+        else:
+            logging.info("No YouTube video found in database")
+            
         return None
     except Exception as e:
         logging.error(f"Error retrieving YouTube video location: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
         return None
     finally:
         cursor.close()

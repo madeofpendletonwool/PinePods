@@ -4842,8 +4842,10 @@ async def stream_episode(
         # Choose which lookup to use based on source_type
         if source_type == "youtube":
             file_path = database_functions.functions.get_youtube_video_location(cnx, database_type, episode_id, user_id)
+            print(f'file path in if source youtube {file_path}')
         else:
             file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+            print(f'file path in if source else {file_path}')
 
         if file_path:
             return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
