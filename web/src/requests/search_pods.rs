@@ -504,6 +504,50 @@ pub async fn call_get_podcast_episodes(
     Ok(PodcastFeedResult { episodes })
 }
 
+pub async fn call_get_youtube_episodes(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    podcast_id: &i32,
+) -> Result<PodcastFeedResult, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/youtube_episodes?user_id={}&podcast_id={}",
+        server_name, user_id, podcast_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast episodes: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+
+    let response_data: PodcastEpisodesResponse = serde_json::from_str(&response_text)?;
+
+    let episodes = response_data
+        .episodes
+        .into_iter()
+        .map(|mut episode| {
+            episode.guid = episode
+                .guid
+                .or_else(|| episode.episode_id.map(|id| id.to_string()));
+            episode
+        })
+        .collect::<Vec<_>>();
+
+    Ok(PodcastFeedResult { episodes })
+}
+
 pub async fn call_parse_podcast_url(
     server_name: String,
     api_key: &Option<String>,

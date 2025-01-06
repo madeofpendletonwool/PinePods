@@ -32,6 +32,7 @@ pub struct ClickedFeedURL {
     pub categories: Option<HashMap<String, String>>,
     pub websiteurl: String,  // Changed from podcast_link
     pub podcastindexid: i64, // Changed from podcast_index_id
+    pub is_youtube: Option<bool>,
 }
 
 #[function_component(PodLayout)]
@@ -395,6 +396,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 categories: podcast_categories,
                 websiteurl: podcast_link,
                 podcastindexid: podcast_index_id,
+                is_youtube: Some(false),
             };
             let dispatch = dispatch.clone();
             let history = history.clone(); // Clone again for use inside async block

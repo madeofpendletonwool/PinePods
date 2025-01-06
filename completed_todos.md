@@ -12,6 +12,17 @@ Next Minor Version:
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 
+Version 0.7.3
+
+- [ ] Youtube Subscriptions
+- [ ] Fix refreshing so it handlees youtube subscriptions
+- [ ] Speed up channel add process by only checking recent videos up to 30 days. Once we hit one older than 30 stop processing
+- [ ] Container can be ran as host machine user
+- [ ] Nextcloud Sync Fixed
+- [ ] Episode Completion Status is now pushed to Nextcloud/Gpodder
+- [ ] Adjusted Downloaded Episode titles to be more descriptive
+- [ ] Fixed issue with news feed adding
+
 Version 0.7.2
 
 - [x] Mobile Progress line (little line that appears above the line player to indicate your progress in the episode)

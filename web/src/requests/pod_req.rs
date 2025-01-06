@@ -280,7 +280,7 @@ pub struct Podcast {
     pub podcastname: String,
     pub artworkurl: Option<String>,
     pub description: Option<String>,
-    pub episodecount: i32,
+    pub episodecount: Option<i32>,
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
@@ -334,7 +334,7 @@ pub async fn call_get_podcasts(
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct PodcastResponseExtra {
-    pub pods: Option<Vec<PodcastExtra>>, // Changed from Podcast to PodcastExtra
+    pub pods: Option<Vec<PodcastExtra>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -345,7 +345,7 @@ pub struct PodcastExtra {
     pub podcastname: String,
     pub artworkurl: Option<String>,
     pub description: Option<String>,
-    pub episodecount: i32,
+    pub episodecount: Option<i32>,
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
@@ -359,13 +359,21 @@ pub struct PodcastExtra {
     pub episodes_played: i32,
     #[serde(default)]
     pub oldest_episode_date: Option<String>,
+    #[serde(default)]
+    pub is_youtube: bool,
 }
 
-// Add these implementations after your struct definitions
-
-// Convert from Podcast to PodcastExtra
 impl From<Podcast> for PodcastExtra {
     fn from(podcast: Podcast) -> Self {
+        let is_youtube = podcast.feedurl.contains("youtube.com");
+        web_sys::console::log_1(
+            &format!(
+                "Converting Podcast to PodcastExtra, feedurl: {}, is_youtube: {}",
+                podcast.feedurl, is_youtube
+            )
+            .into(),
+        );
+
         PodcastExtra {
             podcastid: podcast.podcastid,
             podcastname: podcast.podcastname,
@@ -373,19 +381,19 @@ impl From<Podcast> for PodcastExtra {
             description: podcast.description,
             episodecount: podcast.episodecount,
             websiteurl: podcast.websiteurl,
-            feedurl: podcast.feedurl,
+            feedurl: podcast.feedurl.clone(),
             author: podcast.author,
             categories: podcast.categories,
             explicit: podcast.explicit,
             podcastindexid: podcast.podcastindexid,
-            play_count: 0,             // Default value
-            episodes_played: 0,        // Default value
-            oldest_episode_date: None, // Default value
+            play_count: 0,
+            episodes_played: 0,
+            oldest_episode_date: None,
+            is_youtube,
         }
     }
 }
 
-// Convert from PodcastExtra to Podcast if needed
 impl From<PodcastExtra> for Podcast {
     fn from(podcast_extra: PodcastExtra) -> Self {
         Podcast {
@@ -410,30 +418,39 @@ pub async fn call_get_podcasts_extra(
     user_id: &i32,
 ) -> Result<Vec<PodcastExtra>, anyhow::Error> {
     let url = format!("{}/api/data/return_pods/{}", server_name, user_id);
-
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let response = Request::get(&url)
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
-
     if !response.ok() {
         return Err(anyhow::Error::msg(format!(
             "Failed to fetch podcasts: {}",
             response.status_text()
         )));
     }
-
     let response_text = response
         .text()
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
-
     match serde_json::from_str::<PodcastResponseExtra>(&response_text) {
-        Ok(response_body) => Ok(response_body.pods.unwrap_or_else(Vec::new)),
+        Ok(mut response_body) => {
+            let mut pods = response_body.pods.unwrap_or_else(Vec::new);
+            // Update is_youtube flag based on feedurl
+            for pod in &mut pods {
+                pod.is_youtube = pod.feedurl.contains("youtube.com");
+                web_sys::console::log_1(
+                    &format!(
+                        "Podcast {}: feedurl = {}, is_youtube = {}",
+                        pod.podcastname, pod.feedurl, pod.is_youtube
+                    )
+                    .into(),
+                );
+            }
+            Ok(pods)
+        }
         Err(e) => {
             web_sys::console::log_1(
                 &format!("Unable to parse Podcasts: {}", &response_text).into(),
@@ -1787,6 +1804,7 @@ pub struct PodcastDetails {
     pub explicit: bool,
     pub userid: i32,
     pub podcastindexid: i64,
+    pub is_youtube: bool,
 }
 
 #[derive(Deserialize)]
@@ -2445,7 +2463,6 @@ pub async fn call_remove_category(
     }
 }
 
-// In your search_pods.rs or a new youtube.rs module:
 #[derive(Deserialize, Debug)]
 pub struct YouTubeSubscribeResponse {
     pub success: bool,
@@ -2459,15 +2476,14 @@ pub async fn call_subscribe_to_channel(
     user_id: i32,
     channel_id: &str,
 ) -> Result<YouTubeSubscribeResponse, anyhow::Error> {
-    let endpoint = format!("{}/api/data/youtube/subscribe?user_id={}", server, user_id);
+    // Build endpoint with both parameters in query string
+    let endpoint = format!(
+        "{}/api/data/youtube/subscribe?channel_id={}&user_id={}",
+        server, channel_id, user_id
+    );
 
     let resp = Request::post(&endpoint)
         .header("Api-Key", api_key)
-        .json(&serde_json::json!({
-            "channel_id": channel_id,
-            "user_id": user_id,
-        }))
-        .map_err(|e| anyhow::anyhow!("Failed to create request: {}", e))?
         .send()
         .await
         .context("Network Request Error")?;
@@ -2477,9 +2493,12 @@ pub async fn call_subscribe_to_channel(
             .await
             .context("Response Parsing Error")
     } else {
+        let status = resp.status();
+        let error_text = resp.text().await.unwrap_or_default();
         Err(anyhow::anyhow!(
-            "Error subscribing to channel. Server Response: {}",
-            resp.status_text()
+            "Error subscribing to channel. Status: {}, Error: {}",
+            status,
+            error_text
         ))
     }
 }

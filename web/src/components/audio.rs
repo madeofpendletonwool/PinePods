@@ -1789,17 +1789,18 @@ pub fn on_play_click(
                 }
             }
         });
-        let src = if let Some(_local) = is_local {
-            // Construct the URL for streaming from the local server
-            let src = format!(
+        let src = if episode_url_for_wasm.contains("youtube.com") {
+            format!(
+                "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
+                server_name, episode_id, api_key, user_id
+            )
+        } else if is_local.unwrap_or(false) {
+            format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}",
                 server_name, episode_id, api_key, user_id
-            );
-            src
+            )
         } else {
-            // Use the provided URL for streaming
-            let src = episode_url_for_wasm.clone();
-            src
+            episode_url_for_wasm.clone()
         };
         web_sys::console::log_1(&JsValue::from_str("about to not run pod id if 0"));
 

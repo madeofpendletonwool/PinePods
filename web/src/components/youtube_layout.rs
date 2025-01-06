@@ -2,6 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use crate::requests::pod_req::call_subscribe_to_channel;
 use crate::requests::search_pods::YouTubeChannel;
 use std::collections::HashMap;
 use yew::prelude::*;
@@ -84,6 +85,7 @@ pub fn youtube_layout() -> Html {
 fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
     let (_state, _dispatch) = use_store::<AppState>();
     let channel = &props.channel;
+    let set_loading = use_state(|| false);
 
     let on_subscribe = {
         let channel = channel.clone();
@@ -92,21 +94,21 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
         Callback::from(move |_: MouseEvent| {
             let channel = channel.clone();
             let set_loading = set_loading.clone();
-            let dispatch = dispatch.clone();
+            let dispatch = _dispatch.clone();
 
             // Get necessary info from state
-            let server_name = state
+            let server_name = _state
                 .auth_details
                 .as_ref()
                 .map(|ud| ud.server_name.clone())
                 .unwrap();
-            let api_key = state
+            let api_key = _state
                 .auth_details
                 .as_ref()
                 .map(|ud| ud.api_key.clone())
                 .unwrap()
                 .unwrap();
-            let user_id = state
+            let user_id = _state
                 .user_details
                 .as_ref()
                 .map(|ud| ud.UserID.clone())

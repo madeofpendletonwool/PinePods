@@ -109,6 +109,7 @@ fn render_podcasts(
                         let dispatch_clone = dispatch.clone();
                         let podcast_id_loop = podcast.podcastid.clone();
                         let podcast_description_clone = podcast.description.clone();
+                        let episode_count = podcast.episodecount.clone().unwrap_or_else(|| 0);
 
                         let on_title_click = create_on_title_click(
                             dispatch_clone.clone(),
@@ -122,10 +123,11 @@ fn render_podcasts(
                             podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
                             podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                             podcast.explicit.clone(),
-                            podcast.episodecount.clone(),
+                            episode_count,
                             Some(podcast.categories.clone()),
                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                             user_id.unwrap(),
+                            podcast.is_youtube,
                         );
 
                         let id_string = &podcast.podcastid.clone().to_string();
@@ -183,7 +185,7 @@ fn render_podcasts(
                                             <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                         </div>
                                     </div>
-                                    <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
+                                    <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</p>
                                 </div>
                                 <button
                                     class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
@@ -214,10 +216,11 @@ fn render_podcasts(
                             podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
                             podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                             podcast.explicit.clone(),
-                            podcast.episodecount.clone(),
+                            podcast.episodecount.clone().unwrap_or_else(|| 0),
                             Some(podcast.categories.clone()),
                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                             user_id.unwrap(),
+                            podcast.is_youtube,
                         );
                         html! {
                             <div

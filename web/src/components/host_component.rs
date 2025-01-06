@@ -46,7 +46,7 @@ fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
         podcastname: details.podcastname,
         artworkurl: Some(details.artworkurl),
         description: Some(details.description),
-        episodecount: details.episodecount,
+        episodecount: Some(details.episodecount),
         websiteurl: Some(details.websiteurl),
         feedurl: details.feedurl,
         author: Some(details.author),
@@ -421,7 +421,7 @@ pub fn host_dropdown(
                                                         podcastname: details.podcastname, // Changed from podcast_title
                                                         artworkurl: Some(details.artworkurl), // Changed from podcast_artwork
                                                         description: Some(details.description), // Changed from podcast_description
-                                                        episodecount: details.episodecount, // Changed from podcast_episode_count
+                                                        episodecount: Some(details.episodecount), // Changed from podcast_episode_count
                                                         websiteurl: Some(details.websiteurl), // Changed from podcast_link
                                                         feedurl: details.feedurl, // Changed from podcast_url
                                                         author: Some(details.author), // Changed from podcast_author

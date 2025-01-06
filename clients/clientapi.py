@@ -543,6 +543,26 @@ async def api_podcast_episodes(cnx=Depends(get_database_connection), api_key: st
         raise HTTPException(status_code=403,
                             detail="You can only return episodes of your own!")
 
+@app.get("/api/data/youtube_episodes")
+async def api_youtube_episodes(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Query(...), podcast_id: int = Query(...)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    # Allow the action if the API key belongs to the user, or it's the web API key
+    if key_id == user_id or is_web_key:
+        episodes = database_functions.functions.return_youtube_episodes(database_type, cnx, user_id, podcast_id)
+        if episodes is None:
+            episodes = []  # Return an empty list instead of raising an exception
+        return {"episodes": episodes}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only return episodes of your own!")
+
+
 @app.get("/api/data/get_episode_id_ep_name")
 async def api_episode_id(cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
@@ -4807,27 +4827,30 @@ async def api_get_person_subscriptions(
 async def stream_episode(
     episode_id: int,
     cnx=Depends(get_database_connection),
-    api_key: str = Query(..., alias='api_key'),  # Change here
-    user_id: int = Query(..., alias='user_id')   # Change here
+    api_key: str = Query(..., alias='api_key'),
+    user_id: int = Query(..., alias='user_id'),
+    source_type: str = Query(None, alias='type')  # Add source type parameter
 ):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    # Allow the action if the API key belongs to the user or it's the web API key
+
     if key_id == user_id or is_web_key:
-        file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+        # Choose which lookup to use based on source_type
+        if source_type == "youtube":
+            file_path = database_functions.functions.get_youtube_video_location(cnx, database_type, episode_id, user_id)
+        else:
+            file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+
         if file_path:
             return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
         else:
             raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
     else:
         raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
-
 
 class BackupUser(BaseModel):
     user_id: int
@@ -5123,34 +5146,68 @@ async def search_youtube_channels(
 def process_youtube_channel(podcast_id: int, channel_id: str):
     """Background task to process videos and download audio"""
     from datetime import datetime, timedelta
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting process_youtube_channel for podcast_id {podcast_id}")
     cnx = create_database_connection()
     try:
-        # Get videos from last 30 days
-        ydl_opts = {
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        full_opts = {
             'quiet': True,
-            'extract_flat': True,
             'no_warnings': True,
         }
+        recent_videos = []
 
-        with YoutubeDL(ydl_opts) as ydl:
+        with YoutubeDL(full_opts) as ydl:
             channel_url = f"https://www.youtube.com/channel/{channel_id}/videos"
             results = ydl.extract_info(channel_url, download=False)
 
-            thirty_days_ago = datetime.now() - timedelta(days=30)
-            recent_videos = [
-                video for video in results.get('entries', [])
-                if datetime.strptime(video['upload_date'], '%Y%m%d') > thirty_days_ago
-            ]
+            if not results or 'entries' not in results:
+                logger.error("No video list found")
+                return
 
-            # Add videos to database
+            for entry in results.get('entries', []):
+                if not entry or not entry.get('id'):
+                    continue
+
+                published = datetime.strptime(entry['upload_date'], '%Y%m%d')
+                if published <= thirty_days_ago:
+                    logger.info(f"Found video older than 30 days, stopping process")
+                    break
+
+                video_id = entry['id']
+                recent_videos.append({
+                    'id': video_id,
+                    'title': entry['title'],
+                    'description': entry.get('description', ''),
+                    'url': entry['webpage_url'],
+                    'thumbnail': entry['thumbnails'][0]['url'] if entry.get('thumbnails') else '',
+                    'publish_date': published,
+                    'duration': entry.get('duration', 0)
+                })
+                logger.info(f"Added video {video_id} from {published}")
+
+        logger.info(f"Found {len(recent_videos)} recent videos")
+        if recent_videos:
+            logger.info("Adding videos to database")
             database_functions.functions.add_youtube_videos(cnx, podcast_id, recent_videos)
-
-            # Download audio for each video
+            logger.info("Starting audio downloads")
             for video in recent_videos:
                 output_path = f"/opt/pinepods/downloads/youtube/{video['id']}.mp3"
+                if os.path.exists(output_path) or os.path.exists(f"{output_path}.mp3"):
+                    logger.info(f"Audio file already exists for {video['id']}, skipping download")
+                    continue
+                logger.info(f"Downloading audio for {video['id']}")
                 database_functions.youtube.download_youtube_audio(video['id'], output_path)
+        else:
+            logger.info("No new videos to process")
 
+    except Exception as e:
+        logger.error(f"Error in process_youtube_channel: {str(e)}", exc_info=True)
+        raise e
     finally:
+        logger.info("Cleaning up database connection")
         if database_type == "postgresql":
             connection_pool.putconn(cnx)
         else:
@@ -5165,25 +5222,38 @@ async def subscribe_to_youtube_channel(
     api_key: str = Depends(get_api_key_from_header)
 ):
     """Subscribe to a YouTube channel"""
-    # Validate API key and permissions...
+    import logging
+    logger = logging.getLogger(__name__)
 
     try:
-        # Get channel info using existing search function
+        logger.info(f"Starting subscription for channel {channel_id}")
+
+        existing_id = database_functions.functions.check_existing_channel_subscription(cnx, channel_id, user_id)
+        if existing_id:
+            logger.info(f"Channel {channel_id} already subscribed")
+            return {
+                "success": True,
+                "podcast_id": existing_id,
+                "message": "Already subscribed to this channel"
+            }
+
+        logger.info("Getting channel info")
         channel_info = await database_functions.youtube.get_channel_info(channel_id)
 
-        # Add channel to Podcasts table
+        logger.info("Adding channel to database")
         podcast_id = database_functions.functions.add_youtube_channel(cnx, channel_info, user_id)
 
-        # Start background task for videos
+        logger.info(f"Starting background task for podcast_id {podcast_id}")
         background_tasks.add_task(process_youtube_channel, podcast_id, channel_id)
 
+        logger.info("Subscription completed successfully")
         return {
             "success": True,
             "podcast_id": podcast_id,
             "message": "Channel subscription initiated. Videos will be processed in background."
         }
-
     except Exception as e:
+        logger.error(f"Error subscribing to channel: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error subscribing to channel: {str(e)}"

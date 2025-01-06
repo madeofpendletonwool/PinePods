@@ -1,3 +1,11 @@
+from typing import Dict, Optional
+from yt_dlp import YoutubeDL
+from fastapi import HTTPException
+import logging
+import os
+import datetime
+
+
 async def get_channel_info(channel_id: str) -> Dict:
     """
     Get YouTube channel info using yt-dlp
@@ -8,6 +16,7 @@ async def get_channel_info(channel_id: str) -> Dict:
         'no_warnings': True,
         'playlist_items': '0'  # Just get channel info, not videos
     }
+    print('in get channel info')
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -17,6 +26,7 @@ async def get_channel_info(channel_id: str) -> Dict:
                 download=False,
                 process=False
             )
+            print(f'get info {channel_info}')
 
             # Get avatar URL
             thumbnail_url = None
@@ -33,7 +43,7 @@ async def get_channel_info(channel_id: str) -> Dict:
                         thumbnail_url = avatar_thumbnails[-1]['url']
                     else:
                         thumbnail_url = channel_info['thumbnails'][0]['url']
-
+            print('did a bunch of thumbnail stuff')
             return {
                 'channel_id': channel_id,
                 'name': channel_info.get('channel', '') or channel_info.get('title', ''),
@@ -50,13 +60,19 @@ async def get_channel_info(channel_id: str) -> Dict:
 
 def download_youtube_audio(video_id: str, output_path: str):
     """Download audio for a YouTube video"""
+    # Remove .mp3 extension if present to prevent double extension
+    if output_path.endswith('.mp3'):
+        base_path = output_path[:-4]
+    else:
+        base_path = output_path
+
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
         }],
-        'outtmpl': output_path
+        'outtmpl': base_path
     }
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])

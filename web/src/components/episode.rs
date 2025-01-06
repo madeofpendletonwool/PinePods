@@ -1358,6 +1358,7 @@ pub fn epsiode() -> Html {
                                                 Some(details.categories),
                                                 details.websiteurl,
                                                 user_id.unwrap(),
+                                                details.is_youtube,
                                             );
 
                                             // Execute the action created by create_on_title_click

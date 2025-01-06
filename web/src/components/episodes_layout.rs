@@ -367,6 +367,7 @@ pub fn episode_layout() -> Html {
                                 categories: None,
                                 websiteurl: String::new(),
                                 podcastindexid: podcast_index_id,
+                                is_youtube: Some(false),
                             };
 
                             let api_key = api_key.clone();
@@ -425,6 +426,7 @@ pub fn episode_layout() -> Html {
                                     podcast_categories_str, // assuming no categories in local storage
                                     podcast_details.details.websiteurl,
                                     user_id,
+                                    podcast_details.details.is_youtube.unwrap(),
                                 );
                                 emit_click(on_title_click);
                                 let window = web_sys::window().expect("no global window exists");

@@ -806,30 +806,57 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         return new_episodes
     return first_episode_id
 
+def check_existing_channel_subscription(cnx, channel_id: str, user_id: int) -> Optional[int]:
+    """Check if user is already subscribed to this channel"""
+    cursor = cnx.cursor()
+    try:
+        cursor.execute("""
+            SELECT PodcastID FROM "Podcasts"
+            WHERE WebsiteURL = %s AND UserID = %s
+        """, (f"https://www.youtube.com/channel/{channel_id}", user_id))
+        result = cursor.fetchone()
 
-# database_functions/youtube.py
+        if result:
+            return result[0] if isinstance(result, tuple) else result['podcastid']
+        return None
+    except Exception as e:
+        raise e
+
 def add_youtube_channel(cnx, channel_info: dict, user_id: int) -> int:
     """Add YouTube channel to Podcasts table"""
     cursor = cnx.cursor()
     try:
+        print(f"Attempting to insert channel: {channel_info['name']}")  # Debug print
         cursor.execute("""
             INSERT INTO "Podcasts" (
-                PodcastName, ArtworkURL, Author, Description,
-                WebsiteURL, UserID, IsYouTubeChannel
-            ) VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                PodcastName, FeedURL, ArtworkURL, Author, Description,
+                WebsiteURL, UserID, IsYouTubeChannel, Categories
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s)
             RETURNING PodcastID
         """, (
             channel_info['name'],
+            f"https://www.youtube.com/channel/{channel_info['channel_id']}",
             channel_info['thumbnail_url'],
             channel_info['name'],
             channel_info['description'],
             f"https://www.youtube.com/channel/{channel_info['channel_id']}",
-            user_id
+            user_id,
+            ""
         ))
-        podcast_id = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        print(f"Insert result: {result}")  # Debug print
+
+        # Handle both tuple and dict return types
+        if isinstance(result, dict):
+            podcast_id = result['podcastid']
+        else:  # Tuple
+            podcast_id = result[0]
+
+        print(f"Extracted podcast_id: {podcast_id}")  # Debug print
         cnx.commit()
         return podcast_id
     except Exception as e:
+        print(f"Error in add_youtube_channel: {str(e)}")  # Debug print
         cnx.rollback()
         raise e
 
@@ -1424,6 +1451,50 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
 
     return rows or None
 
+def return_youtube_episodes(database_type, cnx, user_id, podcast_id):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
+
+    if database_type == "postgresql":
+        query = (
+            'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "YouTubeVideos".VideoID AS EpisodeID, '
+            '"YouTubeVideos".VideoTitle AS EpisodeTitle, "YouTubeVideos".PublishedAt AS EpisodePubDate, '
+            '"YouTubeVideos".VideoDescription AS EpisodeDescription, '
+            '"YouTubeVideos".ThumbnailURL AS EpisodeArtwork, "YouTubeVideos".VideoURL AS EpisodeURL, '
+            '"YouTubeVideos".Duration AS EpisodeDuration, '
+            '"YouTubeVideos".ListenPosition AS ListenDuration, '
+            '"YouTubeVideos".YouTubeVideoID AS guid '
+            'FROM "YouTubeVideos" '
+            'INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID '
+            'WHERE "Podcasts".PodcastID = %s AND "Podcasts".UserID = %s '
+            'ORDER BY "YouTubeVideos".PublishedAt DESC'
+        )
+    else:  # MySQL or MariaDB
+        query = (
+            "SELECT Podcasts.PodcastID, Podcasts.PodcastName, YouTubeVideos.VideoID AS EpisodeID, "
+            "YouTubeVideos.VideoTitle AS EpisodeTitle, YouTubeVideos.PublishedAt AS EpisodePubDate, "
+            "YouTubeVideos.VideoDescription AS EpisodeDescription, "
+            "YouTubeVideos.ThumbnailURL AS EpisodeArtwork, YouTubeVideos.VideoURL AS EpisodeURL, "
+            "YouTubeVideos.Duration AS EpisodeDuration, "
+            "YouTubeVideos.ListenPosition AS ListenDuration, "
+            "YouTubeVideos.YouTubeVideoID AS guid "
+            "FROM YouTubeVideos "
+            "INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID "
+            "WHERE Podcasts.PodcastID = %s AND Podcasts.UserID = %s "
+            "ORDER BY YouTubeVideos.PublishedAt DESC"
+        )
+
+    cursor.execute(query, (podcast_id, user_id))
+    rows = cursor.fetchall()
+    cursor.close()
+
+    # Normalize keys
+    rows = capitalize_keys(rows)
+    return rows or None
+
 def get_podcast_details(database_type, cnx, user_id, podcast_id):
     # Unpack the tuple into pod_id and episode_id
     # pod_id, episode_id = podcast_episode_tuple
@@ -1660,9 +1731,9 @@ def return_pods(database_type, cnx, user_id):
                 p.WebsiteURL,
                 p.FeedURL,
                 p.Author,
-                p.Categories,
-                p.Explicit,
-                p.PodcastIndexID,
+                COALESCE(p.Categories, '') as Categories,
+                COALESCE(p.Explicit, FALSE) as Explicit,
+                COALESCE(p.PodcastIndexID, 0) as PodcastIndexID,
                 COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
                 MIN(e.EpisodePubDate) as oldest_episode_date,
                 COALESCE(
@@ -1690,9 +1761,9 @@ def return_pods(database_type, cnx, user_id):
                 p.WebsiteURL,
                 p.FeedURL,
                 p.Author,
-                p.Categories,
-                p.Explicit,
-                p.PodcastIndexID,
+                COALESCE(p.Categories, '') as Categories,
+                COALESCE(p.Explicit, FALSE) as Explicit,
+                COALESCE(p.PodcastIndexID, 0) as PodcastIndexID,
                 COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
                 MIN(e.EpisodePubDate) as oldest_episode_date,
                 COALESCE(
@@ -2545,6 +2616,46 @@ def get_download_value(result, key, default=None):
         index = key_map.get(key_lower)
         return result[index] if index is not None else default
     return default
+
+def get_youtube_video_location(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        # Join YouTubeVideos with Podcasts to verify user ownership
+        if database_type == "postgresql":
+            query = '''
+                SELECT "YouTubeVideos".YouTubeVideoID
+                FROM "YouTubeVideos"
+                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                WHERE "YouTubeVideos".VideoID = %s AND "Podcasts".UserID = %s
+            '''
+        else:
+            query = '''
+                SELECT YouTubeVideos.YouTubeVideoID
+                FROM YouTubeVideos
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s
+            '''
+
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            youtube_id = result[0]
+            # Check both potential file paths due to the double .mp3 issue
+            file_path = os.path.join('/opt/pinepods/downloads/youtube', f'{youtube_id}.mp3')
+            file_path_double = os.path.join('/opt/pinepods/downloads/youtube', f'{youtube_id}.mp3.mp3')
+
+            if os.path.exists(file_path):
+                return file_path
+            elif os.path.exists(file_path_double):
+                return file_path_double
+
+        return None
+    except Exception as e:
+        logging.error(f"Error retrieving YouTube video location: {e}")
+        return None
+    finally:
+        cursor.close()
 
 def get_download_location(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
