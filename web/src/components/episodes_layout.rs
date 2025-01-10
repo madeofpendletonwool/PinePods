@@ -850,6 +850,18 @@ pub fn episode_layout() -> Html {
                         return;
                     }
                 };
+                let is_youtube = match search_state
+                    .podcast_feed_results
+                    .as_ref()
+                    .and_then(|results| results.episodes.get(0))
+                    .and_then(|episode| episode.is_youtube)
+                {
+                    Some(id) => id,
+                    None => {
+                        eprintln!("No is_youtube info found");
+                        return;
+                    }
+                };
                 let ep_api_key = api_key.clone();
                 let ep_server_name = server_name.clone();
                 let ep_user_id = user_id_copy.clone();
@@ -858,6 +870,7 @@ pub fn episode_layout() -> Html {
                     &ep_api_key.unwrap(),
                     episode_id,
                     ep_user_id.unwrap(),
+                    Some(is_youtube),
                 )
                 .await
                 {
@@ -2159,7 +2172,7 @@ pub fn episode_layout() -> Html {
         }
         {
             if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
             } else {
                 html! {}
             }

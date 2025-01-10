@@ -24,6 +24,7 @@ Version 0.7.3
 - [ ] Episode Completion Status is now pushed to Nextcloud/Gpodder
 - [ ] Adjusted Downloaded Episode titles to be more descriptive
 - [ ] Fixed issue with news feed adding
+- [ ] Additional Podcast parsing when things are missing
 
 Version 0.7.2
 

@@ -130,6 +130,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             let episode_release_clone = episode.pub_date.clone().unwrap_or_default();
             let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
             let episode_duration_clone = episode.duration.clone().unwrap_or_default();
+            let episode_is_youtube = episode.is_youtube.clone();
             let episode_duration_in_seconds = match convert_time_to_seconds(&episode_duration_clone) {
                 Ok(seconds) => seconds as i32,
                 Err(e) => {
@@ -189,6 +190,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 dispatch.clone(),
                 search_ui_state_clone.clone(),
                 None,
+                episode_is_youtube,
             );
 
             let description_class = if is_expanded {

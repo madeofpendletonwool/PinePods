@@ -239,6 +239,7 @@ pub struct Episode {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Episodeid")]
     pub episode_id: Option<i32>,
+    pub is_youtube: Option<bool>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
@@ -497,10 +498,10 @@ pub async fn call_get_podcast_episodes(
             episode.guid = episode
                 .guid
                 .or_else(|| episode.episode_id.map(|id| id.to_string()));
+            episode.is_youtube = Some(false); // Set is_youtube to false for regular episodes
             episode
         })
         .collect::<Vec<_>>();
-
     Ok(PodcastFeedResult { episodes })
 }
 
@@ -541,10 +542,10 @@ pub async fn call_get_youtube_episodes(
             episode.guid = episode
                 .guid
                 .or_else(|| episode.episode_id.map(|id| id.to_string()));
+            episode.is_youtube = Some(true); // Set is_youtube to true for YouTube episodes
             episode
         })
         .collect::<Vec<_>>();
-
     Ok(PodcastFeedResult { episodes })
 }
 
@@ -617,6 +618,7 @@ pub async fn call_parse_podcast_url(
                     guid: item.guid().map(|g| g.value().to_string()),
                     duration: Some(duration.unwrap_or_else(|| "00:00:00".to_string())),
                     episode_id: None,
+                    is_youtube: Some(false),
                 }
             })
             .collect();
@@ -725,6 +727,7 @@ pub struct SearchEpisode {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 pub async fn call_search_database(

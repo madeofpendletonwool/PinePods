@@ -123,7 +123,8 @@ pub struct PersonEpisode {
     pub podcastname: String,
     pub saved: bool,
     pub downloaded: bool,
-    pub listenduration: i32, // Changed based on response format
+    pub listenduration: i32,
+    pub is_youtube: bool,
 }
 
 #[derive(Deserialize)]

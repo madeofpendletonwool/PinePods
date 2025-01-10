@@ -64,6 +64,7 @@ pub struct Episode {
     pub saved: bool,
     pub queued: bool,
     pub downloaded: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -691,6 +692,7 @@ pub struct QueuedEpisode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -794,6 +796,7 @@ pub struct SavedEpisode {
     pub episodeid: i32,
     pub websiteurl: String,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -950,6 +953,7 @@ pub struct HistoryEpisode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -1049,6 +1053,7 @@ pub struct EpisodeDownload {
     pub podcastid: i32,
     pub podcastindexid: i64,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -1256,6 +1261,7 @@ pub struct EpisodeInfo {
     pub is_queued: bool,
     pub is_saved: bool,
     pub is_downloaded: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1725,11 +1731,17 @@ pub async fn call_get_podcast_id_from_ep(
     api_key: &Option<String>,
     episode_id: i32,
     user_id: i32,
+    is_youtube: Option<bool>,
 ) -> Result<i32, Error> {
-    let url = format!(
+    let mut url = format!(
         "{}/api/data/get_podcast_id_from_ep_id?episode_id={}&user_id={}",
         server_name, episode_id, user_id
     );
+
+    // Add is_youtube parameter if it's true
+    if let Some(true) = is_youtube {
+        url.push_str("&is_youtube=true");
+    }
 
     let api_key_ref = api_key
         .as_deref()
@@ -1748,7 +1760,6 @@ pub async fn call_get_podcast_id_from_ep(
     }
 
     let response_text = response.text().await?;
-
     let response_data: PodcastIdEpResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.podcast_id)
 }
@@ -2336,6 +2347,7 @@ pub struct EpisodeMetadata {
     pub episodeurl: String,
     pub episodeduration: i32,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]

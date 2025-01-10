@@ -614,22 +614,27 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
                             detail="You can only return pocast ids of your own podcasts!")
 
 @app.get("/api/data/get_podcast_id_from_ep_id")
-async def api_get_podcast_id(episode_id: int, user_id: int, cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
+async def api_get_podcast_id(
+    episode_id: int,
+    user_id: int,
+    is_youtube: bool = False,  # Add optional parameter
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
     logging.info('Fetching API key')
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
     logging.info('Getting key ID')
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     logging.info(f'Got key ID: {key_id}')
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+        podcast_id = database_functions.functions.get_podcast_id_from_episode(
+            cnx, database_type, episode_id, user_id, is_youtube
+        )
         if podcast_id is None:
             raise HTTPException(status_code=404, detail="Podcast ID not found for the given episode ID")
         return {"podcast_id": podcast_id}
@@ -2256,7 +2261,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
 
 async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     print("Starting refresh process")
-    # cnx = create_database_connection()
     print(f"Running refresh process for user in job {user_id}")
     try:
         # First get total count of podcasts
@@ -2313,20 +2317,22 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
         print('Getting list')
         if database_type == "postgresql":
             cursor.execute('''
-                SELECT "podcastid", "podcastname"
+                SELECT "podcastid", "podcastname", "feedurl", "artworkurl", "autodownload",
+                       "username", "password", "isyoutubechannel"
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
         else:
             cursor.execute('''
-                SELECT PodcastID, PodcastName
+                SELECT PodcastID, PodcastName, FeedURL, ArtworkURL, AutoDownload,
+                       Username, Password, IsYouTubeChannel
                 FROM Podcasts
                 WHERE UserID = %s
             ''', (user_id,))
         podcasts = cursor.fetchall()
         print('got list')
 
-# Process each podcast
+        # Process each podcast
         current = 0
         for podcast in podcasts:
             current += 1
@@ -2334,11 +2340,23 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                 if database_type == "postgresql":
                     podcast_id = podcast['podcastid']
                     podcast_name = podcast['podcastname']
+                    feed_url = podcast['feedurl']
+                    artwork_url = podcast['artworkurl']
+                    auto_download = podcast['autodownload']
+                    username = podcast['username']
+                    password = podcast['password']
+                    is_youtube = podcast['isyoutubechannel']
                 else:
                     podcast_id = podcast['PodcastID']
                     podcast_name = podcast['PodcastName']
+                    feed_url = podcast['FeedURL']
+                    artwork_url = podcast['ArtworkURL']
+                    auto_download = podcast['AutoDownload']
+                    username = podcast['Username']
+                    password = podcast['Password']
+                    is_youtube = podcast['IsYouTubeChannel']
             else:
-                podcast_id, podcast_name = podcast
+                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube = podcast
 
             await websocket.send_json({
                 "progress": {
@@ -2349,18 +2367,45 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             })
 
             # Refresh this podcast
-            new_episodes = await asyncio.to_thread(
-                database_functions.functions.refresh_pods_for_user,
-                cnx,
-                database_type,
-                user_id
-            )
+            try:
+                if is_youtube:
+                    # Extract channel ID from feed URL
+                    channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
+                    channel_id = channel_id.split('/')[0].split('?')[0]
+                    youtube_episodes = await asyncio.to_thread(
+                        database_functions.youtube.process_youtube_videos,
+                        database_type,
+                        podcast_id,
+                        channel_id,
+                        cnx
+                    )
+                    if youtube_episodes:
+                        for episode in youtube_episodes:
+                            if user_id in active_websockets:
+                                for ws in active_websockets[user_id]:
+                                    await ws.send_json({"new_episode": episode})
+                else:
+                    episodes = await asyncio.to_thread(
+                        database_functions.functions.add_episodes,
+                        cnx,
+                        database_type,
+                        podcast_id,
+                        feed_url,
+                        artwork_url,
+                        auto_download,
+                        username,
+                        password,
+                        True  # websocket=True
+                    )
 
-            # Send any new episodes
-            for episode_data in new_episodes:
-                if user_id in active_websockets:
-                    for ws in active_websockets[user_id]:
-                        await ws.send_json({"new_episode": episode_data})
+                    if episodes:
+                        for episode in episodes:
+                            if user_id in active_websockets:
+                                for ws in active_websockets[user_id]:
+                                    await ws.send_json({"new_episode": episode})
+            except Exception as e:
+                print(f"Error refreshing podcast {podcast_id}: {str(e)}")
+                continue
 
     except Exception as e:
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
@@ -3238,6 +3283,7 @@ class EpisodeMetadata(BaseModel):
     episode_id: int
     user_id: int
     person_episode: bool = False  # Default to False if not specified
+    is_youtube: bool = False
 
 @app.post("/api/data/get_episode_metadata")
 async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_database_connection),
@@ -3256,7 +3302,8 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
             cnx,
             data.episode_id,
             data.user_id,
-            data.person_episode
+            data.person_episode,
+            data.is_youtube
         )
         return {"episode": episode}
     else:
@@ -5146,70 +5193,10 @@ async def search_youtube_channels(
         )
 
 def process_youtube_channel(podcast_id: int, channel_id: str):
-    """Background task to process videos and download audio"""
-    from datetime import datetime, timedelta
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    logger.info(f"Starting process_youtube_channel for podcast_id {podcast_id}")
     cnx = create_database_connection()
     try:
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        full_opts = {
-            'quiet': True,
-            'no_warnings': True,
-        }
-        recent_videos = []
-
-        with YoutubeDL(full_opts) as ydl:
-            channel_url = f"https://www.youtube.com/channel/{channel_id}/videos"
-            results = ydl.extract_info(channel_url, download=False)
-
-            if not results or 'entries' not in results:
-                logger.error("No video list found")
-                return
-
-            for entry in results.get('entries', []):
-                if not entry or not entry.get('id'):
-                    continue
-
-                published = datetime.strptime(entry['upload_date'], '%Y%m%d')
-                if published <= thirty_days_ago:
-                    logger.info(f"Found video older than 30 days, stopping process")
-                    break
-
-                video_id = entry['id']
-                recent_videos.append({
-                    'id': video_id,
-                    'title': entry['title'],
-                    'description': entry.get('description', ''),
-                    'url': entry['webpage_url'],
-                    'thumbnail': entry['thumbnails'][0]['url'] if entry.get('thumbnails') else '',
-                    'publish_date': published,
-                    'duration': entry.get('duration', 0)
-                })
-                logger.info(f"Added video {video_id} from {published}")
-
-        logger.info(f"Found {len(recent_videos)} recent videos")
-        if recent_videos:
-            logger.info("Adding videos to database")
-            database_functions.functions.add_youtube_videos(cnx, podcast_id, recent_videos)
-            logger.info("Starting audio downloads")
-            for video in recent_videos:
-                output_path = f"/opt/pinepods/downloads/youtube/{video['id']}.mp3"
-                if os.path.exists(output_path) or os.path.exists(f"{output_path}.mp3"):
-                    logger.info(f"Audio file already exists for {video['id']}, skipping download")
-                    continue
-                logger.info(f"Downloading audio for {video['id']}")
-                database_functions.youtube.download_youtube_audio(video['id'], output_path)
-        else:
-            logger.info("No new videos to process")
-
-    except Exception as e:
-        logger.error(f"Error in process_youtube_channel: {str(e)}", exc_info=True)
-        raise e
+        database_function.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
     finally:
-        logger.info("Cleaning up database connection")
         if database_type == "postgresql":
             connection_pool.putconn(cnx)
         else:
