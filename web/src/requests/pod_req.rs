@@ -179,6 +179,7 @@ pub async fn call_add_podcast(
 pub struct RemovePodcastValues {
     pub podcast_id: i32,
     pub user_id: i32,
+    pub is_youtube: bool,
 }
 
 pub async fn call_remove_podcasts(
@@ -1549,7 +1550,8 @@ pub async fn call_fetch_podcasting_2_pod_data(
 pub struct RecordListenDurationRequest {
     pub episode_id: i32,
     pub user_id: i32,
-    pub listen_duration: f64, // Assuming float is appropriate here; adjust the type if necessary
+    pub listen_duration: f64,
+    pub is_youtube: Option<bool>, // Add the optional is_youtube field
 }
 
 #[allow(dead_code)]
@@ -2511,6 +2513,84 @@ pub async fn call_subscribe_to_channel(
             "Error subscribing to channel. Status: {}, Error: {}",
             status,
             error_text
+        ))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemoveYouTubeChannelValues {
+    pub user_id: i32,
+    pub channel_name: String,
+    pub channel_url: String,
+}
+
+pub async fn call_remove_youtube_channel(
+    server_name: &String,
+    api_key: &Option<String>,
+    remove_channel: &RemoveYouTubeChannelValues,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/remove_youtube_channel", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let json_body = serde_json::to_string(remove_channel)?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(json_body)?
+        .send()
+        .await?;
+
+    let response_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to get response text".to_string());
+
+    if response.ok() {
+        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+            Ok(parsed_response) => Ok(parsed_response.success),
+            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
+        }
+    } else {
+        Err(anyhow::Error::msg(format!(
+            "Error removing channel: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Default, Deserialize, Debug)]
+pub struct CheckYouTubeChannelResponse {
+    pub exists: bool,
+}
+
+pub async fn call_check_youtube_channel(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    channel_name: &str,
+    channel_url: &str,
+) -> Result<CheckYouTubeChannelResponse, Error> {
+    let encoded_name = utf8_percent_encode(channel_name, NON_ALPHANUMERIC).to_string();
+    let encoded_url = utf8_percent_encode(channel_url, NON_ALPHANUMERIC).to_string();
+    let endpoint = format!(
+        "{}/api/data/check_youtube_channel?user_id={}&channel_name={}&channel_url={}",
+        server, user_id, encoded_name, encoded_url
+    );
+    let resp = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .context("Network Request Error")?;
+    if resp.ok() {
+        resp.json::<CheckYouTubeChannelResponse>()
+            .await
+            .context("Response Parsing Error")
+    } else {
+        Err(anyhow::anyhow!(
+            "Error checking YouTube channel. Server Response: {}",
+            resp.status_text()
         ))
     }
 }

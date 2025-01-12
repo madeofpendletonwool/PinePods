@@ -15,10 +15,17 @@ Next Minor Version:
 Version 0.7.3
 
 - [ ] Youtube Subscriptions
-- [ ] Fix refreshing so it handlees youtube subscriptions
-- [ ] Thumbnails for youtube episodes currently are just sections of the video
-- [ ] Validate some more channel adds
-- [ ] Speed up channel add process by only checking recent videos up to 30 days.
+  - [x] Fix refreshing so it handlees youtube subscriptions
+  - [x] Thumbnails for youtube episodes currently are just sections of the video
+  - [ ] Validate some more channel adds
+  - [x] Speed up channel add process by only checking recent videos up to 30 days.
+  - [x] When searching channels show more recent vids than just one
+  - [x] Dynamic updating youtube channels
+  - [x] Delete youtube subs
+  - [ ] Allow user to adjust amount of time to save/download youtube videos
+  - [ ] Ensure youtube videos update completion/listen time status correctly
+  - [ ] check refreshing on episode/other youtube related pages
+  - [ ] Make /episode page work with youtube
 - [ ] Container can be ran as host machine user
 - [ ] Nextcloud Sync Fixed
 - [ ] Episode Completion Status is now pushed to Nextcloud/Gpodder

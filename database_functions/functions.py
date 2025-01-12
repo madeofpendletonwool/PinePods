@@ -1071,6 +1071,81 @@ def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, fee
     finally:
         cursor.close()
 
+def remove_youtube_channel_by_url(cnx, database_type, channel_name, channel_url, user_id):
+    cursor = cnx.cursor()
+    print('got to remove youtube channel')
+    try:
+        # Get the PodcastID first
+        if database_type == "postgresql":
+            select_podcast_id = '''
+                SELECT PodcastID
+                FROM "Podcasts"
+                WHERE PodcastName = %s
+                AND FeedURL = %s
+                AND UserID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        else:  # MySQL or MariaDB
+            select_podcast_id = '''
+                SELECT PodcastID
+                FROM Podcasts
+                WHERE PodcastName = %s
+                AND FeedURL = %s
+                AND UserID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+
+        cursor.execute(select_podcast_id, (channel_name, channel_url, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            podcast_id = result[0] if not isinstance(result, dict) else result.get('podcastid')
+        else:
+            raise ValueError(f"No YouTube channel found with name {channel_name}")
+
+        # Delete related data
+        if database_type == "postgresql":
+            delete_queries = [
+                ('DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "YouTubeVideos" WHERE PodcastID = %s', (podcast_id,)),
+                ('DELETE FROM "Podcasts" WHERE PodcastID = %s AND IsYouTubeChannel = TRUE', (podcast_id,))
+            ]
+        else:  # MySQL or MariaDB
+            delete_queries = [
+                ("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM YouTubeVideos WHERE PodcastID = %s", (podcast_id,)),
+                ("DELETE FROM Podcasts WHERE PodcastID = %s AND IsYouTubeChannel = TRUE", (podcast_id,))
+            ]
+
+        for query, params in delete_queries:
+            cursor.execute(query, params)
+
+        # Update UserStats table
+        if database_type == "postgresql":
+            query = 'UPDATE "UserStats" SET PodcastsAdded = GREATEST(PodcastsAdded - 1, 0) WHERE UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE UserStats SET PodcastsAdded = GREATEST(PodcastsAdded - 1, 0) WHERE UserID = %s"
+
+        cursor.execute(query, (user_id,))
+        cnx.commit()
+
+    except (psycopg.Error, mysql.connector.Error) as err:
+        print(f"Database Error: {err}")
+        cnx.rollback()
+        raise
+    except Exception as e:
+        print(f"General Error in remove_youtube_channel_by_url: {e}")
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
+
 def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
     cursor = cnx.cursor()
     print('got to remove')
@@ -1202,6 +1277,41 @@ def remove_podcast_id(cnx, database_type, podcast_id, user_id):
         cursor.execute(delete_podcast, (podcast_id,))
         cursor.execute(update_user_stats, (user_id,))
 
+        cnx.commit()
+    except (psycopg.Error, mysql.connector.Error) as err:
+        print("Error: {}".format(err))
+        cnx.rollback()
+    finally:
+        cursor.close()
+
+def remove_youtube_channel(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        # Delete from the related tables
+        if database_type == "postgresql":
+            delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_saved = 'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_queue = 'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_videos = 'DELETE FROM "YouTubeVideos" WHERE PodcastID = %s'
+            delete_podcast = 'DELETE FROM "Podcasts" WHERE PodcastID = %s AND IsYouTubeChannel = TRUE'
+            update_user_stats = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s'
+        else:  # MySQL or MariaDB
+            delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_videos = "DELETE FROM YouTubeVideos WHERE PodcastID = %s"
+            delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s AND IsYouTubeChannel = TRUE"
+            update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
+
+        cursor.execute(delete_history, (podcast_id,))
+        cursor.execute(delete_downloaded, (podcast_id,))
+        cursor.execute(delete_saved, (podcast_id,))
+        cursor.execute(delete_queue, (podcast_id,))
+        cursor.execute(delete_videos, (podcast_id,))
+        cursor.execute(delete_podcast, (podcast_id,))
+        cursor.execute(update_user_stats, (user_id,))
         cnx.commit()
     except (psycopg.Error, mysql.connector.Error) as err:
         print("Error: {}".format(err))
@@ -3394,7 +3504,6 @@ def check_usernames(cnx, database_type, username):
     # cnx.close()
     return count > 0
 
-
 def record_listen_duration(cnx, database_type, episode_id, user_id, listen_duration):
     if listen_duration < 0:
         logging.info(f"Skipped updating listen duration for user {user_id} and episode {episode_id} due to invalid duration: {listen_duration}")
@@ -3443,6 +3552,68 @@ def record_listen_duration(cnx, database_type, episode_id, user_id, listen_durat
     finally:
         cursor.close()
     # cnx.close()
+
+
+def record_youtube_listen_duration(cnx, database_type, video_id, user_id, listen_duration):
+    if listen_duration < 0:
+        logging.info(f"Skipped updating listen duration for user {user_id} and video {video_id} due to invalid duration: {listen_duration}")
+        return
+
+    listen_date = datetime.datetime.now()
+    cursor = cnx.cursor()
+    try:
+        # Check if UserVideoHistory exists (we'll need to create this table)
+        if database_type == "postgresql":
+            cursor.execute('SELECT ListenDuration FROM "UserVideoHistory" WHERE UserID=%s AND VideoID=%s', (user_id, video_id))
+        else:
+            cursor.execute("SELECT ListenDuration FROM UserVideoHistory WHERE UserID=%s AND VideoID=%s", (user_id, video_id))
+
+        result = cursor.fetchone()
+
+        if result is not None:
+            existing_duration = result[0] if isinstance(result, tuple) else result.get("ListenDuration")
+            existing_duration = existing_duration if existing_duration is not None else 0
+
+            if listen_duration > existing_duration:
+                if database_type == "postgresql":
+                    update_listen_duration = 'UPDATE "UserVideoHistory" SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND VideoID=%s'
+                else:
+                    update_listen_duration = "UPDATE UserVideoHistory SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND VideoID=%s"
+                cursor.execute(update_listen_duration, (listen_duration, listen_date, user_id, video_id))
+
+                # Also update the ListenPosition in YouTubeVideos table
+                if database_type == "postgresql":
+                    cursor.execute('UPDATE "YouTubeVideos" SET ListenPosition=%s WHERE VideoID=%s',
+                                 (listen_duration, video_id))
+                else:
+                    cursor.execute("UPDATE YouTubeVideos SET ListenPosition=%s WHERE VideoID=%s",
+                                 (listen_duration, video_id))
+
+                print(f"Updated listen duration for user {user_id} and video {video_id} to {listen_duration}")
+        else:
+            # Insert new row
+            if database_type == "postgresql":
+                add_listen_duration = 'INSERT INTO "UserVideoHistory" (UserID, VideoID, ListenDate, ListenDuration) VALUES (%s, %s, %s, %s)'
+            else:
+                add_listen_duration = "INSERT INTO UserVideoHistory (UserID, VideoID, ListenDate, ListenDuration) VALUES (%s, %s, %s, %s)"
+            cursor.execute(add_listen_duration, (user_id, video_id, listen_date, listen_duration))
+
+            # Update ListenPosition in YouTubeVideos
+            if database_type == "postgresql":
+                cursor.execute('UPDATE "YouTubeVideos" SET ListenPosition=%s WHERE VideoID=%s',
+                             (listen_duration, video_id))
+            else:
+                cursor.execute("UPDATE YouTubeVideos SET ListenPosition=%s WHERE VideoID=%s",
+                             (listen_duration, video_id))
+
+            print(f"Inserted new listen duration for user {user_id} and video {video_id}: {listen_duration}")
+
+        cnx.commit()
+    except Exception as e:
+        logging.error(f"Failed to record YouTube listen duration due to: {e}")
+        cnx.rollback()
+    finally:
+        cursor.close()
 
 
 def get_local_episode_times(cnx, database_type, user_id):
@@ -5210,30 +5381,35 @@ def check_podcast(cnx, database_type, user_id, podcast_name, podcast_url):
         if cursor:
             cursor.close()
 
-
-# def get_session_file_path():
-#     app_name = 'pinepods'
-#     data_dir = appdirs.user_data_dir(app_name)
-#     os.makedirs(data_dir, exist_ok=True)
-#     session_file_path = os.path.join(data_dir, "session.txt")
-#     return session_file_path
-
-
-# def save_session_to_file(session_id):
-#     session_file_path = get_session_file_path()
-#     with open(session_file_path, "w") as file:
-#         file.write(session_id)
-
-
-# def get_saved_session_from_file():
-#     app_name = 'pinepods'
-#     session_file_path = get_session_file_path()
-#     try:
-#         with open(session_file_path, "r") as file:
-#             session_id = file.read()
-#             return session_id
-#     except FileNotFoundError:
-#         return None
+def check_youtube_channel(cnx, database_type, user_id, channel_name, channel_url):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+        if database_type == "postgresql":
+            query = '''
+                SELECT PodcastID
+                FROM "Podcasts"
+                WHERE UserID = %s
+                AND PodcastName = %s
+                AND FeedURL = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        else:  # MySQL or MariaDB
+            query = '''
+                SELECT PodcastID
+                FROM Podcasts
+                WHERE UserID = %s
+                AND PodcastName = %s
+                AND FeedURL = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        cursor.execute(query, (user_id, channel_name, channel_url))
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+    finally:
+        if cursor:
+            cursor.close()
 
 
 def check_saved_session(cnx, database_type, session_value):

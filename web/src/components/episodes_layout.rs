@@ -12,9 +12,9 @@ use crate::requests::pod_req::{
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
     call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_id_from_ep,
     call_get_podcast_id_from_ep_name, call_remove_category, call_remove_podcasts_name,
-    AddCategoryRequest, AutoDownloadRequest, DownloadAllPodcastRequest,
-    FetchPodcasting2PodDataRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    SkipTimesRequest,
+    call_remove_youtube_channel, AddCategoryRequest, AutoDownloadRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PodcastValues,
+    RemoveCategoryRequest, RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -743,6 +743,7 @@ pub fn episode_layout() -> Html {
         });
     }
 
+    let delete_history = history.clone();
     let delete_all_click = {
         let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
@@ -757,19 +758,29 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let hist = delete_history.clone();
             let page_state = page_state.clone();
             let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
             let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
+            let is_youtube = pod_values.clone().unwrap().is_youtube.unwrap_or(false);
             app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
+            let pod_title_yt = pod_title_og.clone();
             let pod_feed_url = pod_feed_url_og.clone();
+            let pod_feed_url_yt = pod_feed_url_og.clone();
+            let pod_feed_url_check = pod_feed_url_og.clone();
             let user_id = user_id_og.clone().unwrap();
             let podcast_values = RemovePodcastValuesName {
                 podcast_name: pod_title,
                 podcast_url: pod_feed_url,
-                user_id: user_id,
+                user_id,
+            };
+            let remove_channel = RemoveYouTubeChannelValues {
+                user_id,
+                channel_name: pod_title_yt,
+                channel_url: pod_feed_url_yt,
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
@@ -778,30 +789,51 @@ pub fn episode_layout() -> Html {
                 let dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
-                let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
-                match call_remove_podcasts_name(
-                    &server_name_wasm.unwrap(),
-                    &api_key_wasm,
-                    &pod_values_clone,
-                )
-                .await
-                {
+
+                let result = if pod_feed_url_check.starts_with("https://www.youtube.com") {
+                    call_remove_youtube_channel(
+                        &server_name_wasm.unwrap(),
+                        &api_key_wasm,
+                        &remove_channel,
+                    )
+                    .await
+                } else {
+                    call_remove_podcasts_name(
+                        &server_name_wasm.unwrap(),
+                        &api_key_wasm,
+                        &podcast_values,
+                    )
+                    .await
+                };
+
+                match result {
                     Ok(success) => {
                         if success {
                             dispatch_wasm.reduce_mut(|state| {
-                                state.info_message =
-                                    Option::from("Podcast successfully removed".to_string())
+                                state.info_message = Some(
+                                    if pod_feed_url_check.starts_with("https://www.youtube.com") {
+                                        "YouTube channel successfully removed".to_string()
+                                    } else {
+                                        "Podcast successfully removed".to_string()
+                                    },
+                                )
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             is_added_inner.set(false);
-                            web_sys::console::log_1(&"adjusting podcast added".into());
                             app_dispatch.reduce_mut(|state| {
                                 state.podcast_added = Some(podcast_added);
                             });
+
+                            if pod_feed_url_check.starts_with("https://www.youtube.com") {
+                                hist.push("/podcasts");
+                            }
                         } else {
                             dispatch_wasm.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from("Failed to remove podcast".to_string())
+                                state.error_message = Some(if is_youtube {
+                                    "Failed to remove YouTube channel".to_string()
+                                } else {
+                                    "Failed to remove podcast".to_string()
+                                })
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
@@ -809,8 +841,7 @@ pub fn episode_layout() -> Html {
                     }
                     Err(e) => {
                         dispatch_wasm.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error removing podcast: {:?}", e))
+                            state.error_message = Some(format!("Error removing content: {:?}", e))
                         });
                         app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }

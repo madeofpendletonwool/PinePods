@@ -6,7 +6,10 @@ use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
-use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
+use crate::requests::pod_req::{
+    call_remove_podcasts, call_remove_youtube_channel, PodcastResponseExtra, RemovePodcastValues,
+    RemoveYouTubeChannelValues,
+};
 use crate::requests::pod_req::{Podcast, PodcastExtra};
 use crate::requests::setting_reqs::call_add_custom_feed;
 use gloo_timers::callback::Timeout;
@@ -95,7 +98,7 @@ fn render_podcasts(
     user_id: Option<i32>,
     desc_state: Rc<ExpandedDescriptions>,
     desc_dispatch: Dispatch<ExpandedDescriptions>,
-    toggle_delete: Callback<i32>,
+    toggle_delete: Callback<(i32, std::string::String)>,
 ) -> Html {
     match layout {
         None | Some(PodcastLayout::List) => {
@@ -108,6 +111,7 @@ fn render_podcasts(
 
                         let dispatch_clone = dispatch.clone();
                         let podcast_id_loop = podcast.podcastid.clone();
+                        let podcast_feed_loop = podcast.feedurl.clone();
                         let podcast_description_clone = podcast.description.clone();
                         let episode_count = podcast.episodecount.clone().unwrap_or_else(|| 0);
 
@@ -137,12 +141,13 @@ fn render_podcasts(
                             #[wasm_bindgen(js_namespace = window)]
                             fn toggleDescription(guid: &str, expanded: bool);
                         }
+                        let podcast_feed_call = podcast_feed_loop.clone();
                         let toggle_expanded = {
                             let desc_dispatch = desc_dispatch.clone();
                             let episode_guid = podcast.podcastid.clone().to_string();
-
                             Callback::from(move |_: MouseEvent| {
                                 let guid = episode_guid.clone();
+
                                 desc_dispatch.reduce_mut(move |state| {
                                     if state.expanded_descriptions.contains(&guid) {
                                         state.expanded_descriptions.remove(&guid);
@@ -190,7 +195,7 @@ fn render_podcasts(
                                 <button
                                     class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
                                     style="width: 60px; height: 60px;"
-                                    onclick={toggle_delete.reform(move |_| podcast_id_loop)}  // Use toggle_delete instead of direct state mutation
+                                    onclick={toggle_delete.reform(move |_| (podcast_id_loop, podcast_feed_call.clone()))}  // Pass both as a tuple
                                 >
                                     <i class="ph ph-trash text-3xl"></i>
                                 </button>
@@ -400,6 +405,7 @@ pub fn podcasts() -> Html {
 
     let page_state = use_state(|| PageState::Hidden);
     let podcast_to_delete = use_state(|| None::<i32>);
+    let podcast_to_delete_feed = use_state(|| None::<String>);
 
     let on_close_modal = {
         let page_state = page_state.clone();
@@ -422,53 +428,77 @@ pub fn podcasts() -> Html {
     let stop_propagation = Callback::from(|e: MouseEvent| {
         e.stop_propagation();
     });
+    let remove_feed_url = feed_url.clone();
 
     let on_remove_click = {
         let dispatch_remove = dispatch.clone();
         let podcast_to_delete = podcast_to_delete.clone();
+        let podcast_to_delete_feed = podcast_to_delete_feed.clone();
         let user_id = user_id.clone();
         let api_key_rm = api_key.clone();
         let server_name = server_name.clone();
         let on_close_remove = on_close_modal.clone();
 
         Callback::from(move |_: MouseEvent| {
-            if let Some(podcast_id) = *podcast_to_delete {
+            let podcast_id = *podcast_to_delete;
+            let feed_url = (*podcast_to_delete_feed).clone();
+
+            if let (Some(pid), Some(url)) = (podcast_id, feed_url) {
                 let dispatch_call = dispatch_remove.clone();
                 let api_key_call = api_key_rm.clone();
                 let server_name_call = server_name.clone();
                 let user_id_call = user_id.unwrap();
 
                 let remove_values = RemovePodcastValues {
-                    podcast_id,
+                    podcast_id: pid,
                     user_id: user_id_call,
+                    is_youtube: url.starts_with("https://www.youtube.com"),
                 };
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_remove_podcasts(
-                        &server_name_call.unwrap(),
-                        &api_key_call.unwrap(),
-                        &remove_values,
-                    )
-                    .await
-                    {
+                    let result = if url.starts_with("https://www.youtube.com") {
+                        call_remove_podcasts(
+                            &server_name_call.unwrap(),
+                            &api_key_call.unwrap(),
+                            &remove_values,
+                        )
+                        .await
+                    } else {
+                        call_remove_podcasts(
+                            &server_name_call.unwrap(),
+                            &api_key_call.unwrap(),
+                            &remove_values,
+                        )
+                        .await
+                    };
+
+                    match result {
                         Ok(success) => {
                             if success {
-                                dispatch_call.apply(AppStateMsg::RemovePodcast(podcast_id));
+                                dispatch_call.apply(AppStateMsg::RemovePodcast(pid));
                                 dispatch_call.reduce_mut(|state| {
                                     state.info_message =
-                                        Some("Podcast successfully removed".to_string())
+                                        Some(if url.starts_with("https://www.youtube.com") {
+                                            "YouTube channel successfully removed".to_string()
+                                        } else {
+                                            "Podcast successfully removed".to_string()
+                                        })
                                 });
                             } else {
                                 dispatch_call.reduce_mut(|state| {
                                     state.error_message =
-                                        Some("Failed to remove podcast".to_string())
+                                        Some(if url.starts_with("https://www.youtube.com") {
+                                            "Failed to remove YouTube channel".to_string()
+                                        } else {
+                                            "Failed to remove podcast".to_string()
+                                        })
                                 });
                             }
                         }
                         Err(e) => {
                             dispatch_call.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error removing podcast: {:?}", e))
+                                    Some(format!("Error removing content: {:?}", e))
                             });
                         }
                     }
@@ -517,8 +547,10 @@ pub fn podcasts() -> Html {
     let toggle_delete = {
         let page_state = page_state.clone();
         let podcast_to_delete = podcast_to_delete.clone();
-        Callback::from(move |podcast_id: i32| {
+        let podcast_to_delete_feed = podcast_to_delete_feed.clone();
+        Callback::from(move |(podcast_id, feed_url): (i32, String)| {
             podcast_to_delete.set(Some(podcast_id));
+            podcast_to_delete_feed.set(Some(feed_url));
             page_state.set(PageState::Delete);
         })
     };

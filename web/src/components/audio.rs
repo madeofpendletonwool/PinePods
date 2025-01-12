@@ -611,6 +611,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 episode_id: episode_id_loop.unwrap().clone(),
                                 user_id: user_id.unwrap().clone(),
                                 listen_duration,
+                                is_youtube: Some(is_youtube_vid),
                             };
 
                             wasm_bindgen_futures::spawn_local(async move {

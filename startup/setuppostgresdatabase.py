@@ -524,6 +524,18 @@ try:
                         FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "UserVideoHistory" (
+            UserVideoHistoryID SERIAL PRIMARY KEY,
+            UserID INT,
+            VideoID INT,
+            ListenDate TIMESTAMP,
+            ListenDuration INT DEFAULT 0,
+            FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+            FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+        )
+    """)
+
     cursor.execute("""CREATE TABLE IF NOT EXISTS "SavedEpisodes" (
                         SaveID SERIAL PRIMARY KEY,
                         UserID INT,
@@ -532,6 +544,15 @@ try:
                         FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
                         FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "SavedVideos" (
+        SaveID SERIAL PRIMARY KEY,
+        UserID INT,
+        VideoID INT,
+        SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+        FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+        )""")
 
 
     # Create the DownloadedEpisodes table
@@ -546,6 +567,17 @@ try:
                     FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
 
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "DownloadedVideos" (
+        DownloadID SERIAL PRIMARY KEY,
+        UserID INT,
+        VideoID INT,
+        DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        DownloadedSize INT,
+        DownloadedLocation VARCHAR(255),
+        FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+        FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+        )""")
+
     # Create the EpisodeQueue table
     cursor.execute("""CREATE TABLE IF NOT EXISTS "EpisodeQueue" (
                     QueueID SERIAL PRIMARY KEY,
@@ -556,6 +588,16 @@ try:
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
                     FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
                     )""")
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS "VideoQueue" (
+        QueueID SERIAL PRIMARY KEY,
+        QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UserID INT,
+        VideoID INT,
+        QueuePosition INT NOT NULL DEFAULT 0,
+        FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+        FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+    )""")
 
     # Create the Sessions table
     cursor.execute("""CREATE TABLE IF NOT EXISTS "Sessions" (
